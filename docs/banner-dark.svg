@@ -1,0 +1,26 @@
+<svg viewBox="0 0 720 190" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="lgtmgate — merge gate for agent-generated pull requests">
+  <defs>
+    <linearGradient id="mark" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#9B7DFF"/>
+      <stop offset="1" stop-color="#6A4CFF"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="18" y="18" width="128" height="128" rx="30" fill="url(#mark)"/>
+  <rect x="18.5" y="18.5" width="127" height="127" rx="29.5" fill="none" stroke="#000000" stroke-opacity="0.18"/>
+  <path d="M46,88 L72,116 L120,54" fill="none" stroke="#0D1117" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <text x="170" y="90" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="56" font-weight="700" letter-spacing="-1">
+    <tspan fill="#B29CFF">lgtm</tspan><tspan fill="#F0F3F8">gate</tspan>
+  </text>
+  <text x="172" y="120" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="18" fill="#9AA4B2">Merge gate for agent-generated pull requests</text>
+
+  <g transform="translate(172,150)">
+    <line x1="0" y1="4" x2="176" y2="4" stroke="#2B3038" stroke-width="2"/>
+    <circle cx="0"   cy="4" r="5" fill="#454B55"/>
+    <circle cx="44"  cy="4" r="5" fill="#454B55"/>
+    <circle cx="88"  cy="4" r="5" fill="#454B55"/>
+    <circle cx="132" cy="4" r="5" fill="#454B55"/>
+    <circle cx="176" cy="4" r="7" fill="url(#mark)"/>
+  </g>
+</svg>
