@@ -89,7 +89,7 @@ The full key-by-key reference, including precedence rules and edge cases, is in 
 - **Nick**: implements the change and the tests Sam's plan specifies (Sam's impact table names what needs testing, not just what to build), opens a draft PR, copies the acceptance checklist into the body. (sonnet)
 - **Morgan**: impartial reviewer, running the regression guard, the convention review, the acceptance-checklist gate and CI verification, then posting a verdict. Never commits. (sonnet)
 
-The Lead (you, or the orchestrator) creates a shared git worktree and drives the workflow; the agents work inside that same worktree so plan, code, and review sit on one frozen base.
+The Lead (you, or the orchestrator) creates a shared git worktree and launches the Workflow. The step order, checkpoints, and resume logic are scripted inside the plugin's `workflows/deliver-pipeline.js`, not decided by the Lead turn by turn: the Lead's job is to launch it and relay a go-ahead at each checkpoint. The agents work inside that same worktree so plan, code, and review sit on one frozen base.
 
 ## Install
 
