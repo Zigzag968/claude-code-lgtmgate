@@ -37,7 +37,7 @@
 #
 # Enforcement note (#54 MANDATORY 2, human decision 2026-08-23): this repo is PRIVATE on a
 # plan where branch protection and rulesets are both unavailable (verified this session:
-# `gh api repos/Zigzag968/lgtmgate/branches/main/protection` and
+# `gh api repos/Zigzag968/claude-code-lgtmgate/branches/main/protection` and
 # `.../rulesets` both return 403 "Upgrade to GitHub Pro or make this repository public to
 # enable this feature"). `.github/workflows/guards.yml` runs this script on every PR to
 # main and REPORTS; it CANNOT be a required check on this repo. Enforcement is therefore
@@ -98,8 +98,8 @@ NO_PRIVATE_REFS_ALLOW=(
   ''
   ''
   ''
-  'Zigzag968/lgtmgate'              # this repo naming itself is not a leak
-  'github\.com/Zigzag968/lgtmgate'  # same, full URL form
+  'Zigzag968/claude-code-lgtmgate'              # this repo naming itself is not a leak
+  'github\.com/Zigzag968/claude-code-lgtmgate'  # same, full URL form
   ''
   '/Users/(you|dev)([^A-Za-z0-9._-]|$)'         # documented generic placeholders, not real usernames
   '/home/user([^A-Za-z0-9._-]|$)'               # documented CI placeholder, not a real username

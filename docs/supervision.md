@@ -71,7 +71,7 @@ State file — `<project>/.pipeline/<id>.json`, additive, every `blockedBy` key 
   "issue": 799,
   "status": "blocked-by",
   "blockedBy": {
-    "repo": "Zigzag968/lgtmgate",
+    "repo": "Zigzag968/claude-code-lgtmgate",
     "issue": 100,
     "resolveOnLabel": "auto:merged",
     "since": "2026-08-30T09:12:00Z",
@@ -87,7 +87,7 @@ State file — `<project>/.pipeline/<id>.json`, additive, every `blockedBy` key 
 from `templates/blocked-by-check.sh`) — read-only, always prints a fixed trailer as its last line:
 
 ```
-[blocked-by] status=resolved repo=Zigzag968/lgtmgate issue=100 label=auto:merged
+[blocked-by] status=resolved repo=Zigzag968/claude-code-lgtmgate issue=100 label=auto:merged
 ```
 
 | verdict | exit | meaning / orchestrator action |

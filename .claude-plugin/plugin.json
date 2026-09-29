@@ -1,11 +1,11 @@
 {
   "name": "lgtmgate",
-  "version": "0.8.64",
+  "version": "0.8.65",
   "description": "Stack-agnostic delivery pipeline: Theo (diagnose) -> Mia (PM) -> Sam (plan) -> Nick (dev+PR) -> Morgan (review), orchestrated by a per-project workflow and configured via .claude/pipeline.config.json.",
   "author": {
     "name": "Zigzag968"
   },
-  "repository": "https://github.com/Zigzag968/lgtmgate",
+  "repository": "https://github.com/Zigzag968/claude-code-lgtmgate",
   "license": "MIT",
   "keywords": ["pipeline", "agents", "orchestration", "code-review", "worktree"],
   "hooks": "./hooks/plugin-hooks.json",

@@ -1,6 +1,6 @@
 {
   "ghProject": { "owner": "Zigzag968", "projectNumber": 1 },
-  "repo": "Zigzag968/lgtmgate",
+  "repo": "Zigzag968/claude-code-lgtmgate",
   "baseBranch": "main",
   "branchPrefix": "feat/",
   "worktreeRoot": "../worktrees/lgtmgate",
