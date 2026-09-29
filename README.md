@@ -1,6 +1,40 @@
 # lgtmgate
 
-A stack-agnostic **feature delivery pipeline** for Claude Code. Five specialized agents take a GitHub issue from framing to a merge-ready PR, orchestrated by a small per-project workflow and configured entirely through `.claude/pipeline.config.json` — no stack assumptions baked into the plugin.
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Claude Code Plugin](https://img.shields.io/badge/Claude%20Code-plugin-5A32FB)](https://code.claude.com/docs/en/plugins)
+
+**Agents open the PR. They never merge it.** A stack-agnostic feature delivery pipeline for Claude Code: five specialized agents take a GitHub issue from framing to a merge-ready PR behind a mechanical acceptance gate — configured entirely through `.claude/pipeline.config.json`, no stack assumptions baked into the plugin.
+
+## Why lgtmgate
+
+- **The merge gate is mechanical, not vibes.** Every PR carries an acceptance checklist written by the planner and ticked only against cited proof (a command's output, an artifact) — a hook refuses `gh pr merge` while any box is unchecked.
+- **The reviewer never fixes, the fixer never merges.** Morgan (review) is a separate role from Nick (dev) — no agent reviews its own work, and merging stays a human gesture throughout this codebase, including in this repo's own release process.
+- **Diagnosis before code.** Theo reproduces a claimed bug for real (never "a code read as proof") or sanity-checks a feature before Sam ever plans on it — catches issues that don't hold up before they cost a dev cycle.
+
+## Example
+
+```
+$ /lgtmgate:feature 142 "Login page shows a stale error after a successful retry"
+```
+
+1. **Theo** reproduces the stale-error state, confirms it's real, hands off to Sam.
+2. **Sam** posts an anchored plan on issue #142: impact table, `file:symbol` implementation steps, an acceptance checklist Morgan can verify offline.
+3. **Nick** implements it in the shared worktree, opens a draft PR with the checklist copied into the body — unticked.
+4. **Morgan** runs the regression guard, checks conventions, ticks each box against real proof, posts a verdict:
+   - `REQUIRED_CHANGES` → Nick fixes, Morgan re-reviews. Loops until resolved.
+   - `LGTM` → PR undrafted, ready. **You merge it.**
+
+## Engineering highlights
+
+Nothing here is asserted — every number is `bash <script>` away from a stranger's own terminal:
+
+- **709 offline test cases, zero network/mocked-API dependency**, across 6 suites: `templates/test-canonical-guards.sh` (20 release invariants), `scripts/run-flow-suite.cjs` (177 pipeline-logic cases), `plugins/backlog/tests/` (467 Python unit tests), `templates/test-blocked-by-check.sh` (9), `hooks/test-Stop-supervise-runs.sh` (17), `hooks/test-deny-destructive-git.sh` (19).
+- **Adversarial plan audit** (opt-in, `planAudit`): a separate auditor agent challenges Sam's plan before Nick writes a line of code, bounded to a hard round ceiling so a disagreement can't spiral into runaway spawns.
+- **Regression guard by SET-DIFF, not a blind re-run**: Morgan captures a baseline against the pre-change branch and diffs the exact test set the change touched — catches a newly-broken adjacent test without re-running the whole suite on every PR.
+- **Isolated by construction**: every run gets its own git worktree; Theo, Sam, Nick and Morgan share it so plan, code and review sit on the identical frozen base — the pipeline never touches your own working checkout.
+- **A documented trust boundary, not a claimed sandbox**: `SECURITY.md` states plainly what this plugin does and doesn't protect against (`.claude/pipeline.config.json` is trusted-operator input, not sandboxed against injected prompt content) — see the full threat model there.
+
+## Agents
 
 ```
 Theo (diagnose, mandatory) -> Mia (PM, optional) -> Sam (scout + plan) -> Nick (dev + tests + PR) -> Morgan (review)
