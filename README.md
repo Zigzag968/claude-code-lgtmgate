@@ -41,6 +41,18 @@ $ /lgtmgate:feature 142 "Login page shows a stale error after a successful retry
 - A git hook refuses `gh pr merge` while any acceptance box is unchecked, and a box only gets checked once there's evidence behind it.
 - Review and implementation are split across two different agents (Morgan and Nick), so neither one reviews its own work.
 
+## Configuration & overrides
+
+The default behavior is deliberately conservative, but most of it can be tuned per project or per run through `.claude/pipeline.config.json`:
+
+- **Model per role** (`models`): run Sam/Morgan/the plan auditor on a cheaper or faster model than the sonnet default, or a stronger one for a codebase where the plan quality matters more than the cost. Theo and Nick stay fixed — diagnosis and implementation are where a weaker model costs the most downstream.
+- **Adversarial plan audit** (`planAudit`, off by default): add a dedicated agent that argues against Sam's plan before Nick writes anything, for changes where a bad plan is expensive to unwind. Bounded to a fixed number of rounds, so turning it on doesn't risk an open-ended back-and-forth.
+- **Plan-freshness gate** (`planFreshness`): `advisory` (warn and continue), `gate` (stop and wait), or `off` — how strictly the pipeline reacts when a file Sam's plan targeted has moved on the base branch before Nick starts.
+- **Regression guard** (`regressionGuard`): point it at your own test glob/pattern/baseline command so "did this change break something else" means something specific to your suite, not a generic re-run.
+- **`.env` policy** (`preflight.envSymlink`): `required`, `forbidden`, or `ignore` — matches projects that assume a `.env`, projects that forbid one by design, and everything in between.
+
+The full key-by-key reference, including precedence rules and edge cases, is in the folded table further down.
+
 <details>
 <summary>Engineering highlights (you can reproduce every number below by running the scripts yourself)</summary>
 
@@ -195,9 +207,13 @@ docs/
   supervision.md         # full reference for run supervision, staleness, cross-repo blockedBy
 ```
 
-## Second plugin: backlog
+## This repo is also a marketplace: the backlog plugin
 
-`plugins/backlog/` is a separate, independently versioned plugin (`backlog@zigzag-plugins`): `/backlog:file`, `/backlog:triage` (propose-only) and `/backlog:next`, driven by a per-repo `.claude/backlog.yml`. It is inert in any repo without that file. Install it once at user scope: `claude plugin install backlog@zigzag-plugins --scope user`. See `plugins/backlog/README.md` for the modes and config, and `MAINTAINING.md` section 10 for its release and publication sequence.
+This repository plays two roles at once. At its root, it's the `lgtmgate` plugin you just installed. Its `.claude-plugin/marketplace.json` also makes it a Claude Code plugin **marketplace** — `zigzag-plugins` — a catalog that other plugins can be listed in, each with its own install command and version.
+
+`plugins/backlog/` is the second entry in that catalog: a separate, independently versioned plugin (`backlog@zigzag-plugins`) that happens to live in a subdirectory of this same repo instead of its own. It ships `/backlog:file`, `/backlog:triage` (propose-only) and `/backlog:next`, driven by a per-repo `.claude/backlog.yml`, and does nothing in a repo without that file. One repo to maintain, two independently versioned plugins to install — `marketplace.json` pins each one to its own commit `sha`, so bumping `lgtmgate`'s version never touches `backlog`'s, and vice versa.
+
+Install it on its own: `claude plugin install backlog@zigzag-plugins --scope user`. See `plugins/backlog/README.md` for its modes and config, and `MAINTAINING.md` section 10 for its release sequence.
 
 ## Supervision of runs in flight
 
