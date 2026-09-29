@@ -44,10 +44,12 @@ $ /lgtmgate:deliver 142 "Login page shows a stale error after a successful retry
 
 ## Why lgtmgate
 
+- lgtmgate is a complete pipeline built on Claude Code's `Workflow` tool: fixed roles (Theo, Sam, Nick, Morgan), an acceptance checklist that only gets ticked against cited evidence, a `[human-gate]` item no agent can ever tick, and a run isolated in its own git worktree, all wired together out of the box.
 - A git hook refuses `gh pr merge` from inside a hooked session while any acceptance box is unchecked; a box only gets checked once there's evidence behind it. (This only catches the `gh` command inside a session with the hook wired in: a merge from the GitHub web UI isn't intercepted, so treat it as a speed bump, not a wall.)
 - Once every box is checked, nothing merges automatically: the Lead is instructed to always wait for an explicit go-ahead before running `gh pr merge`. That's a prompt-level convention the agents follow; nothing in the tooling enforces it.
 - Review and implementation are split across two different agents (Morgan and Nick), so neither one reviews its own work.
 - The human maintainer stays in the loop without babysitting the run: Sam posts the plan on the issue before Nick writes any code, so anyone watching can weigh in early. Any acceptance-checklist item tagged `[human-gate]` can never be ticked by Morgan, no matter the evidence; only a human checks it.
+- The pipeline is built to need you as little as possible: when a run goes silent, the Lead resolves it on its own first, resuming a resumable run through a bounded retry loop, and a run parked on another repo's issue un-parks itself via the `blockedBy` signal once that issue's label flips. It only escalates to you when the retries are exhausted or the decision genuinely needs a human, such as any `[human-gate]` item.
 
 ### This project matured through real use. Here's how.
 
