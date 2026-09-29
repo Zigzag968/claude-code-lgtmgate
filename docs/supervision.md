@@ -3,7 +3,7 @@
 Reference material for orchestrator builders. See the [README](../README.md#supervision-of-runs-in-flight)
 for the one-paragraph summary; this doc has the full mechanism.
 
-Any orchestrator built on this plugin (a one-shot `/lgtmgate:feature` session, a scheduled
+Any orchestrator built on this plugin (a one-shot `/lgtmgate:deliver` session, a scheduled
 runner, anything else) is expected to persist per-run state and supervise it — a run left silently
 stuck is exactly the failure mode this plugin exists to prevent.
 
@@ -35,7 +35,7 @@ An anti-spam sidecar (`<state-file>.nudged`) rate-limits re-nudging the **same**
 once per threshold window.
 
 The mechanism is the floor; the doctrine is the why. `SessionStart`'s injected stub and
-`/lgtmgate:feature`'s runbook both carry the same bounded supervision doctrine (alive -> don't
+`/lgtmgate:deliver`'s runbook both carry the same bounded supervision doctrine (alive -> don't
 touch; resumable -> resume, 2-3 attempts max, never loop; silent past the threshold -> block and
 escalate) so an orchestrator does the right thing even before the hook would catch it.
 

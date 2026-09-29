@@ -14,7 +14,7 @@ Steps to reproduce, ideally against a minimal example repo:
    ```json
 
    ```
-2. Command run (e.g. `/lgtmgate:feature 42 "..."`):
+2. Command run (e.g. `/lgtmgate:deliver 42 "..."`):
 3. What happened:
 4. What you expected instead:
 

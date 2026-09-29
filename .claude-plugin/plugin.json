@@ -1,7 +1,7 @@
 {
   "name": "lgtmgate",
-  "version": "0.8.60",
-  "description": "Stack-agnostic feature pipeline: Theo (diagnose) -> Mia (PM) -> Sam (plan) -> Nick (dev+PR) -> Morgan (review), orchestrated by a per-project workflow and configured via .claude/pipeline.config.json.",
+  "version": "0.8.61",
+  "description": "Stack-agnostic delivery pipeline: Theo (diagnose) -> Mia (PM) -> Sam (plan) -> Nick (dev+PR) -> Morgan (review), orchestrated by a per-project workflow and configured via .claude/pipeline.config.json.",
   "author": {
     "name": "Zigzag968"
   },
@@ -13,7 +13,7 @@
     "default_mode": {
       "type": "string",
       "title": "Default pipeline mode",
-      "description": "Default orchestration mode for /lgtmgate:feature (auto = run through, semi = stop at milestones, manual = stop at each stage).",
+      "description": "Default orchestration mode for /lgtmgate:deliver (auto = run through, semi = stop at milestones, manual = stop at each stage).",
       "default": "semi"
     }
   }

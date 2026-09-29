@@ -1,12 +1,12 @@
 ---
-description: Deliver a feature end-to-end through the Mia -> Sam -> Nick -> Morgan pipeline (creates the shared worktree, drives feature-pipeline.js).
+description: Deliver a change end-to-end through the Mia -> Sam -> Nick -> Morgan pipeline (creates the shared worktree, drives deliver-pipeline.js).
 argument-hint: "[issue] [brief]"
 allowed-tools: Bash, Read, Workflow, TaskCreate, TaskUpdate, TaskGet, TaskList, AskUserQuestion, SendMessage, TeamCreate, Agent
 ---
 
-# /lgtmgate:feature — Runbook (Lead)
+# /lgtmgate:deliver — Runbook (Lead)
 
-You are the **Lead**. You deliver a feature end-to-end through the **Mia -> Sam -> Nick -> Morgan** pipeline. The workflow (plugin component `lgtmgate:feature-pipeline`, or the local copy `.claude/workflows/feature-pipeline.js` as fallback — exact resolution in the "## 1. Read the config" section below) orchestrates the agents; you prepare the shared worktree, launch the workflow, and handle the statuses it returns to you.
+You are the **Lead**. You deliver a change end-to-end through the **Mia -> Sam -> Nick -> Morgan** pipeline. The workflow (plugin component `lgtmgate:deliver-pipeline`, or the local copy `.claude/workflows/deliver-pipeline.js` as fallback — exact resolution in the "## 1. Read the config" section below) orchestrates the agents; you prepare the shared worktree, launch the workflow, and handle the statuses it returns to you.
 
 **Args**: `$ARGUMENTS` = `<issue> "<brief>"` (GitHub issue number + short description). If either is missing, ask for it.
 
@@ -17,12 +17,12 @@ You are the **Lead**. You deliver a feature end-to-end through the **Mia -> Sam 
 - Keep the JSON object in memory: pass it as-is to the workflow (`config`).
 - Resolve which pipeline to launch (two branches, never a bare name):
   - The `lgtmgate` plugin (>=0.8.0) provides the **namespaced** workflow component
-    `lgtmgate:feature-pipeline` (plugin's `workflows/` directory, default
+    `lgtmgate:deliver-pipeline` (plugin's `workflows/` directory, default
     resolution). If this plugin is installed and up to date, that's the target.
   - Otherwise (not-yet-migrated project, or a plugin older than 0.8.0 without the component) and
-    `.claude/workflows/feature-pipeline.js` still exists in THIS project, use this explicit
+    `.claude/workflows/deliver-pipeline.js` still exists in THIS project, use this explicit
     local copy — the project then also keeps its own copied suite
-    (`.claude/workflows/test-feature-pipeline.js`), so it really is ITS copy that must
+    (`.claude/workflows/test-deliver-pipeline.js`), so it really is ITS copy that must
     run, never the plugin's component.
   - Neither one -> stop: `Pipeline not found. Run /lgtmgate:init first.`
 
@@ -58,11 +58,11 @@ args = {
   architectureDecisionApproved: <optional — attests that the architecture-only pass (design-step trigger) already happened and was approved, exempts this launch from proceedThrough:"plan">
 }
 ```
-- **Resolved plugin component** -> launch by the **namespaced** name `lgtmgate:feature-pipeline` (never the bare name `feature-pipeline`, which a `--plugin-dir` or another project can shadow — claude-agent-pipeline#54).
-- **Resolved not-yet-migrated local copy** -> launch explicitly with `Workflow({ scriptPath: "<repo>/.claude/workflows/feature-pipeline.js", args })` — never by name, bare or namespaced: this project's copied test suite still validates THIS copy, not the plugin's component.
+- **Resolved plugin component** -> launch by the **namespaced** name `lgtmgate:deliver-pipeline` (never the bare name `deliver-pipeline`, which a `--plugin-dir` or another project can shadow — claude-agent-pipeline#54).
+- **Resolved not-yet-migrated local copy** -> launch explicitly with `Workflow({ scriptPath: "<repo>/.claude/workflows/deliver-pipeline.js", args })` — never by name, bare or namespaced: this project's copied test suite still validates THIS copy, not the plugin's component.
 > `mode: "semi"` = checkpoints at milestones (plan ready, review requesting changes). `auto` runs everything through, `manual` stops at every step. Agents do NOT have the Workflow tool — only the Lead drives it.
-> **Iteration machinery**: if you patch `.claude/workflows/feature-pipeline.js` mid-session, relaunch the workflow via `scriptPath: "<abs path>"` (fresh read from disk) and NOT `name:` (resolution cached on first use → would replay the old version). (friction F9)
-> **Test suite**: the same staleness applies INSIDE the flow suite — `test-feature-pipeline.js` also resolves the pipeline under test via the registry. To validate a branch, pass `args: { fpScriptPath: "<worktree>/.claude/workflows/feature-pipeline.js" }`; by `name:` the suite silently tests the base branch's copy instead (real incident observed: two cases reported as failing against a pipeline that simply didn't have the gate).
+> **Iteration machinery**: if you patch `.claude/workflows/deliver-pipeline.js` mid-session, relaunch the workflow via `scriptPath: "<abs path>"` (fresh read from disk) and NOT `name:` (resolution cached on first use → would replay the old version). (friction F9)
+> **Test suite**: the same staleness applies INSIDE the flow suite — `test-deliver-pipeline.js` also resolves the pipeline under test via the registry. To validate a branch, pass `args: { fpScriptPath: "<worktree>/.claude/workflows/deliver-pipeline.js" }`; by `name:` the suite silently tests the base branch's copy instead (real incident observed: two cases reported as failing against a pipeline that simply didn't have the gate).
 
 ## 5. Handle the returned status
 The workflow returns an object `{ status, ... }`. Depending on `status`:
@@ -78,7 +78,7 @@ The workflow returns an object `{ status, ... }`. Depending on `status`:
 | `design-step-required` | The design-step trigger fired (Theo: >=2 of {persistent state, auth/security, deployment config}, or an immature vendor API) and no architecture decision has been approved yet | Relaunch either with `proceedThrough:"plan"` + a brief scoped to the architecture one-pager alone (stops at `plan-ready` for your validation), or with `architectureDecisionApproved:true` if that pass already happened. |
 | `ready` | LGTM, PR ready to merge | Update (PR + branch). See §6. |
 | `diagnose-died` / `plan-died` / `plan-check-died` / `plan-audit-died` / `dev-died` / `preflight-died` | An agent died (error or empty response) on this step after retry; `resumable:true` | Diagnose the cause if possible, then relaunch the workflow with the **same `config`/`wtPath`** via `resumeFromRunId` (see §Supervision) — never relaunch identically in a loop without understanding why. |
-| `preflight-stuck` | 2 preflight failures, run escalated | First check whether the failing requirement is literally what the PR's diff changes (`self-reference-preflight`, issue legacy#83); if so it's a known false-positive — check the branch state by hand and do NOT ask Nick to satisfy the stale check. To relaunch against the branch's current gate logic, launch a **NEW** run via `Workflow({ scriptPath: "<worktree>/workflows/feature-pipeline.js", ... })` (fresh read from disk), **never** a plain `resumeFromRunId` (it replays the original run's cached inputs). |
+| `preflight-stuck` | 2 preflight failures, run escalated | First check whether the failing requirement is literally what the PR's diff changes (`self-reference-preflight`, issue legacy#83); if so it's a known false-positive — check the branch state by hand and do NOT ask Nick to satisfy the stale check. To relaunch against the branch's current gate logic, launch a **NEW** run via `Workflow({ scriptPath: "<worktree>/workflows/deliver-pipeline.js", ... })` (fresh read from disk), **never** a plain `resumeFromRunId` (it replays the original run's cached inputs). |
 
 Always relaunch the workflow with the **same `config` and `wtPath`**. Never re-spawn a step that already finished without `entryStage`.
 

@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 'use strict'
 
-// Offline runner for templates/test-feature-pipeline.js (claude-agent-pipeline#51).
-// `templates/test-feature-pipeline.js:2` states "Run by the Lead; agents have no
+// Offline runner for templates/test-deliver-pipeline.js (claude-agent-pipeline#51).
+// `templates/test-deliver-pipeline.js:2` states "Run by the Lead; agents have no
 // Workflow tool" — without this runner no flow-suite acceptance item is
 // Morgan-verifiable. Ported from an internal reference implementation's
 // test-support harness (single-pipeline
@@ -10,30 +10,30 @@
 // (which itself calls `workflow(FP_REF, ...)` once per case), not just one pipeline
 // invocation.
 //
-// Coupling to feature-pipeline.js / test-feature-pipeline.js (update this file if any
+// Coupling to deliver-pipeline.js / test-deliver-pipeline.js (update this file if any
 // of the four change):
 //   1. The export-strip regex `/^export\s+/mg` — strips the leading `export` keyword
 //      from any top-level `export const ...` / `export function ...` so each body can
 //      be wrapped in a plain async function.
 //   2. Pipeline-scope injected globals — `args`, `agent`, `log`, `phase`
-//      (feature-pipeline.js never consumes `workflow`, `parallel` or `bash`).
+//      (deliver-pipeline.js never consumes `workflow`, `parallel` or `bash`).
 //   3. Suite-scope injected globals — `args`, `log`, `workflow`
-//      (templates/test-feature-pipeline.js:91-95 reads `args.fpScriptPath`; the suite
+//      (templates/test-deliver-pipeline.js:91-95 reads `args.fpScriptPath`; the suite
 //      never consumes `agent` or `phase` directly — it drives the pipeline only
 //      through `workflow()`).
 //   4. `workflow(ref, args)` resolves `ref.scriptPath` ONLY — a bare-name `ref` is a
 //      HARNESS-SIDE default (see buildWorkflowMock below), never registry resolution.
 //      If a case starts passing a bare name expecting real registry behavior, this
 //      mock and the suite's own resolution guard (`_probe` / `_gateProbe`,
-//      templates/test-feature-pipeline.js:98-132) will disagree — that is a suite bug
+//      templates/test-deliver-pipeline.js:98-132) will disagree — that is a suite bug
 //      to fix in the suite, not in this runner.
 //
 // Usage: node scripts/run-flow-suite.cjs [--suite <path>] [--fp <path>]
-//   Defaults: --suite templates/test-feature-pipeline.js, --fp workflows/feature-pipeline.js
+//   Defaults: --suite templates/test-deliver-pipeline.js, --fp workflows/deliver-pipeline.js
 //   (#54 — the canonical pipeline moved from templates/ to workflows/, the plugin's
 //   default-scanned workflow-component directory; the suite stays under templates/.)
 //   Passes args.fpScriptPath = <fp> to the suite so its own pin
-//   (templates/test-feature-pipeline.js:83-105) is exercised — NEVER name resolution
+//   (templates/test-deliver-pipeline.js:83-105) is exercised — NEVER name resolution
 //   (the stale-name-resolved-copy-reads-as-broken trap).
 //
 // Last stdout line (always, trailing newline), fixed literal:
@@ -58,7 +58,7 @@ const fs = require('fs')
 const path = require('path')
 
 function parseArgs(argv) {
-  const out = { suite: 'templates/test-feature-pipeline.js', fp: 'workflows/feature-pipeline.js' }
+  const out = { suite: 'templates/test-deliver-pipeline.js', fp: 'workflows/deliver-pipeline.js' }
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--suite' && argv[i + 1]) { out.suite = argv[++i]; continue }
     if (argv[i] === '--fp' && argv[i + 1]) { out.fp = argv[++i]; continue }
@@ -71,7 +71,7 @@ function stripExports(src) {
 }
 
 // agent() throws — under `simulate` mode every agent() call site inside
-// feature-pipeline.js must be short-circuited by a simulate.* fixture (via
+// deliver-pipeline.js must be short-circuited by a simulate.* fixture (via
 // callAgent -> simFixture). Reaching a real agent() call is a payload/harness
 // coupling bug and must fail loudly, never silently mock a default response.
 async function deadAgent() {
@@ -79,7 +79,7 @@ async function deadAgent() {
 }
 const noopPhase = () => {}
 
-// Runs the REAL feature-pipeline.js body (already export-stripped source) under the
+// Runs the REAL deliver-pipeline.js body (already export-stripped source) under the
 // pipeline-scope globals. Mirrors run_feature_pipeline_sim.cjs's `new Function` wrap.
 function buildPipelineRunner(fpSrcStripped, log) {
   // eslint-disable-next-line no-new-func

@@ -3,7 +3,7 @@
 SessionStart hook — lgtmgate stub injection.
 
 Prints a short markdown stub into additionalContext so the Lead always knows
-the lgtmgate plugin is active, how to launch a feature, and where the
+the lgtmgate plugin is active, how to launch a delivery run, and where the
 project config lives. Robust: never throws, always exit 0 (a failing
 SessionStart hook must not wedge the session).
 """
@@ -85,14 +85,14 @@ def build_stub() -> str:
     lines = [
         "# lgtmgate (plugin active)",
         "",
-        "The **lgtmgate** plugin is loaded. Feature work runs through the "
+        "The **lgtmgate** plugin is loaded. Delivery work runs through the "
         "**Mia -> Sam -> Nick -> Morgan** orchestration.",
         "",
-        "- Launch a feature: `/lgtmgate:feature <issue> \"<brief>\"` "
+        "- Launch a delivery: `/lgtmgate:deliver <issue> \"<brief>\"` "
         "(the Lead creates the shared worktree, then drives the workflow — the plugin's "
-        "`lgtmgate:feature-pipeline` component by default, or the project's "
-        "`.claude/workflows/feature-pipeline.js` as a fallback for a not-yet-migrated project ; "
-        "exact resolution: `/lgtmgate:feature` step 1).",
+        "`lgtmgate:deliver-pipeline` component by default, or the project's "
+        "`.claude/workflows/deliver-pipeline.js` as a fallback for a not-yet-migrated project ; "
+        "exact resolution: `/lgtmgate:deliver` step 1).",
         "- Project config: `.claude/pipeline.config.json` "
         "(build/test/format commands, baseBranch, branchPrefix, worktreeRoot, "
         "conventionsRule, ciChecks, GH Project).",

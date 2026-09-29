@@ -9,7 +9,7 @@ name: guards
 # real required status check once branch protection is enabled.
 #
 # Trigger MUST stay `pull_request` and never `pull_request_target` (#54 advisory note 1):
-# scripts/run-flow-suite.cjs runs the branch's own workflows/feature-pipeline.js through
+# scripts/run-flow-suite.cjs runs the branch's own workflows/deliver-pipeline.js through
 # `new Function(...)` (buildPipelineRunner) — i.e. this job executes branch-authored code by
 # design. `pull_request_target` would run that same branch-controlled code with the BASE
 # branch's token/secrets, which this workflow must never do. This holds regardless of runner
