@@ -1,6 +1,6 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/banner-dark.svg">
-  <img src="docs/banner-light.svg" alt="lgtmgate — merge gate for agent-generated pull requests" width="480">
+  <img src="docs/banner-light.svg" alt="lgtmgate: merge gate for agent-generated pull requests" width="480">
 </picture>
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -21,7 +21,7 @@ flowchart LR
     Morgan -- LGTM --> Merge(["PR mergeable"])
 ```
 
-Theo reproduces the reported problem before anyone touches code. Mia frames the feature in product terms, but only if asked. Sam writes the plan, anchored to files it actually read this run. Nick implements the plan and opens the PR. Morgan, a different agent than the one who wrote the code, reviews it and approves once every checklist item has evidence behind it. The PR is then mergeable — by the Lead orchestrating the run, never by Nick or Morgan themselves. Role details are in [Agents](#agents).
+Theo reproduces the reported problem before anyone touches code. Mia frames the feature in product terms, but only if asked. Sam writes the plan, anchored to files it actually read this run. Nick implements the plan and opens the PR. Morgan, a different agent than the one who wrote the code, reviews it and approves once every checklist item has evidence behind it. The PR is then mergeable: the Lead orchestrating the run merges it, never Nick or Morgan themselves. Role details are in [Agents](#agents).
 
 By default the pipeline runs in `semi` mode: it stops and reports back to you after Sam's plan and again after Nick opens the PR, and won't continue past either point until you tell the Lead to go ahead. `auto` runs straight through without those pauses; `manual` stops at every step.
 
@@ -38,33 +38,33 @@ $ /lgtmgate:deliver 142 "Login page shows a stale error after a successful retry
    - `dev-done`: the pipeline stops again and waits for your green light before Morgan reviews.
 4. **Morgan** runs the regression guard, checks conventions, ticks each box against real proof, posts a verdict:
    - `REQUIRED_CHANGES` → Nick fixes, Morgan re-reviews. Loops until resolved.
-   - `LGTM` → PR undrafted, mergeable. The Lead merges it — Nick and Morgan never do.
+   - `LGTM` → PR undrafted, mergeable. The Lead merges it; Nick and Morgan never do.
 
 ## Why lgtmgate
 
 - A git hook refuses `gh pr merge` from inside a hooked session while any acceptance box is unchecked; a box only gets checked once there's evidence behind it. (This only catches the `gh` command inside a session with the hook wired in: a merge from the GitHub web UI isn't intercepted, so treat it as a speed bump, not a wall.)
-- Once every box is checked, nothing merges automatically: the Lead is instructed to always wait for an explicit go-ahead before running `gh pr merge`. That's a prompt-level convention the agents follow, not a tool-enforced lock.
+- Once every box is checked, nothing merges automatically: the Lead is instructed to always wait for an explicit go-ahead before running `gh pr merge`. That's a prompt-level convention the agents follow; nothing in the tooling enforces it.
 - Review and implementation are split across two different agents (Morgan and Nick), so neither one reviews its own work.
 - The human maintainer stays in the loop without babysitting the run: Sam posts the plan on the issue before Nick writes any code, so anyone watching can weigh in early. Any acceptance-checklist item tagged `[human-gate]` can never be ticked by Morgan, no matter the evidence; only a human checks it.
 
 ### This project matured through real use. Here's how.
 
-Most of the guardrails below weren't designed up front — they exist because a real run hit a real problem, and the fix became a permanent rule.
+Most of the guardrails below weren't designed up front. They exist because a real run hit a real problem, and the fix became a permanent rule.
 
 - A chained Bash command (`a && b`) once froze a session for the better part of an hour under non-interactive mode, slipping past both auto-approve and auto-deny. Every agent in this pipeline is now restricted to one plain command per call.
-- The destructive-git denials (no `reset --hard`, no `push --force`, no `worktree remove` without confirmation) aren't a generic threat model — they block moves an agent genuinely attempted, once, for real.
-- Morgan re-reviewing a fix round used to mean "look again." It now means citing a literal `grep` against the new diff — a verdict without that citation is treated as invalid, not just weak.
+- The destructive-git denials (no `reset --hard`, no `push --force`, no `worktree remove` without confirmation) aren't a generic threat model: they block moves an agent genuinely attempted, once, for real.
+- Morgan re-reviewing a fix round used to mean "look again." It now means citing a literal `grep` against the new diff; a verdict without that citation is treated as invalid, not just weak.
 - The `Stop` hook's watchdog doesn't just catch a run gone silent. It also detects a specific Claude Code harness bug (stale message injection into a subagent) mechanically, and works around it, with a note to remove the workaround once the upstream fix ships.
 
 ## Configuration & overrides
 
 The default behavior is deliberately conservative, but most of it can be tuned per project or per run through `.claude/pipeline.config.json`:
 
-- **Model per role** (`models`): run Sam/Morgan/the plan auditor on a cheaper or faster model than the sonnet default, or a stronger one for a codebase where the plan quality matters more than the cost. Theo and Nick stay fixed — diagnosis and implementation are where a weaker model costs the most downstream.
+- **Model per role** (`models`): run Sam/Morgan/the plan auditor on a cheaper or faster model than the sonnet default, or a stronger one for a codebase where the plan quality matters more than the cost. Theo and Nick stay fixed: diagnosis and implementation are where a weaker model costs the most downstream.
 - **Adversarial plan audit** (`planAudit`, off by default): add a dedicated agent that argues against Sam's plan before Nick writes anything, for changes where a bad plan is expensive to unwind. Bounded to a fixed number of rounds, so turning it on doesn't risk an open-ended back-and-forth.
-- **Plan-freshness gate** (`planFreshness`): `advisory` (warn and continue), `gate` (stop and wait), or `off` — how strictly the pipeline reacts when a file Sam's plan targeted has moved on the base branch before Nick starts.
+- **Plan-freshness gate** (`planFreshness`): `advisory` (warn and continue), `gate` (stop and wait), or `off`, controlling how strictly the pipeline reacts when a file Sam's plan targeted has moved on the base branch before Nick starts.
 - **Regression guard** (`regressionGuard`): point it at your own test glob/pattern/baseline command so "did this change break something else" means something specific to your suite, not a generic re-run.
-- **`.env` policy** (`preflight.envSymlink`): `required`, `forbidden`, or `ignore` — matches projects that assume a `.env`, projects that forbid one by design, and everything in between.
+- **`.env` policy** (`preflight.envSymlink`): `required`, `forbidden`, or `ignore`, matching projects that assume a `.env`, projects that forbid one by design, and everything in between.
 
 The full key-by-key reference, including precedence rules and edge cases, is in the folded table further down.
 
@@ -81,11 +81,11 @@ The full key-by-key reference, including precedence rules and edge cases, is in 
 
 ## Agents
 
-- **Theo** — qualifies the issue before Sam plans on it: actually reproduces a claimed bug (never a code read as proof), or sanity-checks that a feature/chore is justified. Runs on every dispatch, no opt-out. Never proposes a fix. (sonnet)
-- **Mia** — frames the feature (acceptance criteria + success metrics tied to existing analytics events). Runs only when the issue's `pm_review` box is checked. (haiku)
-- **Sam** — scouts the codebase, produces an *anchored* impact table + implementation plan + acceptance checklist, posts it on the issue. Never writes app code. (sonnet)
-- **Nick** — implements Sam's plan with meaningful tests, opens a draft PR, copies the acceptance checklist into the body. (sonnet)
-- **Morgan** — impartial reviewer: regression guard + convention review + acceptance-checklist gate + CI verification, posts a verdict. Never commits. (sonnet)
+- **Theo**: qualifies the issue before Sam plans on it, actually reproducing a claimed bug (never a code read as proof), or sanity-checking that a feature/chore is justified. Runs on every dispatch, no opt-out. Never proposes a fix. (sonnet)
+- **Mia**: frames the feature (acceptance criteria + success metrics tied to existing analytics events). Runs only when the issue's `pm_review` box is checked. (haiku)
+- **Sam**: scouts the codebase, produces an *anchored* impact table + implementation plan + acceptance checklist, posts it on the issue. Never writes app code. (sonnet)
+- **Nick**: implements Sam's plan with meaningful tests, opens a draft PR, copies the acceptance checklist into the body. (sonnet)
+- **Morgan**: impartial reviewer, running the regression guard, the convention review, the acceptance-checklist gate and CI verification, then posting a verdict. Never commits. (sonnet)
 
 The Lead (you, or the orchestrator) creates a shared git worktree and drives the workflow; the agents work inside that same worktree so plan, code, and review sit on one frozen base.
 
@@ -96,7 +96,7 @@ claude plugin marketplace add Zigzag968/lgtmgate
 claude plugin install lgtmgate@zigzag-plugins
 ```
 
-Restart the session, then in your target project run `/lgtmgate:init` — it generates `.claude/pipeline.config.json` (your build/test/format commands, base branch, worktree root) and copies in the project-facing machinery. **Commit what it produces.** Then deliver a feature:
+Restart the session, then in your target project run `/lgtmgate:init`. It generates `.claude/pipeline.config.json` (your build/test/format commands, base branch, worktree root) and copies in the project-facing machinery. **Commit what it produces.** Then deliver a feature:
 
 ```
 /lgtmgate:deliver <issue> "<brief>"
@@ -105,12 +105,12 @@ Restart the session, then in your target project run `/lgtmgate:init` — it gen
 <details>
 <summary>Prerequisites</summary>
 
-- **`gh` CLI, installed and authenticated** (`gh auth login`, scopes `repo` + `project`) — required structurally by nearly every hook, script and agent in this pipeline.
-- **`jq`** — required by `hooks/block-merge-unchecked.sh` and `hooks/deny-destructive-git.sh` (PreToolUse gates on every Bash call) — both hooks fail closed (exit 2) if `jq` is missing.
-- **Node.js** — runs `workflows/deliver-pipeline.js`, `scripts/run-flow-suite.cjs`, and the consumer's copied `.claude/workflows/test-deliver-pipeline.js`.
-- **Python 3** — runs `hooks/SessionStart/inject_stub.py`.
+- **`gh` CLI, installed and authenticated** (`gh auth login`, scopes `repo` + `project`): required structurally by nearly every hook, script and agent in this pipeline.
+- **`jq`**: required by `hooks/block-merge-unchecked.sh` and `hooks/deny-destructive-git.sh` (PreToolUse gates on every Bash call); both hooks fail closed (exit 2) if `jq` is missing.
+- **Node.js**: runs `workflows/deliver-pipeline.js`, `scripts/run-flow-suite.cjs`, and the consumer's copied `.claude/workflows/test-deliver-pipeline.js`.
+- **Python 3**: runs `hooks/SessionStart/inject_stub.py`.
 - **`git`** with a `github.com` remote.
-- **`bash`** (3.2 floor — see the `bash-3.2-floor` invariant in `templates/test-canonical-guards.sh`).
+- **`bash`** (3.2 floor, see the `bash-3.2-floor` invariant in `templates/test-canonical-guards.sh`).
 
 </details>
 
@@ -130,7 +130,7 @@ Restart the session, then in your target project run `/lgtmgate:init` — it gen
 }
 ```
 
-`source` is a nested object and `enabledPlugins` is a map — both forms above are required, not shorthand.
+`source` is a nested object and `enabledPlugins` is a map; both forms above are required, not shorthand.
 
 </details>
 
@@ -142,7 +142,7 @@ claude plugin marketplace update zigzag-plugins
 claude plugin update lgtmgate
 ```
 
-Restart Claude Code to apply. The marketplace's `lgtmgate` entry carries `ref: "main"` **and** a pinned `sha` — an unbumped `plugin.json` version is never delivered, and only a maintainer moving that `sha` on `main` publishes a new release. See `MAINTAINING.md` for the full release/rollback runbook. This repo's own marketplace is **private**; private-marketplace background auto-updates "may fail intermittently" per the docs — run the two commands above explicitly rather than relying on the background refresh.
+Restart Claude Code to apply. The marketplace's `lgtmgate` entry carries `ref: "main"` **and** a pinned `sha`: an unbumped `plugin.json` version is never delivered, and only a maintainer moving that `sha` on `main` publishes a new release. See `MAINTAINING.md` for the full release/rollback runbook. This repo's own marketplace is **private**; private-marketplace background auto-updates "may fail intermittently" per the docs, so run the two commands above explicitly rather than relying on the background refresh.
 
 </details>
 
@@ -156,20 +156,20 @@ Nothing stack-specific lives in the plugin. Everything project-dependent is read
 | `commands.{build,test,format}` | exact commands Nick/Morgan run |
 | `conventionsRule` | the project's code-convention rule Sam/Nick/Morgan align on |
 | `baseBranch`, `branchPrefix` | branching for the shared worktree + PR target |
-| `worktreeRoot` | where the Lead creates the shared worktree — logical/versioned default; precedence `$AGENT_PIPELINE_WORKTREE_ROOT` > `.claude/pipeline.config.local.json` (gitignored) > this value > wtPath's parent dir for the Dev-phase prompt context — `/deliver` itself still needs this key set to CREATE the worktree |
+| `worktreeRoot` | where the Lead creates the shared worktree (logical/versioned default); precedence `$AGENT_PIPELINE_WORKTREE_ROOT` > `.claude/pipeline.config.local.json` (gitignored) > this value > wtPath's parent dir for the Dev-phase prompt context. `/deliver` itself still needs this key set to CREATE the worktree |
 | `ciChecks` | checks Morgan must see green before LGTM |
 | `regressionGuard.{testGlob,testFnPattern,baselineCmd}` | Morgan's regression guard: no-checkout test scoping plus the exact baseline-capture command run for the SET-DIFF |
 | `ghProject` | optional GH Project "Pipeline Status" updates |
 | `planAudit` | adversarial plan-soundness audit before Dev, default `false`; worst case is `maxAuditRounds × maxPlanAttempts` extra spawns |
 | `branchOverride` (arg, else `config.branchOverride`) | exact branch name used verbatim instead of `<branchPrefix>issue-<N>` (rebase-without-force-push, numbered slices); chars limited to `[A-Za-z0-9._/-]`; skips the config-prefix reconcile. A top-level `branchPrefix` arg is ignored (config wins) and logs a warning + trace `branch-prefix-arg-ignored`; config.branchPrefix absent/blank additionally traces branch-prefix-fallback-default |
 | `planFreshness` | plan-freshness check before Dev: `advisory` (default) warns Nick + traces `plan-stale:<n>` when a plan-declared target file moved on `origin/<baseBranch>`; `gate` escalates before Nick is spawned; `off` skips the probe entirely |
-| `models` | per-role model override `{ scout?, planAudit?, morgan? }`, default `sonnet` for all three; resolution is `arg > config.models > 'sonnet'` (same precedence as `planAudit`) — Theo/Nick are not overridable |
+| `models` | per-role model override `{ scout?, planAudit?, morgan? }`, default `sonnet` for all three; resolution is `arg > config.models > 'sonnet'` (same precedence as `planAudit`); Theo/Nick are not overridable |
 | `stack` | target stack string handed to the plan auditor; empty → inferred from the worktree |
-| `preflight.envNote` | free-form operator note injected verbatim ahead of every preflight check, notably the HARD test-command check — see the trust warning below |
-| `preflight.envSymlink` | `required` (default, current behavior) / `forbidden` (envless-by-contract projects: preflight asserts `.env` is ABSENT) / `ignore` (check omitted) — enum-validated, the value is never interpolated into agent text |
+| `preflight.envNote` | free-form operator note injected verbatim ahead of every preflight check, notably the HARD test-command check (see the trust warning below) |
+| `preflight.envSymlink` | `required` (default, current behavior) / `forbidden` (envless-by-contract projects: preflight asserts `.env` is ABSENT) / `ignore` (check omitted); enum-validated, the value is never interpolated into agent text |
 | `provision.extraLinks[].optional` | marks a configured link as soft: absent at provision time degrades to a loud skip instead of a hard `provision-failed` escalate |
 
-A dependency install blocked by sandbox TLS is reported as a blocker, never bypassed — the two
+A dependency install blocked by sandbox TLS is reported as a blocker, never bypassed. The two
 levers that make the install unnecessary in the first place are (a) pre-linking the project's
 `.venv`/`node_modules` into the worktree via `provision.extraLinks` (consumed by
 `scripts/provision_worktree.sh`) and (b) `preflight.envNote` for run-specific environment
@@ -178,10 +178,10 @@ constraints.
 The agents (`agents/*.md`) are fully de-specialized and reusable on any stack: Swift/iOS, Node, Python, Rust, etc.
 
 **Trust warning: TRUSTED-OPERATOR input.** Every value in `.claude/pipeline.config.json` reaches an
-agent as command text or as authoritative instruction — `commands.build`, `commands.test`,
+agent as command text or as authoritative instruction: `commands.build`, `commands.test`,
 `commands.format`, `regressionGuard.baselineCmd`, `baseBranch`, `branchPrefix`,
 `preflight.envNote`, `stack` are all interpolated raw into strings an agent is instructed to run or
-treat as authoritative, with no quoting or validation — EXCEPT `provision.extraLinks`, the only key
+treat as authoritative, with no quoting or validation, except `provision.extraLinks`, the only key
 validated in-code (the `safeLinkPath` traversal/metacharacter guard in
 `workflows/deliver-pipeline.js`). A pull request touching only `pipeline.config.json` is therefore
 a **code-review surface, not data**: review it with the same scrutiny as a change to the workflow
@@ -224,9 +224,9 @@ docs/
 
 ## This repo is also a marketplace: the backlog plugin
 
-This repository plays two roles at once. At its root, it's the `lgtmgate` plugin you just installed. Its `.claude-plugin/marketplace.json` also makes it a Claude Code plugin **marketplace** — `zigzag-plugins` — a catalog that other plugins can be listed in, each with its own install command and version.
+This repository plays two roles at once. At its root, it's the `lgtmgate` plugin you just installed. Its `.claude-plugin/marketplace.json` also makes it a Claude Code plugin **marketplace**, `zigzag-plugins`, a catalog that other plugins can be listed in, each with its own install command and version.
 
-`plugins/backlog/` is the second entry in that catalog: a separate, independently versioned plugin (`backlog@zigzag-plugins`) that happens to live in a subdirectory of this same repo instead of its own. It ships `/backlog:file`, `/backlog:triage` (propose-only) and `/backlog:next`, driven by a per-repo `.claude/backlog.yml`, and does nothing in a repo without that file. One repo to maintain, two independently versioned plugins to install — `marketplace.json` pins each one to its own commit `sha`, so bumping `lgtmgate`'s version never touches `backlog`'s, and vice versa.
+`plugins/backlog/` is the second entry in that catalog: a separate, independently versioned plugin (`backlog@zigzag-plugins`) that happens to live in a subdirectory of this same repo instead of its own. It ships `/backlog:file`, `/backlog:triage` (propose-only) and `/backlog:next`, driven by a per-repo `.claude/backlog.yml`, and does nothing in a repo without that file. One repo to maintain, two independently versioned plugins to install: `marketplace.json` pins each one to its own commit `sha`, so bumping `lgtmgate`'s version never touches `backlog`'s, and vice versa.
 
 Install it on its own: `claude plugin install backlog@zigzag-plugins --scope user`. See `plugins/backlog/README.md` for its modes and config, and `MAINTAINING.md` section 10 for its release sequence.
 
