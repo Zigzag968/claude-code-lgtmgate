@@ -1,6 +1,7 @@
-# .claude/backlog.yml -- backlog plugin config, contract 1 (opt-in, propose mode: no write to GitHub).
+# .claude/backlog.yml -- backlog plugin config, contract 1 (opt-in, write-supervised mode: agent may
+# apply GitHub-label writes for proposals already accepted by triage-check).
 contract: 1
-mode: propose
+mode: write-supervised
 repo: Zigzag968/lgtmgate
 labels:
   type: [bug, feature, tech-debt, docs, epic]
