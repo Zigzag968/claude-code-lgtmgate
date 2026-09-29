@@ -32,7 +32,8 @@
 # 5 persona-anchors, 6 retired-copies, 7 ci-wired, 8 self-reference-doctrine,
 # 9 headless-empty-argv, 10 pr-body-structure, 11 worktree-root-resolver,
 # 12 blocked-by-signal, 13 single-export, 14 project-item-lookup, 15 bash-3.2-floor,
-# 16 backlog-bump-required, 17 backlog-marketplace-pin, 18 backlog-suite, 19 no-private-refs.
+# 16 backlog-bump-required, 17 backlog-marketplace-pin, 18 backlog-suite, 19 no-private-refs,
+# 20 reviewer-window-scan-bounded.
 #
 # Enforcement note (#54 MANDATORY 2, founder decision 2026-08-23): this repo is PRIVATE on a
 # plan where branch protection and rulesets are both unavailable (verified this session:
@@ -807,6 +808,37 @@ elif [ "$NPR_PIPELINE_TRACKED" != "0" ]; then
   fail "no-private-refs" ".pipeline/ has $NPR_PIPELINE_TRACKED tracked file(s) despite .gitignore — git rm it, never leave it tracked"
 else
   pass "no-private-refs: pattern table (${#NO_PRIVATE_REFS_PATTERNS[@]} entries) clean across the tracked tree; .pipeline/ untracked"
+fi
+
+# =============================================================================
+# Invariant 20 — reviewer-window-scan-bounded
+# =============================================================================
+# lgtmgate#18: flagReviewerWindowIssues() used to scan open issues with a flat `--limit 1000`
+# and NO server-side date bound — past 1000 open issues on the target repo, `gh issue list`
+# silently truncates (no error, no warning) and the downstream reviewerWindowCandidates()
+# filter treated that partial page as exhaustive. Fixed by bounding the query with the GitHub
+# search `created:>=<windowStart>` qualifier, so the result set is scoped to the review round's
+# (minutes-to-hours-wide) window instead of the whole open-issue backlog. This is a STATIC guard
+# (grep against source, not a live `gh` call): the offline flow-suite's `simulate` harness
+# deliberately makes the real (non-simulate) branch of flagReviewerWindowIssues — where this `gh
+# issue list` command is built — unreachable (every agent() call site must be intercepted by a
+# simulate fixture or the harness itself throws, scripts/run-flow-suite.cjs), so a live-request
+# regression test isn't feasible through that harness; this grep-based check is the durable
+# regression guard instead. The runtime belt-and-suspenders assertion (exact-limit truncation
+# check right after the call, workflows/deliver-pipeline.js) is the second, complementary guard.
+if [ -f "$WORKFLOW_FILE" ]; then
+  SCAN_LINE="$(grep -n 'gh issue list --state open' "$WORKFLOW_FILE" | head -1)"
+  if [ -z "$SCAN_LINE" ]; then
+    fail "reviewer-window-scan-bounded" "no 'gh issue list --state open' call found in $WORKFLOW_FILE"
+  elif ! echo "$SCAN_LINE" | grep -q -- '--search "created:>='; then
+    fail "reviewer-window-scan-bounded" "reviewer-window issue scan is missing a '--search \"created:>=\"' bound — a flat --limit alone silently truncates past the limit (lgtmgate#18): $SCAN_LINE"
+  elif ! grep -q 'REVIEWER_WINDOW_SCAN_SAFETY_LIMIT' "$WORKFLOW_FILE"; then
+    fail "reviewer-window-scan-bounded" "REVIEWER_WINDOW_SCAN_SAFETY_LIMIT (exact-limit truncation guard) not found in $WORKFLOW_FILE"
+  else
+    pass "reviewer-window-scan-bounded: reviewer-window issue scan is date-bounded via --search \"created:>=\"; safety-limit truncation guard present"
+  fi
+else
+  fail "reviewer-window-scan-bounded" "$WORKFLOW_FILE missing"
 fi
 
 # =============================================================================
