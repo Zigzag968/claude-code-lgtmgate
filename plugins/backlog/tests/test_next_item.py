@@ -87,9 +87,9 @@ class TestExclusions(unittest.TestCase):
     def test_never_selects_not_ready(self):
         self.assertIsNone(_picked([_issue(1, *_labels(drop=("status:ready",)))]))
 
-    def test_never_selects_founder_executor(self):
-        self.assertIsNone(_picked([_issue(1, "status:ready", "exec:founder", "size:S", "type:chore")]))
-        self.assertIsNone(_picked([_issue(1, *_labels("exec:founder"))], allowed_executors=("exec:agent",)))
+    def test_never_selects_human_executor(self):
+        self.assertIsNone(_picked([_issue(1, "status:ready", "exec:human", "size:S", "type:chore")]))
+        self.assertIsNone(_picked([_issue(1, *_labels("exec:human"))], allowed_executors=("exec:agent",)))
 
     def test_never_selects_epic_type(self):
         self.assertIsNone(_picked([_issue(1, "status:ready", "exec:agent", "size:S", "type:epic")]))
@@ -229,8 +229,8 @@ class TestCli(unittest.TestCase):
         self.assertEqual(rc, 1)
         self.assertNotIn("queue empty", out)
 
-    def test_founder_and_unknown_executor_are_not_selectable(self):
-        for bad in ("exec:founder", "bogus"):
+    def test_human_and_unknown_executor_are_not_selectable(self):
+        for bad in ("exec:human", "bogus"):
             with self.subTest(bad=bad):
                 with contextlib.redirect_stderr(io.StringIO()):
                     with self.assertRaises(SystemExit):

@@ -6,7 +6,7 @@
 # JSON object per run, with a "status" field. Only a WHITELIST of statuses
 # denotes an in-flight run worth nudging: "in-progress", "plan", "dev",
 # "review". Everything else is skipped — terminal ("merged", "blocked",
-# "done"), awaiting-human ("pr-ready", "needs-founder" — the run is
+# "done"), awaiting-human ("pr-ready", "needs-human" — the run is
 # correctly parked, waiting on a human, not silently stuck), awaiting-EXTERNAL
 # ("blocked-by" — the run is correctly parked on an issue in ANOTHER repo, see
 # README.md "Cross-repo blockedBy signal" and templates/blocked-by-check.sh),

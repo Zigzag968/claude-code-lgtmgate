@@ -135,7 +135,7 @@ class TestRefusedAfterTheRead(SetBase):
 
     def test_refused_second_executor_writes_nothing(self):
         issues = [S.issue(1, "type:bug", "status:inbox", "nightly")]
-        rc, out, runner = self.run_set(["--issue", "1", "--exec", "founder", "--apply"], issues=issues)
+        rc, out, runner = self.run_set(["--issue", "1", "--exec", "human", "--apply"], issues=issues)
         self.assertEqual(rc, 1)
         self.assertIn("lint:executor-multiple", out)
         self.assertEqual(runner.writes(), [])
@@ -406,7 +406,7 @@ class TestPromotion(PromotionBase):
             "no-acceptance": self.candidate(body="no list here"),
             "open-blocker:9": self.candidate(blockers=[{"number": 9, "state": "OPEN"}]),
             "blockers-unknown": S.issue(1, "type:feature", "status:inbox", "size:S", body=BODY),
-            "founder-executor": self.candidate("exec:founder"),
+            "human-executor": self.candidate("exec:human"),
             "protected-present:auto:blocked": self.candidate("auto:blocked"),
             "exclusion:cross-repo": self.candidate("cross-repo"),
             "exclusion:money-path": self.candidate("money-path"),

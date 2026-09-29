@@ -39,7 +39,7 @@ def _owner_repo_from_remote(remote_url: str) -> Optional[str]:
 
 def _pr_ready_reminder(project_dir: str) -> str:
     """
-    Best-effort: a one-line "N PR awaiting founder review/merge" reminder for
+    Best-effort: a one-line "N PR awaiting human review/merge" reminder for
     an orchestrator convention this plugin recognizes (issues/PRs labeled
     auto:pr-ready — e.g. the nightly runner's no-auto-merge contract: CI
     green + undrafted is a terminal state, a human merges by hand).
@@ -70,7 +70,7 @@ def _pr_ready_reminder(project_dir: str) -> str:
         numbers = [n for n in gh.stdout.split() if n.isdigit()]
         if not numbers:
             return ""
-        return "- ⏳ {} PR nightly awaiting founder review: {}".format(
+        return "- ⏳ {} PR nightly awaiting human review: {}".format(
             len(numbers), ", ".join(f"#{n}" for n in numbers)
         )
     except Exception:

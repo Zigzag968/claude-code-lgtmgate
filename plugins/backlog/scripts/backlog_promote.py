@@ -11,7 +11,7 @@ HTML comment, an empty item, a `[ ]` with no list marker) and leave the other co
 issue author cannot forge by typing (labels, the `blockedBy` graph, the state). It is one condition among several.
 
 Codes (a verdict is ok only with none): promotion-off, no-acceptance, size-not-candidate, no-type,
-exclusion:<label>, open-blocker:<n>, blockers-unknown, founder-executor, protected-present:<label>.
+exclusion:<label>, open-blocker:<n>, blockers-unknown, human-executor, protected-present:<label>.
 """
 
 from __future__ import annotations
@@ -148,8 +148,8 @@ def check_promotion(issue: dict, after: Iterable[str], cfg) -> PromotionVerdict:
     for number in blockers:
         codes.append("open-blocker:%d" % number)
 
-    if live & set(cfg.role_labels("founder")):
-        codes.append("founder-executor")
+    if live & set(cfg.role_labels("human")):
+        codes.append("human-executor")
 
     for label in sorted(live):
         if cfg.is_protected(label):

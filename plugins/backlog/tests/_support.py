@@ -192,7 +192,7 @@ def issue(number, *labels, state="OPEN", created="2026-09-10T00:00:00Z", title=N
 APPLY_MAPPING = "legacy_map:\n  bug: type:bug\n  enhancement: type:feature\n"
 APPLY_LIVE_LABELS = [
     "bug", "enhancement", "type:bug", "type:feature", "type:chore", "type:epic", "status:inbox", "status:needs-info",
-    "status:ready", "exec:agent", "exec:founder", "size:S", "size:M", "size:L", "priority:0-now", "priority:1-next",
+    "status:ready", "exec:agent", "exec:human", "size:S", "size:M", "size:L", "priority:0-now", "priority:1-next",
     "priority:2-later", "nightly",
 ]
 

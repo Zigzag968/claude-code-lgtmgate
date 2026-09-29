@@ -25,7 +25,7 @@ components under a colliding namespace — proven live: a throwaway plugin named
 under `--plugin-dir` DID surface its own `workflows/collision-probe.js` under the
 `lgtmgate:` namespace. **Precedence when the SAME namespaced name exists in BOTH the dev
 tree and the installed cache is NOT proven** — contribution proven, precedence not proven. This is
-unambiguous only until founder-gate item 18 (below) publishes 0.8.0. From that day the installed
+unambiguous only until human-gate item 18 (below) publishes 0.8.0. From that day the installed
 cache also ships `lgtmgate:deliver-pipeline`, so this is a **mandatory disambiguation
 procedure, not a caveat**:
 
@@ -105,17 +105,17 @@ content was **cut FROM** — the base commit it was derived from (a commit canno
 — `cutFrom` is CONTEXT, not the identity key, and it is deliberately **unguarded**,
 release-checklist-only; `version` is the guarded identity key). This is a **different** value from
 the SHA the artifact is **published AT** — the catalog pin (`.claude-plugin/marketplace.json`
-`source.sha`), moved by the founder's own publish commit below; the two frequently diverge (0.8.0's
+`source.sha`), moved by the human's own publish commit below; the two frequently diverge (0.8.0's
 `cutFrom` is `c040169`, its catalog pin moved to `f59e4e0`). `version` is declared rather than omitted, against the docs' own named idiom for an
 "internal or actively developed plugin" (which would resolve to the source's commit SHA and
 auto-deliver every commit on the pinned SHA), for two reasons: `version` is the stamp's
 human-legible identity key (a 40-char SHA is not), and it gives the installed cache a legible
-`lgtmgate/<version>` path — what founder-gate item 18 below inspects.
+`lgtmgate/<version>` path — what human-gate item 18 below inspects.
 
 **An unbumped release delivers nothing at all** — a github-source plugin only updates a
 consumer's cache when the manifest version differs from what they already have.
 
-**No `CHANGELOG.md` file — the version-bump commit subject IS the changelog** (founder decision,
+**No `CHANGELOG.md` file — the version-bump commit subject IS the changelog** (human decision,
 2026-09-15, legacy#86). Every paired bump above ships as its own conventional-commit subject (`fix:`,
 `feat:`, `chore(publish):`, ...) referencing the issue/PR it closes, e.g. `fix: test-infra/guards
 hygiene — stale counts, bash-3.2 floor, headless log pointer, pr-acceptance doctrine (legacy#157) (legacy#166)`.
@@ -135,27 +135,27 @@ The bump is therefore enforced by a **reviewed acceptance-checklist line on ever
 the shipped surface**, never by CI blocking a merge; `.githooks/pre-commit` (per-clone
 `core.hooksPath` opt-in) is a local pre-check one layer below that, not the enforcement either.
 
-**Publishing (founder decision, 2026-08-23, route confirmed 2026-09-12): merging the publish PR
-is the founder-only gesture — never an agent, never the unattended nightly runner.** A commit
+**Publishing (human decision, 2026-08-23, route confirmed 2026-09-12): merging the publish PR
+is the human-only gesture — never an agent, never the unattended nightly runner.** A commit
 cannot carry its own SHA, so publishing moves `.claude-plugin/marketplace.json`'s `lgtmgate`
 entry's `source.sha` forward to the just-merged release commit via a **separate, one-line PR**,
 never a raw push to `main`:
 1. Prepare the one-line `source.sha` bump on a branch and push **the branch**, not `main`.
 2. Open a PR.
-3. The founder merges it — clicking Merge on GitHub, or running `gh pr merge <N> --squash` himself
+3. The human merges it — clicking Merge on GitHub, or running `gh pr merge <N> --squash` himself
    from an interactive session. This is the confirmation point; the squash-merge commit this
    produces on `main` IS the publish commit, there is no separate manual commit step beyond it.
 
 A raw `git push origin main` for this gesture is refused by the Claude Code auto-mode classifier
 (confirmed from both the main checkout and a throwaway worktree, `dangerouslyDisableSandbox:true`
 in both — ruling out a sandbox-filesystem cause) on top of `.claude/settings.json`'s own
-`git push origin main` deny rule — so the branch+PR route is the only working one, for the founder's
+`git push origin main` deny rule — so the branch+PR route is the only working one, for the human's
 own session as much as any agent's.
 
 **Non-goal:** an agent must never run `gh pr merge` on this publish PR itself — barred by this
 repo's own `.claude/rules/pr-acceptance.md` "Autonomie en session non supervisee" hard rule
 ("jamais un `gh pr merge` direct par un agent"). Whether an agent should ever be allowed to run
-`gh pr merge` on this repo's own publish PR, once the founder is comfortable with the pattern, is a
+`gh pr merge` on this repo's own publish PR, once the human is comfortable with the pattern, is a
 distinct, not-yet-decided policy change — tracked separately at issue legacy#140, not documented as
 canonical here.
 
@@ -187,9 +187,9 @@ behind it**. The marketplace **catalog** that carries the pin is itself fetched 
 mutable `ref: main` (git-based marketplace sources support `ref`, not `sha`), so one push to
 `main` moves the catalog and the pin together, in one gesture.
 
-This is an **accepted residual** (founder decision, 2026-08-23, option (c)): the repo stays
+This is an **accepted residual** (human decision, 2026-08-23, option (c)): the repo stays
 private on the free plan; no branch protection/rulesets are purchased. The mitigations actually in
-place are (1) the publish commit is a founder-only interactive gesture (§4), never automatable,
+place are (1) the publish commit is a human-only interactive gesture (§4), never automatable,
 and (2) this repo's `.claude/settings.json` denies any agent session from pushing to `main`
 outright. Making the repo public (free rulesets would then apply) was considered and declined for
 this slice; revisit if the residual proves costly in practice.
@@ -212,7 +212,7 @@ exactly this same "publish + update + restart is the first thing done" state, an
 
 No `--version` pin exists on install, and there is no downgrade-on-install
 (anthropics/claude-code#62446, anthropics/claude-code#33302) — a rollback is always: move the `lgtmgate` entry's
-`source.sha` on `main` back to the target commit, push (founder-only, §4), then:
+`source.sha` on `main` back to the target commit, push (human-only, §4), then:
 
 ```bash
 claude plugin marketplace update zigzag-plugins
@@ -227,7 +227,7 @@ plugin pipeline everywhere once S4 retires those copies. Valid rollback targets 
 always **>= the S2 merge commit**.
 
 Because this repo ships no `enabledPlugins` (§3), the auto-updating population during a rollback
-window is bounded to the founder's own machines that have explicitly installed the plugin — a
+window is bounded to the human's own machines that have explicitly installed the plugin — a
 known, owned window, not the open internet. Move the pin forward again immediately after any
 rehearsal; do not leave it pointed backward.
 
@@ -278,14 +278,14 @@ bump. (Editing `templates/test-canonical-guards.sh` itself does, as it is watche
 
 **The placeholder pin, and why it fails closed.** The `backlog` catalog entry ships with
 `source.sha` set to the `lgtmgate` entry's current pin: a real, resolvable commit that has NO
-`plugins/backlog/` directory. Until the founder publishes, an install therefore fails instead of
+`plugins/backlog/` directory. Until the human publishes, an install therefore fails instead of
 silently tracking `main` (a `git-subdir` source without `sha` would follow `ref: main`, unpinned; per
 the marketplace docs, when both `ref` and `sha` are set the `sha` is the effective pin). A relative
 `./plugins/backlog` source is not used either: it has no per-plugin pin.
 
-**Publication and install are the founder's gestures, never an agent's** — same rule as §4. Order:
+**Publication and install are the human's gestures, never an agent's** — same rule as §4. Order:
 
-1. Merge the PR that adds `plugins/backlog/` (the founder, per the acceptance checklist).
+1. Merge the PR that adds `plugins/backlog/` (the human, per the acceptance checklist).
 2. Prepare a **one-line PR** that moves the `backlog` entry's `source.sha` to the merge commit of
    step 1 (branch + PR, never a raw push to `main`, §4) and merge it. That merge is the publish.
 3. Install ONCE, at user scope, then restart Claude Code:
@@ -299,10 +299,10 @@ the marketplace docs, when both `ref` and `sha` are set the `sha` is the effecti
 
 There is no per-repo copy, no `enabledPlugins` and no repo-level install anywhere (§3: enabling is an
 explicit per-user gesture). **Rollback** is the §7 logic for this entry: move the `backlog` entry's
-`source.sha` back to the previous release commit (founder-only), then run the same marketplace update
+`source.sha` back to the previous release commit (human-only), then run the same marketplace update
 and restart; a target commit before the merge of step 1 has no `plugins/backlog/`, which uninstalls it.
 
-**Caveats to settle at install time (only the founder can observe them).** `git-subdir` is a newer
+**Caveats to settle at install time (only the human can observe them).** `git-subdir` is a newer
 marketplace source type: an older Claude Code client that does not know it rejects the whole catalog
 (anthropics/claude-code#35805), `lgtmgate` included, so update the client first. And because the
 `url` points at this PRIVATE repo, the clone relies on the user's git credentials.
@@ -314,7 +314,7 @@ If this repo is ever made public, revisit:
 - (a) `README.md`'s "This repo's own marketplace is **private**..." line — the behavior it
   describes ("auto-updates may fail intermittently") no longer applies once the marketplace is
   public; correct or remove that sentence at that point.
-- (b) `## 5. Trust root` above — the 2026-08-23 founder decision accepts staying private (with no
+- (b) `## 5. Trust root` above — the 2026-08-23 human decision accepts staying private (with no
   branch protection/rulesets) as a residual; re-evaluate that decision explicitly before any
   switch, since going public also changes the trust-root analysis (free rulesets would then
   apply).

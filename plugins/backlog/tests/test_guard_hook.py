@@ -143,7 +143,7 @@ class TestGuardCheck(unittest.TestCase):
             "gh issue edit 5 --add-label=type:bug",
             'gh issue edit 5 --add-label "priority:0-now,nightly"',
             "gh issue create --title x -l exec:agent",
-            "cd repo && gh issue edit 5 --add-label exec:founder",
+            "cd repo && gh issue edit 5 --add-label exec:human",
             "gh label create status:ready",
             "gh label edit size:S --color fff",
             "gh label delete type:bug --yes",

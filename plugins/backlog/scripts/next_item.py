@@ -60,7 +60,7 @@ def _is_candidate(issue: dict, referenced: Set[int], allowed: Tuple[str, ...], c
         return False
     if cfg.role_label("intake") in names or cfg.role_label("waiting") in names:
         return False
-    if any(label in names for label in cfg.role_labels("founder")):
+    if any(label in names for label in cfg.role_labels("human")):
         return False
     if not any(executor in names for executor in allowed):
         return False

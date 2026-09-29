@@ -47,7 +47,7 @@ class TestLint(unittest.TestCase):
             (("type:bug", "status:inbox", "status:needs-info"), "status-multiple"),
             (("type:bug", "status:inbox", "priority:0-now", "priority:1-next"), "priority-multiple"),
             (("type:bug", "status:inbox", "size:S", "size:M"), "size-multiple"),
-            (("type:bug", "status:inbox", "exec:agent", "exec:founder"), "executor-multiple"),
+            (("type:bug", "status:inbox", "exec:agent", "exec:human"), "executor-multiple"),
             (("type:bug", "status:ready", "size:S"), "ready-no-executor"),
             (("type:bug", "status:ready", "exec:agent"), "ready-no-size"),
             (("type:bug", "status:ready", "exec:agent", "size:L"), "ready-size-l"),

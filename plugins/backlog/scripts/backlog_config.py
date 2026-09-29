@@ -46,7 +46,7 @@ PROMOTIONS = ("none", "checked")
 EXEC_GATINGS = ("promotion", "triage")
 DEFAULT_INTAKE_REQUIRED: Tuple[str, ...] = ("type",)
 SCALAR_ROLES = ("intake", "waiting", "ready", "epic", "bug")
-LIST_ROLES = ("split", "candidate_sizes", "agent", "founder")
+LIST_ROLES = ("split", "candidate_sizes", "agent", "human")
 ROLE_AXIS = {
     "intake": "status",
     "waiting": "status",
@@ -56,7 +56,7 @@ ROLE_AXIS = {
     "split": "size",
     "candidate_sizes": "size",
     "agent": "exec",
-    "founder": "exec",
+    "human": "exec",
 }
 
 # The reference taxonomy (the source implementation's scripts/backlog_common.py): every absent key falls back to this.
@@ -64,7 +64,7 @@ DEFAULT_LABELS: Dict[str, List[str]] = {
     "type": ["bug", "feature", "chore", "epic"],
     "status": ["inbox", "needs-info", "ready"],
     "priority": ["0-now", "1-next", "2-later"],
-    "exec": ["agent", "founder"],
+    "exec": ["agent", "human"],
     "size": ["S", "M", "L"],
     "area": [],
 }
@@ -77,7 +77,7 @@ DEFAULT_ROLES: Dict[str, Any] = {
     "split": ["L"],
     "candidate_sizes": ["S", "M"],
     "agent": ["agent"],
-    "founder": ["founder"],
+    "human": ["human"],
 }
 DEFAULT_EXECUTOR_FLAGS: List[str] = ["nightly"]
 DEFAULT_EXCLUSIONS: List[str] = ["cross-repo", "money-path"]

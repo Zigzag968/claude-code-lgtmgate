@@ -34,7 +34,7 @@
 # 12 blocked-by-signal, 13 single-export, 14 project-item-lookup, 15 bash-3.2-floor,
 # 16 backlog-bump-required, 17 backlog-marketplace-pin, 18 backlog-suite, 19 no-private-refs.
 #
-# Enforcement note (#54 MANDATORY 2, founder decision 2026-08-23): this repo is PRIVATE on a
+# Enforcement note (#54 MANDATORY 2, human decision 2026-08-23): this repo is PRIVATE on a
 # plan where branch protection and rulesets are both unavailable (verified this session:
 # `gh api repos/Zigzag968/lgtmgate/branches/main/protection` and
 # `.../rulesets` both return 403 "Upgrade to GitHub Pro or make this repository public to
@@ -396,8 +396,8 @@ fi
 # contains earlier, unrelated occurrences of two of these five tokens ABOVE the Dev-phase
 # prompt — the exact same "earlier illustrative/example occurrence" problem
 # DECISION_LOG_START_RE itself solves by anchoring on the LAST match (see the comment at its
-# definition). The optional "## <Founder> — N gestures" H2 is intentionally NOT one of the five
-# checked tokens — it is conditional on a [founder-gate] item existing in the checklist, so its
+# definition). The optional "## <Human> — N gestures" H2 is intentionally NOT one of the five
+# checked tokens — it is conditional on a [human-gate] item existing in the checklist, so its
 # absence in a given PR body is correct, not a violation.
 PR_BODY_STRUCT_SITES="$WORKFLOW_FILE agents/nick.md"
 for site in $PR_BODY_STRUCT_SITES; do
@@ -615,7 +615,7 @@ fi
 # Invariant 15 — bash-3.2-floor
 # =============================================================================
 # #78 (shell-portability half only — the bump-required exclusion-list half of #78 is a
-# founder call per that issue's own body, not actioned here). macOS ships bash 3.2
+# human call per that issue's own body, not actioned here). macOS ships bash 3.2
 # (/bin/bash, /usr/bin/env bash) — this repo has already been bitten twice by bash4+-only
 # constructs slipping into a tracked *.sh file (scripts/provision_worktree.sh,
 # scripts/run-workflow-headless.sh, both #57). Static, zero-external-dependency grep across
@@ -688,7 +688,7 @@ fi
 # Invariant 17 — backlog-marketplace-pin
 # =============================================================================
 # #218: the `backlog` catalog entry is a git-subdir source scoped to plugins/backlog with a 40-hex
-# sha that resolves in this repo, and its name matches the plugin manifest. Until the founder's
+# sha that resolves in this repo, and its name matches the plugin manifest. Until the human's
 # publish PR moves it, the sha is the lgtmgate's current pin (a commit that has no
 # plugins/backlog/), so an install FAILS CLOSED instead of tracking main unpinned.
 if [ ! -f "$MARKETPLACE" ] || [ ! -f "$BL_MANIFEST" ]; then

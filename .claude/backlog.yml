@@ -7,7 +7,7 @@ labels:
   type: [bug, feature, tech-debt, docs, epic]
   status: [inbox, needs-info, ready]
   priority: [0-now, 1-next, 2-later]
-  exec: [agent, founder]
+  exec: [agent, human]
   size: [S, M, L]
   area: []
 roles:
@@ -19,7 +19,7 @@ roles:
   split: [L]
   candidate_sizes: [S, M]
   agent: [agent]
-  founder: [founder]
+  human: [human]
 executor_flags: [nightly]
 exclusions: [cross-repo]
 protected: [nightly, cross-repo, "auto:*"]
@@ -33,5 +33,5 @@ legacy_map:
   P0: "priority:0-now"
   P1: "priority:1-next"
   P2: "priority:2-later"
-  interactive: "exec:founder"
+  interactive: "exec:human"
 legacy_keep: [bug, enhancement, documentation, P0, P1, P2, interactive]
