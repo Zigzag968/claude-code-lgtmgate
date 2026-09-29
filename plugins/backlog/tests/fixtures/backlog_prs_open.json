@@ -1,0 +1,39 @@
+[
+  {
+    "number": 501,
+    "title": "feat: something",
+    "body": "Closes #105",
+    "isDraft": true,
+    "closingIssuesReferences": [
+      {
+        "number": 105,
+        "url": "https://github.com/o/r/issues/105",
+        "repository": {
+          "name": "r"
+        }
+      }
+    ]
+  },
+  {
+    "number": 502,
+    "title": "fix: another thing",
+    "body": "Part of the work for #106.",
+    "isDraft": false,
+    "closingIssuesReferences": []
+  },
+  {
+    "number": 503,
+    "title": "chore: unrelated",
+    "body": "Closes #4330",
+    "isDraft": false,
+    "closingIssuesReferences": [
+      {
+        "number": 4330,
+        "url": "https://github.com/o/r/issues/4330",
+        "repository": {
+          "name": "r"
+        }
+      }
+    ]
+  }
+]

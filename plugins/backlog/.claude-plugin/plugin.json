@@ -1,0 +1,12 @@
+{
+  "name": "backlog",
+  "version": "0.5.3",
+  "description": "Config-driven backlog discipline for GitHub repos: /backlog:file, /backlog:triage (propose-only), /backlog:next. Inert unless the repo has .claude/backlog.yml.",
+  "author": {
+    "name": "Zigzag968"
+  },
+  "repository": "https://github.com/Zigzag968/lgtmgate",
+  "license": "MIT",
+  "keywords": ["backlog", "github", "triage", "labels", "issues"],
+  "hooks": "./hooks/plugin-hooks.json"
+}

@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git rm:*)"
+    ],
+    "deny": [
+      "Bash(rm)",
+      "Bash(rm *)",
+      "Bash(git clean:*)",
+      "Read(**/.ssh/*)",
+      "Read(**/.aws/*)",
+      "Read(**/.env*)",
+      "Read(**/*secret*)",
+      "Bash(git push origin main)",
+      "Bash(git push origin main:*)",
+      "Bash(ALLOW_PUSH_TO_MAIN=1 git push origin main)",
+      "Bash(ALLOW_PUSH_TO_MAIN=1 git push origin main:*)"
+    ]
+  },
+  "extraKnownMarketplaces": {
+    "zigzag-plugins": {
+      "source": { "source": "github", "repo": "Zigzag968/lgtmgate" }
+    }
+  }
+}

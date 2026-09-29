@@ -1,0 +1,8 @@
+#!/bin/sh
+# pre-commit (#54) — local pre-check only. `core.hooksPath` is a per-clone opt-in
+# (see MAINTAINING.md's Dev-loop section), so this is author discipline one layer
+# down from the real enforcement: `.github/workflows/guards.yml` reports on every PR
+# to main, and the guards verdict is a mandatory, human-checked acceptance-checklist
+# line (branch protection/rulesets are both unavailable on this repo — see
+# templates/test-canonical-guards.sh's header for the verified detail).
+exec bash "$(git rev-parse --show-toplevel)"/templates/test-canonical-guards.sh

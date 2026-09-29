@@ -1,0 +1,44 @@
+name: guards
+
+# Reports on every PR to main. Historically could not be a required check while this repo was
+# private on a plan without branch protection/rulesets (#54 MANDATORY 2) — enforcement was
+# therefore human: the guards verdict is a mandatory acceptance-checklist line on every PR that
+# touches the shipped surface (see templates/test-canonical-guards.sh's own header), and no PR
+# merges with a red `guards` line — block-merge-unchecked.sh gates on the unticked box. See
+# issue #254 for the runner change below and the open-source-readiness plan for making this a
+# real required status check once branch protection is enabled.
+#
+# Trigger MUST stay `pull_request` and never `pull_request_target` (#54 advisory note 1):
+# scripts/run-flow-suite.cjs runs the branch's own workflows/feature-pipeline.js through
+# `new Function(...)` (buildPipelineRunner) — i.e. this job executes branch-authored code by
+# design. `pull_request_target` would run that same branch-controlled code with the BASE
+# branch's token/secrets, which this workflow must never do. This holds regardless of runner
+# type, which is exactly why switching the runner below does not touch the trigger.
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  guards:
+    # #254: this job used to target the founder's private, always-on machine — any external PR would
+    # execute arbitrary branch-authored code (see the pull_request_target note above) on that
+    # machine the moment this repo goes public. Tests are 100% offline/stdlib (no external
+    # deps), so ubuntu-latest has full parity with no coverage loss.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          fetch-depth: 0 # invariant 1 (bump-required) diffs against origin/main
+      - name: Canonical guard net
+        run: bash templates/test-canonical-guards.sh
+      - name: Offline flow suite
+        run: FLOW_SUITE_STRICT=1 node scripts/run-flow-suite.cjs
+      - name: Stop-supervise watchdog regression test
+        run: bash hooks/test-Stop-supervise-runs.sh
+      - name: verify-workflow-launch regression test
+        run: bash scripts/test-verify-workflow-launch.sh
+      - name: Provision worktree guard
+        run: bash templates/test-provision-worktree.sh

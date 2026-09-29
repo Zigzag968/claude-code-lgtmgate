@@ -1,0 +1,43 @@
+{
+  "ghProject": {
+    "owner": "<github-owner>",
+    "projectNumber": 0,
+    "projectId": "<PVT_...>",
+    "fieldId": "<PVTSSF_...>",
+    "statusOptions": {
+      "Backlog": "",
+      "Plan": "",
+      "Dev": "",
+      "Review": "",
+      "PR Ready": "",
+      "Blocked": "",
+      "Merged": ""
+    }
+  },
+  "baseBranch": "develop",
+  "branchPrefix": "features/",
+  "worktreeRoot": "<logical default, e.g. ../worktrees/<repo> — optional; precedence $AGENT_PIPELINE_WORKTREE_ROOT > .claude/pipeline.config.local.json > this key > wtPath's parent dir>",
+  "repo": "<owner/repo — optional; code repo for cross-repo runs (#363), omit for same-repo>",
+  "conventionsRule": ".claude/rules/<conventions>.md",
+  "commands": {
+    "build": "<build command/instruction>",
+    "test": "<test command/instruction>",
+    "format": "<format command/instruction>"
+  },
+  "ciChecks": ["<check1>", "<check2>"],
+  "regressionGuard": {
+    "testGlob": "<test dirs/glob>",
+    "testFnPattern": "<ex: func test>",
+    "baselineCmd": "<baseline test capture command, empty string if not configured>"
+  },
+  "provision": {
+    "extraLinks": []
+  },
+  "preflight": {
+    "canonicalStringBan": [],
+    "envSymlink": "required"
+  },
+  "planAudit": false,
+  "planFreshness": "advisory",
+  "stack": ""
+}

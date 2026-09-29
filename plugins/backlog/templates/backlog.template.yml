@@ -1,0 +1,44 @@
+# .claude/backlog.yml -- backlog plugin config, contract 1.
+# Copy this file to <your repo>/.claude/backlog.yml to opt the repo in. Without the file the plugin does
+# nothing (mode off: no gh call is reachable). Every value below is the plugin default, written out.
+contract: 1
+mode: propose            # off | propose | write-supervised | free
+# repo: OWNER/NAME       # optional; default: gh resolves the repo from the working directory
+labels:                  # axis -> values; the "<axis>:" prefix is implied. Axes are fixed by contract 1.
+  type: [bug, feature, chore, epic]
+  status: [inbox, needs-info, ready]
+  priority: [0-now, 1-next, 2-later]
+  exec: [agent, founder]
+  size: [S, M, L]
+  area: []               # empty = free axis, never validated
+roles:                   # which values play which role
+  intake: inbox
+  waiting: needs-info
+  ready: ready
+  epic: epic
+  bug: bug
+  split: [L]
+  candidate_sizes: [S, M]
+  agent: [agent]
+  founder: [founder]
+executor_flags: [nightly]
+exclusions: [cross-repo, money-path]
+protected: [nightly, cross-repo, "auto:*"]
+caps:
+  "priority:0-now": 2
+  "priority:1-next": 8
+# Optional catch-up keys (dry-run tooling: label-sync, catchup). Absent = nothing mapped, grey labels.
+# legacy_map:              # legacy label -> one axis:value label of `labels` above (never ready or an agent executor)
+#   bug: "type:bug"
+#   enhancement: "type:feature"
+#   tech-debt: "type:chore"
+# legacy_keep: [enhancement]   # mapped legacy labels that stay on the issue next to their canonical label
+# label_colors:            # axis -> 6 hex chars without "#"; quote all-digit colors
+#   type: "d73a4a"
+#   status: "0e8a16"
+# apply_prompt: none       # none (default: no permission prompt) | ask: a human confirmation prompt on an agent apply command (rule H2)
+# promotion: none          # none (default) | checked: let `set` promote ONE issue to ready / exec:agent when the deterministic check passes
+# exec_gating: promotion   # promotion (default): ready and an agent executor both gate on `promotion: checked` | triage: an agent executor is a plain triage label, only ready still gates
+# intake_required: [type]  # axes `/backlog:file` refuses to create an issue without (default: type only)
+# guard_issue_create: true # true (default): the hook denies a bare `gh issue create` in write-supervised/free | false: opt out
+# The `cadence` key is reserved for a future contract: leave it out.

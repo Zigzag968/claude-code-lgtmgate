@@ -1,0 +1,62 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/SessionStart/inject_stub.py\"",
+            "timeout": 15,
+            "description": "Inject the lgtmgate stub (plugin active, /lgtmgate:feature, pipeline.config.json)"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/block-merge-unchecked.sh\"",
+            "timeout": 10,
+            "description": "Refuse `gh pr merge` while the PR acceptance checklist still has unchecked boxes"
+          },
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/deny-destructive-git.sh\"",
+            "timeout": 10,
+            "description": "Deny destructive git ops (clean, reset --hard, checkout -- discard, push --force) for all agent sessions"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": "Sam|Nick|Morgan|Mia|Theo",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/SubagentStop-worktree-cleanup.sh\"",
+            "timeout": 10,
+            "description": "Warn (never delete) when a pipeline agent stops inside a shared worktree"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/Stop-supervise-runs.sh\"",
+            "timeout": 5,
+            "description": "Watchdog: block the stop and re-prompt supervision when a .pipeline/ run is stale (see README)"
+          }
+        ]
+      }
+    ]
+  }
+}

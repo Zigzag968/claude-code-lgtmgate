@@ -1,0 +1,11 @@
+# Add this block to .github/ISSUE_TEMPLATE/feature.yml (under `body:`).
+# When checked, the Lead runs Mia (PM framing) before Sam's plan in /lgtmgate:feature.
+# YAML — keep 2-space indentation consistent with the surrounding `body:` list.
+
+  - type: checkboxes
+    id: pm_review
+    attributes:
+      label: PM review (Mia)
+      description: Check to ask Mia to propose / refine acceptance criteria and success metrics (analytics events) before Sam's plan.
+      options:
+        - label: Ask Mia to frame this feature (acceptance criteria + success metrics)

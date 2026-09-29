@@ -1,0 +1,20 @@
+{
+  "name": "lgtmgate",
+  "version": "0.8.60",
+  "description": "Stack-agnostic feature pipeline: Theo (diagnose) -> Mia (PM) -> Sam (plan) -> Nick (dev+PR) -> Morgan (review), orchestrated by a per-project workflow and configured via .claude/pipeline.config.json.",
+  "author": {
+    "name": "Zigzag968"
+  },
+  "repository": "https://github.com/Zigzag968/lgtmgate",
+  "license": "MIT",
+  "keywords": ["pipeline", "agents", "orchestration", "code-review", "worktree"],
+  "hooks": "./hooks/plugin-hooks.json",
+  "userConfig": {
+    "default_mode": {
+      "type": "string",
+      "title": "Default pipeline mode",
+      "description": "Default orchestration mode for /lgtmgate:feature (auto = run through, semi = stop at milestones, manual = stop at each stage).",
+      "default": "semi"
+    }
+  }
+}
