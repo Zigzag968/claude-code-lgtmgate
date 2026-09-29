@@ -84,7 +84,7 @@ The full key-by-key reference, including precedence rules and edge cases, is in 
 - **Theo**: qualifies the issue before Sam plans on it, actually reproducing a claimed bug (never a code read as proof), or sanity-checking that a feature/chore is justified. Runs on every dispatch, no opt-out. Never proposes a fix. (sonnet)
 - **Mia**: frames the feature (acceptance criteria + success metrics tied to existing analytics events). Runs only when the issue's `pm_review` box is checked. (haiku)
 - **Sam**: scouts the codebase, produces an *anchored* impact table + implementation plan + acceptance checklist, posts it on the issue. Never writes app code. (sonnet)
-- **Nick**: implements Sam's plan with meaningful tests, opens a draft PR, copies the acceptance checklist into the body. (sonnet)
+- **Nick**: implements the change and the tests Sam's plan specifies (Sam's impact table names what needs testing, not just what to build), opens a draft PR, copies the acceptance checklist into the body. (sonnet)
 - **Morgan**: impartial reviewer, running the regression guard, the convention review, the acceptance-checklist gate and CI verification, then posting a verdict. Never commits. (sonnet)
 
 The Lead (you, or the orchestrator) creates a shared git worktree and drives the workflow; the agents work inside that same worktree so plan, code, and review sit on one frozen base.
@@ -231,6 +231,8 @@ This repository plays two roles at once. At its root, it's the `lgtmgate` plugin
 Install it on its own: `claude plugin install backlog@zigzag-plugins --scope user`. See `plugins/backlog/README.md` for its modes and config, and `MAINTAINING.md` section 10 for its release sequence.
 
 ## Supervision of runs in flight
+
+Each run is a Claude Code `Workflow` (the plugin component `lgtmgate:deliver-pipeline`), launched by the Lead rather than executed as a script the session blocks on. A step that dies from an agent crash or an empty response comes back with a `resumable: true` status, and the Lead retries that exact run with `resumeFromRunId` and the same args. Moving the run forward instead, past a semi-mode checkpoint or into a different stage, means launching a fresh Workflow run with args rebuilt from the plan and PR already persisted on the issue, since `resumeFromRunId` alone replays the original call's cached inputs. Every run lives in its own git worktree, so the Lead can keep several issues in flight at once.
 
 Any orchestrator built on this plugin is expected to persist per-run state (`.pipeline/**/<id>.json`) and supervise it: a `Stop` hook watchdog detects a run that's gone silent past a configurable threshold and blocks/re-prompts instead of letting it die unnoticed, with a matching one-sided signal for a run blocked on another repo's issue. **Full mechanism, state-file schema, and the cross-repo `blockedBy` protocol: [docs/supervision.md](docs/supervision.md).**
 
