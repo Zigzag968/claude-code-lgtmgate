@@ -16,6 +16,9 @@ flowchart LR
     Theo["Theo<br/>diagnose"] --> Sam["Sam<br/>plan"]
     Theo -. optional .-> Mia["Mia<br/>PM framing"] -.-> Sam
     Sam --> Nick["Nick<br/>dev + PR"]
+    Sam -. optional .-> Audit{"Plan audit<br/>challenge"}
+    Audit -- not sound --> Sam
+    Audit -- sound --> Nick
     Nick --> Morgan{"Morgan<br/>review"}
     Morgan -- REQUIRED_CHANGES --> Nick
     Morgan -- LGTM --> Merge(["PR mergeable"])
