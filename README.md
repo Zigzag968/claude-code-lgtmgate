@@ -23,6 +23,8 @@ flowchart LR
 
 Theo reproduces the reported problem before anyone touches code. Mia frames the feature in product terms, but only if asked. Sam writes the plan, anchored to files it actually read this run. Nick implements the plan and opens the PR. Morgan, a different agent than the one who wrote the code, reviews it and approves once every checklist item has evidence behind it. The PR is then mergeable — by the Lead orchestrating the run, never by Nick or Morgan themselves. Role details are in [Agents](#agents).
 
+By default the pipeline runs in `semi` mode: it stops and reports back to you after Sam's plan and again after Nick opens the PR, and won't continue past either point until you tell the Lead to go ahead. `auto` runs straight through without those pauses; `manual` stops at every step.
+
 ## Example
 
 ```
@@ -31,14 +33,17 @@ $ /lgtmgate:deliver 142 "Login page shows a stale error after a successful retry
 
 1. **Theo** reproduces the stale-error state, confirms it's real, hands off to Sam.
 2. **Sam** posts an anchored plan on issue #142: impact table, implementation steps, an acceptance checklist Morgan can verify offline.
+   - `plan-ready`: the pipeline stops here and waits for your green light before Nick starts.
 3. **Nick** implements it and opens a draft PR with the checklist copied into the body, unticked.
+   - `dev-done`: the pipeline stops again and waits for your green light before Morgan reviews.
 4. **Morgan** runs the regression guard, checks conventions, ticks each box against real proof, posts a verdict:
    - `REQUIRED_CHANGES` → Nick fixes, Morgan re-reviews. Loops until resolved.
    - `LGTM` → PR undrafted, mergeable. The Lead merges it — Nick and Morgan never do.
 
 ## Why lgtmgate
 
-- A git hook refuses `gh pr merge` while any acceptance box is unchecked, and a box only gets checked once there's evidence behind it.
+- A git hook refuses `gh pr merge` from inside a hooked session while any acceptance box is unchecked; a box only gets checked once there's evidence behind it. (This only catches the `gh` command inside a session with the hook wired in: a merge from the GitHub web UI isn't intercepted, so treat it as a speed bump, not a wall.)
+- Once every box is checked, nothing merges automatically: the Lead is instructed to always wait for an explicit go-ahead before running `gh pr merge`. That's a prompt-level convention the agents follow, not a tool-enforced lock.
 - Review and implementation are split across two different agents (Morgan and Nick), so neither one reviews its own work.
 - The human maintainer stays in the loop without babysitting the run: Sam posts the plan on the issue before Nick writes any code, so anyone watching can weigh in early. Any acceptance-checklist item tagged `[human-gate]` can never be ticked by Morgan, no matter the evidence; only a human checks it.
 
@@ -151,12 +156,12 @@ Nothing stack-specific lives in the plugin. Everything project-dependent is read
 | `commands.{build,test,format}` | exact commands Nick/Morgan run |
 | `conventionsRule` | the project's code-convention rule Sam/Nick/Morgan align on |
 | `baseBranch`, `branchPrefix` | branching for the shared worktree + PR target |
-| `worktreeRoot` | where the Lead creates the shared worktree — logical/versioned default; precedence `$AGENT_PIPELINE_WORKTREE_ROOT` > `.claude/pipeline.config.local.json` (gitignored) > this value > wtPath's parent dir for the Dev-phase prompt context (legacy#61) — `/deliver` itself still needs this key set to CREATE the worktree (legacy#101) |
+| `worktreeRoot` | where the Lead creates the shared worktree — logical/versioned default; precedence `$AGENT_PIPELINE_WORKTREE_ROOT` > `.claude/pipeline.config.local.json` (gitignored) > this value > wtPath's parent dir for the Dev-phase prompt context — `/deliver` itself still needs this key set to CREATE the worktree |
 | `ciChecks` | checks Morgan must see green before LGTM |
 | `regressionGuard.{testGlob,testFnPattern,baselineCmd}` | Morgan's regression guard: no-checkout test scoping plus the exact baseline-capture command run for the SET-DIFF |
 | `ghProject` | optional GH Project "Pipeline Status" updates |
 | `planAudit` | adversarial plan-soundness audit before Dev, default `false`; worst case is `maxAuditRounds × maxPlanAttempts` extra spawns |
-| `branchOverride` (arg, else `config.branchOverride`) | exact branch name used verbatim instead of `<branchPrefix>issue-<N>` (rebase-without-force-push, numbered slices); chars limited to `[A-Za-z0-9._/-]`; skips the config-prefix reconcile. A top-level `branchPrefix` arg is ignored (config wins) and logs a warning + trace `branch-prefix-arg-ignored`; config.branchPrefix absent/blank additionally traces branch-prefix-fallback-default (legacy#267) |
+| `branchOverride` (arg, else `config.branchOverride`) | exact branch name used verbatim instead of `<branchPrefix>issue-<N>` (rebase-without-force-push, numbered slices); chars limited to `[A-Za-z0-9._/-]`; skips the config-prefix reconcile. A top-level `branchPrefix` arg is ignored (config wins) and logs a warning + trace `branch-prefix-arg-ignored`; config.branchPrefix absent/blank additionally traces branch-prefix-fallback-default |
 | `planFreshness` | plan-freshness check before Dev: `advisory` (default) warns Nick + traces `plan-stale:<n>` when a plan-declared target file moved on `origin/<baseBranch>`; `gate` escalates before Nick is spawned; `off` skips the probe entirely |
 | `models` | per-role model override `{ scout?, planAudit?, morgan? }`, default `sonnet` for all three; resolution is `arg > config.models > 'sonnet'` (same precedence as `planAudit`) — Theo/Nick are not overridable |
 | `stack` | target stack string handed to the plan auditor; empty → inferred from the worktree |
