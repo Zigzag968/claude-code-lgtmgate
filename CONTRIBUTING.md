@@ -17,6 +17,14 @@ By participating, you're expected to follow the [Code of Conduct](CODE_OF_CONDUC
   approach. This plugin's core (`workflows/deliver-pipeline.js`, the agent prompts in `agents/`) is
   dense and interconnected; an early conversation saves everyone rework.
 
+## Labels
+
+File your issue with whatever label feels natural: `bug`, `enhancement`, `documentation`, or
+GitHub's own suggestions. This project also runs a `type:`/`status:`/`priority:`/`exec:`/`size:`
+taxonomy (`.claude/backlog.yml`) for its own triage automation, and a plain `bug` gets reconciled
+to `type:bug` automatically, so you never need to learn that taxonomy just to file something.
+`good first issue` and `help wanted` flag issues open to a first contribution.
+
 ## Requirements
 
 - `git`

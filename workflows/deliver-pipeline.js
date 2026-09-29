@@ -213,7 +213,7 @@ export const meta = {
 // `version`, checked against plugin.json by templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '0.8.62', cutFrom: '531b62f' }
+const BUILD = { plugin: 'lgtmgate', version: '0.8.64', cutFrom: '10475bd' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -563,6 +563,12 @@ function isSubset(smaller, larger) {
 // templates/test-canonical-guards.sh's single-export check.
 const reviewerWindowCandidates = (issues, windowStart, windowEnd) =>
   (issues || []).filter(i => i && i.createdAt && i.createdAt >= windowStart && i.createdAt <= windowEnd)
+
+// Belt-and-suspenders ceiling for the reviewer-window `gh issue list` scan (lgtmgate#18) — NOT
+// the primary bound (the `created:>=windowStart` search qualifier at the call site is), see the
+// comment there. A single named constant so the call site's `--limit` and its exact-limit
+// truncation check never drift apart.
+const REVIEWER_WINDOW_SCAN_SAFETY_LIMIT = 1000
 
 // Decision log — durable counterpart to the comment-collapse pass above. Pure body composer.
 const DECISION_LOG_START = '<!-- decision-log:start -->'
@@ -2390,11 +2396,31 @@ if (after('review', entryStage)) {
       windowEnd = await nowIsoViaAgent(`review-window-end-${pr}-${round}`)
       let issues
       try {
+        // lgtmgate#18: a flat `--limit 1000` silently truncates on any repo with 1000+ open
+        // issues — `gh issue list` returns the partial page with NO error, and the
+        // reviewerWindowCandidates() filter below then treats that partial list as exhaustive
+        // (silently WRONG, not just slow). Fixed by bounding the query server-side with the
+        // GitHub search `created:` qualifier (ISO 8601, confirmed via `gh issue list --help` +
+        // a live query against this repo and cli/cli: `created:>=<ISO8601>` and `--state
+        // <state>` compose with AND semantics when both are passed to `--search`) to exactly
+        // this review round's window, which is minutes-to-hours wide — never the whole
+        // open-issue backlog a flat `--limit` was trying (and failing) to bound.
+        // REVIEWER_WINDOW_SCAN_SAFETY_LIMIT below is a belt-and-suspenders ceiling, not the
+        // primary bound: `created:` is what makes the result set small. If the search ever
+        // DOES return exactly this many issues, that is itself the truncation signal (the
+        // same silent-truncation shape as the original bug) — the count check right after
+        // this call turns it into a loud, explicit failure instead of a silently partial list.
         const out = await agent(
-          `cd "${wtPath}" && gh issue list --state open --limit 1000${prFlag} --json number,createdAt,url --jq '[.[]|{number,createdAt,url}]'`,
+          `cd "${wtPath}" && gh issue list --state open --search "created:>=${windowStart}"${prFlag} --limit ${REVIEWER_WINDOW_SCAN_SAFETY_LIMIT} --json number,createdAt,url --jq '[.[]|{number,createdAt,url}]'`,
           { label: `reviewer-window-scan-${pr}-${round}`, model: 'haiku' },
         )
         issues = JSON.parse(out)
+        if (Array.isArray(issues) && issues.length === REVIEWER_WINDOW_SCAN_SAFETY_LIMIT) {
+          throw new Error(
+            `reviewer-window-scan returned exactly the safety limit (${REVIEWER_WINDOW_SCAN_SAFETY_LIMIT}) issues — ` +
+            'likely truncated; refusing to treat a partial list as exhaustive (lgtmgate#18)',
+          )
+        }
       } catch (e) {
         log(`flagReviewerWindowIssues round ${round}: issue scan failed (${e.message}), skipping`)
         return

@@ -10,6 +10,12 @@ labels:
   exec: [agent, human]
   size: [S, M, L]
   area: []
+label_colors:
+  type: "1d76db"
+  status: "5319e7"
+  priority: "d93f0b"
+  exec: "0e8a16"
+  size: "fbca04"
 roles:
   intake: inbox
   waiting: needs-info
