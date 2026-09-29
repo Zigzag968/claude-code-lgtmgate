@@ -1,0 +1,41 @@
+{
+  "name": "zigzag-plugins",
+  "owner": {
+    "name": "Zigzag968"
+  },
+  "plugins": [
+    {
+      "name": "lgtmgate",
+      "source": {
+        "source": "github",
+        "repo": "Zigzag968/lgtmgate",
+        "ref": "main",
+        "sha": "5eeb35f1047acce318d584746ecf276e504e62f6"
+      },
+      "description": "Stack-agnostic feature pipeline: Mia (PM) -> Sam (plan) -> Nick (dev+PR) -> Morgan (review), orchestrated by a per-project workflow and configured via .claude/pipeline.config.json.",
+      "author": {
+        "name": "Zigzag968"
+      },
+      "license": "MIT",
+      "keywords": ["pipeline", "agents", "orchestration", "code-review", "worktree"],
+      "category": "productivity"
+    },
+    {
+      "name": "backlog",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/Zigzag968/lgtmgate.git",
+        "path": "plugins/backlog",
+        "ref": "main",
+        "sha": "8b2e3acecadf75e8a58509e8a00bb631fc9ca50b"
+      },
+      "description": "Config-driven backlog discipline for GitHub repos: /backlog:file, /backlog:triage (propose-only), /backlog:next. Inert unless the repo has .claude/backlog.yml.",
+      "author": {
+        "name": "Zigzag968"
+      },
+      "license": "MIT",
+      "keywords": ["backlog", "github", "triage", "labels", "issues"],
+      "category": "productivity"
+    }
+  ]
+}

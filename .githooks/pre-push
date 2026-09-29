@@ -1,0 +1,25 @@
+#!/bin/sh
+# pre-push: block direct pushes to main or master.
+# Usage: git config core.hooksPath .githooks
+#
+# Override: ALLOW_PUSH_TO_MAIN=1 git push origin main
+
+# Read stdin: <local_ref> <local_sha> <remote_ref> <remote_sha>
+while read -r local_ref local_sha remote_ref remote_sha; do
+    case "$remote_ref" in
+        refs/heads/main|refs/heads/master)
+            if [ "${ALLOW_PUSH_TO_MAIN:-0}" = "1" ]; then
+                continue
+            fi
+            echo "ERROR: Direct push to $remote_ref is not allowed." >&2
+            echo "" >&2
+            echo "  Use a feature branch and open a PR instead:" >&2
+            echo "    git push origin <your-branch>" >&2
+            echo "" >&2
+            echo "  To override (emergencies only):" >&2
+            echo "    ALLOW_PUSH_TO_MAIN=1 git push origin main" >&2
+            exit 1
+            ;;
+    esac
+done
+exit 0

@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/backlog-gh-guard.sh\"",
+            "timeout": 10,
+            "description": "Backlog guard: deny raw gh label writes on owned axes in propose/write-supervised mode, ask before an --apply of the catch-up tooling (every mode but off); inert without .claude/backlog.yml"
+          }
+        ]
+      }
+    ]
+  }
+}

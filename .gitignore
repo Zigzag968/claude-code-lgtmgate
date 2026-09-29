@@ -1,0 +1,8 @@
+.DS_Store
+node_modules/
+*.log
+.pipeline/
+.claude/pipeline.config.local.json
+.claude/.backlog-snapshots/
+__pycache__/
+*.pyc

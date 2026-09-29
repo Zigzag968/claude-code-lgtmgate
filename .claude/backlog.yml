@@ -1,0 +1,36 @@
+# .claude/backlog.yml -- backlog plugin config, contract 1 (opt-in, propose mode: no write to GitHub).
+contract: 1
+mode: propose
+repo: Zigzag968/lgtmgate
+labels:
+  type: [bug, feature, tech-debt, docs, epic]
+  status: [inbox, needs-info, ready]
+  priority: [0-now, 1-next, 2-later]
+  exec: [agent, founder]
+  size: [S, M, L]
+  area: []
+roles:
+  intake: inbox
+  waiting: needs-info
+  ready: ready
+  epic: epic
+  bug: bug
+  split: [L]
+  candidate_sizes: [S, M]
+  agent: [agent]
+  founder: [founder]
+executor_flags: [nightly]
+exclusions: [cross-repo]
+protected: [nightly, cross-repo, "auto:*"]
+caps:
+  "priority:0-now": 2
+  "priority:1-next": 8
+legacy_map:
+  bug: "type:bug"
+  enhancement: "type:feature"
+  documentation: "type:docs"
+  P0: "priority:0-now"
+  P1: "priority:1-next"
+  P2: "priority:2-later"
+  interactive: "exec:founder"
+legacy_keep: [bug, enhancement, documentation, P0, P1, P2, interactive]

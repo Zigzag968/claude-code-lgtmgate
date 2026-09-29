@@ -1,0 +1,832 @@
+[
+  {
+    "number": 101,
+    "state": "OPEN",
+    "createdAt": "2026-09-18T10:00:00Z",
+    "title": "winner: ready agent bug S p0",
+    "labels": [
+      {
+        "id": "LA_2281065142",
+        "name": "status:ready",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_4163006819",
+        "name": "exec:agent",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_889412852",
+        "name": "size:S",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_996368068",
+        "name": "type:bug",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_4243112337",
+        "name": "priority:0-now",
+        "description": "",
+        "color": "ededed"
+      }
+    ],
+    "blockedBy": {
+      "nodes": [],
+      "totalCount": 0
+    }
+  },
+  {
+    "number": 102,
+    "state": "OPEN",
+    "createdAt": "2026-09-19T10:00:00Z",
+    "title": "ready feature M p1",
+    "labels": [
+      {
+        "id": "LA_2281065142",
+        "name": "status:ready",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_4163006819",
+        "name": "exec:agent",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_3473695127",
+        "name": "size:M",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_2952639564",
+        "name": "type:feature",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_1137531655",
+        "name": "priority:1-next",
+        "description": "",
+        "color": "ededed"
+      }
+    ],
+    "blockedBy": {
+      "nodes": [],
+      "totalCount": 0
+    }
+  },
+  {
+    "number": 103,
+    "state": "OPEN",
+    "createdAt": "2026-09-20T10:00:00Z",
+    "title": "ready but blocked by an open issue",
+    "labels": [
+      {
+        "id": "LA_2281065142",
+        "name": "status:ready",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_4163006819",
+        "name": "exec:agent",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_889412852",
+        "name": "size:S",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_3545054924",
+        "name": "type:chore",
+        "description": "",
+        "color": "ededed"
+      }
+    ],
+    "blockedBy": {
+      "nodes": [
+        {
+          "number": 999,
+          "state": "OPEN",
+          "title": "blocker 999",
+          "url": "https://github.com/o/r/issues/999"
+        }
+      ],
+      "totalCount": 1
+    }
+  },
+  {
+    "number": 104,
+    "state": "OPEN",
+    "createdAt": "2026-09-21T10:00:00Z",
+    "title": "ready with a closed blocker",
+    "labels": [
+      {
+        "id": "LA_2281065142",
+        "name": "status:ready",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_4163006819",
+        "name": "exec:agent",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_889412852",
+        "name": "size:S",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_3545054924",
+        "name": "type:chore",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_1822925755",
+        "name": "priority:2-later",
+        "description": "",
+        "color": "ededed"
+      }
+    ],
+    "blockedBy": {
+      "nodes": [
+        {
+          "number": 998,
+          "state": "CLOSED",
+          "title": "blocker 998",
+          "url": "https://github.com/o/r/issues/998"
+        }
+      ],
+      "totalCount": 1
+    }
+  },
+  {
+    "number": 105,
+    "state": "OPEN",
+    "createdAt": "2026-09-22T10:00:00Z",
+    "title": "ready, closing-referenced by an open PR",
+    "labels": [
+      {
+        "id": "LA_2281065142",
+        "name": "status:ready",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_4163006819",
+        "name": "exec:agent",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_889412852",
+        "name": "size:S",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_3545054924",
+        "name": "type:chore",
+        "description": "",
+        "color": "ededed"
+      }
+    ],
+    "blockedBy": {
+      "nodes": [],
+      "totalCount": 0
+    }
+  },
+  {
+    "number": 106,
+    "state": "OPEN",
+    "createdAt": "2026-09-23T10:00:00Z",
+    "title": "ready, referenced by #106 in a PR body",
+    "labels": [
+      {
+        "id": "LA_2281065142",
+        "name": "status:ready",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_4163006819",
+        "name": "exec:agent",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_889412852",
+        "name": "size:S",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_3545054924",
+        "name": "type:chore",
+        "description": "",
+        "color": "ededed"
+      }
+    ],
+    "blockedBy": {
+      "nodes": [],
+      "totalCount": 0
+    }
+  },
+  {
+    "number": 107,
+    "state": "OPEN",
+    "createdAt": "2026-09-24T10:00:00Z",
+    "title": "ready but founder executor",
+    "labels": [
+      {
+        "id": "LA_2281065142",
+        "name": "status:ready",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_3686307056",
+        "name": "exec:founder",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_889412852",
+        "name": "size:S",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_3545054924",
+        "name": "type:chore",
+        "description": "",
+        "color": "ededed"
+      }
+    ],
+    "blockedBy": {
+      "nodes": [],
+      "totalCount": 0
+    }
+  },
+  {
+    "number": 108,
+    "state": "OPEN",
+    "createdAt": "2026-09-25T10:00:00Z",
+    "title": "ready but cross-repo",
+    "labels": [
+      {
+        "id": "LA_2281065142",
+        "name": "status:ready",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_4163006819",
+        "name": "exec:agent",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_889412852",
+        "name": "size:S",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_3545054924",
+        "name": "type:chore",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_448509134",
+        "name": "cross-repo",
+        "description": "",
+        "color": "ededed"
+      }
+    ],
+    "blockedBy": {
+      "nodes": [],
+      "totalCount": 0
+    }
+  },
+  {
+    "number": 109,
+    "state": "OPEN",
+    "createdAt": "2026-09-26T10:00:00Z",
+    "title": "ready but money-path",
+    "labels": [
+      {
+        "id": "LA_2281065142",
+        "name": "status:ready",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_4163006819",
+        "name": "exec:agent",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_889412852",
+        "name": "size:S",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_3545054924",
+        "name": "type:chore",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_1741331367",
+        "name": "money-path",
+        "description": "",
+        "color": "ededed"
+      }
+    ],
+    "blockedBy": {
+      "nodes": [],
+      "totalCount": 0
+    }
+  },
+  {
+    "number": 110,
+    "state": "OPEN",
+    "createdAt": "2026-09-27T10:00:00Z",
+    "title": "ready but epic",
+    "labels": [
+      {
+        "id": "LA_2281065142",
+        "name": "status:ready",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_4163006819",
+        "name": "exec:agent",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_889412852",
+        "name": "size:S",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_2668916036",
+        "name": "type:epic",
+        "description": "",
+        "color": "ededed"
+      }
+    ],
+    "blockedBy": {
+      "nodes": [],
+      "totalCount": 0
+    }
+  },
+  {
+    "number": 111,
+    "state": "OPEN",
+    "createdAt": "2026-09-28T10:00:00Z",
+    "title": "ready but size L",
+    "labels": [
+      {
+        "id": "LA_2281065142",
+        "name": "status:ready",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_4163006819",
+        "name": "exec:agent",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_3087749377",
+        "name": "size:L",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_2952639564",
+        "name": "type:feature",
+        "description": "",
+        "color": "ededed"
+      }
+    ],
+    "blockedBy": {
+      "nodes": [],
+      "totalCount": 0
+    }
+  },
+  {
+    "number": 112,
+    "state": "OPEN",
+    "createdAt": "2026-09-01T10:00:00Z",
+    "title": "ready but no size",
+    "labels": [
+      {
+        "id": "LA_2281065142",
+        "name": "status:ready",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_4163006819",
+        "name": "exec:agent",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_2952639564",
+        "name": "type:feature",
+        "description": "",
+        "color": "ededed"
+      }
+    ],
+    "blockedBy": {
+      "nodes": [],
+      "totalCount": 0
+    }
+  },
+  {
+    "number": 113,
+    "state": "OPEN",
+    "createdAt": "2026-09-02T10:00:00Z",
+    "title": "ready nightly S",
+    "labels": [
+      {
+        "id": "LA_2281065142",
+        "name": "status:ready",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_267906906",
+        "name": "nightly",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_889412852",
+        "name": "size:S",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_3545054924",
+        "name": "type:chore",
+        "description": "",
+        "color": "ededed"
+      }
+    ],
+    "blockedBy": {
+      "nodes": [],
+      "totalCount": 0
+    }
+  },
+  {
+    "number": 114,
+    "state": "OPEN",
+    "createdAt": "2026-09-03T10:00:00Z",
+    "title": "inbox item",
+    "labels": [
+      {
+        "id": "LA_3513924640",
+        "name": "status:inbox",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_3545054924",
+        "name": "type:chore",
+        "description": "",
+        "color": "ededed"
+      }
+    ],
+    "blockedBy": {
+      "nodes": [],
+      "totalCount": 0
+    }
+  },
+  {
+    "number": 115,
+    "state": "OPEN",
+    "createdAt": "2026-09-04T10:00:00Z",
+    "title": "needs-info item",
+    "labels": [
+      {
+        "id": "LA_2740517402",
+        "name": "status:needs-info",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_3545054924",
+        "name": "type:chore",
+        "description": "",
+        "color": "ededed"
+      }
+    ],
+    "blockedBy": {
+      "nodes": [],
+      "totalCount": 0
+    }
+  },
+  {
+    "number": 116,
+    "state": "CLOSED",
+    "createdAt": "2026-09-05T10:00:00Z",
+    "title": "closed ready issue",
+    "labels": [
+      {
+        "id": "LA_2281065142",
+        "name": "status:ready",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_4163006819",
+        "name": "exec:agent",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_889412852",
+        "name": "size:S",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_996368068",
+        "name": "type:bug",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_4243112337",
+        "name": "priority:0-now",
+        "description": "",
+        "color": "ededed"
+      }
+    ],
+    "blockedBy": {
+      "nodes": [],
+      "totalCount": 0
+    }
+  },
+  {
+    "number": 117,
+    "state": "OPEN",
+    "createdAt": "2026-09-06T10:00:00Z",
+    "title": "ready and inbox at once",
+    "labels": [
+      {
+        "id": "LA_2281065142",
+        "name": "status:ready",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_3513924640",
+        "name": "status:inbox",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_4163006819",
+        "name": "exec:agent",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_889412852",
+        "name": "size:S",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_996368068",
+        "name": "type:bug",
+        "description": "",
+        "color": "ededed"
+      }
+    ],
+    "blockedBy": {
+      "nodes": [],
+      "totalCount": 0
+    }
+  },
+  {
+    "number": 118,
+    "state": "OPEN",
+    "createdAt": "2026-09-07T10:00:00Z",
+    "title": "agent and nightly at once",
+    "labels": [
+      {
+        "id": "LA_2740517402",
+        "name": "status:needs-info",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_4163006819",
+        "name": "exec:agent",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_267906906",
+        "name": "nightly",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_3545054924",
+        "name": "type:chore",
+        "description": "",
+        "color": "ededed"
+      }
+    ],
+    "blockedBy": {
+      "nodes": [],
+      "totalCount": 0
+    }
+  },
+  {
+    "number": 119,
+    "state": "OPEN",
+    "createdAt": "2026-09-08T10:00:00Z",
+    "title": "ready with no executor",
+    "labels": [
+      {
+        "id": "LA_2281065142",
+        "name": "status:ready",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_889412852",
+        "name": "size:S",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_3545054924",
+        "name": "type:chore",
+        "description": "",
+        "color": "ededed"
+      }
+    ],
+    "blockedBy": {
+      "nodes": [],
+      "totalCount": 0
+    }
+  },
+  {
+    "number": 120,
+    "state": "OPEN",
+    "createdAt": "2026-09-09T10:00:00Z",
+    "title": "no type label (a)",
+    "labels": [
+      {
+        "id": "LA_3513924640",
+        "name": "status:inbox",
+        "description": "",
+        "color": "ededed"
+      }
+    ],
+    "blockedBy": {
+      "nodes": [],
+      "totalCount": 0
+    }
+  },
+  {
+    "number": 121,
+    "state": "OPEN",
+    "createdAt": "2026-09-10T10:00:00Z",
+    "title": "no type label (b)",
+    "labels": [
+      {
+        "id": "LA_3513924640",
+        "name": "status:inbox",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_1217512335",
+        "name": "area:product",
+        "description": "",
+        "color": "ededed"
+      }
+    ],
+    "blockedBy": {
+      "nodes": [],
+      "totalCount": 0
+    }
+  },
+  {
+    "number": 122,
+    "state": "OPEN",
+    "createdAt": "2026-09-11T10:00:00Z",
+    "title": "ready with legacy epic label",
+    "labels": [
+      {
+        "id": "LA_2281065142",
+        "name": "status:ready",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_4163006819",
+        "name": "exec:agent",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_889412852",
+        "name": "size:S",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_3545054924",
+        "name": "type:chore",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_432623729",
+        "name": "epic",
+        "description": "",
+        "color": "ededed"
+      }
+    ],
+    "blockedBy": {
+      "nodes": [],
+      "totalCount": 0
+    }
+  },
+  {
+    "number": 123,
+    "state": "OPEN",
+    "createdAt": "2026-09-12T10:00:00Z",
+    "title": "ready with triage:interactive",
+    "labels": [
+      {
+        "id": "LA_2281065142",
+        "name": "status:ready",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_4163006819",
+        "name": "exec:agent",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_889412852",
+        "name": "size:S",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_3545054924",
+        "name": "type:chore",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_1587962367",
+        "name": "triage:interactive",
+        "description": "",
+        "color": "ededed"
+      }
+    ],
+    "blockedBy": {
+      "nodes": [],
+      "totalCount": 0
+    }
+  }
+]

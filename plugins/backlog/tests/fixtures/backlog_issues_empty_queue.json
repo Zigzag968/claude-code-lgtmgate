@@ -1,0 +1,98 @@
+[
+  {
+    "number": 201,
+    "state": "OPEN",
+    "createdAt": "2026-09-06T10:00:00Z",
+    "title": "inbox one",
+    "labels": [
+      {
+        "id": "LA_3513924640",
+        "name": "status:inbox",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_996368068",
+        "name": "type:bug",
+        "description": "",
+        "color": "ededed"
+      }
+    ],
+    "blockedBy": {
+      "nodes": [],
+      "totalCount": 0
+    }
+  },
+  {
+    "number": 202,
+    "state": "OPEN",
+    "createdAt": "2026-09-07T10:00:00Z",
+    "title": "inbox two",
+    "labels": [
+      {
+        "id": "LA_3513924640",
+        "name": "status:inbox",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_2952639564",
+        "name": "type:feature",
+        "description": "",
+        "color": "ededed"
+      }
+    ],
+    "blockedBy": {
+      "nodes": [],
+      "totalCount": 0
+    }
+  },
+  {
+    "number": 203,
+    "state": "OPEN",
+    "createdAt": "2026-09-08T10:00:00Z",
+    "title": "inbox three",
+    "labels": [
+      {
+        "id": "LA_3513924640",
+        "name": "status:inbox",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_3545054924",
+        "name": "type:chore",
+        "description": "",
+        "color": "ededed"
+      }
+    ],
+    "blockedBy": {
+      "nodes": [],
+      "totalCount": 0
+    }
+  },
+  {
+    "number": 204,
+    "state": "OPEN",
+    "createdAt": "2026-09-09T10:00:00Z",
+    "title": "needs info one",
+    "labels": [
+      {
+        "id": "LA_2740517402",
+        "name": "status:needs-info",
+        "description": "",
+        "color": "ededed"
+      },
+      {
+        "id": "LA_3545054924",
+        "name": "type:chore",
+        "description": "",
+        "color": "ededed"
+      }
+    ],
+    "blockedBy": {
+      "nodes": [],
+      "totalCount": 0
+    }
+  }
+]
