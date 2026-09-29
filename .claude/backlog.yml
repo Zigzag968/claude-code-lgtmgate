@@ -2,7 +2,7 @@
 # apply GitHub-label writes for proposals already accepted by triage-check).
 contract: 1
 mode: write-supervised
-repo: Zigzag968/lgtmgate
+repo: Zigzag968/claude-code-lgtmgate
 labels:
   type: [bug, feature, tech-debt, docs, epic]
   status: [inbox, needs-info, ready]

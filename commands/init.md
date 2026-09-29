@@ -79,7 +79,7 @@ If the target files exist: insert the block at the right spot (Edit). Otherwise:
 
 ## 4. Settings (reminder)
 Remind the user to enable the plugin in `.claude/settings.json` (or global settings):
-- `extraKnownMarketplaces` → add the `zigzag-plugins` marketplace (`github` / `Zigzag968/lgtmgate`).
+- `extraKnownMarketplaces` → add the `zigzag-plugins` marketplace (`github` / `Zigzag968/claude-code-lgtmgate`).
 - `enabledPlugins` → add `"lgtmgate@zigzag-plugins"`.
 
 Offer to do it for them (Edit the settings) after confirmation; otherwise show the diff to paste.

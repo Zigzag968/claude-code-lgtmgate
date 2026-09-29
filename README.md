@@ -92,7 +92,7 @@ The Lead (you, or the orchestrator) creates a shared git worktree and drives the
 ## Install
 
 ```
-claude plugin marketplace add Zigzag968/lgtmgate
+claude plugin marketplace add Zigzag968/claude-code-lgtmgate
 claude plugin install lgtmgate@zigzag-plugins
 ```
 
@@ -121,7 +121,7 @@ Restart the session, then in your target project run `/lgtmgate:init`. It genera
 {
   "extraKnownMarketplaces": {
     "zigzag-plugins": {
-      "source": { "source": "github", "repo": "Zigzag968/lgtmgate" }
+      "source": { "source": "github", "repo": "Zigzag968/claude-code-lgtmgate" }
     }
   },
   "enabledPlugins": {

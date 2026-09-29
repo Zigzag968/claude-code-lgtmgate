@@ -73,7 +73,7 @@ class TestSkills(unittest.TestCase):
     def test_manifest_has_no_settings_or_user_config_surface(self):
         manifest = json.loads((S.PLUGIN_ROOT / ".claude-plugin" / "plugin.json").read_text())
         self.assertNotIn("userConfig", manifest)
-        self.assertEqual(manifest["version"], "0.5.4")
+        self.assertEqual(manifest["version"], "0.5.5")
 
     def test_reserved_words_stay_where_the_contract_puts_them(self):
         def offenders(pattern, allowed):

@@ -84,34 +84,34 @@ assert_case "no blockedBy key" 0 "none" "$(run_resolver "$s1" "")"
 # --- case 2: real #100 payload (label present) -> resolved/0 -----------
 
 f2="$(new_fixture)"
-s2="$(write_json "$f2" "run.json" '{"issue":799,"status":"blocked-by","blockedBy":{"repo":"Zigzag968/lgtmgate","issue":100}}')"
+s2="$(write_json "$f2" "run.json" '{"issue":799,"status":"blocked-by","blockedBy":{"repo":"Zigzag968/claude-code-lgtmgate","issue":100}}')"
 p2="$(write_json "$f2" "probe.json" "$REAL_100_PROBE_JSON")"
 assert_case "real #100 payload resolved" 0 "resolved" "$(run_resolver "$s2" "cat '$p2'")"
 
 # --- case 3: same issue, OPEN, no label -> pending/10 -------------------
 
 f3="$(new_fixture)"
-s3="$(write_json "$f3" "run.json" '{"issue":799,"status":"blocked-by","blockedBy":{"repo":"Zigzag968/lgtmgate","issue":100}}')"
+s3="$(write_json "$f3" "run.json" '{"issue":799,"status":"blocked-by","blockedBy":{"repo":"Zigzag968/claude-code-lgtmgate","issue":100}}')"
 p3="$(write_json "$f3" "probe.json" '{"state":"OPEN","stateReason":null,"labels":[]}')"
 assert_case "open no label pending" 10 "pending" "$(run_resolver "$s3" "cat '$p3'")"
 
 # --- case 4: CLOSED, stateReason NOT_PLANNED, no label -> abandoned/11 --
 
 f4="$(new_fixture)"
-s4="$(write_json "$f4" "run.json" '{"issue":799,"status":"blocked-by","blockedBy":{"repo":"Zigzag968/lgtmgate","issue":100}}')"
+s4="$(write_json "$f4" "run.json" '{"issue":799,"status":"blocked-by","blockedBy":{"repo":"Zigzag968/claude-code-lgtmgate","issue":100}}')"
 p4="$(write_json "$f4" "probe.json" '{"state":"CLOSED","stateReason":"NOT_PLANNED","labels":[]}')"
 assert_case "closed not-planned abandoned" 11 "abandoned" "$(run_resolver "$s4" "cat '$p4'")"
 
 # --- case 5: probe exits non-zero -> unknown/20 -------------------------
 
 f5="$(new_fixture)"
-s5="$(write_json "$f5" "run.json" '{"issue":799,"status":"blocked-by","blockedBy":{"repo":"Zigzag968/lgtmgate","issue":100}}')"
+s5="$(write_json "$f5" "run.json" '{"issue":799,"status":"blocked-by","blockedBy":{"repo":"Zigzag968/claude-code-lgtmgate","issue":100}}')"
 assert_case "probe failure unknown" 20 "unknown" "$(run_resolver "$s5" "false")"
 
 # --- case 6: blockedBy missing "issue" -> unknown/20 --------------------
 
 f6="$(new_fixture)"
-s6="$(write_json "$f6" "run.json" '{"issue":799,"status":"blocked-by","blockedBy":{"repo":"Zigzag968/lgtmgate"}}')"
+s6="$(write_json "$f6" "run.json" '{"issue":799,"status":"blocked-by","blockedBy":{"repo":"Zigzag968/claude-code-lgtmgate"}}')"
 assert_case "blockedBy missing issue unknown" 20 "unknown" "$(run_resolver "$s6" "")"
 
 # --- case 7: custom resolveOnLabel honored -> resolved/0 ----------------

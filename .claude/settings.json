@@ -19,7 +19,7 @@
   },
   "extraKnownMarketplaces": {
     "zigzag-plugins": {
-      "source": { "source": "github", "repo": "Zigzag968/lgtmgate" }
+      "source": { "source": "github", "repo": "Zigzag968/claude-code-lgtmgate" }
     }
   }
 }

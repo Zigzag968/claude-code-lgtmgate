@@ -56,7 +56,7 @@ assert_exit "git push colon-refspec delete" 2 "$(run_hook "git push origin :feat
 # Exact command from Theo's confirmed diagnosis.
 
 assert_exit "gh api -X DELETE git/refs/heads" 2 \
-  "$(run_hook "gh api -X DELETE repos/Zigzag968/lgtmgate/git/refs/heads/feat/issue-61")"
+  "$(run_hook "gh api -X DELETE repos/Zigzag968/claude-code-lgtmgate/git/refs/heads/feat/issue-61")"
 
 # --- case 5: gh api --method DELETE (long flag form) -> 2 ---------------
 

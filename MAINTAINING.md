@@ -174,10 +174,10 @@ version.
 
 ## 5. Trust root
 
-**The trust root is push access to `Zigzag968/lgtmgate`'s `main`, ALONE.** This repo
+**The trust root is push access to `Zigzag968/claude-code-lgtmgate`'s `main`, ALONE.** This repo
 is private on a plan where branch protection and rulesets are both **unavailable** — verified this
-session: `gh api repos/Zigzag968/lgtmgate/branches/main/protection` and
-`gh api repos/Zigzag968/lgtmgate/rulesets` both return HTTP 403, *"Upgrade to GitHub
+session: `gh api repos/Zigzag968/claude-code-lgtmgate/branches/main/protection` and
+`gh api repos/Zigzag968/claude-code-lgtmgate/rulesets` both return HTTP 403, *"Upgrade to GitHub
 Pro or make this repository public to enable this feature."* So `main` accepts any push from any
 credential with write access, unreviewed: no required reviews, no required status checks, no
 force-push protection. The `sha` pin on the marketplace entry is a **release gate**, not an
