@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Claude Code Plugin](https://img.shields.io/badge/Claude%20Code-plugin-5A32FB)](https://code.claude.com/docs/en/plugins)
 
-lgtmgate turns a GitHub issue into a merge-ready pull request, end to end, through a small crew of specialized Claude Code agents. Before anyone plans anything, it checks the issue is real. Before anyone merges anything, a checklist has to be proven true — not just checked, *proven*, with a command's output or an artifact a human can inspect. And no agent in this pipeline ever merges its own work, including when the pipeline ships itself.
+lgtmgate is a Claude Code plugin that takes a GitHub issue through to a merge-ready pull request. A diagnosis agent checks the issue is real before anyone writes a plan for it. A reviewer checks each item on the acceptance checklist against actual evidence, a command's output or an artifact, before approving. None of the agents merge anything themselves, including when this repo ships its own releases.
 
 ## How it works
 
@@ -17,7 +17,7 @@ flowchart LR
     Morgan -- LGTM --> Merge(["You merge"])
 ```
 
-Five roles, one job each. **Theo** reproduces the problem for real before anyone touches code. **Mia** frames the feature in product terms, only when asked. **Sam** plans, anchored to files it actually read. **Nick** implements and opens the PR. **Morgan** reviews it — never Nick, never Sam — and only says LGTM once every checklist item is proven. You merge. See [Agents](#agents) for the full breakdown.
+Theo reproduces the reported problem before anyone touches code. Mia frames the feature in product terms, but only if asked. Sam writes the plan, anchored to files it actually read this run. Nick implements the plan and opens the PR. Morgan, a different agent than the one who wrote the code, reviews it and approves once every checklist item has evidence behind it. Then you merge it. Role details are in [Agents](#agents).
 
 ## Example
 
@@ -27,24 +27,24 @@ $ /lgtmgate:feature 142 "Login page shows a stale error after a successful retry
 
 1. **Theo** reproduces the stale-error state, confirms it's real, hands off to Sam.
 2. **Sam** posts an anchored plan on issue #142: impact table, implementation steps, an acceptance checklist Morgan can verify offline.
-3. **Nick** implements it, opens a draft PR with the checklist copied into the body — unticked.
+3. **Nick** implements it and opens a draft PR with the checklist copied into the body, unticked.
 4. **Morgan** runs the regression guard, checks conventions, ticks each box against real proof, posts a verdict:
    - `REQUIRED_CHANGES` → Nick fixes, Morgan re-reviews. Loops until resolved.
    - `LGTM` → PR undrafted, ready. **You merge it.**
 
 ## Why lgtmgate
 
-- **The gate is mechanical, not vibes.** A hook refuses `gh pr merge` while any acceptance box is unchecked — checked means proven, not asserted.
-- **The reviewer never fixes, the fixer never merges.** Morgan and Nick are different roles, on purpose — no agent reviews its own work.
+- A git hook refuses `gh pr merge` while any acceptance box is unchecked, and a box only gets checked once there's evidence behind it.
+- Review and implementation are split across two different agents (Morgan and Nick), so neither one reviews its own work.
 
 <details>
-<summary><strong>Engineering highlights</strong> — every number here is one command away from a stranger's own terminal</summary>
+<summary>Engineering highlights (you can reproduce every number below by running the scripts yourself)</summary>
 
-- **709 offline test cases, zero network/mocked-API dependency**, across 6 suites: `templates/test-canonical-guards.sh` (20 release invariants), `scripts/run-flow-suite.cjs` (177 pipeline-logic cases), `plugins/backlog/tests/` (467 Python unit tests), `templates/test-blocked-by-check.sh` (9), `hooks/test-Stop-supervise-runs.sh` (17), `hooks/test-deny-destructive-git.sh` (19).
-- **Adversarial plan audit** (opt-in, `planAudit`): a separate auditor agent challenges Sam's plan before Nick writes a line of code, bounded to a hard round ceiling so a disagreement can't spiral into runaway spawns.
-- **Regression guard by SET-DIFF, not a blind re-run**: Morgan captures a baseline against the pre-change branch and diffs the exact test set the change touched, instead of re-running the whole suite on every PR.
-- **Isolated by construction**: every run gets its own git worktree — Theo, Sam, Nick and Morgan share it so plan, code and review sit on the identical frozen base, but the pipeline never touches your own working checkout.
-- **A documented trust boundary, not a claimed sandbox**: [SECURITY.md](SECURITY.md) states plainly what this plugin does and doesn't protect against — `.claude/pipeline.config.json` is trusted-operator input, not sandboxed against injected prompt content.
+- 709 offline test cases across 6 suites, no network or mocked API calls: `templates/test-canonical-guards.sh` (20 release invariants), `scripts/run-flow-suite.cjs` (177 pipeline-logic cases), `plugins/backlog/tests/` (467 Python unit tests), `templates/test-blocked-by-check.sh` (9), `hooks/test-Stop-supervise-runs.sh` (17), `hooks/test-deny-destructive-git.sh` (19).
+- An opt-in adversarial plan audit (`planAudit`): a separate agent can challenge Sam's plan before Nick starts coding, capped at a fixed number of rounds so a disagreement can't spawn agents indefinitely.
+- A regression guard based on a SET-DIFF: Morgan captures a baseline from the pre-change branch and diffs the exact test set the change touched, rather than re-running the whole suite on every PR.
+- Every run gets its own git worktree. Theo, Sam, Nick and Morgan work inside that same worktree so plan, code and review sit on the same frozen base, and the pipeline never touches your own working checkout.
+- `SECURITY.md` documents the actual trust boundary: `.claude/pipeline.config.json` is trusted-operator input, not sandboxed against injected prompt content. Worth reading before you point this at a repo with anything sensitive in it.
 
 </details>
 
