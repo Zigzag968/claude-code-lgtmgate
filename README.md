@@ -40,6 +40,7 @@ $ /lgtmgate:feature 142 "Login page shows a stale error after a successful retry
 
 - A git hook refuses `gh pr merge` while any acceptance box is unchecked, and a box only gets checked once there's evidence behind it.
 - Review and implementation are split across two different agents (Morgan and Nick), so neither one reviews its own work.
+- Most of the guardrails here exist because a real run hit a real problem first, not because someone anticipated it on a whiteboard. The rule against chaining Bash commands exists because one such command once froze a session for the better part of an hour under non-interactive mode. The pipeline didn't ship this cautious, it got this way.
 
 ## Configuration & overrides
 
