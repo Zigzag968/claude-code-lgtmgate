@@ -40,7 +40,15 @@ $ /lgtmgate:feature 142 "Login page shows a stale error after a successful retry
 
 - A git hook refuses `gh pr merge` while any acceptance box is unchecked, and a box only gets checked once there's evidence behind it.
 - Review and implementation are split across two different agents (Morgan and Nick), so neither one reviews its own work.
-- Most of the guardrails here exist because a real run hit a real problem first, not because someone anticipated it on a whiteboard. The rule against chaining Bash commands exists because one such command once froze a session for the better part of an hour under non-interactive mode. The pipeline didn't ship this cautious, it got this way.
+
+### This project matured through real use. Here's how.
+
+Most of the guardrails below weren't designed up front — they exist because a real run hit a real problem, and the fix became a permanent rule.
+
+- A chained Bash command (`a && b`) once froze a session for the better part of an hour under non-interactive mode, slipping past both auto-approve and auto-deny. Every agent in this pipeline is now restricted to one plain command per call.
+- The destructive-git denials (no `reset --hard`, no `push --force`, no `worktree remove` without confirmation) aren't a generic threat model — they block moves an agent genuinely attempted, once, for real.
+- Morgan re-reviewing a fix round used to mean "look again." It now means citing a literal `grep` against the new diff — a verdict without that citation is treated as invalid, not just weak.
+- The `Stop` hook's watchdog doesn't just catch a run gone silent. It also detects a specific Claude Code harness bug (stale message injection into a subagent) mechanically, and works around it, with a note to remove the workaround once the upstream fix ships.
 
 ## Configuration & overrides
 
