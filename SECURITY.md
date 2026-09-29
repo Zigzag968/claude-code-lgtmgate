@@ -37,10 +37,11 @@ install it on a repository with anything sensitive in it:
   not a sandbox against a malicious config or a malicious prompt injected through issue/PR content
   the agents read.
 - **This plugin never merges its own publish PR, and neither should any automation you build on
-  it for your own repos** — merging is treated as a human-only gesture throughout this codebase.
-  If you build unattended automation on top of `lgtmgate` (a scheduled runner, etc.), keep
-  that boundary: let agents prepare and open PRs, never let them merge to your default branch
-  unattended.
+  it for your own repos** — Nick and Morgan never merge, in this codebase or in yours. Merging is
+  the Lead orchestrating the run, not one of the pipeline's worker agents. If you build unattended
+  automation on top of `lgtmgate` (a scheduled runner, etc.), keep that boundary: let agents
+  prepare and open PRs, and if the Lead itself merges unattended, that's a deliberate choice you
+  made and are accountable for, not something this plugin's own agents will ever do on their own.
 - **CI implications**: this repository's own CI (`.github/workflows/guards.yml`) executes
   branch-authored code by design (see the workflow's header comment) and therefore triggers only on
   `pull_request`, never `pull_request_target` — if you fork this plugin or adapt its CI pattern,

@@ -14,10 +14,10 @@ flowchart LR
     Sam --> Nick["Nick<br/>dev + PR"]
     Nick --> Morgan{"Morgan<br/>review"}
     Morgan -- REQUIRED_CHANGES --> Nick
-    Morgan -- LGTM --> Merge(["You merge"])
+    Morgan -- LGTM --> Merge(["PR mergeable"])
 ```
 
-Theo reproduces the reported problem before anyone touches code. Mia frames the feature in product terms, but only if asked. Sam writes the plan, anchored to files it actually read this run. Nick implements the plan and opens the PR. Morgan, a different agent than the one who wrote the code, reviews it and approves once every checklist item has evidence behind it. Then you merge it. Role details are in [Agents](#agents).
+Theo reproduces the reported problem before anyone touches code. Mia frames the feature in product terms, but only if asked. Sam writes the plan, anchored to files it actually read this run. Nick implements the plan and opens the PR. Morgan, a different agent than the one who wrote the code, reviews it and approves once every checklist item has evidence behind it. The PR is then mergeable — by the Lead orchestrating the run, never by Nick or Morgan themselves. Role details are in [Agents](#agents).
 
 ## Example
 
@@ -30,7 +30,7 @@ $ /lgtmgate:feature 142 "Login page shows a stale error after a successful retry
 3. **Nick** implements it and opens a draft PR with the checklist copied into the body, unticked.
 4. **Morgan** runs the regression guard, checks conventions, ticks each box against real proof, posts a verdict:
    - `REQUIRED_CHANGES` → Nick fixes, Morgan re-reviews. Loops until resolved.
-   - `LGTM` → PR undrafted, ready. **You merge it.**
+   - `LGTM` → PR undrafted, mergeable. The Lead merges it — Nick and Morgan never do.
 
 ## Why lgtmgate
 
