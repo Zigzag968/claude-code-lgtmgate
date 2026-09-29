@@ -21,7 +21,7 @@ Work from the project root (`${CLAUDE_PROJECT_DIR}`). The plugin lives under `${
 ## 1. Copy the templates
 Create the target folders if missing (`.claude/workflows`, `.claude/rules`, `.claude/scripts`, **`scripts`** — at the repo root, not under `.claude/`), then copy:
 
-- `${CLAUDE_PLUGIN_ROOT}/templates/test-feature-pipeline.js` → `.claude/workflows/test-feature-pipeline.js`
+- `${CLAUDE_PLUGIN_ROOT}/templates/test-deliver-pipeline.js` → `.claude/workflows/test-deliver-pipeline.js`
 - `${CLAUDE_PLUGIN_ROOT}/templates/pr-acceptance.md`         → `.claude/rules/pr-acceptance.md`
 - `${CLAUDE_PLUGIN_ROOT}/templates/gh-pipeline-status.sh`    → `.claude/scripts/gh-pipeline-status.sh`
 - `${CLAUDE_PLUGIN_ROOT}/templates/blocked-by-check.sh`      → `.claude/scripts/blocked-by-check.sh`
@@ -35,7 +35,7 @@ Pipeline stage 1 (provisioning) is **fail-closed** on `scripts/provision_worktre
 
 (1 `cp` command per file — no compounding.)
 
-**Commit + push BEFORE the first run (mandatory — MANDATORY, claude-agent-pipeline#51).** The provisioning gate runs `bash "<worktree>/scripts/provision_worktree.sh"` **from the WORKTREE**, i.e. the content **COMMITTED** on `baseBranch` — not the working tree of the main checkout that `init` just wrote to. `git worktree add` always clones from a committed ref: until these files are committed + pushed to `baseBranch`, a freshly created worktree does NOT have `scripts/provision_worktree.sh`, the gate `exit 127`s, and the pipeline escalates `provision-failed` on the very first task — exactly the failure this gate is meant to prevent. Before the first `/lgtmgate:feature`:
+**Commit + push BEFORE the first run (mandatory — MANDATORY, claude-agent-pipeline#51).** The provisioning gate runs `bash "<worktree>/scripts/provision_worktree.sh"` **from the WORKTREE**, i.e. the content **COMMITTED** on `baseBranch` — not the working tree of the main checkout that `init` just wrote to. `git worktree add` always clones from a committed ref: until these files are committed + pushed to `baseBranch`, a freshly created worktree does NOT have `scripts/provision_worktree.sh`, the gate `exit 127`s, and the pipeline escalates `provision-failed` on the very first task — exactly the failure this gate is meant to prevent. Before the first `/lgtmgate:deliver`:
 ```bash
 git add scripts/provision_worktree.sh .claude/workflows .claude/rules .claude/scripts .claude/pipeline.config.json
 ```
@@ -92,4 +92,4 @@ gh project field-create <number> --owner <owner> --name "Pipeline Status" --data
 Then fetch the `optionId`s (via `gh project field-list ... --format json`) and fill in `ghProject.statusOptions` in the config.
 
 ## 6. Final summary
-Show: files copied, config path, CI checks retained, and the next action (`/lgtmgate:feature <issue> "<brief>"`). If a source template is missing under `${CLAUDE_PLUGIN_ROOT}/templates/`, report it clearly (don't pretend to have copied it).
+Show: files copied, config path, CI checks retained, and the next action (`/lgtmgate:deliver <issue> "<brief>"`). If a source template is missing under `${CLAUDE_PLUGIN_ROOT}/templates/`, report it clearly (don't pretend to have copied it).

@@ -2,7 +2,7 @@
 # Offline regression test for templates/provision_worktree.sh (claude-agent-pipeline#53 + #72),
 # exercising the REAL script (not a stub) against throwaway git worktrees under $TMPDIR — the
 # only level at which the containment-reorder (#53) and the PROVISION_ENV_SYMLINK seam (#72)
-# can be proven, since templates/test-feature-pipeline.js only asserts the composed COMMAND
+# can be proven, since templates/test-deliver-pipeline.js only asserts the composed COMMAND
 # STRING (provisionCmdPreview), never runs the shell logic itself.
 #
 # Covers: #53 hostile-symlink rejection (a pre-existing symlinked intermediate directory in the

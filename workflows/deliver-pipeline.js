@@ -1,7 +1,7 @@
 export const meta = {
-  name: 'feature-pipeline',
+  name: 'deliver-pipeline',
   description: 'Sam (plan) -> Nick (dev+PR) -> Morgan (review) -> loop until LGTM',
-  whenToUse: 'Deliver a feature end-to-end through the specialized agent pipeline. The Lead creates the shared worktree before launching and passes its path.',
+  whenToUse: 'Deliver a change end-to-end through the specialized agent pipeline (bug fix, chore, or feature). The Lead creates the shared worktree before launching and passes its path.',
   phases: [
     { title: 'Diagnose', detail: 'Theo qualifies EVERY issue before Sam plans — mandatory, no opt-out' },
     { title: 'Plan', detail: 'Mia (optional) + Sam scout/plan, posted on the issue' },
@@ -12,7 +12,7 @@ export const meta = {
 
 // Args:
 //   issue       — GitHub issue number (required)
-//   brief       — one-line feature description (required)
+//   brief       — one-line description of the change (required)
 //   wtPath      — shared worktree absolute path (required)
 //   config      — project-specific configuration (stack-agnostic; see pipeline.config.template.json)
 //                 worktreeRoot resolution order: AGENT_PIPELINE_WORKTREE_ROOT env var -> configLocal.worktreeRoot
@@ -213,13 +213,13 @@ export const meta = {
 // `version`, checked against plugin.json by templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '0.8.60', cutFrom: '8db6805' }
-const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=feature-pipeline`
+const BUILD = { plugin: 'lgtmgate', version: '0.8.61', cutFrom: '186da84' }
+const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
 // Every terminal return carries the stamp as a dedicated top-level field. NOT via trace:
 // `trace` is a phase/event log asserted by full deep-equality at 11 sites in
-// templates/test-feature-pipeline.js (and in every consumer's copied suite), so prepending to
+// templates/test-deliver-pipeline.js (and in every consumer's copied suite), so prepending to
 // it would be a breaking return-shape contract change. `buildStamp` is a new field no
 // assertion reads (every eq() in the suite is field-level; none deep-equals the return).
 // nickPromptPreview (#61) — simulate-only, same idiom as preflightPromptPreview/prBodyPreview
@@ -1000,7 +1000,7 @@ function staleArtifactBlockers(proofs, floorIso) {
 // Precedence: $AGENT_PIPELINE_WORKTREE_ROOT > configLocal.worktreeRoot > config.worktreeRoot
 // (the versioned LOGICAL default). A winner is accepted only when ABSOLUTE; a relative
 // or blank value falls back to this run's own worktree parent — wtPath is
-// `<worktreeRoot>/<slug>` by construction (commands/feature.md:35) — so the brief
+// `<worktreeRoot>/<slug>` by construction (commands/deliver.md:35) — so the brief
 // never carries a relative root. No candidate and no absolute wtPath -> null, which is
 // exactly the pre-#61 `config.worktreeRoot || null` behaviour (clause omitted).
 function resolveWorktreeRoot({ env = {}, configLocal = {}, config = {}, wtPath = '' }) {
@@ -1577,7 +1577,7 @@ async function updateStatus(name) {
   // and no provisioning script hard-fails instead of skipping. Not changed in this slice — the
   // condition is asserted verbatim by the drift guard this fold is proving against
   // (tests/test_provision_missing_script_gate.py); tracked as claude-agent-pipeline#64. Pinned
-  // locally by F3 (templates/test-feature-pipeline.js) until the upstream fix lands —
+  // locally by F3 (templates/test-deliver-pipeline.js) until the upstream fix lands —
   // update BOTH F3 and the upstream pin in the same pass, never one without the other.
   const provisionArgs = provisionLinks.filter(l => l.optional !== true).map(l => ` "${l.src}" "${l.dst}"`).join('')
   const provisionScript = `${wtPath}/scripts/provision_worktree.sh`

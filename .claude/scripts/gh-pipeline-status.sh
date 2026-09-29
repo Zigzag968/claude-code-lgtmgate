@@ -30,7 +30,7 @@ fi
 
 # --limit 1000 bounds the board scan for a repo-agnostic caller: this helper has no
 # owner/repo to run an issue-side GraphQL projectItems lookup against (unlike
-# updateStatus() in workflows/feature-pipeline.js, which knows its own repo and uses that
+# updateStatus() in workflows/deliver-pipeline.js, which knows its own repo and uses that
 # lookup instead), so it stays a board scan, just no longer capped at the gh default of 30.
 ITEM="$(gh project item-list "$PROJECT_NUMBER" --owner "$OWNER" --format json --limit 1000 \
   | jq -r --argjson n "$N" '.items[] | select(.content.number == $n) | .id')"

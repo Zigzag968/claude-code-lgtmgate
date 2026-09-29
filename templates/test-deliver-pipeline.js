@@ -1,7 +1,7 @@
 export const meta = {
-  name: 'test-feature-pipeline',
-  description: 'Flow test suite for feature-pipeline.js — deterministic cases via simulate mode (live count in the suite\'s own "Results: N/N passed" trailer). Runnable via node scripts/run-flow-suite.cjs (agents, CI) or the Workflow tool (Lead).',
-  whenToUse: 'Verify feature-pipeline flow logic (gate, trace, status) without spawning real agents.',
+  name: 'test-deliver-pipeline',
+  description: 'Flow test suite for deliver-pipeline.js — deterministic cases via simulate mode (live count in the suite\'s own "Results: N/N passed" trailer). Runnable via node scripts/run-flow-suite.cjs (agents, CI) or the Workflow tool (Lead).',
+  whenToUse: 'Verify deliver-pipeline flow logic (gate, trace, status) without spawning real agents.',
 }
 
 // ---------------------------------------------------------------------------
@@ -79,22 +79,22 @@ const BASE = { issue: 1, brief: 'test feature', wtPath: '/tmp/lgtmgate-test', co
 // exercises the OLD pipeline, so a gate under test reads as broken when it is merely absent
 // from the resolved file (#526: T45/T47 "failed" against a pre-gate pipeline that was never
 // the file under review). Validating a branch therefore passes an explicit path:
-//   Workflow({ scriptPath: '<worktree>/.claude/workflows/test-feature-pipeline.js',
-//              args: { fpScriptPath: '<worktree>/.claude/workflows/feature-pipeline.js' } })
+//   Workflow({ scriptPath: '<worktree>/.claude/workflows/test-deliver-pipeline.js',
+//              args: { fpScriptPath: '<worktree>/.claude/workflows/deliver-pipeline.js' } })
 // Absent that arg the name resolution stands, which is what a post-merge run wants.
 //
 // #54 resolution rule, this repo's own copy: the canonical pipeline is now
-// `workflows/feature-pipeline.js` (the plugin's default-scanned workflow-component
-// directory — the component resolves as `lgtmgate:feature-pipeline`), while this suite
-// stays at `templates/test-feature-pipeline.js` (its own migration is S3c's). Validating a
-// branch of THIS repo therefore passes scriptPath '<worktree>/templates/test-feature-pipeline.js'
-// and args.fpScriptPath '<worktree>/workflows/feature-pipeline.js' — `--fp` is ALWAYS passed
-// explicitly by `scripts/run-flow-suite.cjs` (which defaults it to `workflows/feature-pipeline.js`,
+// `workflows/deliver-pipeline.js` (the plugin's default-scanned workflow-component
+// directory — the component resolves as `lgtmgate:deliver-pipeline`), while this suite
+// stays at `templates/test-deliver-pipeline.js` (its own migration is S3c's). Validating a
+// branch of THIS repo therefore passes scriptPath '<worktree>/templates/test-deliver-pipeline.js'
+// and args.fpScriptPath '<worktree>/workflows/deliver-pipeline.js' — `--fp` is ALWAYS passed
+// explicitly by `scripts/run-flow-suite.cjs` (which defaults it to `workflows/deliver-pipeline.js`,
 // unconditionally setting `suiteArgs.fpScriptPath`), so the `FP_REF` bare-name fallback below is
 // UNREACHABLE in this repo. The bare name IS what resolves a CONSUMER project's own copy
 // pre-S4 (`commands/init.md:21` still copies this suite into every consumer's
-// `.claude/workflows/test-feature-pipeline.js`, where the artifact under test is that
-// consumer's own `.claude/workflows/feature-pipeline.js`) — correct for consumers today, and
+// `.claude/workflows/test-deliver-pipeline.js`, where the artifact under test is that
+// consumer's own `.claude/workflows/deliver-pipeline.js`) — correct for consumers today, and
 // deliberately NOT flipped here: flipping it would silently validate the plugin's pipeline
 // instead of the consumer's branch, the same wrong-artifact class inverted. The default flips
 // in S4, atomically with the consumer copies it describes.
@@ -104,19 +104,19 @@ const BASE = { issue: 1, brief: 'test feature', wtPath: '/tmp/lgtmgate-test', co
 // fpScriptPath pre-merge.
 const SUITE_ARGS = (typeof args === 'undefined' ? null
   : (typeof args === 'string' ? JSON.parse(args) : args)) || {}
-const FP_REF = SUITE_ARGS.fpScriptPath ? { scriptPath: SUITE_ARGS.fpScriptPath } : 'feature-pipeline'
+const FP_REF = SUITE_ARGS.fpScriptPath ? { scriptPath: SUITE_ARGS.fpScriptPath } : 'deliver-pipeline'
 async function run(overrides) {
   return await workflow(FP_REF, { ...BASE, ...overrides })
 }
 
-// Guard: confirm we resolved the NEW, simulate-aware feature-pipeline — not an older copy.
+// Guard: confirm we resolved the NEW, simulate-aware deliver-pipeline — not an older copy.
 // Runs in dryRun (zero spawns). If the wrong version is resolved, abort LOUDLY before any
 // simulate case runs, so a name mis-resolution can never spawn real Sam/Nick/Morgan agents.
 const _probe = await run({ dryRun: true, mode: 'manual' })
 if (_probe.status !== 'dry-run-ok' || _probe.mode !== 'manual' || _probe.entryStage === undefined) {
   throw new Error(
-    'Wrong feature-pipeline resolved (dry-run is missing mode/entryStage). Pre-merge, pass ' +
-    "args.fpScriptPath = '<worktree>/workflows/feature-pipeline.js'.")
+    'Wrong deliver-pipeline resolved (dry-run is missing mode/entryStage). Pre-merge, pass ' +
+    "args.fpScriptPath = '<worktree>/workflows/deliver-pipeline.js'.")
 }
 
 // Capability probe (#526) — the dry-run shape above is satisfied by EVERY pipeline version, so
@@ -139,10 +139,10 @@ const _gateProbe = await run({
 })
 if (_gateProbe.status !== 'needs-revision') {
   throw new Error(
-    `Resolved feature-pipeline has NO artifact-proof gate (#526): an LGTM declaring a MISSING ` +
+    `Resolved deliver-pipeline has NO artifact-proof gate (#526): an LGTM declaring a MISSING ` +
     `artifact returned status '${_gateProbe.status}' instead of 'needs-revision'. Either the ` +
     `wrong copy was resolved — pass args.fpScriptPath = ` +
-    `'<worktree>/workflows/feature-pipeline.js' to test a branch — or the gate regressed.`)
+    `'<worktree>/workflows/deliver-pipeline.js' to test a branch — or the gate regressed.`)
 }
 
 // ---------------------------------------------------------------------------
@@ -1197,7 +1197,7 @@ await testCase('T175c provisionRaw identical input twice → identical status + 
 // structure — same section order, same all-checked acceptance block including one
 // [founder-gate] item, same zero decision-log markers). See buildPaddedBody20k below for the
 // ~20 KB real-world size class this models (#87 truncation regression).
-const PR385_BODY_REAL = "Closes #292\n\n## Summary\n- Adds `reviewMarker` (`<!-- pipeline-review-round pr=<N> -->`) that the review loop stamps as the first line of Morgan's verdict comments and Nick's push-notes.\n- Adds `minimizeSupersededReviewComments(round)`: best-effort, marker-scoped pass that minimizes (collapses, never deletes) prior-round marked comments before each Morgan spawn (initial + loop re-review), running AFTER Nick's push in the loop so his round-N note is minimized too.\n- Marker-only targeting — all pipeline agents share ONE GitHub token, so author filtering is useless/dangerous; unmarked (founder/human) comments are never touched. Fails safe: scan/mutation errors are caught and logged, never thrown.\n- Scope: directions 1+2 from Sam's plan only. Directions 3 (decision-log body section), 4 (artifact-first body), and the commit-hygiene squash note are deferred to a follow-up.\n\n## Test plan\n- `node scripts/run-flow-suite.cjs` (Lead-run; agents have no Workflow tool) — asserts trace includes `review-comment-minimized:IC_x` on a 2-round REQUIRED_CHANGES→LGTM flow with a `minimizedComments` fixture; negative control is the same flow with no fixture → zero `review-comment-minimized:` trace entries.\n- `python3 -m unittest discover plugins/backlog/tests` — all green.\n- `bash templates/test-canonical-guards.sh` — all green.\n- No Python files touched by this PR (JS-only change to `workflows/`).\n\n## Feature flag\nNone — no-opt-out hygiene pass on the existing review-loop seam, matching the plan's scope table.\n\n## Risk\nLow. Best-effort/non-throwing by construction (mirrors `reconcileMorganIssues`). Worst case on a `gh`/GraphQL hiccup: a comment simply stays visible (fail-safe), never mis-minimized, since targeting requires the literal `<!-- pipeline-review-round` marker prefix that only this pipeline ever writes.\n\n<!-- acceptance:start -->\n- [x] `node scripts/run-flow-suite.cjs` — all cases pass, incl. the 2 new minimize cases (trace assertion + negative control).\n- [x] `grep -n \"pipeline-review-round\" workflows/feature-pipeline.js` returns >= 4 hits (marker const, helper filter, both Morgan prompts, Nick prompt).\n- [x] `minimizeSupersededReviewComments` filters on marker + `isMinimized==false` ONLY (no author filter) and contains no `throw` — confirm by reading the helper.\n- [x] Call order: minimize runs before BOTH Morgan spawns and, in the loop, AFTER Nick's push — confirm by reading source order.\n- [x] Lint clean and the pre-existing flow cases still green (no exact-trace regression).\n- [x] [founder-gate] Dogfood: if THIS PR's review takes >=2 rounds, `gh pr view <pr> --json comments` shows round-0 verdict + Nick push-note as `isMinimized:true` while only the latest verdict stays visible.\n<!-- acceptance:end -->\n\n## Note\nNo further caveats — clean baseline, nothing deferred beyond what's listed in Scope above.\n\n"
+const PR385_BODY_REAL = "Closes #292\n\n## Summary\n- Adds `reviewMarker` (`<!-- pipeline-review-round pr=<N> -->`) that the review loop stamps as the first line of Morgan's verdict comments and Nick's push-notes.\n- Adds `minimizeSupersededReviewComments(round)`: best-effort, marker-scoped pass that minimizes (collapses, never deletes) prior-round marked comments before each Morgan spawn (initial + loop re-review), running AFTER Nick's push in the loop so his round-N note is minimized too.\n- Marker-only targeting — all pipeline agents share ONE GitHub token, so author filtering is useless/dangerous; unmarked (founder/human) comments are never touched. Fails safe: scan/mutation errors are caught and logged, never thrown.\n- Scope: directions 1+2 from Sam's plan only. Directions 3 (decision-log body section), 4 (artifact-first body), and the commit-hygiene squash note are deferred to a follow-up.\n\n## Test plan\n- `node scripts/run-flow-suite.cjs` (Lead-run; agents have no Workflow tool) — asserts trace includes `review-comment-minimized:IC_x` on a 2-round REQUIRED_CHANGES→LGTM flow with a `minimizedComments` fixture; negative control is the same flow with no fixture → zero `review-comment-minimized:` trace entries.\n- `python3 -m unittest discover plugins/backlog/tests` — all green.\n- `bash templates/test-canonical-guards.sh` — all green.\n- No Python files touched by this PR (JS-only change to `workflows/`).\n\n## Feature flag\nNone — no-opt-out hygiene pass on the existing review-loop seam, matching the plan's scope table.\n\n## Risk\nLow. Best-effort/non-throwing by construction (mirrors `reconcileMorganIssues`). Worst case on a `gh`/GraphQL hiccup: a comment simply stays visible (fail-safe), never mis-minimized, since targeting requires the literal `<!-- pipeline-review-round` marker prefix that only this pipeline ever writes.\n\n<!-- acceptance:start -->\n- [x] `node scripts/run-flow-suite.cjs` — all cases pass, incl. the 2 new minimize cases (trace assertion + negative control).\n- [x] `grep -n \"pipeline-review-round\" workflows/deliver-pipeline.js` returns >= 4 hits (marker const, helper filter, both Morgan prompts, Nick prompt).\n- [x] `minimizeSupersededReviewComments` filters on marker + `isMinimized==false` ONLY (no author filter) and contains no `throw` — confirm by reading the helper.\n- [x] Call order: minimize runs before BOTH Morgan spawns and, in the loop, AFTER Nick's push — confirm by reading source order.\n- [x] Lint clean and the pre-existing flow cases still green (no exact-trace regression).\n- [x] [founder-gate] Dogfood: if THIS PR's review takes >=2 rounds, `gh pr view <pr> --json comments` shows round-0 verdict + Nick push-note as `isMinimized:true` while only the latest verdict stays visible.\n<!-- acceptance:end -->\n\n## Note\nNo further caveats — clean baseline, nothing deferred beyond what's listed in Scope above.\n\n"
 
 function countOccurrences(str, sub) {
   return String(str).split(sub).length - 1
@@ -1883,11 +1883,11 @@ await testCase('F2 provision missing-script gate: no links → skip and continue
   return err ? err : { ok: true }
 })
 
-// F3 pins the documented KNOWN EDGE (feature-pipeline.js:1409-1414) at its current, intentional
+// F3 pins the documented KNOWN EDGE (deliver-pipeline.js:1409-1414) at its current, intentional
 // behavior: the no-script branch keys on the RAW extraLinks length while provisionArgs keys on
 // the optional-filtered subset, so an optional-only config still hard-fails instead of skipping.
 // Asserts on r.provisionCmdPreview (the statically composed command string), never on
-// simulate.provision — that object bypasses parseProvisionOutput entirely (feature-pipeline.js
+// simulate.provision — that object bypasses parseProvisionOutput entirely (deliver-pipeline.js
 // :1454-1458) and would prove nothing about the argv/condition mismatch this case exists to pin.
 await testCase('F3 provision no-script branch on optional-only links: KNOWN EDGE pins current hard-fail (not loud-skip)', async () => {
   const r = await run({
@@ -2278,7 +2278,7 @@ await testCase('T87b bodyWriteGuardOk guard probe — false on truncated body, t
   return (e1 || e2) ? (e1 || e2) : { ok: true }
 })
 
-// T87c (#87, negative control) — `command grep -cF "pr-body-read" workflows/feature-pipeline.js`
+// T87c (#87, negative control) — `command grep -cF "pr-body-read" workflows/deliver-pipeline.js`
 // must print 0 (the old lossy-relay labels are gone). This is a Morgan-run shell acceptance
 // item, NOT a JS test case — a hand-written JS equivalent could silently drift from the real
 // grep, so it stays out of this suite by design (see the PR acceptance checklist).
@@ -2540,14 +2540,14 @@ await testCase('T98a plan-stale advisory → trace + planStaleFiles + planTarget
     mode: 'auto',
     simulate: {
       sam: 'GO',
-      samTargetFiles: ['workflows/feature-pipeline.js', 'agents/nick.md'],
-      planStaleFiles: ['workflows/feature-pipeline.js'],
+      samTargetFiles: ['workflows/deliver-pipeline.js', 'agents/nick.md'],
+      planStaleFiles: ['workflows/deliver-pipeline.js'],
       morgan: [{ verdict: 'LGTM' }],
     },
   })
   const e1 = eq('status', r.status, 'ready')
   const e2 = includes('trace', r.trace, 'plan-stale:1')
-  const e3 = eq('planStaleFiles', r.planStaleFiles, ['workflows/feature-pipeline.js'])
+  const e3 = eq('planStaleFiles', r.planStaleFiles, ['workflows/deliver-pipeline.js'])
   const e4 = eq('planTargetsChecked', r.planTargetsChecked, 2)
   const err = e1 || e2 || e3 || e4
   return err ? err : { ok: true }
@@ -2578,13 +2578,13 @@ await testCase('T98c plan-stale gate → escalate/plan-stale before Nick, unsafe
     planFreshness: 'gate',
     simulate: {
       sam: 'GO',
-      samTargetFiles: ['workflows/feature-pipeline.js', '; rm -rf / #'],
-      planStaleFiles: ['workflows/feature-pipeline.js'],
+      samTargetFiles: ['workflows/deliver-pipeline.js', '; rm -rf / #'],
+      planStaleFiles: ['workflows/deliver-pipeline.js'],
     },
   })
   const e1 = eq('status', r.status, 'escalate')
   const e2 = eq('reason', r.reason, 'plan-stale')
-  const e3 = eq('staleFiles', r.staleFiles, ['workflows/feature-pipeline.js'])
+  const e3 = eq('staleFiles', r.staleFiles, ['workflows/deliver-pipeline.js'])
   const e4 = eq('planTargetsChecked', r.planTargetsChecked, 1)
   const e5 = r.pr !== undefined
     ? { ok: false, msg: `pr: expected undefined (Nick never spawned), got ${JSON.stringify(r.pr)}` }
@@ -3228,7 +3228,7 @@ await testCase('T263b (#263) worktree git-dir writable → no escalate, proceeds
 })
 
 // ---------------------------------------------------------------------------
-// Pure functions — worktreeFreshnessNote (extracted from workflows/feature-pipeline.js)
+// Pure functions — worktreeFreshnessNote (extracted from workflows/deliver-pipeline.js)
 // ---------------------------------------------------------------------------
 
 // --- worktreeFreshnessNote:start --- (pure & self-contained — keep extractable by the consuming project's tests)

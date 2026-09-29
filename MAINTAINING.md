@@ -5,7 +5,7 @@ the trust model of the delivery channel it ships through. Linked from `README.md
 
 ## 1. Dev loop (`--plugin-dir`)
 
-Edit `workflows/feature-pipeline.js` (or any component) in a worktree, never on `main` directly.
+Edit `workflows/deliver-pipeline.js` (or any component) in a worktree, never on `main` directly.
 Local pre-check: `git config core.hooksPath .githooks` runs `templates/test-canonical-guards.sh`
 on every commit (a local pre-check only — see §5 Enforcement below for why it is not the real
 gate).
@@ -26,11 +26,11 @@ under `--plugin-dir` DID surface its own `workflows/collision-probe.js` under th
 `lgtmgate:` namespace. **Precedence when the SAME namespaced name exists in BOTH the dev
 tree and the installed cache is NOT proven** — contribution proven, precedence not proven. This is
 unambiguous only until founder-gate item 18 (below) publishes 0.8.0. From that day the installed
-cache also ships `lgtmgate:feature-pipeline`, so this is a **mandatory disambiguation
+cache also ships `lgtmgate:deliver-pipeline`, so this is a **mandatory disambiguation
 procedure, not a caveat**:
 
 1. Before trusting ANY `--plugin-dir` dev run, set a dev-only version in the worktree — **both**
-   `BUILD.version` in `workflows/feature-pipeline.js` **and** `.claude-plugin/plugin.json`'s
+   `BUILD.version` in `workflows/deliver-pipeline.js` **and** `.claude-plugin/plugin.json`'s
    `version` — to the same value, e.g. `0.9.0-dev` (this keeps `test-canonical-guards.sh`'s
    `stamp-parity` invariant green while making the run's origin unambiguous).
 2. Run it, then CONFIRM the run's `logs[0]` / `result.buildStamp` (see §9) carries that
@@ -44,25 +44,25 @@ loop. §4 (Release) governs what IS committed.
 
 ## 2. Names, S2→S4 window
 
-The canonical pipeline component is `lgtmgate:feature-pipeline` (`workflows/` is a
-default-scanned plugin directory). **Always use the namespaced name** — a bare `feature-pipeline`
+The canonical pipeline component is `lgtmgate:deliver-pipeline` (`workflows/` is a
+default-scanned plugin directory). **Always use the namespaced name** — a bare `deliver-pipeline`
 can be shadowed by another `--plugin-dir` tree or a different installed plugin of the same
 component name (claude-agent-pipeline#526's trap, inverted).
 
 Until every consumer project migrates (S4), a not-yet-migrated project keeps its own copy at
-`.claude/workflows/feature-pipeline.js`, launched by its explicit `scriptPath`, never by a bare or
-namespaced name — see `commands/feature.md` step 1/4 for the resolution logic the Lead runbook
+`.claude/workflows/deliver-pipeline.js`, launched by its explicit `scriptPath`, never by a bare or
+namespaced name — see `commands/deliver.md` step 1/4 for the resolution logic the Lead runbook
 follows.
 
 **Bare-name probe answer, recorded verbatim (this session, `--plugin-dir`, before 0.8.0 was
 published) — UNSTABLE across invocations, never a reliable error.** The same headless runner,
-invoked with the bare name `"feature-pipeline"` against this worktree, returned **three different
+invoked with the bare name `"deliver-pipeline"` against this worktree, returned **three different
 answers on the same day** depending on invocation context:
 
 1. An isolated `--plugin-dir` capture returned a hard error, the Workflow tool's own message
    verbatim:
    ```json
-   {"error": "Workflow \"feature-pipeline\" not found. Available: deep-research, lgtmgate:feature-pipeline"}
+   {"error": "Workflow \"deliver-pipeline\" not found. Available: deep-research, lgtmgate:deliver-pipeline"}
    ```
 2. A re-capture invoked with the CLI's cwd pointed at an **unrelated project's** session
    directory (a mistake made while re-verifying this datum) silently "resolved" — but to a STALE,
@@ -72,7 +72,7 @@ answers on the same day** depending on invocation context:
 3. A re-capture invoked with the CLI's cwd correctly set to **this worktree** resolved to the
    correct canonical component, `buildStamp` included:
    ```json
-   {"logs": ["[pipeline] lgtmgate@0.8.0 cutFrom=c040169 workflow=feature-pipeline"], "result": {"buildStamp": "[pipeline] lgtmgate@0.8.0 cutFrom=c040169 workflow=feature-pipeline", "status": "dry-run-ok", "issue": 54, "mode": "semi", "entryStage": "plan"}}
+   {"logs": ["[pipeline] lgtmgate@0.8.0 cutFrom=c040169 workflow=deliver-pipeline"], "result": {"buildStamp": "[pipeline] lgtmgate@0.8.0 cutFrom=c040169 workflow=deliver-pipeline", "status": "dry-run-ok", "issue": 54, "mode": "semi", "entryStage": "plan"}}
    ```
 
 So the bare name is **not safe to treat as either "always errors" or "always resolves"** — its
@@ -100,7 +100,7 @@ claude plugin install lgtmgate@zigzag-plugins
 ## 4. Release
 
 Bump `.claude-plugin/plugin.json`'s `version` **and** `BUILD.version` in
-`workflows/feature-pipeline.js` together; set `BUILD.cutFrom` to the short SHA the artifact's
+`workflows/deliver-pipeline.js` together; set `BUILD.cutFrom` to the short SHA the artifact's
 content was **cut FROM** — the base commit it was derived from (a commit cannot carry its own SHA
 — `cutFrom` is CONTEXT, not the identity key, and it is deliberately **unguarded**,
 release-checklist-only; `version` is the guarded identity key). This is a **different** value from
@@ -201,7 +201,7 @@ further slice (S3a–S5) is launched — those later slices are themselves run B
 the pipeline must be live on the artifact they touch. Until publish happens, run the pipeline via:
 
 ```
-Workflow({ scriptPath: '<repo>/workflows/feature-pipeline.js', args: {...} })
+Workflow({ scriptPath: '<repo>/workflows/deliver-pipeline.js', args: {...} })
 ```
 
 **This is also the rollback runbook's end state** (§7) — after any rollback, the repo returns to
@@ -222,7 +222,7 @@ claude plugin update lgtmgate
 
 **Hard warning: any SHA before this slice (S2) has no `workflows/` directory at all.** Pinning
 there does not restore an "older pipeline" — it removes the component ENTIRELY. Harmless pre-S4
-while every consumer still carries its own `.claude/workflows/feature-pipeline.js` copy; a dead
+while every consumer still carries its own `.claude/workflows/deliver-pipeline.js` copy; a dead
 plugin pipeline everywhere once S4 retires those copies. Valid rollback targets are therefore
 always **>= the S2 merge commit**.
 
@@ -236,7 +236,7 @@ rehearsal; do not leave it pointed backward.
 If the marketplace pin is stuck, broken, or you need to run a patched copy that has not been
 published: `Workflow({ scriptPath: '<abs path to a locally patched copy>' })`, and for the flow
 suite, `args.fpScriptPath` pointing at the same patched copy. Never re-add a tracked
-`.claude/workflows/feature-pipeline.js` copy to this repo as a workaround — that is exactly the
+`.claude/workflows/deliver-pipeline.js` copy to this repo as a workaround — that is exactly the
 drift class this slice retired.
 
 ## 9. Which artifact served a run (forensics)
@@ -245,7 +245,7 @@ To find out which artifact actually served a given run:
 
 - **`logs[0]`** of a headless run's `output_file` (see `scripts/run-workflow-headless.sh`), or
 - **`buildStamp`** on any recorded return (every terminal return of the pipeline carries it — see
-  the `finish()` wrapper at the top of `workflows/feature-pipeline.js`).
+  the `finish()` wrapper at the top of `workflows/deliver-pipeline.js`).
 
 `version` is the identity key (guarded by `templates/test-canonical-guards.sh`'s `stamp-parity`
 invariant); `cutFrom` is context and does **not** contain the artifact — to fetch what actually

@@ -115,7 +115,7 @@ to be either proven-and-checked, or removed — never decorative.
 ## Self-reference false positive (`self-reference-preflight`, legacy#83)
 
 > PR class: the diff modifies the pipeline's own preflight/gate-generation surface
-> (`workflows/feature-pipeline.js`, the preflight prompt, or a project's preflight support
+> (`workflows/deliver-pipeline.js`, the preflight prompt, or a project's preflight support
 > script). A PR of this class can wrongly fail the very HARD-check it fixes.
 
 - **Mechanism** — the running `Workflow()` executes the script snapshot read at DISPATCH time ; it

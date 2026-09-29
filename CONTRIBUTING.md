@@ -14,7 +14,7 @@ By participating, you're expected to follow the [Code of Conduct](CODE_OF_CONDUC
   you're hitting before proposing a solution; this plugin is deliberately stack-agnostic, so
   proposals need to work for more than one project's conventions.
 - **Pull requests** — for anything beyond a trivial fix, please open an issue first to discuss the
-  approach. This plugin's core (`workflows/feature-pipeline.js`, the agent prompts in `agents/`) is
+  approach. This plugin's core (`workflows/deliver-pipeline.js`, the agent prompts in `agents/`) is
   dense and interconnected; an early conversation saves everyone rework.
 
 ## Requirements

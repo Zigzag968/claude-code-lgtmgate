@@ -54,7 +54,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT" || exit 1
 
 MANIFEST="${MANIFEST:-.claude-plugin/plugin.json}"
-WORKFLOW_FILE="${WORKFLOW_FILE:-workflows/feature-pipeline.js}"
+WORKFLOW_FILE="${WORKFLOW_FILE:-workflows/deliver-pipeline.js}"
 
 # =============================================================================
 # no-private-refs pattern table (invariant 19 below) — extend here, NEVER hardcode a new
@@ -86,7 +86,7 @@ NO_PRIVATE_REFS_PATTERNS=(
                                                  # state/log blob, e.g. '<!-- nightly-state:v1 ... wtPath":"/Volumes/..." -->')
                                                  # — deliberately NOT bare `wtPath`, which is this repo's own,
                                                  # completely legitimate, pervasive variable name (verified this run:
-                                                 # a bare-`wtPath` motif hits 60+ sites in workflows/feature-pipeline.js
+                                                 # a bare-`wtPath` motif hits 60+ sites in workflows/deliver-pipeline.js
                                                  # alone, all of them the parameter/variable itself, zero leaks)
   'nightly-issue-'                              # nightly-dispatch state-blob marker
 )
@@ -287,9 +287,9 @@ fi
 # "zero dangling references to the retired templates/ path" acceptance check greps the
 # tracked tree for exactly that substring, and this invariant's own job is to assert its
 # ABSENCE, not reference it as a live caller would.
-OLD_TEMPLATES_PATH="templates""/feature-pipeline.js"
+OLD_TEMPLATES_PATH="templates""/deliver-pipeline.js"
 STILL_PRESENT=""
-for retired in .claude/workflows/feature-pipeline.js .claude/workflows/test-feature-pipeline.js "$OLD_TEMPLATES_PATH"; do
+for retired in .claude/workflows/deliver-pipeline.js .claude/workflows/test-deliver-pipeline.js "$OLD_TEMPLATES_PATH"; do
   if [ -e "$retired" ]; then
     STILL_PRESENT="$STILL_PRESENT $retired"
   fi
@@ -297,7 +297,7 @@ done
 if [ -n "$STILL_PRESENT" ]; then
   fail "retired-copies" "still present:$STILL_PRESENT"
 else
-  pass "retired-copies: .claude/workflows/feature-pipeline.js, .claude/workflows/test-feature-pipeline.js, and the retired templates/ copy all absent"
+  pass "retired-copies: .claude/workflows/deliver-pipeline.js, .claude/workflows/test-deliver-pipeline.js, and the retired templates/ copy all absent"
 fi
 
 # =============================================================================
@@ -329,7 +329,7 @@ fi
 # #83: the self-reference-preflight false-positive doctrine must be present on every doctrine
 # site, and the two pr-acceptance.md copies must stay byte-identical mirrors.
 SELF_REF_TOKEN="self-reference-preflight"
-SELF_REF_SITES="templates/pr-acceptance.md .claude/rules/pr-acceptance.md agents/sam.md agents/nick.md agents/morgan.md commands/feature.md $WORKFLOW_FILE"
+SELF_REF_SITES="templates/pr-acceptance.md .claude/rules/pr-acceptance.md agents/sam.md agents/nick.md agents/morgan.md commands/deliver.md $WORKFLOW_FILE"
 SELF_REF_MISSING=""
 for site in $SELF_REF_SITES; do
   if [ ! -f "$site" ] || ! grep -q "$SELF_REF_TOKEN" "$site"; then

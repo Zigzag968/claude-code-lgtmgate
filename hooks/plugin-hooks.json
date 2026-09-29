@@ -8,7 +8,7 @@
             "type": "command",
             "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/SessionStart/inject_stub.py\"",
             "timeout": 15,
-            "description": "Inject the lgtmgate stub (plugin active, /lgtmgate:feature, pipeline.config.json)"
+            "description": "Inject the lgtmgate stub (plugin active, /lgtmgate:deliver, pipeline.config.json)"
           }
         ]
       }

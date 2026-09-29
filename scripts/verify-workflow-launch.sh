@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # verify-workflow-launch.sh — mechanical post-launch health check for a Workflow run's
-# transcript directory. Any session driving this plugin's feature-pipeline (nightly's Lead,
+# transcript directory. Any session driving this plugin's deliver-pipeline (nightly's Lead,
 # or an interactive Lead on any consumer repo) should call this right after every
 # Workflow(...) launch/resume, once the run has had a moment to spawn its first agent(s).
 #

@@ -26,7 +26,7 @@ Theo reproduces the reported problem before anyone touches code. Mia frames the 
 ## Example
 
 ```
-$ /lgtmgate:feature 142 "Login page shows a stale error after a successful retry"
+$ /lgtmgate:deliver 142 "Login page shows a stale error after a successful retry"
 ```
 
 1. **Theo** reproduces the stale-error state, confirms it's real, hands off to Sam.
@@ -93,7 +93,7 @@ claude plugin install lgtmgate@zigzag-plugins
 Restart the session, then in your target project run `/lgtmgate:init` — it generates `.claude/pipeline.config.json` (your build/test/format commands, base branch, worktree root) and copies in the project-facing machinery. **Commit what it produces.** Then deliver a feature:
 
 ```
-/lgtmgate:feature <issue> "<brief>"
+/lgtmgate:deliver <issue> "<brief>"
 ```
 
 <details>
@@ -101,7 +101,7 @@ Restart the session, then in your target project run `/lgtmgate:init` — it gen
 
 - **`gh` CLI, installed and authenticated** (`gh auth login`, scopes `repo` + `project`) — required structurally by nearly every hook, script and agent in this pipeline.
 - **`jq`** — required by `hooks/block-merge-unchecked.sh` and `hooks/deny-destructive-git.sh` (PreToolUse gates on every Bash call) — both hooks fail closed (exit 2) if `jq` is missing.
-- **Node.js** — runs `workflows/feature-pipeline.js`, `scripts/run-flow-suite.cjs`, and the consumer's copied `.claude/workflows/test-feature-pipeline.js`.
+- **Node.js** — runs `workflows/deliver-pipeline.js`, `scripts/run-flow-suite.cjs`, and the consumer's copied `.claude/workflows/test-deliver-pipeline.js`.
 - **Python 3** — runs `hooks/SessionStart/inject_stub.py`.
 - **`git`** with a `github.com` remote.
 - **`bash`** (3.2 floor — see the `bash-3.2-floor` invariant in `templates/test-canonical-guards.sh`).
@@ -150,7 +150,7 @@ Nothing stack-specific lives in the plugin. Everything project-dependent is read
 | `commands.{build,test,format}` | exact commands Nick/Morgan run |
 | `conventionsRule` | the project's code-convention rule Sam/Nick/Morgan align on |
 | `baseBranch`, `branchPrefix` | branching for the shared worktree + PR target |
-| `worktreeRoot` | where the Lead creates the shared worktree — logical/versioned default; precedence `$AGENT_PIPELINE_WORKTREE_ROOT` > `.claude/pipeline.config.local.json` (gitignored) > this value > wtPath's parent dir for the Dev-phase prompt context (legacy#61) — `/feature` itself still needs this key set to CREATE the worktree (legacy#101) |
+| `worktreeRoot` | where the Lead creates the shared worktree — logical/versioned default; precedence `$AGENT_PIPELINE_WORKTREE_ROOT` > `.claude/pipeline.config.local.json` (gitignored) > this value > wtPath's parent dir for the Dev-phase prompt context (legacy#61) — `/deliver` itself still needs this key set to CREATE the worktree (legacy#101) |
 | `ciChecks` | checks Morgan must see green before LGTM |
 | `regressionGuard.{testGlob,testFnPattern,baselineCmd}` | Morgan's regression guard: no-checkout test scoping plus the exact baseline-capture command run for the SET-DIFF |
 | `ghProject` | optional GH Project "Pipeline Status" updates |
@@ -177,7 +177,7 @@ agent as command text or as authoritative instruction — `commands.build`, `com
 `preflight.envNote`, `stack` are all interpolated raw into strings an agent is instructed to run or
 treat as authoritative, with no quoting or validation — EXCEPT `provision.extraLinks`, the only key
 validated in-code (the `safeLinkPath` traversal/metacharacter guard in
-`workflows/feature-pipeline.js`). A pull request touching only `pipeline.config.json` is therefore
+`workflows/deliver-pipeline.js`). A pull request touching only `pipeline.config.json` is therefore
 a **code-review surface, not data**: review it with the same scrutiny as a change to the workflow
 script itself. See `SECURITY.md` for the full threat model.
 
@@ -190,7 +190,7 @@ script itself. See `SECURITY.md` for the full threat model.
   plugin.json            # manifest
   marketplace.json       # marketplace zigzag-plugins
 agents/                  # Theo, Mia, Sam, Nick, Morgan (generic)
-commands/                # /lgtmgate:init, /lgtmgate:feature
+commands/                # /lgtmgate:init, /lgtmgate:deliver
 hooks/
   plugin-hooks.json      # SessionStart stub + PreToolUse merge gate + SubagentStop warn + Stop watchdog
   SessionStart/inject_stub.py
@@ -199,9 +199,9 @@ hooks/
   Stop-supervise-runs.sh # watchdog for stale .pipeline/ runs — see docs/supervision.md
   test-Stop-supervise-runs.sh # zero-dependency regression test for the watchdog above
 workflows/               # this plugin's own workflow component (default-scanned)
-  feature-pipeline.js    # resolves as lgtmgate:feature-pipeline — NOT copied
+  deliver-pipeline.js    # resolves as lgtmgate:deliver-pipeline — NOT copied
 templates/               # copied into the consuming project by /lgtmgate:init
-  test-feature-pipeline.js
+  test-deliver-pipeline.js
   pr-acceptance.md
   gh-pipeline-status.sh
   test-gh-pipeline-status.sh # offline regression test for the resolver above
@@ -231,7 +231,7 @@ Any orchestrator built on this plugin is expected to persist per-run state (`.pi
 ## Contributing & learn more
 
 - **Contributing**: see [CONTRIBUTING.md](CONTRIBUTING.md) for the dev loop, conventions, and PR expectations.
-- **Maintaining / releasing**: see [MAINTAINING.md](MAINTAINING.md) for the `--plugin-dir` dev loop, naming (`lgtmgate:feature-pipeline`), the release/rollback runbook, and the trust-root of the marketplace pin.
+- **Maintaining / releasing**: see [MAINTAINING.md](MAINTAINING.md) for the `--plugin-dir` dev loop, naming (`lgtmgate:deliver-pipeline`), the release/rollback runbook, and the trust-root of the marketplace pin.
 - **Security**: see [SECURITY.md](SECURITY.md) for the threat model and how to report a vulnerability privately.
 - **Code of conduct**: see [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 

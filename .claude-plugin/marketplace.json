@@ -12,7 +12,7 @@
         "ref": "main",
         "sha": "6e39a103ac5544b368f5473937a452f1ecb6d2bc"
       },
-      "description": "Stack-agnostic feature pipeline: Theo (diagnose) -> Mia (PM) -> Sam (plan) -> Nick (dev+PR) -> Morgan (review), orchestrated by a per-project workflow and configured via .claude/pipeline.config.json.",
+      "description": "Stack-agnostic delivery pipeline: Theo (diagnose) -> Mia (PM) -> Sam (plan) -> Nick (dev+PR) -> Morgan (review), orchestrated by a per-project workflow and configured via .claude/pipeline.config.json.",
       "author": {
         "name": "Zigzag968"
       },

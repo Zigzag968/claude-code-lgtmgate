@@ -8,7 +8,7 @@
 # agent, whose result was never checked and which ran too late (after Plan/Dev
 # already started). This script is deterministic, runs before any stage, and fails
 # loudly (named path, non-zero exit) when a configured (hard) source is
-# missing — see workflows/feature-pipeline.js for the caller.
+# missing — see workflows/deliver-pipeline.js for the caller.
 #
 # HARDENING (claude-agent-pipeline#51, beyond the reference implementation this file is
 # otherwise byte-aligned with): the JS-side caller validates provision.extraLinks
@@ -37,7 +37,7 @@
 # Env var: PROVISION_ENV_SYMLINK=required|forbidden|ignore (default: required,
 #   claude-agent-pipeline#72). Only 'forbidden' has an effect: it skips the IMPLICIT
 #   ".env" link above so provisioning doesn't fight preflight.envSymlink=forbidden
-#   (workflows/feature-pipeline.js), which asserts NO ".env" symlink is present. An
+#   (workflows/deliver-pipeline.js), which asserts NO ".env" symlink is present. An
 #   explicit argv dst=".env" pair is unaffected — it always wins.
 #
 # Exit codes:
@@ -179,7 +179,7 @@ done
 argv_n=${#argv_dsts[@]}
 
 # PROVISION_ENV_SYMLINK (claude-agent-pipeline#72) — env var seam, not an argv flag (keeps
-# the positional <src> <dst> pair contract untouched). Mirrors workflows/feature-pipeline.js's
+# the positional <src> <dst> pair contract untouched). Mirrors workflows/deliver-pipeline.js's
 # preflight.envSymlink enum ('required' default here matches that config default). Only
 # 'forbidden' has an effect: it skips the IMPLICIT .env link below. An EXPLICIT argv pair
 # targeting dst=".env" is caller-authored and always wins regardless of this var — see
