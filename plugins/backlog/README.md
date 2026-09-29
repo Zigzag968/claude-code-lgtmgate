@@ -56,7 +56,7 @@ The plugin's GitHub writes are exactly three: `gh issue create` (through `Gh`, `
 | `mode` | `off`, `propose`, `write-supervised`, `free` |
 | `repo` | optional `OWNER/NAME`, injected as `-R`; default: `gh` resolves it from the working directory |
 | `labels` | axis to value list; the `<axis>:` prefix is implied. Axes are fixed by the contract: `type`, `status`, `priority`, `exec`, `size`, `area`. List order is the rank for `priority` and `size`. An empty `area` list means a free axis that is never validated. |
-| `roles` | which values play which role: `intake`, `waiting`, `ready`, `epic`, `bug`, `split` (sizes that must be split before ready), `candidate_sizes`, `agent` and `founder` (executors) |
+| `roles` | which values play which role: `intake`, `waiting`, `ready`, `epic`, `bug`, `split` (sizes that must be split before ready), `candidate_sizes`, `agent` and `human` (executors) |
 | `executor_flags` | bare labels that count as an Executor (default `nightly`) |
 | `exclusions` | bare labels that keep an issue out of the queue and that intake refuses to set |
 | `protected` | labels a proposal or an intake must never touch; a trailing `*` is a prefix (`auto:*`) |
@@ -132,7 +132,7 @@ It is a dry run unless `--apply`. The change is validated like a triage proposal
 | `exclusion:<label>` | a label of `exclusions` (`cross-repo`, `money-path`) |
 | `open-blocker:<n>` | an open issue blocks this one |
 | `blockers-unknown` | the blocker data is missing or truncated (fail closed) |
-| `founder-executor` | the issue carries a founder executor: the plugin never converts one |
+| `human-executor` | the issue carries a human executor: the plugin never converts one |
 | `protected-present:<label>` | a protected label (`nightly`, `cross-repo`, `auto:*`) is on the issue |
 
 `nightly` is never set by any path of the plugin, so a promotion queues an issue for an interactive `/backlog:next` session, never for unattended overnight work. The bulk paths (`catchup`, `rollback`, `label-sync`) still refuse `ready` and agent executors, as before.

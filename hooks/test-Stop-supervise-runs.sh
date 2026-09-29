@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Regression test for hooks/Stop-supervise-runs.sh — bash only, zero dependency
-# (no jq, no gh, no network). Covers the pr-ready/needs-founder false-positive
+# (no jq, no gh, no network). Covers the pr-ready/needs-human false-positive
 # fixed in issue #20, the blacklist->whitelist conversion fixed in issue #47
 # (unknown/typo'd statuses must never be treated as in-flight), plus the
 # true-positive and anti-spam behaviors it must not regress.
@@ -87,12 +87,12 @@ state1="$(write_state "$fixture1" "318.json" \
 backdate_mtime "$state1" $((45 * 60))
 assert_exit "pr-ready idle 45m" 0 "$(run_hook "$fixture1")"
 
-# --- case 2: status=needs-founder, idle 45m -> 0 ---
+# --- case 2: status=needs-human, idle 45m -> 0 ---
 
 fixture2="$(new_fixture)"
-state2="$(write_state "$fixture2" "run.json" '{"status":"needs-founder"}')"
+state2="$(write_state "$fixture2" "run.json" '{"status":"needs-human"}')"
 backdate_mtime "$state2" $((45 * 60))
-assert_exit "needs-founder idle 45m" 0 "$(run_hook "$fixture2")"
+assert_exit "needs-human idle 45m" 0 "$(run_hook "$fixture2")"
 
 # --- case 3: .json with no top-level "status" field, idle 45m -> 0 ---
 

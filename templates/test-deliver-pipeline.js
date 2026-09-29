@@ -554,23 +554,23 @@ await testCase('preflight fails then passes → ready (no extra Morgan round con
   return e ? e : { ok: true }
 })
 
-// 18. T18 — founder-gate short-circuit at round 0
-// Morgan returns only the FOUNDER TEST GATE item → pipeline terminates ready-pending-founder
+// 18. T18 — human-gate short-circuit at round 0
+// Morgan returns only the HUMAN TEST GATE item → pipeline terminates ready-pending-human
 // at round 0 (not a REQUIRED_CHANGES loop). Directly replays the real incident.
-await testCase('T18 founder-gate short-circuit round 0 → ready-pending-founder', async () => {
-  const founderItem = "[founder-gate] FOUNDER TEST GATE: founder runs `python -m app.render --render-id abc123-... --publish`, verifies the output renders correctly, posts approval on the PR"
+await testCase('T18 human-gate short-circuit round 0 → ready-pending-human', async () => {
+  const humanItem = "[human-gate] HUMAN TEST GATE: human runs `python -m app.render --render-id abc123-... --publish`, verifies the output renders correctly, posts approval on the PR"
   const r = await run({
     mode: 'auto',
     simulate: {
       sam: 'GO',
-      morgan: [{ verdict: 'REQUIRED_CHANGES', items: [founderItem] }],
+      morgan: [{ verdict: 'REQUIRED_CHANGES', items: [humanItem] }],
     },
   })
-  const e1 = eq('status', r.status, 'ready-pending-founder')
+  const e1 = eq('status', r.status, 'ready-pending-human')
   const e2 = eq('round', r.round, 0)
-  const e3 = r.founderGateItems && r.founderGateItems.length === 1
+  const e3 = r.humanGateItems && r.humanGateItems.length === 1
     ? null
-    : { ok: false, msg: `founderGateItems.length: expected 1, got ${r.founderGateItems?.length}` }
+    : { ok: false, msg: `humanGateItems.length: expected 1, got ${r.humanGateItems?.length}` }
   const e4 = r.resumable === true
     ? null
     : { ok: false, msg: `resumable: expected true, got ${r.resumable}` }
@@ -578,23 +578,23 @@ await testCase('T18 founder-gate short-circuit round 0 → ready-pending-founder
 })
 
 // 19. T19 — mixed round loops on real blocker, then terminates
-// round0: [founder-gate item + real blocker] → loops; round1: [founder-gate only] → ready-pending-founder
-await testCase('T19 mixed round loops on real blocker then founder-gate terminates', async () => {
-  const founderItem = '[founder-gate] founder live-render check, post approval on PR'
+// round0: [human-gate item + real blocker] → loops; round1: [human-gate only] → ready-pending-human
+await testCase('T19 mixed round loops on real blocker then human-gate terminates', async () => {
+  const humanItem = '[human-gate] human live-render check, post approval on PR'
   const r = await run({
     mode: 'auto',
     simulate: {
       sam: 'GO',
       morgan: [
-        { verdict: 'REQUIRED_CHANGES', items: [founderItem, 'fix URL regex'] },
-        { verdict: 'REQUIRED_CHANGES', items: [founderItem] },
+        { verdict: 'REQUIRED_CHANGES', items: [humanItem, 'fix URL regex'] },
+        { verdict: 'REQUIRED_CHANGES', items: [humanItem] },
       ],
     },
   })
-  const e1 = eq('status', r.status, 'ready-pending-founder')
-  const e2 = r.founderGateItems && r.founderGateItems.length === 1
+  const e1 = eq('status', r.status, 'ready-pending-human')
+  const e2 = r.humanGateItems && r.humanGateItems.length === 1
     ? null
-    : { ok: false, msg: `founderGateItems.length: expected 1, got ${r.founderGateItems?.length}` }
+    : { ok: false, msg: `humanGateItems.length: expected 1, got ${r.humanGateItems?.length}` }
   return (e1 || e2) ? (e1 || e2) : { ok: true }
 })
 
@@ -636,10 +636,10 @@ await testCase('T21 genuinely different blockers loop without false early-stop',
   return (e1 || e2) ? (e1 || e2) : { ok: true }
 })
 
-// 22. T22 — founder ticks the box → clean LGTM on re-launch (resume path)
+// 22. T22 — human ticks the box → clean LGTM on re-launch (resume path)
 // entryStage:'review' with Morgan returning LGTM → status:'ready'. Regression guard
-// for the resumable contract: after founder ticks, the re-launch must terminate cleanly.
-await testCase('T22 founder ticks box, re-launch via entryStage:review → ready (resumable contract)', async () => {
+// for the resumable contract: after human ticks, the re-launch must terminate cleanly.
+await testCase('T22 human ticks box, re-launch via entryStage:review → ready (resumable contract)', async () => {
   const r = await run({
     entryStage: 'review',
     prNumber: 267,
@@ -693,7 +693,7 @@ await testCase('T23b Nick body-only fix (SHA unchanged, body changed) → contin
 // ── #228 — verified-untickable terminal status ──────────────────────────────────────────────
 // Morgan PROVED every box but the tick (`gh pr edit`) is denied by permissions. The workflow must
 // park the run for the Lead (`verified-untickable`) instead of dispatching a Nick round that ends
-// `escalate nick-no-op`. Fail-safe: founder-gate items, empty proofs and ciGreen:false never park.
+// `escalate nick-no-op`. Fail-safe: human-gate items, empty proofs and ciGreen:false never park.
 const UNT_A = '- [ ] `node scripts/run-flow-suite.cjs` ends `failed=0`'
 const UNT_B = '- [ ] `diff templates/pr-acceptance.md .claude/rules/pr-acceptance.md` prints nothing'
 const untOwner = (item, proof = '$ cmd\n(verbatim output)') => ({ item, itemOwner: 'proven-untickable', proof })
@@ -733,32 +733,32 @@ await testCase('T228b semi mode, entryStage:review → verified-untickable (retu
   return e1 || e2 || { ok: true }
 })
 
-await testCase('T228c [founder-gate] line labelled proven-untickable → refused → ready-pending-founder, no untickableItems', async () => {
-  const founderItem = '- [ ] [founder-gate] founder confirms the wording'
+await testCase('T228c [human-gate] line labelled proven-untickable → refused → ready-pending-human, no untickableItems', async () => {
+  const humanItem = '- [ ] [human-gate] human confirms the wording'
   const r = await run({
     mode: 'auto',
     simulate: {
       sam: 'GO',
-      morgan: [{ verdict: 'REQUIRED_CHANGES', items: [founderItem], itemOwners: [untOwner(founderItem)] }],
+      morgan: [{ verdict: 'REQUIRED_CHANGES', items: [humanItem], itemOwners: [untOwner(humanItem)] }],
     },
   })
-  const e1 = eq('status', r.status, 'ready-pending-founder')
-  const e2 = eq('founderGateItems.length', r.founderGateItems?.length, 1)
+  const e1 = eq('status', r.status, 'ready-pending-human')
+  const e2 = eq('humanGateItems.length', r.humanGateItems?.length, 1)
   const e3 = eq('untickableItems', r.untickableItems, undefined)
   return e1 || e2 || e3 || { ok: true }
 })
 
-await testCase('T228d proven-untickable + [founder-gate] → ready-pending-founder carrying both lists', async () => {
-  const founderItem = '- [ ] [founder-gate] founder confirms the D5 status name'
+await testCase('T228d proven-untickable + [human-gate] → ready-pending-human carrying both lists', async () => {
+  const humanItem = '- [ ] [human-gate] human confirms the D5 status name'
   const r = await run({
     mode: 'auto',
     simulate: {
       sam: 'GO',
-      morgan: [{ verdict: 'REQUIRED_CHANGES', items: [UNT_A, founderItem], itemOwners: [untOwner(UNT_A)] }],
+      morgan: [{ verdict: 'REQUIRED_CHANGES', items: [UNT_A, humanItem], itemOwners: [untOwner(UNT_A)] }],
     },
   })
-  const e1 = eq('status', r.status, 'ready-pending-founder')
-  const e2 = eq('founderGateItems.length', r.founderGateItems?.length, 1)
+  const e1 = eq('status', r.status, 'ready-pending-human')
+  const e2 = eq('humanGateItems.length', r.humanGateItems?.length, 1)
   const e3 = eq('untickableItems.length', r.untickableItems?.length, 1)
   const e4 = eq('untickable item', r.untickableItems?.[0]?.item, UNT_A)
   return e1 || e2 || e3 || e4 || { ok: true }
@@ -911,7 +911,7 @@ await testCase('Diagnose (mandatory) / no theo fixture supplied → default-conf
 //     window → orchestrator FLAGS it (comment only, trace records reviewer-window-issue-
 //     flagged:<n>), terminal status unaffected. No close path exists any more (the fix for
 //     #333 the first time round was itself the defect: an unattributed number-diff closed
-//     31 issues across 3 repos, including a founder-reopened one — see the plan for #333
+//     31 issues across 3 repos, including a human-reopened one — see the plan for #333
 //     reopened).
 await testCase('T30 issue created in round-0 window → flagged, trace records it, status unchanged', async () => {
   const r = await run({
@@ -966,7 +966,7 @@ await testCase('T32 real-case replay (issue created inside reviewer window) → 
 // T33 (#333, reopened) — a reopen is not a creation: an issue whose createdAt PREDATES the
 // review window (it was created long before, then reopened during the window — reopening never
 // changes createdAt) must yield ZERO flags. The old number-diff mechanism could not see this and
-// wrongly re-closed a founder-reopened issue in production. NOTE: this label coincides with the
+// wrongly re-closed a human-reopened issue in production. NOTE: this label coincides with the
 // pre-existing, UNRELATED "T33 planCheck orphan criterion" case above (#14) — this suite's
 // numbering is per-feature, not a globally unique sequence; both are legitimate, distinct cases.
 await testCase('T33 reopened issue (createdAt predates window) → zero flags', async () => {
@@ -1195,9 +1195,9 @@ await testCase('T175c provisionRaw identical input twice → identical status + 
 // source; an earlier version of this fixture captured verbatim content from a private
 // repository's PR and has been replaced with an equivalent synthetic body of the same
 // structure — same section order, same all-checked acceptance block including one
-// [founder-gate] item, same zero decision-log markers). See buildPaddedBody20k below for the
+// [human-gate] item, same zero decision-log markers). See buildPaddedBody20k below for the
 // ~20 KB real-world size class this models (#87 truncation regression).
-const PR385_BODY_REAL = "Closes #292\n\n## Summary\n- Adds `reviewMarker` (`<!-- pipeline-review-round pr=<N> -->`) that the review loop stamps as the first line of Morgan's verdict comments and Nick's push-notes.\n- Adds `minimizeSupersededReviewComments(round)`: best-effort, marker-scoped pass that minimizes (collapses, never deletes) prior-round marked comments before each Morgan spawn (initial + loop re-review), running AFTER Nick's push in the loop so his round-N note is minimized too.\n- Marker-only targeting — all pipeline agents share ONE GitHub token, so author filtering is useless/dangerous; unmarked (founder/human) comments are never touched. Fails safe: scan/mutation errors are caught and logged, never thrown.\n- Scope: directions 1+2 from Sam's plan only. Directions 3 (decision-log body section), 4 (artifact-first body), and the commit-hygiene squash note are deferred to a follow-up.\n\n## Test plan\n- `node scripts/run-flow-suite.cjs` (Lead-run; agents have no Workflow tool) — asserts trace includes `review-comment-minimized:IC_x` on a 2-round REQUIRED_CHANGES→LGTM flow with a `minimizedComments` fixture; negative control is the same flow with no fixture → zero `review-comment-minimized:` trace entries.\n- `python3 -m unittest discover plugins/backlog/tests` — all green.\n- `bash templates/test-canonical-guards.sh` — all green.\n- No Python files touched by this PR (JS-only change to `workflows/`).\n\n## Feature flag\nNone — no-opt-out hygiene pass on the existing review-loop seam, matching the plan's scope table.\n\n## Risk\nLow. Best-effort/non-throwing by construction (mirrors `reconcileMorganIssues`). Worst case on a `gh`/GraphQL hiccup: a comment simply stays visible (fail-safe), never mis-minimized, since targeting requires the literal `<!-- pipeline-review-round` marker prefix that only this pipeline ever writes.\n\n<!-- acceptance:start -->\n- [x] `node scripts/run-flow-suite.cjs` — all cases pass, incl. the 2 new minimize cases (trace assertion + negative control).\n- [x] `grep -n \"pipeline-review-round\" workflows/deliver-pipeline.js` returns >= 4 hits (marker const, helper filter, both Morgan prompts, Nick prompt).\n- [x] `minimizeSupersededReviewComments` filters on marker + `isMinimized==false` ONLY (no author filter) and contains no `throw` — confirm by reading the helper.\n- [x] Call order: minimize runs before BOTH Morgan spawns and, in the loop, AFTER Nick's push — confirm by reading source order.\n- [x] Lint clean and the pre-existing flow cases still green (no exact-trace regression).\n- [x] [founder-gate] Dogfood: if THIS PR's review takes >=2 rounds, `gh pr view <pr> --json comments` shows round-0 verdict + Nick push-note as `isMinimized:true` while only the latest verdict stays visible.\n<!-- acceptance:end -->\n\n## Note\nNo further caveats — clean baseline, nothing deferred beyond what's listed in Scope above.\n\n"
+const PR385_BODY_REAL = "Closes #292\n\n## Summary\n- Adds `reviewMarker` (`<!-- pipeline-review-round pr=<N> -->`) that the review loop stamps as the first line of Morgan's verdict comments and Nick's push-notes.\n- Adds `minimizeSupersededReviewComments(round)`: best-effort, marker-scoped pass that minimizes (collapses, never deletes) prior-round marked comments before each Morgan spawn (initial + loop re-review), running AFTER Nick's push in the loop so his round-N note is minimized too.\n- Marker-only targeting — all pipeline agents share ONE GitHub token, so author filtering is useless/dangerous; unmarked (human) comments are never touched. Fails safe: scan/mutation errors are caught and logged, never thrown.\n- Scope: directions 1+2 from Sam's plan only. Directions 3 (decision-log body section), 4 (artifact-first body), and the commit-hygiene squash note are deferred to a follow-up.\n\n## Test plan\n- `node scripts/run-flow-suite.cjs` (Lead-run; agents have no Workflow tool) — asserts trace includes `review-comment-minimized:IC_x` on a 2-round REQUIRED_CHANGES→LGTM flow with a `minimizedComments` fixture; negative control is the same flow with no fixture → zero `review-comment-minimized:` trace entries.\n- `python3 -m unittest discover plugins/backlog/tests` — all green.\n- `bash templates/test-canonical-guards.sh` — all green.\n- No Python files touched by this PR (JS-only change to `workflows/`).\n\n## Feature flag\nNone — no-opt-out hygiene pass on the existing review-loop seam, matching the plan's scope table.\n\n## Risk\nLow. Best-effort/non-throwing by construction (mirrors `reconcileMorganIssues`). Worst case on a `gh`/GraphQL hiccup: a comment simply stays visible (fail-safe), never mis-minimized, since targeting requires the literal `<!-- pipeline-review-round` marker prefix that only this pipeline ever writes.\n\n<!-- acceptance:start -->\n- [x] `node scripts/run-flow-suite.cjs` — all cases pass, incl. the 2 new minimize cases (trace assertion + negative control).\n- [x] `grep -n \"pipeline-review-round\" workflows/deliver-pipeline.js` returns >= 4 hits (marker const, helper filter, both Morgan prompts, Nick prompt).\n- [x] `minimizeSupersededReviewComments` filters on marker + `isMinimized==false` ONLY (no author filter) and contains no `throw` — confirm by reading the helper.\n- [x] Call order: minimize runs before BOTH Morgan spawns and, in the loop, AFTER Nick's push — confirm by reading source order.\n- [x] Lint clean and the pre-existing flow cases still green (no exact-trace regression).\n- [x] [human-gate] Dogfood: if THIS PR's review takes >=2 rounds, `gh pr view <pr> --json comments` shows round-0 verdict + Nick push-note as `isMinimized:true` while only the latest verdict stays visible.\n<!-- acceptance:end -->\n\n## Note\nNo further caveats — clean baseline, nothing deferred beyond what's listed in Scope above.\n\n"
 
 function countOccurrences(str, sub) {
   return String(str).split(sub).length - 1

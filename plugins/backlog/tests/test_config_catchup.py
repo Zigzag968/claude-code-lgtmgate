@@ -53,12 +53,12 @@ class TestCatchupKeys(unittest.TestCase):
 
     def test_a_valid_mapping_is_loaded(self):
         cfg = load(
-            "legacy_map:\n  bug: type:bug\n  P0-now: priority:0-now\n  triage:interactive: exec:founder\n"
+            "legacy_map:\n  bug: type:bug\n  P0-now: priority:0-now\n  triage:interactive: exec:human\n"
             "legacy_keep: [triage:interactive]\n"
             'label_colors:\n  type: "D73A4A"\n  status: 0e8a16\n'
         )
         self.assertEqual(cfg.mode, "propose", cfg.reason)
-        self.assertEqual(cfg.legacy_map, {"bug": "type:bug", "P0-now": "priority:0-now", "triage:interactive": "exec:founder"})
+        self.assertEqual(cfg.legacy_map, {"bug": "type:bug", "P0-now": "priority:0-now", "triage:interactive": "exec:human"})
         self.assertEqual(cfg.legacy_keep, ("triage:interactive",))
         self.assertEqual(cfg.label_color("type"), "d73a4a")  # normalized to lowercase
         self.assertEqual(cfg.label_color("status"), "0e8a16")

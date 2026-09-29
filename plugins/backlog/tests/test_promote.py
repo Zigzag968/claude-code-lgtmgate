@@ -152,9 +152,9 @@ class TestVerdict(unittest.TestCase):
             with self.subTest(case=name):
                 self.assertEqual(self.verdict(issue).codes, ("blockers-unknown",))
 
-    def test_a_founder_issue_is_never_converted(self):
-        codes = self.verdict(live("type:feature", "status:inbox", "size:S", "exec:founder")).codes
-        self.assertEqual(codes, ("founder-executor",))
+    def test_a_human_issue_is_never_converted(self):
+        codes = self.verdict(live("type:feature", "status:inbox", "size:S", "exec:human")).codes
+        self.assertEqual(codes, ("human-executor",))
 
     def test_protected_labels_present_block(self):
         for label in ("auto:blocked", "nightly"):
@@ -190,7 +190,7 @@ class TestVerdict(unittest.TestCase):
         config = cfg()
         self.assertTrue(P.wants_promotion(["status:ready"], config))
         self.assertTrue(P.wants_promotion(["size:S", "exec:agent"], config))
-        self.assertFalse(P.wants_promotion(["status:needs-info", "exec:founder", "size:M"], config))
+        self.assertFalse(P.wants_promotion(["status:needs-info", "exec:human", "size:M"], config))
         self.assertTrue(P.is_promotion({"status:inbox"}, {"status:ready"}, config))
         self.assertFalse(P.is_promotion({"status:ready"}, {"status:ready", "size:S"}, config))
         self.assertFalse(P.is_promotion({"status:ready"}, {"status:inbox"}, config))

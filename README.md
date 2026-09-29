@@ -40,6 +40,7 @@ $ /lgtmgate:deliver 142 "Login page shows a stale error after a successful retry
 
 - A git hook refuses `gh pr merge` while any acceptance box is unchecked, and a box only gets checked once there's evidence behind it.
 - Review and implementation are split across two different agents (Morgan and Nick), so neither one reviews its own work.
+- The human maintainer stays in the loop without babysitting the run: Sam posts the plan on the issue before Nick writes any code, so anyone watching can weigh in early. Any acceptance-checklist item tagged `[human-gate]` can never be ticked by Morgan, no matter the evidence; only a human checks it.
 
 ### This project matured through real use. Here's how.
 

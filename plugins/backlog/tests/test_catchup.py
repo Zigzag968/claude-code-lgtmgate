@@ -13,11 +13,11 @@ from backlog_gh import Gh
 
 MAPPING = (
     "legacy_map:\n  bug: type:bug\n  enhancement: type:feature\n  tech-debt: type:chore\n  epic: type:epic\n"
-    "  P0-now: priority:0-now\n  P1-next: priority:1-next\n  triage:interactive: exec:founder\n"
+    "  P0-now: priority:0-now\n  P1-next: priority:1-next\n  triage:interactive: exec:human\n"
     "legacy_keep: [epic, triage:interactive]\n"
 )
 LIVE = {"type:bug", "type:feature", "type:chore", "type:epic", "status:inbox", "status:needs-info", "status:ready",
-        "exec:agent", "exec:founder", "size:S", "size:M", "size:L", "priority:0-now", "priority:1-next", "priority:2-later"}
+        "exec:agent", "exec:human", "size:S", "size:M", "size:L", "priority:0-now", "priority:1-next", "priority:2-later"}
 
 
 def load(extra="", repo="acme/widgets"):
@@ -60,7 +60,7 @@ class TestMapLegacy(unittest.TestCase):
 
     def test_legacy_keep_keeps_the_legacy_label_next_to_its_canonical_one(self):
         got = after(["epic", "triage:interactive"])
-        self.assertEqual(got.after, frozenset({"epic", "type:epic", "triage:interactive", "exec:founder", "status:inbox"}))
+        self.assertEqual(got.after, frozenset({"epic", "type:epic", "triage:interactive", "exec:human", "status:inbox"}))
         self.assertIn("epic->type:epic (kept)", got.reason)
 
     def test_a_kept_legacy_label_whose_canonical_twin_exists_is_already_canonical(self):

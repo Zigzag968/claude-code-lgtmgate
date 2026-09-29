@@ -11,7 +11,7 @@ from backlog_gh import Gh
 
 CFG = C.default_config("propose")
 LIVE = {"type:bug", "type:feature", "type:chore", "status:inbox", "status:needs-info", "status:ready",
-        "exec:agent", "exec:founder", "size:S", "size:M", "size:L", "priority:0-now", "priority:1-next", "priority:2-later"}
+        "exec:agent", "exec:human", "size:S", "size:M", "size:L", "priority:0-now", "priority:1-next", "priority:2-later"}
 
 
 def prop(issue, before, after, reason="because", confidence="high"):

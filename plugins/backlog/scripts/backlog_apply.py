@@ -266,7 +266,7 @@ class SetJournal:
     """Append-only JSON lines of the single-issue `set`: `<project>/.claude/.backlog-snapshots/set-journal.jsonl`
     (directory 0700, file 0600, INSIDE the project — unlike the bulk snapshot/catchup tooling below, which stays
     outside any repo). One `intent` line is written BEFORE the write, then one outcome line. Never rewritten,
-    never truncated. Founder decision (2026-09-28): moved in-project so a sandboxed Claude Code session (default
+    never truncated. Human decision (2026-09-28): moved in-project so a sandboxed Claude Code session (default
     write scope: CWD + session temp dir only) can write it without a harness-level config change. Trade-off
     accepted knowingly: this journal no longer survives deletion of the checkout it was written from, and is not
     shared across worktrees of the same repo (each worktree gets its own `.claude/.backlog-snapshots/`) — the

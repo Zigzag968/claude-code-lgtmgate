@@ -13,7 +13,7 @@ stuck is exactly the failure mode this plugin exists to prevent.
 string field — a `.json` file with no `"status"` field isn't a state file per this convention and
 is ignored by the watchdog. The watchdog uses a whitelist: only `"in-progress"`, `"plan"`, `"dev"`,
 `"review"` count as in-flight and are eligible for staleness. Everything else is skipped — terminal
-values (`"merged"`, `"blocked"`, `"done"`), awaiting-human values (`"pr-ready"`, `"needs-founder"` —
+values (`"merged"`, `"blocked"`, `"done"`), awaiting-human values (`"pr-ready"`, `"needs-human"` —
 the run is correctly parked waiting on a human, not silently stuck; see
 [PR-awaiting-merge reminder](#pr-awaiting-merge-reminder) below, the dedicated channel for that
 wait), the awaiting-EXTERNAL value `"blocked-by"` (the run is correctly parked waiting on an issue
@@ -106,7 +106,7 @@ offline test seam used by `templates/test-blocked-by-check.sh`.
 `SessionStart`'s stub also does a best-effort check for open issues/PRs labeled `auto:pr-ready` on
 the current repo (an orchestrator convention where CI-green-and-undrafted is a terminal state and a
 human merges by hand — a scheduled/unattended runner is one consumer of it, not the only possible
-one) and injects a one-line reminder: `⏳ N PR(s) awaiting founder review: #a, #b`.
+one) and injects a one-line reminder: `⏳ N PR(s) awaiting human review: #a, #b`.
 
 - **Never blocks or slows down session start beyond its own short timeouts**: 2s for the `git
   remote` check, 3s for the `gh issue list` call — both well under the hook's 15s manifest timeout.

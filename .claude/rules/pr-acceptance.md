@@ -23,7 +23,7 @@ Morgan runs / inspects each item, then :
 - If the tick is refused by session permissions while the proof passes: do not check it, never post
   "Ready to merge", cite the proof and classify the box as `proven-untickable`. The workflow renders
   `verified-untickable` (no Nick round) ; the Lead re-verifies the proof and checks it by hand. A
-  `[founder-gate]` box is never checked through this path.
+  `[human-gate]` box is never checked through this path.
 
 ### Markers (mandatory)
 The acceptance block lives between two HTML markers in the body :
@@ -40,8 +40,8 @@ template's other checkboxes (remoteconfig section) are out of scope and never bl
 
 ### Body order (artifact-first)
 The PR body follows a fixed, artifact-first order : `Closes #N` on the first line ->
-`## What this ships` (bullet summary of the diff) -> optional `## <Founder> — N gestures`
-(ONLY IF a `[founder-gate]` item exists in the checklist, otherwise omit the H2 — never ship
+`## What this ships` (bullet summary of the diff) -> optional `## <Human> — N gestures`
+(ONLY IF a `[human-gate]` item exists in the checklist, otherwise omit the H2 — never ship
 an empty stub section) -> `## Acceptance checklist` (the block between the markers
 `<!-- acceptance:start -->`/`<!-- acceptance:end -->`) -> an EMPTY pair
 `<!-- decision-log:start -->`/`<!-- decision-log:end -->` (workflow-owned, never hand-filled) ->
@@ -86,7 +86,7 @@ defect, not a detail.
 - **TLS/certificate failure on a dependency install under sandbox** (`OSStatus -26276`,
   `problem confirming the ssl certificate`, `tls: failed to verify certificate`, `x509`) is a
   **known tooling limitation**, not a broken environment : never bypass the sandbox for it
-  regardless — explicit failure status, blocker reported to the Lead/founder. Never `sudo` nor a
+  regardless — explicit failure status, blocker reported to the Lead/human. Never `sudo` nor a
   global install ; stay inside the project's `.venv`/`node_modules`.
 - **Strict prohibitions, even as an attempted alternative**: an interactive command, `sudo`, a
   global install, bypassing a guard (hook, merge assert), disabling or bypassing the tooling
@@ -105,7 +105,7 @@ The two rules complement each other, **zero overlap** :
 
 **Morgan applies both**: he checks the acceptance boxes (mechanical gate) AND conducts the
 impartial review (qualitative judgment of the diff). A PR only merges when both converge —
-checklist fully proven AND the reviewer's YES with no blocking reservation (or the <Founder>
+checklist fully proven AND the reviewer's YES with no blocking reservation (or the <Human>
 decides).
 
 ## Why

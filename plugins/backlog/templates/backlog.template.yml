@@ -8,7 +8,7 @@ labels:                  # axis -> values; the "<axis>:" prefix is implied. Axes
   type: [bug, feature, chore, epic]
   status: [inbox, needs-info, ready]
   priority: [0-now, 1-next, 2-later]
-  exec: [agent, founder]
+  exec: [agent, human]
   size: [S, M, L]
   area: []               # empty = free axis, never validated
 roles:                   # which values play which role
@@ -20,7 +20,7 @@ roles:                   # which values play which role
   split: [L]
   candidate_sizes: [S, M]
   agent: [agent]
-  founder: [founder]
+  human: [human]
 executor_flags: [nightly]
 exclusions: [cross-repo, money-path]
 protected: [nightly, cross-repo, "auto:*"]

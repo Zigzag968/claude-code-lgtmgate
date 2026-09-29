@@ -105,7 +105,7 @@ export const meta = {
 //                 classification is still computed and traced (`plan-route-shadow:<round>`), but
 //                 every item is still routed to Nick as a code defect, so the off-path behaviour
 //                 is byte-for-bit identical to before #97. Must be a non-negative integer; a
-//                 non-integer or negative value throws. Flipped by the founder only after
+//                 non-integer or negative value throws. Flipped by the human only after
 //                 observing shadow-mode `trace` evidence that the classification is trustworthy.
 //   simulate    — test fixture object: { sam, samPlan, samRationale, debtIssue, nick, morgan, mia,
 //                   alreadyDoneCheck, provision, preflight, theo, planCheck, audit,
@@ -192,7 +192,7 @@ export const meta = {
 // result); it does NOT claim to rescue an out-of-band harness abort, which stays an upstream fix
 // tracked as a known upstream limitation.
 //
-// Diagnose stage (Theo) — MANDATORY, no opt-out (founder decision, 2026-07-24: "every
+// Diagnose stage (Theo) — MANDATORY, no opt-out (human decision, 2026-07-24: "every
 // nightly run is diagnosed by Theo"). Runs before Plan on every fresh dispatch
 // (entryStage='plan'): Theo qualifies the issue before Sam ever plans a fix on top of an
 // unverified premise. For a bug/pain-derived issue that names a cause, Theo reproduces it
@@ -207,13 +207,13 @@ export const meta = {
 // CC #61954 / #17361 / #37670). `cutFrom` is the short SHA this artifact's content was CUT FROM —
 // the base commit it was derived from (a commit cannot carry its own SHA) — NOT the SHA it is
 // PUBLISHED AT: that is a different value, the catalog pin (`.claude-plugin/marketplace.json`
-// `source.sha`), moved by the founder's publish commit (e.g. 0.8.0's cutFrom is `c040169`, its
+// `source.sha`), moved by the human's publish commit (e.g. 0.8.0's cutFrom is `c040169`, its
 // catalog pin moved to `f59e4e0`). `cutFrom` is CONTEXT, never the identity key, and it is
 // deliberately UNGUARDED (release-checklist-only — see MAINTAINING.md §4). The identity key is
 // `version`, checked against plugin.json by templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '0.8.63', cutFrom: 'fdf913e' }
+const BUILD = { plugin: 'lgtmgate', version: '0.8.64', cutFrom: '10475bd' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -267,7 +267,7 @@ if (entryStage === 'review' && !prNumber) throw new Error('entryStage=review req
 const planAuditEnabled = planAudit ?? config.planAudit ?? false
 // planFreshness (#103): same arg-wins-over-config precedent as planAudit above. Default
 // 'advisory' — a hard gate by default would fire on this repo's own hot file (see the plan's
-// design-decision rationale); the founder can flip to 'gate' or 'off' via config with zero code.
+// design-decision rationale); the human can flip to 'gate' or 'off' via config with zero code.
 const planFreshnessMode = planFreshness ?? config.planFreshness ?? 'advisory'
 if (!['advisory', 'gate', 'off'].includes(planFreshnessMode)) {
   throw new Error(`Invalid planFreshness: ${JSON.stringify(planFreshnessMode)} (must be 'advisory' | 'gate' | 'off')`)
@@ -455,7 +455,7 @@ const SANDBOX_INSTALL_HINT =
   `(the sandbox network proxy intercepts TLS; excludedCommands does NOT lift this, cf. anthropics/claude-code#36363). ` +
   `This is a known tooling limitation, not a broken environment. Do NOT try to disable, bypass or re-run ` +
   `the tool sandbox to work around it. Stop that install and REPORT IT AS BLOCKED in your return: name ` +
-  `the exact command and the exact error signature you saw. The Lead/founder decides what to do about ` +
+  `the exact command and the exact error signature you saw. The Lead/human decides what to do about ` +
   `the environment — the workflow already escalates this path. Never sudo, never a global install — ` +
   `stay inside the project .venv/node_modules.\n\n` +
   `Separately: never create a Python virtualenv with a bare \`python3 -m venv .venv\` — on a ` +
@@ -535,13 +535,13 @@ const gate = (stage, verdict = null) => {
 const normItem = (s) =>
   String(s).toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim()
 
-// Founder-only acceptance items carry the literal [founder-gate] tag (see
+// Human-only acceptance items carry the literal [human-gate] tag (see
 // pr-acceptance.md). Detected on the RAW item (normItem would strip the brackets).
-const FOUNDER_GATE_RE = /\[founder-gate\]/i
-const isFounderGate = (item) => FOUNDER_GATE_RE.test(String(item))
-// True when there is ≥1 blocker AND every remaining blocker is founder-only.
-const allFounderGate = (items) =>
-  Array.isArray(items) && items.length > 0 && items.every(isFounderGate)
+const HUMAN_GATE_RE = /\[human-gate\]/i
+const isHumanGate = (item) => HUMAN_GATE_RE.test(String(item))
+// True when there is ≥1 blocker AND every remaining blocker is human-only.
+const allHumanGate = (items) =>
+  Array.isArray(items) && items.length > 0 && items.every(isHumanGate)
 
 // Set-subset by NORMALIZED item (was exact-match). round-N ⊆ round-N+1 ⇒ no progress.
 function isSubset(smaller, larger) {
@@ -553,7 +553,7 @@ function isSubset(smaller, larger) {
 // Reviewer-window issue selection — pure predicate. An issue is
 // a candidate iff its `createdAt` falls INSIDE the reviewer window — a reopened issue keeps its
 // ORIGINAL createdAt, so reopening one during the window never makes it a candidate (the class of
-// defect that wrongly re-closed a founder-reopened issue under the old number-diff mechanism).
+// defect that wrongly re-closed a human-reopened issue under the old number-diff mechanism).
 // NOT exported (claude-agent-pipeline#132): a second top-level `export` alongside `export const
 // meta` above breaks the real Workflow tool's script loader (`SyntaxError: Unexpected keyword
 // 'export'` — confirmed live, 0.8.14 is unlaunchable via Workflow). The offline flow-suite's own
@@ -744,7 +744,7 @@ const MORGAN = {
         'REQUIRES a concrete `proof` quoting the exact contradiction between the plan/checklist ' +
         'and reality (e.g. a command + its output). An item with no entry here, or an entry with ' +
         'an empty proof, is treated as a code defect.' +
-        ' \'proven-untickable\' = the box\'s own verification was actually run and PASSED, and the ONLY reason it is still `- [ ]` is that ticking it (`gh pr edit`) was denied by permissions; it REQUIRES a non-empty `proof` (command + verbatim output) and is never valid for a `[founder-gate]` item nor for a box whose verification failed or was not run.',
+        ' \'proven-untickable\' = the box\'s own verification was actually run and PASSED, and the ONLY reason it is still `- [ ]` is that ticking it (`gh pr edit`) was denied by permissions; it REQUIRES a non-empty `proof` (command + verbatim output) and is never valid for a `[human-gate]` item nor for a box whose verification failed or was not run.',
       items: {
         type: 'object',
         properties: {
@@ -1225,7 +1225,7 @@ function composeAuditFixBlock(findings) {
 // Issue #97 — splits Morgan's REQUIRED_CHANGES `items` into plan-owned routes (Sam amends the
 // plan) vs code-owned items (Nick still fixes them), from her OPTIONAL parallel `itemOwners`
 // array. Fail-safe by construction: absent/empty `itemOwners`, an unknown owner, an empty/
-// missing `proof`, an item that doesn't match anything in `items`, or a `[founder-gate]` item
+// missing `proof`, an item that doesn't match anything in `items`, or a `[human-gate]` item
 // all fall through to `codeItems` — a plan owner NEVER excuses unfinished code by default. When
 // `itemOwners` is absent/empty this returns `{ planRoutes: [], codeItems: items }`, byte-
 // identical to the pre-#97 historical path.
@@ -1243,7 +1243,7 @@ function classifyBlockers(items, itemOwners) {
     const proof = typeof o.proof === 'string' ? o.proof.trim() : ''
     if (!proof) continue
     const item = typeof o.item === 'string' ? o.item : ''
-    if (!item || isFounderGate(item)) continue
+    if (!item || isHumanGate(item)) continue
     const n = normItem(item)
     if (!normItems.includes(n)) continue
     planRoutes.push({ item, itemOwner: owner, proof })
@@ -1259,7 +1259,7 @@ function classifyBlockers(items, itemOwners) {
 // (ticking `gh pr edit` denied by session permissions) vs everything else, from her OPTIONAL
 // `itemOwners` array. Fail-safe by construction: absent/empty `itemOwners`, an owner other than
 // 'proven-untickable', an empty/missing `proof`, an item matching nothing in `items`, or a
-// `[founder-gate]` item all fall through to `rest` (legacy path). Pure: never ticks anything.
+// `[human-gate]` item all fall through to `rest` (legacy path). Pure: never ticks anything.
 function classifyUntickable(items, itemOwners) {
   const allItems = Array.isArray(items) ? items : []
   const owners = Array.isArray(itemOwners) ? itemOwners : []
@@ -1273,7 +1273,7 @@ function classifyUntickable(items, itemOwners) {
     const proof = typeof o.proof === 'string' ? o.proof.trim() : ''
     if (!proof) continue
     const item = typeof o.item === 'string' ? o.item : ''
-    if (!item || isFounderGate(item)) continue
+    if (!item || isHumanGate(item)) continue
     const n = normItem(item)
     if (!normItems.includes(n) || parkedNorm.has(n)) continue
     const verbatim = allItems[normItems.indexOf(n)]
@@ -1687,7 +1687,7 @@ if (entryStage === 'plan') {
 }
 
 // ---------------------------------------------------------------------------
-// Diagnose phase — MANDATORY, no opt-out (founder decision, 2026-07-24). Qualifies
+// Diagnose phase — MANDATORY, no opt-out (human decision, 2026-07-24). Qualifies
 // EVERY issue BEFORE Sam plans anything on top of it — never skipped, no tag/flag
 // needed. Only reachable when entryStage='plan' (the default fresh-dispatch entry) —
 // never re-runs on resume (entryStage='dev'|'review'), since Theo already qualified
@@ -1771,7 +1771,7 @@ if (after('plan', entryStage)) {
         'This issue meets the design-step trigger (>=2 of persistent-state/auth-security/deploy-config, or an ' +
         'immature vendor API) but no architecture decision has been approved yet. Relaunch either with ' +
         `proceedThrough:'plan' and a brief scoped to the design-options one-pager only (stops at plan-ready ` +
-        'for founder sign-off before the full plan is written), or with architectureDecisionApproved:true if ' +
+        'for human sign-off before the full plan is written), or with architectureDecisionApproved:true if ' +
         'that pass already happened and was approved.',
     })
   }
@@ -1796,7 +1796,7 @@ const samScoutPrompt = ({ fixBlock = '', auditFixBlock = '', reviewFixBlock = ''
   const designStepBlock = designStepTriggeredForPlan
     ? `\n\nDESIGN-STEP TRIGGER: this issue meets the design-step trigger (evidence: ${diag.designStepSignalEvidence || 'see diagnosis'}). ` +
       `Your plan MUST explicitly answer: does this ship as ONE PR, or as N independently-shippable slices — if N, name them, their acceptance criteria, and their order; if one, justify why despite the risk classification. ` +
-      `This is a mandatory section, not optional prose — the founder decides the split-or-not call from your answer.`
+      `This is a mandatory section, not optional prose — the human decides the split-or-not call from your answer.`
     : ''
   return `cd into the shared worktree "${wtPath}" (frozen base; never checkout/commit). Scout and plan issue #${issue}. Brief: ${brief}.${pm ? `\n\nPM framing:\n${JSON.stringify(pm)}` : ''}${diag ? `\n\nConfirmed diagnosis (Theo):\n${diag.evidence}` : ''}\n\n` +
     `Write the full plan (including the acceptance checklist) as a Markdown ARTIFACT at "${planPath}" inside the worktree (create the .pipeline/plans/ directory if needed). ` +
@@ -1811,7 +1811,7 @@ const samScoutPrompt = ({ fixBlock = '', auditFixBlock = '', reviewFixBlock = ''
     `\`gh api repos/{owner}/{repo}/issues/${issue}/comments --jq '.[]|select(.body|startswith("${planMarker}"))|.id'\` — if an id comes back, EDIT that comment in place with ` +
     `\`gh api -X PATCH repos/{owner}/{repo}/issues/comments/<id> -F body=@.pipeline/issue-${issue}-comment.md\`; otherwise create it with \`gh issue comment ${issue} --body-file .pipeline/issue-${issue}-comment.md\`. Reuse the id returned by the listing; never reconstruct it. Never stack a second plan comment on the issue. ` +
     `Then return GO/NO-GO, the full plan text in the \`plan\` field, and the artifact path in \`planPath\` (use "${planPath}"), and \`targetFiles\`: the worktree-RELATIVE paths your steps modify, delete or create (repo-relative, no absolute path, no \`..\`; omit it if your plan touches no file). Return the acceptance checklist lines VERBATIM (\`- [ ] ...\` lines only, no markers, no prose) in \`acceptanceChecklist\`.\n\n` +
-    `OUTPUT-SPEC GATE: if this is a founder-facing deliverable (asset/render/copy/UI-visible), the plan MUST start from a concrete OUTPUT EXAMPLE with named content contracts, and MUST cite any existing corpus/asset spec (precedent: a similar prior deliverable, if one exists). If no spec exists, propose the contract for founder validation — do not skip it.\n` +
+    `OUTPUT-SPEC GATE: if this is a human-facing deliverable (asset/render/copy/UI-visible), the plan MUST start from a concrete OUTPUT EXAMPLE with named content contracts, and MUST cite any existing corpus/asset spec (precedent: a similar prior deliverable, if one exists). If no spec exists, propose the contract for human validation — do not skip it.\n` +
     `OBSERVED-INTERFACES RULE: any step consuming an external interface MUST cite a REAL observed payload. REUSE a provided field (e.g. \`qr_url\`) over reconstructing it — reconstruction is a plan defect.${designStepBlock}${fixBlock}${auditFixBlock}${reviewFixBlock}`
 }
 
@@ -1889,7 +1889,7 @@ if (after('plan', entryStage)) {
         'planCheck',
         `You are a cheap, binary conformance gate on Sam's plan for issue #${issue} — verify it against the plan text below (authoritative; do NOT re-read the issue from GitHub).\n\n` +
           `PLAN:\n${samPlan}\n\n` +
-          `Verify: (1) a corpus/asset spec is cited when one exists, for founder-facing/asset lanes; (2) any external interface is cited from a REAL observed payload, never reconstructed; (3) founder-facing/asset lanes have a written output example + named content contracts. Lanes with no founder-facing/asset deliverable (pure backend/mechanical) auto-pass item (3) as N/A.\n` +
+          `Verify: (1) a corpus/asset spec is cited when one exists, for human-facing/asset lanes; (2) any external interface is cited from a REAL observed payload, never reconstructed; (3) human-facing/asset lanes have a written output example + named content contracts. Lanes with no human-facing/asset deliverable (pure backend/mechanical) auto-pass item (3) as N/A.\n` +
           `(4) CONFORMANCE COMPLETENESS: the plan MUST contain an acceptance-checklist section. A criterion is an ORPHAN only when it names a concrete deliverable or behavior that no plan step addresses => NOT_CONFORMING (list each orphan in issues). Standard boilerplate verification criteria — full regression/test suite green, lint clean, format-check clean, scope-guard/diff-stat checks — are gate-level (satisfied by the project's own build/test/format commands, never authored as a dedicated plan step) and are EXEMPT from this check; never flag them as orphans. No acceptance-checklist section at all => NOT_CONFORMING.\n` +
           `Return { verdict: 'CONFORMING'|'NOT_CONFORMING', issues: string[] } — issues empty when CONFORMING.`,
         { schema: PLAN_CHECK, label: `plan-check-${issue}-${planPass}`, model: 'haiku' },
@@ -2281,7 +2281,7 @@ if (after('dev', entryStage)) {
       `${SANDBOX_INSTALL_HINT} ` +
       `Push the branch explicitly before opening the PR: \`git push origin ${expectedBranchName}\` (no upstream flag — the sandbox cannot write the worktree's .git/config, CC bug #51818; see .claude/rules/git-workflow.md). ` +
       `Open a PR (draft) with EXPLICIT refs — gh resolves HEAD from the invoking cwd, not the worktree branch: \`gh pr create --draft${prFlag} --base ${baseBranch} --head ${expectedBranchName} ...\`. ` +
-      `Compose the PR body in this order (artifact-first structure): first line \`${closesLine}\` — one \`Closes #N\` per fully-resolved issue (the epic plus every issue Sam's plan explicitly named as fully resolved by this bundle; never for an issue flagged partial/residual in the plan — that one stays open, with a forward-reference comment on the child issue instead, as already practiced); ${subIssuesGateNote(subIssuesUncovered, issue)}then a \`## What this ships\` H2 with a bullet summary of the diff; then, ONLY IF the acceptance checklist below contains a \`[founder-gate]\` item, an optional \`## <Founder> — N gestures\` H2 listing those manual founder actions (omit this H2 entirely when no \`[founder-gate]\` item exists — never ship an empty stub section); then a \`## Acceptance checklist\` H2. Copy the acceptance checklist into the PR body between \`<!-- acceptance:start -->\`/\`<!-- acceptance:end -->\`. Leave an EMPTY \`<!-- decision-log:start -->\`/\`<!-- decision-log:end -->\` marker pair right after the acceptance block — workflow-owned, never hand-fill it. Close with a \`<details><summary>Technical detail</summary>\` fold holding the test plan / feature flag / risk notes. Post a comment on issue #${issue} linking the PR, then idle.`
+      `Compose the PR body in this order (artifact-first structure): first line \`${closesLine}\` — one \`Closes #N\` per fully-resolved issue (the epic plus every issue Sam's plan explicitly named as fully resolved by this bundle; never for an issue flagged partial/residual in the plan — that one stays open, with a forward-reference comment on the child issue instead, as already practiced); ${subIssuesGateNote(subIssuesUncovered, issue)}then a \`## What this ships\` H2 with a bullet summary of the diff; then, ONLY IF the acceptance checklist below contains a \`[human-gate]\` item, an optional \`## <Human> — N gestures\` H2 listing those manual human actions (omit this H2 entirely when no \`[human-gate]\` item exists — never ship an empty stub section); then a \`## Acceptance checklist\` H2. Copy the acceptance checklist into the PR body between \`<!-- acceptance:start -->\`/\`<!-- acceptance:end -->\`. Leave an EMPTY \`<!-- decision-log:start -->\`/\`<!-- decision-log:end -->\` marker pair right after the acceptance block — workflow-owned, never hand-fill it. Close with a \`<details><summary>Technical detail</summary>\` fold holding the test plan / feature flag / risk notes. Post a comment on issue #${issue} linking the PR, then idle.`
   )
   if (simulate) nickPromptPreview = nickPrompt
   nick = await callAgentSafe(
@@ -2345,7 +2345,7 @@ if (after('review', entryStage)) {
 
   // PR comment hygiene — hidden HTML marker the pipeline injects into its OWN posted
   // comments (Morgan's verdicts, Nick's push-notes). All agents share ONE GitHub token, so
-  // author filtering is useless/dangerous — targeting is marker-only. Unmarked (founder/human)
+  // author filtering is useless/dangerous — targeting is marker-only. Unmarked (human)
   // comments are never touched.
   const reviewMarker = `<!-- pipeline-review-round pr=${pr} -->`
 
@@ -2354,11 +2354,11 @@ if (after('review', entryStage)) {
   // anthropics/claude-code#18392, both CLOSED as DUPLICATE, not FIXED), so a deny hook cannot gate
   // Morgan's `gh issue create` from inside her own subagent session. Compensating control instead,
   // run from the orchestrator (this process, which DOES have live gh access) — but NEVER
-  // destructive: all agents (and the founder) typically share ONE GitHub login, so there is NO
+  // destructive: all agents (and the human) typically share ONE GitHub login, so there is NO
   // attribution signal to tell Morgan's own issue apart from a concurrent pipeline's or a human's
   // (verified in production: every agent-authored comment carries the same author login).
   // An earlier mechanism (snapshot issue NUMBERS before/after, close whatever is new) was observed
-  // in production to silently mis-close issues — including a FOUNDER-REOPENED issue
+  // in production to silently mis-close issues — including a HUMAN-REOPENED issue
   // (createdAt predates the window; a number-diff cannot see that) and came within a couple of
   // issues of a silent mass-wrong-close once a repo passed the hardcoded before-snapshot page cap. Replacement: candidates
   // are selected by CREATION TIME inside the review window (a reopen keeps its original
@@ -2724,11 +2724,11 @@ if (after('review', entryStage)) {
       `Do NOT change any product code — fix only the listed mechanical issues; reinstalling deps is NOT ` +
       `product code and is allowed. If the install cannot succeed under the sandbox, stop and report it ` +
       `as blocked in your return rather than working around the sandbox — the second preflight will then ` +
-      `fail and the workflow escalates for the Lead/founder. If a listed issue's stated requirement is ` +
+      `fail and the workflow escalates for the Lead/human. If a listed issue's stated requirement is ` +
       `literally what this PR's diff changes (self-reference-preflight — the running pipeline is the ` +
       `DISPATCH-time snapshot, so it enforces pre-PR gate logic), do not mutate the worktree to satisfy ` +
       `it and do not revert the PR's own change; stop and report it as blocked in your return, so the ` +
-      `second preflight fails and the workflow escalates for the Lead/founder.`,
+      `second preflight fails and the workflow escalates for the Lead/human.`,
       { agentType: 'Nick', label: `nick-preflight-fix-${pr}`, model: 'sonnet' },
       currentRound,
     )
@@ -2846,21 +2846,21 @@ if (after('review', entryStage)) {
   // reviewParkedTerminal(v, round) (issue #228) — Morgan PROVED every remaining box but could not tick it
   // (`gh pr edit` denied by session permissions). Nothing here is a code defect, so dispatching
   // Nick only ends in `nick-no-op`. Park the run for the Lead instead: `verified-untickable`
-  // (or `ready-pending-founder` carrying `untickableItems` when founder-gate boxes remain too).
-  // Returns null (legacy path, byte-identical) unless EVERY non-founder-gate item is proven
+  // (or `ready-pending-human` carrying `untickableItems` when human-gate boxes remain too).
+  // Returns null (legacy path, byte-identical) unless EVERY non-human-gate item is proven
   // untickable. Never ticks anything itself (D4): the Lead re-verifies each proof and ticks.
   const reviewParkedTerminal = async (v, round) => {
     if (!v || v.verdict !== 'REQUIRED_CHANGES' || v.ciGreen === false) return null
     const { untickable, rest } = classifyUntickable(v.items, v.itemOwners)
     if (untickable.length === 0) return null
-    if (rest.some(i => !isFounderGate(i))) return null   // a real blocker remains → Nick loop
+    if (rest.some(i => !isHumanGate(i))) return null   // a real blocker remains → Nick loop
     trace.push(`verified-untickable:${round}`)
-    log(`Verified-untickable: ${untickable.length} box(es) proven but not tickable (permissions)${rest.length > 0 ? ` + ${rest.length} founder-gate` : ''} — parking for the Lead, no Nick round`)
+    log(`Verified-untickable: ${untickable.length} box(es) proven but not tickable (permissions)${rest.length > 0 ? ` + ${rest.length} human-gate` : ''} — parking for the Lead, no Nick round`)
     await updateStatus('Pending Tick')   // best-effort; logs + skips if the option is unconfigured
     if (rest.length === 0) {
       return finish({ status: 'verified-untickable', pr, issue, round, untickableItems: untickable, trace, decisionLog, resumable: true })
     }
-    return finish({ status: 'ready-pending-founder', pr, issue, round, founderGateItems: rest, untickableItems: untickable, trace, decisionLog, resumable: true })
+    return finish({ status: 'ready-pending-human', pr, issue, round, humanGateItems: rest, untickableItems: untickable, trace, decisionLog, resumable: true })
   }
 
   // syncAcceptanceBlock (issue #97) — deterministic, FAIL-CLOSED sync of Sam's amended acceptance
@@ -3002,7 +3002,7 @@ if (after('review', entryStage)) {
       `${planBlock}\n\n` +
       `Gate on the acceptance checklist FROM THAT PLAN, review against ${conventionsRule}, ` +
       `${regressionGuardStep}` +
-      `For asset/render/founder-facing lanes, BEFORE any verdict, execute the real-case live run yourself (the exact command the plan names, deps included) and machine-verify the output contract from the plan (e.g. the exact pixel/asset dimensions and named visual elements the plan calls for, screenshot non-empty, named fields written). Units mock the other side, so seam errors pass with the mock; only a taste judgment then remains for the founder-gate. ` +
+      `For asset/render/human-facing lanes, BEFORE any verdict, execute the real-case live run yourself (the exact command the plan names, deps included) and machine-verify the output contract from the plan (e.g. the exact pixel/asset dimensions and named visual elements the plan calls for, screenshot non-empty, named fields written). Units mock the other side, so seam errors pass with the mock; only a taste judgment then remains for the human-gate. ` +
       `${artifactProofStep}` +
       `${freshnessStep}` +
       `${subIssuesUncovered.length > 0
@@ -3010,8 +3010,8 @@ if (after('review', entryStage)) {
         : ''}` +
       `Confirm CI is green via the GitHub checks ${ciChecks.join(' + ')} (gh pr checks ${pr}${prFlag}), ` +
       `then POST your verdict (LGTM | REQUIRED_CHANGES | REGRESSION_DETECTED) as a comment on PR #${pr}. Prefix that posted comment EXACTLY with the pipeline-review-round marker \`${reviewMarker}\` as its own first line (hidden HTML marker; do NOT let it leak into \`items\`). ` +
-      `For each remaining unticked acceptance box, put in \`items\` the **verbatim checklist line** it blocks on (copy the box text exactly — do NOT paraphrase — so a persistent blocker reads identically across rounds). Any box whose line contains the tag \`[founder-gate]\` is a **founder-only** item: you cannot verify it and MUST NOT tick it or ask Nick to fix it — copy its line verbatim into \`items\` (tag preserved) and treat it as a founder gate, not a code defect. Emit \`REQUIRED_CHANGES\` whenever any box is unticked (founder-gate or not). ` +
-      `For each item in \`items\`, ALSO classify it in \`itemOwners\` ({item, itemOwner, proof}): 'code-defect' is the DEFAULT whenever you are uncertain — a plan owner ('plan-defect'|'checklist-wording-defect') REQUIRES a concrete \`proof\` quoting the exact contradiction between the plan/checklist and reality, and NEVER excuses unfinished code. If a box's verification PASSED but ticking it (\`gh pr edit\`) is denied by permissions, do NOT retry, do NOT work around the denial and do NOT post "Ready to merge": leave the box \`- [ ]\`, copy its verbatim line into \`items\`, and classify it in \`itemOwners\` as 'proven-untickable' with \`proof\` = the command you ran and its verbatim output. A box whose verification failed or was not run stays 'code-defect'. A [founder-gate] box is NEVER 'proven-untickable'.`,
+      `For each remaining unticked acceptance box, put in \`items\` the **verbatim checklist line** it blocks on (copy the box text exactly — do NOT paraphrase — so a persistent blocker reads identically across rounds). Any box whose line contains the tag \`[human-gate]\` is a **human-only** item: you cannot verify it and MUST NOT tick it or ask Nick to fix it — copy its line verbatim into \`items\` (tag preserved) and treat it as a human gate, not a code defect. Emit \`REQUIRED_CHANGES\` whenever any box is unticked (human-gate or not). ` +
+      `For each item in \`items\`, ALSO classify it in \`itemOwners\` ({item, itemOwner, proof}): 'code-defect' is the DEFAULT whenever you are uncertain — a plan owner ('plan-defect'|'checklist-wording-defect') REQUIRES a concrete \`proof\` quoting the exact contradiction between the plan/checklist and reality, and NEVER excuses unfinished code. If a box's verification PASSED but ticking it (\`gh pr edit\`) is denied by permissions, do NOT retry, do NOT work around the denial and do NOT post "Ready to merge": leave the box \`- [ ]\`, copy its verbatim line into \`items\`, and classify it in \`itemOwners\` as 'proven-untickable' with \`proof\` = the command you ran and its verbatim output. A box whose verification failed or was not run stays 'code-defect'. A [human-gate] box is NEVER 'proven-untickable'.`,
     { agentType: 'Morgan', phase: 'Review', schema: MORGAN, label: `morgan-pr-${pr}`, model: morganModel },
     round,
   )
@@ -3024,17 +3024,17 @@ if (after('review', entryStage)) {
 
   await recordDecision(round, v.verdict, v.items)
 
-  // Proven-but-untickable terminal outcome (issue #228) — BEFORE the founder-gate branch and gate().
+  // Proven-but-untickable terminal outcome (issue #228) — BEFORE the human-gate branch and gate().
   const parked0 = await reviewParkedTerminal(v, round)
   if (parked0) return parked0
 
-  // Founder-only terminal outcome: the only remaining blockers are founder-gate
+  // Human-only terminal outcome: the only remaining blockers are human-gate
   // boxes Morgan cannot verify → stop cleanly, surface them to the Lead. Resumable:
-  // founder runs the live test, posts approval, ticks the box, Lead re-launches review.
-  if (v.verdict === 'REQUIRED_CHANGES' && allFounderGate(v.items)) {
-    log(`Ready pending founder: only founder-gate items remain (${v.items.length})`)
-    await updateStatus('Pending Founder')   // best-effort; no-ops if the option is unconfigured
-    return finish({ status: 'ready-pending-founder', pr, issue, round, founderGateItems: v.items, trace, decisionLog, resumable: true })
+  // human runs the live test, posts approval, ticks the box, Lead re-launches review.
+  if (v.verdict === 'REQUIRED_CHANGES' && allHumanGate(v.items)) {
+    log(`Ready pending human: only human-gate items remain (${v.items.length})`)
+    await updateStatus('Pending Human')   // best-effort; no-ops if the option is unconfigured
+    return finish({ status: 'ready-pending-human', pr, issue, round, humanGateItems: v.items, trace, decisionLog, resumable: true })
   }
 
   while (v.verdict !== 'LGTM' && round < 3) {
@@ -3132,12 +3132,12 @@ if (after('review', entryStage)) {
     v = await callMorganGuarded(
       `Work in the shared worktree "${wtPath}". Re-review PR #${pr} after Nick's fixes, against the SAME plan and acceptance checklist below. ` +
         `Re-run the regression guard the same way: ${regressionGuardStep}` +
-        `For asset/render/founder-facing lanes, BEFORE any verdict, execute the real-case live run yourself (the exact command the plan names, deps included) and machine-verify the output contract from the plan (e.g. the exact pixel/asset dimensions and named visual elements the plan calls for, screenshot non-empty, named fields written). Units mock the other side, so seam errors pass with the mock; only a taste judgment then remains for the founder-gate. ` +
+        `For asset/render/human-facing lanes, BEFORE any verdict, execute the real-case live run yourself (the exact command the plan names, deps included) and machine-verify the output contract from the plan (e.g. the exact pixel/asset dimensions and named visual elements the plan calls for, screenshot non-empty, named fields written). Units mock the other side, so seam errors pass with the mock; only a taste judgment then remains for the human-gate. ` +
         `${artifactProofStep}` +
         `${freshnessStep}` +
         `Then post the new verdict (LGTM | REQUIRED_CHANGES | REGRESSION_DETECTED) as a comment on the PR. Prefix that posted comment EXACTLY with the pipeline-review-round marker \`${reviewMarker}\` as its own first line (hidden HTML marker; do NOT let it leak into \`items\`). ` +
-        `For each remaining unticked acceptance box, put in \`items\` the **verbatim checklist line** it blocks on (copy the box text exactly — do NOT paraphrase — so a persistent blocker reads identically across rounds). Any box whose line contains the tag \`[founder-gate]\` is a **founder-only** item: you cannot verify it and MUST NOT tick it or ask Nick to fix it — copy its line verbatim into \`items\` (tag preserved) and treat it as a founder gate, not a code defect. Emit \`REQUIRED_CHANGES\` whenever any box is unticked (founder-gate or not). ` +
-        `For each item in \`items\`, ALSO classify it in \`itemOwners\` ({item, itemOwner, proof}): 'code-defect' is the DEFAULT whenever you are uncertain — a plan owner ('plan-defect'|'checklist-wording-defect') REQUIRES a concrete \`proof\` quoting the exact contradiction between the plan/checklist and reality, and NEVER excuses unfinished code. If a box's verification PASSED but ticking it (\`gh pr edit\`) is denied by permissions, do NOT retry, do NOT work around the denial and do NOT post "Ready to merge": leave the box \`- [ ]\`, copy its verbatim line into \`items\`, and classify it in \`itemOwners\` as 'proven-untickable' with \`proof\` = the command you ran and its verbatim output. A box whose verification failed or was not run stays 'code-defect'. A [founder-gate] box is NEVER 'proven-untickable'.\n\n${planBlock}`,
+        `For each remaining unticked acceptance box, put in \`items\` the **verbatim checklist line** it blocks on (copy the box text exactly — do NOT paraphrase — so a persistent blocker reads identically across rounds). Any box whose line contains the tag \`[human-gate]\` is a **human-only** item: you cannot verify it and MUST NOT tick it or ask Nick to fix it — copy its line verbatim into \`items\` (tag preserved) and treat it as a human gate, not a code defect. Emit \`REQUIRED_CHANGES\` whenever any box is unticked (human-gate or not). ` +
+        `For each item in \`items\`, ALSO classify it in \`itemOwners\` ({item, itemOwner, proof}): 'code-defect' is the DEFAULT whenever you are uncertain — a plan owner ('plan-defect'|'checklist-wording-defect') REQUIRES a concrete \`proof\` quoting the exact contradiction between the plan/checklist and reality, and NEVER excuses unfinished code. If a box's verification PASSED but ticking it (\`gh pr edit\`) is denied by permissions, do NOT retry, do NOT work around the denial and do NOT post "Ready to merge": leave the box \`- [ ]\`, copy its verbatim line into \`items\`, and classify it in \`itemOwners\` as 'proven-untickable' with \`proof\` = the command you ran and its verbatim output. A box whose verification failed or was not run stays 'code-defect'. A [human-gate] box is NEVER 'proven-untickable'.\n\n${planBlock}`,
       { agentType: 'Morgan', phase: 'Review', schema: MORGAN, label: `morgan-pr-${pr}`, model: morganModel },
       round,
     )
@@ -3150,17 +3150,17 @@ if (after('review', entryStage)) {
 
     await recordDecision(round, v.verdict, v.items)
 
-    // Proven-but-untickable terminal outcome (issue #228) — BEFORE the founder-gate branch.
+    // Proven-but-untickable terminal outcome (issue #228) — BEFORE the human-gate branch.
     const parkedN = await reviewParkedTerminal(v, round)
     if (parkedN) return parkedN
 
-    // Founder-only terminal outcome: the only remaining blockers are founder-gate
+    // Human-only terminal outcome: the only remaining blockers are human-gate
     // boxes Morgan cannot verify → stop cleanly, surface them to the Lead. Resumable:
-    // founder runs the live test, posts approval, ticks the box, Lead re-launches review.
-    if (v.verdict === 'REQUIRED_CHANGES' && allFounderGate(v.items)) {
-      log(`Ready pending founder: only founder-gate items remain (${v.items.length})`)
-      await updateStatus('Pending Founder')   // best-effort; no-ops if the option is unconfigured
-      return finish({ status: 'ready-pending-founder', pr, issue, round, founderGateItems: v.items, trace, decisionLog, resumable: true })
+    // human runs the live test, posts approval, ticks the box, Lead re-launches review.
+    if (v.verdict === 'REQUIRED_CHANGES' && allHumanGate(v.items)) {
+      log(`Ready pending human: only human-gate items remain (${v.items.length})`)
+      await updateStatus('Pending Human')   // best-effort; no-ops if the option is unconfigured
+      return finish({ status: 'ready-pending-human', pr, issue, round, humanGateItems: v.items, trace, decisionLog, resumable: true })
     }
 
     // Plan-defect-persists escalation (issue #97, S13) — evaluated BEFORE same-blocker-twice, and
@@ -3194,7 +3194,7 @@ if (after('review', entryStage)) {
   // the PR-Ready handoff.
   // Placement (mtime-floor coupling): a squash rewrites the branch head, moving the freshness
   // floor staleArtifactBlockers compares against (artifactFloorIso). Safe here because both
-  // ready-pending-founder returns are upstream of this call site, so the squash fires ONLY on the
+  // ready-pending-human returns are upstream of this call site, so the squash fires ONLY on the
   // terminal status:'ready' path; and a post-'ready' entryStage='review' resume is safe because
   // callMorganGuarded consumes v.artifactProofs from the CURRENT round's verdict — proofs are
   // minted after the new head, and one predating it is the defect the gate exists to catch.

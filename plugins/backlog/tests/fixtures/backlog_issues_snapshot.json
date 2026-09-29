@@ -251,7 +251,7 @@
     "number": 107,
     "state": "OPEN",
     "createdAt": "2026-09-24T10:00:00Z",
-    "title": "ready but founder executor",
+    "title": "ready but human executor",
     "labels": [
       {
         "id": "LA_2281065142",
@@ -261,7 +261,7 @@
       },
       {
         "id": "LA_3686307056",
-        "name": "exec:founder",
+        "name": "exec:human",
         "description": "",
         "color": "ededed"
       },

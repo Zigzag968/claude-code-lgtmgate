@@ -23,7 +23,7 @@ permissions:
 
 jobs:
   guards:
-    # #254: this job used to target the founder's private, always-on machine — any external PR would
+    # #254: this job used to target the human's private, always-on machine — any external PR would
     # execute arbitrary branch-authored code (see the pull_request_target note above) on that
     # machine the moment this repo goes public. Tests are 100% offline/stdlib (no external
     # deps), so ubuntu-latest has full parity with no coverage loss.
