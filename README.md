@@ -1,7 +1,7 @@
 <picture>
-  <source media="(prefers-reduced-motion: reduce)" srcset="docs/header-static.png">
-  <source srcset="docs/header.svg">
-  <img src="docs/header-static.png" width="100%" alt="lgtmgate: merge gate for agent-generated pull requests. Animated illustration: GitHub issues ride two assembly lines through plan, dev and review. A pull request sent back by review is fixed and checked again. The LGTM gate opens only when CI and every checklist item are green, and after a human's merge go-ahead the Lead's arm sets each approved pull request onto main.">
+  <source media="(prefers-reduced-motion: reduce)" srcset=".github/assets/header-static.png">
+  <source srcset=".github/assets/header.svg">
+  <img src=".github/assets/header-static.png" width="100%" alt="lgtmgate: merge gate for agent-generated pull requests. Animated illustration: GitHub issues ride two assembly lines through plan, dev and review. A pull request sent back by review is fixed and checked again. The LGTM gate opens only when CI and every checklist item are green, and after a human's merge go-ahead the Lead's arm sets each approved pull request onto main.">
 </picture>
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)

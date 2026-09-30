@@ -1,15 +1,19 @@
-// Usage: node docs/mockups/gen-header-v9.mjs docs/mockups/header-assembly-line-v9.html
-// Optional 2nd arg: JSON overrides, e.g. '{"cold":7.9}'.
-// Node stdlib only. Writes one self-contained HTML page (inline SVG + CSS keyframes, no JS in the output).
+// The README's animated header: two assembly lines, the LGTM gate, the Lead's arm and the main lane.
+// Usage: node scripts/gen-readme-header.mjs .github/assets/header.svg         (the README header)
+//        node scripts/gen-readme-header.mjs /tmp/header-mockup.html           (a page to review it in a browser)
+// Optional 2nd arg: JSON overrides, e.g. '{"cold":7.9}'. Node stdlib only. Output: one SVG, CSS keyframes, no JS, no web font.
+// After regenerating the SVG, refresh .github/assets/header-static.png (the still under prefers-reduced-motion):
+// a 2x screenshot of the SVG with reduced motion on. The design history (v1-v10 mockups) lives on the
+// design/readme-header-mockups branch.
 //
-// v9 = v8 + review feedback:
-// - every station has a status light, one code everywhere: orange = in progress, green = done (on to the next step),
-//   off = idle, red = error; the operator's monitor mirrors those lights as one schematic row per workflow
-// - Nick's workshop is a cartoon work cloud: the parcel disappears in a boiling puff, code and tools fly out,
-//   the cloud pops and the parcel comes out with its PR opened
-// - the PR label is a filled GitHub state label: grey draft, green (white text) once Morgan validates it, purple merged
-// - the LGTM belt label stays neutral like the others; the gate's CI and checklist lights are bigger
-// - the operator sits next to the belts
+// What the scene says:
+// - every station has a status light (orange in progress, green done, red error, off idle), mirrored on the
+//   operator's monitor, one schematic row per workflow in progress, then the human's MERGE go-ahead
+// - DEV: the parcel shakes while code flies out of it, then the PR opens (grey draft label)
+// - REVIEW: Morgan ticks each criterion green; on the back line one gets a red cross, the label turns red and the
+//   workflow runs the belt back to DEV; after the fix CI runs again and the review passes (label green)
+// - the LGTM gate opens only when its CI light and checklist light are both green
+// - one Lead arm on an endless rail sets each approved PR on main, under a hanging "main" sign
 import { writeFileSync } from 'fs';
 const OUT = process.argv[2];
 const OPT = JSON.parse(process.argv[3] || '{}');
@@ -39,6 +43,7 @@ const C = {
   'ag-t': '#B6AAFF', 'ag-f': '#8069FF', 'ag-r': '#5E48E6',          // agent tools
   'ac-t': '#4A4570', 'ac-f': '#35305A', 'ac-r': '#28244A',          // the Lead / dark hardware
   'gt-t': '#4A4570', 'gt-f': '#35305A', 'gt-r': '#28244A',          // gate frame
+  'sg-t': '#7B63F0', 'sg-f': '#5B3FE0', 'sg-r': '#4A31C4',          // the main sign
   'dk-t': '#3A3558', 'dk-f': '#2B2748', 'dk-r': '#211E3B',          // monitor
 };
 const HZ_Y = '#FFC53D', INK = '#1E1B3A';
@@ -114,10 +119,11 @@ const MOVES = [[2.0, 2.75], [5.6, 6.35], [9.7, 10.45], [14.9, 15.65]];   // A's 
 const MERGE = { A: 7.85, B: 11.3 };                                  // the operator's go-ahead, just before the Lead comes down
 
 // ---------------------------------------------------------------- the parcel (drawn at x = 0, depth offset z0)
-// PR label colours follow GitHub's pull-request state labels (Primer StateLabel): draft grey, open green, merged purple
-const PRC = { draft: '#6E7781', ready: '#1F883D', merged: '#8250DF' };   // filled, white text, like GitHub's state labels
+// PR label: grey while draft, red once Morgan requests changes, green once his review passes (and on main)
+const PRC = { draft: '#6E7781', changes: '#CF222E', ready: '#1F883D' };  // filled, white text, like GitHub's state labels
+const OKC = '#1F883D', KOC = '#CF222E';                              // Morgan's marks: green tick, red cross
 const prLabel = (bg, cls) => `<g${cls ? ` class="a ${cls}"` : ''}><rect x="-13.5" y="-7.5" width="27" height="15" rx="4" fill="${bg}"/><text x="0" y="3.6" text-anchor="middle" class="mono" fill="#fff" font-size="10" font-weight="800">PR</text></g>`;
-// modes: 'live' (label layers animate, class suffix p), 'carried' (ticked, PR ready), 'merged' (ticked, PR merged), 'plain'
+// modes: 'live' (label layers animate, class suffix p), 'final' (ticked, PR ready: carried or on main), 'plain'
 function parcel(num, mode, z0, p = '') {
   const [fx, fy] = P(-PW / 2, TOPY, ZF + z0);
   const cx = fx + 6, cy = fy + 7;
@@ -131,9 +137,10 @@ function parcel(num, mode, z0, p = '') {
   [0, 1, 2].forEach(i => {
     const y = cy + 16 + i * 7.5, w = [24, 19, 22][i];
     s += `<g${live ? ` class="a row${i + 1}${p}" style="transform-origin:${f2(cx + 4)}px 0"` : ''}><rect x="${f2(cx + 4)}" y="${f2(y)}" width="6" height="6" rx="1.2" fill="none" stroke="${INK}" stroke-width="1.2"/><line x1="${f2(cx + 14)}" y1="${f2(y + 3)}" x2="${f2(cx + 14 + w)}" y2="${f2(y + 3)}" stroke="#C5C8D2" stroke-width="2.2" stroke-linecap="round"/></g>`;
-    s += `<path${live ? ` class="a tk${i + 1}${p}"` : ''} d="M${f2(cx + 3)},${f2(y + 2.6)} l2.6,2.8 l5.4,-7" fill="none" stroke="${INK}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="14"${live ? '' : ' stroke-dashoffset="0"'}/>`;
+    s += `<path${live ? ` class="a tk${i + 1}${p}"` : ''} d="M${f2(cx + 3)},${f2(y + 2.6)} l2.6,2.8 l5.4,-7" fill="none" stroke="${OKC}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="14"${live ? '' : ' stroke-dashoffset="0"'}/>`;
+    if (live && p === 'A' && i === 1) s += `<g class="a x2A" style="transform-origin:${f2(cx + 7)}px ${f2(y + 3)}px"><path d="M${f2(cx + 4.3)},${f2(y + .3)} l5.4,5.4 M${f2(cx + 9.7)},${f2(y + .3)} l-5.4,5.4" stroke="${KOC}" stroke-width="1.9" stroke-linecap="round"/></g>`;
   });
-  const lab = live ? `<g class="a stamp${p}">${prLabel(PRC.draft)}${prLabel(PRC.ready, 'ready' + p)}</g>` : prLabel(mode === 'carried' ? PRC.ready : PRC.merged);
+  const lab = live ? `<g class="a stamp${p}">${prLabel(PRC.draft)}${p === 'A' ? prLabel(PRC.changes, 'chg' + p) : ''}${prLabel(PRC.ready, 'ready' + p)}</g>` : prLabel(PRC.ready);
   s += `<g transform="translate(${f2(fx + PW - 11)},${f2(fy + 10)}) rotate(-12)">${lab}</g>`;
   return s;
 }
@@ -143,7 +150,6 @@ const lensRest = p => P(XS.rev - 7, 84, ZL[p] + 3);
 const lampAt = (p, x) => P(x, 110.8, ZL[p] + 9);
 const LAMP = { off: '#DCD8E8', o: '#F5A524', g: '#22C55E', r: '#F04438' };
 const cloudAt = p => { const [fx, fy] = P(XS.dev - PW / 2, TOPY, ZF + ZL[p]); return [fx + PW / 2 + 9, fy + 9]; };
-const PUFFS = [[-40, 8, 17], [-30, -10, 19], [-12, -22, 21], [10, -26, 22], [32, -18, 20], [44, 0, 18], [38, 18, 16], [16, 25, 17], [-8, 25, 17], [-30, 22, 16], [0, 2, 30]];
 const GEAR = `<circle r="5.6" fill="none" stroke="#8069FF" stroke-width="3.4" stroke-dasharray="2.3 2.1"/><circle r="3.4" fill="#8069FF"/><circle r="1.4" fill="#fff"/>`;
 const SYMS = [                                                      // [glyph, flight vector, spin]
   [`<text x="0" y="4.5" text-anchor="middle" class="mono" font-size="13" font-weight="800" fill="#5B3DF5">&lt;/&gt;</text>`, [-64, -30], -25],
@@ -168,16 +174,14 @@ function tools(p) {                                                 // the parts
     const e = [P(x - 13, 84, z0 + 14), P(x + 13, 84, z0 + 14)];
     s += `<line class="a emit${p}" x1="${f2(e[0][0])}" y1="${f2(e[0][1] - 1)}" x2="${f2(e[1][0])}" y2="${f2(e[1][1] - 1)}" stroke="#C9C0FF" stroke-width="2.5" stroke-linecap="round"/>`;
   }
-  { // DEV: Nick's workshop, a cartoon work cloud. The head dives in, the parcel vanishes in a boiling puff while code and
-    // tools fly out, then the cloud pops and the parcel comes out with its PR opened
+  { // DEV: Nick's workshop. The head comes down, the parcel shakes and squashes while code and tools fly out of it,
+    // then a small burst: the PR opens
     const x = XS.dev, rod = P(x, 96, z0 + 32);
     s += `<clipPath id="press${p}"><rect x="0" y="${f2(rod[1])}" width="1400" height="400"/></clipPath>`;
     s += `<g clip-path="url(#press${p})"><g class="a press${p}"><line x1="${f2(rod[0])}" y1="${f2(rod[1] - 40)}" x2="${f2(rod[0])}" y2="${f2(rod[1] + 16)}" stroke="#C9C6D6" stroke-width="6"/>${box(x - 26, 82, z0 + 12, 52, 14, 38, 'ag')}</g></g>`;
     const [cx, cy] = cloudAt(p);
-    const puffs = PUFFS.map(([dx, dy, r], i) => `<circle class="a pf${i}${p}" cx="${f2(cx + dx)}" cy="${f2(cy + dy)}" r="${r}" style="transform-box:fill-box;transform-origin:center"/>`).join('');
-    s += `<g class="a cloud${p}" style="transform-box:fill-box;transform-origin:center"><g fill="#8069FF" stroke="#8069FF" stroke-width="5">${puffs}</g><g fill="#FFFFFF">${puffs}</g></g>`;
     SYMS.forEach(([glyph], i) => { s += `<g transform="translate(${f2(cx)} ${f2(cy)})"><g class="a sym${i}${p}">${glyph}</g></g>`; });
-    s += `<g transform="translate(${f2(cx)} ${f2(cy)})"><g class="a boom${p}" stroke="#5B3DF5" stroke-width="3" stroke-linecap="round">${[...Array(10)].map((_, k) => { const t = (k * 36 + 18) * Math.PI / 180; return `<line x1="${f2(Math.cos(t) * 50)}" y1="${f2(Math.sin(t) * 40)}" x2="${f2(Math.cos(t) * 62)}" y2="${f2(Math.sin(t) * 50)}"/>`; }).join('')}</g></g>`;
+    s += `<g transform="translate(${f2(cx)} ${f2(cy)})"><g class="a boom${p}" stroke="#5B3DF5" stroke-width="3" stroke-linecap="round">${[...Array(10)].map((_, k) => { const t = (k * 36 + 18) * Math.PI / 180; return `<line x1="${f2(Math.cos(t) * 50)}" y1="${f2(Math.sin(t) * 38)}" x2="${f2(Math.cos(t) * 60)}" y2="${f2(Math.sin(t) * 46)}"/>`; }).join('')}</g></g>`;
   }
   { // REVIEW: Morgan's lens reads each criterion and ticks it
     const rest = lensRest(p);
@@ -241,6 +245,7 @@ function labels() {
   const X = { int: INT, plan: XS.plan, dev: XS.dev, rev: XS.rev, lgtm: XG + 2.5 };
   return [['int', 'ISSUE'], ['plan', 'PLAN'], ['dev', 'DEV'], ['rev', 'REVIEW'], ['lgtm', 'LGTM']].map(([k, t]) => {
     const [x, y] = P(X[k], 5.6, 0);
+    if (k === 'lgtm') return `<text class="lbl mono" x="${f2(x)}" y="${f2(y)}" text-anchor="middle">${t}</text>`;   // the gate's lights speak for it
     return `<circle class="a pip-${k}" cx="${f2(x - t.length * 4.1 - 8)}" cy="${f2(y - 4)}" r="2.5" fill="#5B3DF5"/><text class="a lbl lbl-${k} mono" x="${f2(x)}" y="${f2(y)}" text-anchor="middle">${t}</text>`;
   }).join('');
 }
@@ -265,16 +270,18 @@ function mainLane() {
   s += `<g transform="matrix(${KX * 2} ${-KY * 2} 0 1 ${f2(o[0])} ${f2(o[1])})"><g fill="none" stroke="#5B3DF5" stroke-width="1.4" stroke-linecap="round"><circle cx="3" cy="-8" r="2"/><circle cx="3" cy="0" r="2"/><circle cx="10" cy="-6" r="2"/><path d="M3 -6 v4 M10 -4 c0 3 -4 3 -6 4"/></g><text x="16" y="1" class="mono" fill="#5B3DF5" font-size="11" font-weight="700" letter-spacing=".5">main</text></g>`;
   return s;
 }
-// Depth sort against the moving Lead: a parcel on main is drawn in front of the arm only while it is nearer to us
-// (smaller z) than the carriage. A parcel that changes sides gets a copy in both layers, switched on/off in step.
+// Depth sort against the moving Lead and the gantry: a parcel on main is drawn beyond the gantry while it is past it,
+// in front of the arm only while it is nearer to us (smaller z) than the carriage. A parcel that changes layer gets a copy
+// in each layer it visits, switched on/off in step.
+const ZG = 420;                                                     // the main sign's depth: behind both landing points and the carriage
 const STRIP_J = [];
 for (let j = 5; j >= -6; j--) {
   const m = mod(j, 4), who = WHO[m] || null;
   if (who && j < LAND[who]) continue;                               // still a gap: that PR has not been merged yet
   if ((j + 4) * PITCH < -400 || j * PITCH > 900) continue;          // never on screen during the loop
-  const front = [];
-  for (let k = 0; k < T * 200; k++) { const t = k / 200; front.push((j + valueAt(NSTRIP, t)) * PITCH < valueAt(ZCAR, t) - .5); }
-  STRIP_J.push({ j, who, front });
+  const lay = [];
+  for (let k = 0; k < T * 200; k++) { const t = k / 200, z = (j + valueAt(NSTRIP, t)) * PITCH; lay.push(z + ZC >= ZG ? 'far' : z < valueAt(ZCAR, t) - .5 ? 'front' : 'back'); }
+  STRIP_J.push({ j, who, lay });
 }
 const DYN = [];                                                     // animation names created on the fly
 function stepKF(name, states) {                                     // boolean samples (every 5 ms) -> opacity steps
@@ -286,17 +293,28 @@ function stepKF(name, states) {                                     // boolean s
 }
 function mainStrip(layer) {
   let s = '';
-  for (const { j, who, front } of STRIP_J) {
-    const anyF = front.some(Boolean), anyB = front.some(f => !f);
-    if (layer === 'front' ? !anyF : !anyB) continue;
-    const both = anyF && anyB, cls = `ly${layer === 'front' ? 'F' : 'B'}${j + 10}`;
-    if (both) stepKF(cls, layer === 'front' ? front : front.map(f => !f));
+  for (const { j, who, lay } of STRIP_J) {
+    const on = lay.map(l => l === layer);
+    if (!on.some(Boolean)) continue;
+    const always = on.every(Boolean), cls = `ly${{ far: 'R', back: 'B', front: 'F' }[layer]}${j + 10}`;
+    if (!always) stepKF(cls, on);
     const landing = who && j === LAND[who];
     const [dx, dy] = slotShift(j), piv = P(MXC, BH, ZF);
-    const body = parcel(who === 'A' ? '#143' : who === 'B' ? '#142' : OTHERS[mod(j, 4)], 'merged', 0);
-    s += `<g transform="translate(${f2(dx)} ${f2(dy)})"${both ? ` class="a ${cls}"` : ''}><g${landing ? ` class="a land${who}"` : ''}><g transform="translate(${f2(piv[0])} ${f2(piv[1])})"><g${landing ? ` class="a msq${who}"` : ''}><g transform="translate(${f2(-piv[0])} ${f2(-piv[1])})"><g transform="translate(${MXC} 0)">${body}</g></g></g></g></g></g>`;
+    const body = parcel(who === 'A' ? '#143' : who === 'B' ? '#142' : OTHERS[mod(j, 4)], 'final', 0);
+    s += `<g transform="translate(${f2(dx)} ${f2(dy)})"${always ? '' : ` class="a ${cls}"`}><g${landing ? ` class="a land${who}"` : ''}><g transform="translate(${f2(piv[0])} ${f2(piv[1])})"><g${landing ? ` class="a msq${who}"` : ''}><g transform="translate(${f2(-piv[0])} ${f2(-piv[1])})"><g transform="translate(${MXC} 0)">${body}</g></g></g></g></g></g>`;
   }
   return `<g class="a mstrip">${s}</g>`;
+}
+// the main sign: a panel hung from the ceiling by two cables over the lane (no posts: it must not read as a gate)
+function gantry() {
+  const sx0 = MX0 - 12, sx1 = MX1 + 10, sy0 = 96, sy1 = 124, h = sy1 - sy0;
+  const [a, b] = P(sx0, sy1, ZG - 3), [c] = P(sx1, sy1, ZG - 3);
+  let s = `<path d="M${f2(a + 8)} 0V${f2(b)}M${f2(c - 8)} 0V${f2(b)}" stroke="#8C93A0" stroke-width="1.6"/>`;
+  s += box(sx0, sy0, ZG - 3, sx1 - sx0, h, 3, 'sg');
+  s += `<g transform="translate(${f2(a)} ${f2(b)})"><g fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="${h / 2 - 6}" r="2.7"/><circle cx="11" cy="${h / 2 + 6}" r="2.7"/><circle cx="20" cy="${h / 2 - 3}" r="2.7"/><path d="M11 ${h / 2 - 3.3} v6.6 M20 ${h / 2 - .3} c0 4 -5 4 -8 5"/></g>`
+    + `<text x="28" y="${h / 2 + 6.3}" class="mono" font-size="18" font-weight="800" fill="#fff">main</text>`
+    + `<path d="M${sx1 - sx0 - 10} ${h / 2 - 8} v15 M${sx1 - sx0 - 15.5} ${h / 2 + 2} l5.5 6 l5.5 -6" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></g>`;
+  return s;
 }
 
 // ---------------------------------------------------------------- the Lead: one arm on a carriage riding an endless depth rail
@@ -327,7 +345,7 @@ function lead() {
   const cap = (len, th) => `<rect x="${-th / 2}" y="${-th / 2}" width="${len + th}" height="${th}" rx="${th / 2}" fill="#2B2748"/>`;
   const joint = r => `<circle r="${r}" fill="#8069FF"/><circle r="${r * .34}" fill="#2B2748"/>`;
   const topC = P(0, TOPY, ZC);
-  const card = ['B', 'A'].map(p => `<g class="a carry${p}"><g transform="translate(${f2(-topC[0])} ${f2(GRIP - topC[1])})">${parcel(p === 'A' ? '#143' : '#142', 'carried', 0)}</g></g>`).join('');
+  const card = ['B', 'A'].map(p => `<g class="a carry${p}"><g transform="translate(${f2(-topC[0])} ${f2(GRIP - topC[1])})">${parcel(p === 'A' ? '#143' : '#142', 'final', 0)}</g></g>`).join('');
   const grip = `<rect x="-3" y="0" width="6" height="${GRIP - 5}" fill="#2B2748"/><rect x="-13" y="${GRIP - 6}" width="26" height="6" rx="2" fill="#8069FF"/>${joint(6.5)}`;
   const chain = (links, hand) => `<g transform="translate(${f2(SH[0])} ${f2(SH[1])})"><g class="a sh">${links ? cap(L1, 15) + `<line x1="4" y1="-5" x2="${L1 - 4}" y2="-5" stroke="#4A4478" stroke-width="2" stroke-linecap="round"/>` : ''}
       <g transform="translate(${L1} 0)"><g class="a el">${links ? cap(L2, 12) + `<line x1="4" y1="-4" x2="${L2 - 4}" y2="-4" stroke="#4A4478" stroke-width="1.8" stroke-linecap="round"/>` : ''}
@@ -336,7 +354,7 @@ function lead() {
   const base = `<polygon fill="${INK}" opacity=".1" points="${pts([P(XA - 26, 2.5, 6), P(XA + 30, 2.5, 6), P(XA + 36, 2.5, 62), P(XA - 20, 2.5, 62)])}"/>`
     + box(XA - 22, 2.5, 10, 44, 12, 44, 'ac') + box(XA - 11, 14.5, 21, 22, 31.5, 22, 'ac')
     + `<text x="${f2(lx)}" y="${f2(ly + 1.5)}" text-anchor="middle" class="mono" fill="#C9C0FF" font-size="7.5" font-weight="700" letter-spacing="1">LEAD</text>`;
-  return `<g class="a car">${base}${chain(false, card)}${chain(true, grip)}</g>`;
+  return `<g class="a car">${base}${chain(true, '')}${chain(false, card)}${chain(false, grip)}</g>`;   // links, then the parcel, then the gripper
 }
 
 // ---------------------------------------------------------------- floor, brand, the human operator
@@ -386,7 +404,7 @@ function operator() {
     s += `<g class="p${p}"><g class="a rv${p}"><line x1="${NODE_X[0]}" y1="${y}" x2="${NODE_X[3]}" y2="${y}" stroke="#2E2A4A" stroke-width="2.4" stroke-linecap="round"/>`
       + ['pl', 'dv', 'rv', 'lg'].map((k, i) => `<circle class="a nd${k}${p}" cx="${NODE_X[i]}" cy="${y}" r="4.4" fill="#3A3657"/>`).join('')
       + `<rect x="76" y="${y - 5}" width="24" height="10" rx="5" fill="none" stroke="#4A4568" stroke-width=".9"/><text x="88" y="${y + 1.7}" text-anchor="middle" class="mono" font-size="4.8" font-weight="800" fill="#6E6A8A">MERGE</text>`
-      + `<g class="a mg${p}">${pill(y, '#1F883D', 'MERGE')}</g><g class="a mgd${p}">${pill(y, '#8250DF', 'MERGED')}</g></g></g>`;
+      + `<g class="a mg${p}">${pill(y, '#1F883D', 'MERGE')}</g><g class="a mgd${p}">${pill(y, '#1F883D', 'MERGED')}</g></g></g>`;
   }
   s += `</g>`;
   // the operator, seen from behind, headset on
@@ -413,32 +431,35 @@ function lineKF(p, t) {
   r.forEach((x, i) => kf(`row${i + 1}${p}`, [[0, 'opacity:0;transform:scaleX(0)'], [x, 'opacity:0;transform:scaleX(0)', E.out], [x + .22, 'opacity:1;transform:scaleX(1)'], [t.reset, 'opacity:1;transform:scaleX(1)'], [t.reset + .001, 'opacity:0;transform:scaleX(0)'], [T, 'opacity:0;transform:scaleX(0)']]));
   // the PR opens (grey, draft) when Nick's work is done; a later push bumps it; Morgan's LGTM turns it green
   const st = [[0, 'opacity:0;transform:scale(1.5)'], [t.stamp - .001, 'opacity:0;transform:scale(1.5)'], [t.stamp, 'opacity:1;transform:scale(1.5)', E.back], [t.stamp + .22, 'opacity:1;transform:scale(1)']];
-  if (t.stamp2) st.push([t.stamp2, 'opacity:1;transform:scale(1)', E.out], [t.stamp2 + .1, 'opacity:1;transform:scale(1.22)', E.io], [t.stamp2 + .35, 'opacity:1;transform:scale(1)']);
+  const bumps = [...(t.fail ? [t.fail] : []), ...(t.stamp2 ? [t.stamp2] : []), p === 'A' ? t.ticks2[1] : t.ticks[2]];
+  for (const b of bumps) st.push([b, 'opacity:1;transform:scale(1)', E.out], [b + .1, 'opacity:1;transform:scale(1.25)', E.io], [b + .35, 'opacity:1;transform:scale(1)']);
   st.push([t.reset, 'opacity:1;transform:scale(1)'], [t.reset + .001, 'opacity:0;transform:scale(1.5)'], [T, 'opacity:0;transform:scale(1.5)']);
   kf(`stamp${p}`, st);
-  kf(`ready${p}`, [[0, op(0)], [t.flip, op(0), E.out], [t.flip + .3, op(1)], [t.reset, op(1)], [t.reset + .001, op(0)], [T, op(0)]]);
+  const pass = p === 'A' ? t.ticks2[1] : t.ticks[2];                 // Morgan's review passes: the PR is ready to merge
+  kf(`ready${p}`, [[0, op(0)], [pass - .001, op(0)], [pass, op(1)], [t.reset, op(1)], [t.reset + .001, op(0)], [T, op(0)]]);   // a clean switch (a cross-fade would go muddy)
+  if (t.fail) {
+    kf(`chg${p}`, [[0, op(0)], [t.fail - .001, op(0)], [t.fail, op(1)], [pass, op(1)], [pass + .001, op(0)], [T, op(0)]]);
+    kf(`x2${p}`, [[0, 'opacity:0;transform:scale(.4)'], [t.fail - .001, 'opacity:0;transform:scale(.4)'], [t.fail, 'opacity:1;transform:scale(.4)', E.back], [t.fail + .2, 'opacity:1;transform:scale(1)'], [t.ticks2[0] - .12, 'opacity:1;transform:scale(1)'], [t.ticks2[0] - .02, 'opacity:0;transform:scale(1)'], [T, 'opacity:0;transform:scale(1)']]);
+  }
   // Nick's workshop: the head dives into a cartoon work cloud that boils while code and tools fly out; it pops, the PR opens
-  const pr = [[0, ty(0)]], cl = [[0, 'opacity:0;transform:scale(.2)']], bm = [[0, 'opacity:0;transform:scale(.6)']];
-  const pf = PUFFS.map(() => [[0, 'transform:scale(1)']]), sy = SYMS.map(() => [[0, 'opacity:0;transform:translate(0px,0px) scale(.3) rotate(0deg)']]);
+  const pr = [[0, ty(0)]], bm = [[0, 'opacity:0;transform:scale(.6)']];
+  const sy = SYMS.map(() => [[0, 'opacity:0;transform:translate(0px,0px) scale(.3) rotate(0deg)']]);
   t.work.forEach(([w0, w1], k) => {
     const st0 = stampsOf(t)[k];
-    pr.push([w0 - .2, ty(0), E.out], [w0, ty(7)]);
-    for (let x = w0 + .12, i = 0; x < w1 - .06; x += .12, i++) pr.push([x, ty(i % 2 ? 7 : 4.5)]);
-    pr.push([w1, ty(7), E.out], [st0 - .08, ty(-4), E.slam], [st0, ty(10)], [st0 + .15, ty(10), E.out], [st0 + .55, ty(0)]);
-    cl.push([w0 - .05, 'opacity:0;transform:scale(.2)', E.back], [w0 + .22, 'opacity:1;transform:scale(1)'], [st0 - .14, 'opacity:1;transform:scale(1)', E.out], [st0 - .04, 'opacity:1;transform:scale(1.16)', E.out], [st0 + .1, 'opacity:0;transform:scale(1.4)']);
-    pf.forEach((a, i) => { for (let x = w0 + .22 + (i % 3) * .05, j = 0; x < st0 - .16; x += .16, j++) a.push([x, `transform:scale(${(j + i) % 2 ? 1.1 : .9})`, E.io]); a.push([st0 - .12, 'transform:scale(1)']); });
+    pr.push([w0 - .2, ty(0), E.out], [w0, ty(4)]);
+    for (let x = w0 + .12, i = 0; x < w1 - .06; x += .12, i++) pr.push([x, ty(i % 2 ? 4 : 2.5)]);
+    pr.push([w1, ty(4), E.out], [st0 - .08, ty(-4), E.slam], [st0, ty(10)], [st0 + .15, ty(10), E.out], [st0 + .55, ty(0)]);
     sy.forEach((a, i) => {
       const [v, spin] = [SYMS[i][1], SYMS[i][2]];
       for (const off of [.18 + i * .11, .18 + i * .11 + (w1 - w0) * .5]) {
-        const x = w0 + off; if (x + .5 > st0) continue;
-        a.push([x, 'opacity:0;transform:translate(0px,0px) scale(.3) rotate(0deg)', E.out], [x + .14, `opacity:1;transform:translate(${f2(v[0] * .45)}px,${f2(v[1] * .45)}px) scale(1.15) rotate(${spin / 2}deg)`], [x + .5, `opacity:0;transform:translate(${v[0]}px,${v[1]}px) scale(.85) rotate(${spin}deg)`]);
+        const x = w0 + off; if (x + .62 > st0) continue;
+        a.push([x, 'opacity:0;transform:translate(0px,0px) scale(.3) rotate(0deg)', E.out], [x + .14, `opacity:1;transform:translate(${f2(v[0] * .4)}px,${f2(v[1] * .4)}px) scale(1.3) rotate(${spin / 3}deg)`, E.out], [x + .45, `opacity:1;transform:translate(${f2(v[0] * .85)}px,${f2(v[1] * .85)}px) scale(1.1) rotate(${f2(spin * .8)}deg)`], [x + .62, `opacity:0;transform:translate(${v[0]}px,${v[1]}px) scale(.9) rotate(${spin}deg)`]);
       }
     });
     bm.push([st0 - .1, 'opacity:0;transform:scale(.6)', E.out], [st0 - .02, 'opacity:1;transform:scale(1)'], [st0 + .22, 'opacity:0;transform:scale(1.35)']);
   });
-  pr.push([T, ty(0)]); cl.push([T, 'opacity:0;transform:scale(.2)']); bm.push([T, 'opacity:0;transform:scale(1.35)']);
-  kf(`press${p}`, pr); kf(`cloud${p}`, cl); kf(`boom${p}`, bm);
-  pf.forEach((a, i) => kf(`pf${i}${p}`, [...a, [T, 'transform:scale(1)']]));
+  pr.push([T, ty(0)]); bm.push([T, 'opacity:0;transform:scale(1.35)']);
+  kf(`press${p}`, pr); kf(`boom${p}`, bm);
   sy.forEach((a, i) => kf(`sym${i}${p}`, [...a, [T, 'opacity:0;transform:translate(0px,0px) scale(.3) rotate(0deg)']]));
   // the gate: CI light (amber while CI runs, green once it passes) and checklist light (red while held, green on LGTM)
   const ciA = [[0, op(0)]], ciG = [[0, op(0)]];
@@ -488,10 +509,18 @@ function lineKF(p, t) {
   kf(`mgd${p}`, [[0, op(0)], [merged - .001, op(0)], [merged, op(1)], [T, op(1)]]);
 }
 lineKF('B', TB); lineKF('A', TA);
-const SQ = (p, events) => {
-  const fr = [[0, 'transform:scale(1,1)']];
-  for (const [at, k] of events) fr.push([at - .02, 'transform:scale(1,1)'], [at + .05, `transform:scale(${1 + .06 * k},${1 - .12 * k})`, E.out], [at + .2, `transform:scale(${1 - .015 * k},${1 + .03 * k})`], [at + .36, 'transform:scale(1,1)']);
-  fr.push([T, 'transform:scale(1,1)']); kf(`sq${p}`, fr);
+const SQ = (p, events, wobble = []) => {
+  const one = 'transform:scale(1,1) rotate(0deg)', fr = [[0, one]];
+  const all = [...events.map(([at, k]) => ({ at, k })), ...wobble.map(([at, b]) => ({ at, b }))].sort((x, y) => x.at - y.at);
+  for (const e of all) {
+    if (e.b === undefined) fr.push([e.at - .02, one], [e.at + .05, `transform:scale(${1 + .06 * e.k},${1 - .12 * e.k}) rotate(0deg)`, E.out], [e.at + .2, `transform:scale(${1 - .015 * e.k},${1 + .03 * e.k}) rotate(0deg)`], [e.at + .36, one]);
+    else {                                                           // the parcel shakes, squashes and stretches while Nick works on it
+      fr.push([e.at, one]);
+      for (let x = e.at + .09, i = 0; x < e.b - .05; x += .09, i++) fr.push([x, i % 2 ? 'transform:scale(.93,1.08) rotate(2.6deg)' : 'transform:scale(1.08,.9) rotate(-2.6deg)', E.io]);
+      fr.push([e.b, one]);
+    }
+  }
+  fr.push([T, one]); kf(`sq${p}`, fr);
 };
 const tickKF = (name, x, reset) => kf(name, [[0, 'stroke-dashoffset:14'], [x - .12, 'stroke-dashoffset:14', E.out], [x + .02, 'stroke-dashoffset:0'], [reset, 'stroke-dashoffset:0'], [reset + .001, 'stroke-dashoffset:14'], [T, 'stroke-dashoffset:14']]);
 const lensGeo = p => {
@@ -507,7 +536,7 @@ const lensGeo = p => {
   kf(`my${p}`, [[0, ty(-DROP)], [t.drop[0], ty(-DROP), E.drop], [t.drop[1], ty(0)], [t.reset, ty(0)], [t.reset + .001, ty(-DROP)], [T, ty(-DROP)]]);
   kf(`vis${p}`, [[0, op(0)], [t.pop[0] - .001, op(0)], [t.pop[0], op(1)], [t.grip - .001, op(1)], [t.grip, op(0)], [T, op(0)]]);
   kf(`pop${p}`, [[0, 'transform:scale(0)'], [t.pop[0], 'transform:scale(0)', E.back], [t.pop[1], 'transform:scale(1)'], [T, 'transform:scale(1)']]);
-  SQ(p, [[t.drop[1], 1], [t.stamp, 1.1]]);
+  SQ(p, [[t.drop[1], 1], [t.stamp, 1.1]], t.work);
   t.ticks.forEach((x, i) => tickKF(`tk${i + 1}${p}`, x, t.reset));
   const { r, x0, x1 } = lensGeo(p), k = t.ticks;
   kf(`lens${p}`, [[0, txy(0, 0)], [t.read[0], txy(0, 0), E.out], [t.read[0] + .2, txy(x0, r(0)), E.io], [k[0], txy(x1, r(0)), E.io], [k[0] + .1, txy(x0, r(1)), E.io], [k[1], txy(x1, r(1)), E.io],
@@ -522,7 +551,7 @@ const lensGeo = p => {
   kf(`my${p}`, [[0, ty(-DROP)], [t.drop[0], ty(-DROP), E.drop], [t.drop[1], ty(0)], [t.reset, ty(0)], [t.reset + .001, ty(-DROP)], [T, ty(-DROP)]]);
   kf(`vis${p}`, [[0, op(1)], [t.grip - .001, op(1)], [t.grip, op(0)], [T, op(0)]]);        // back on at the loop boundary, while pop is at scale 0
   kf(`pop${p}`, [[0, 'transform:scale(0)', E.back], [t.pop[1], 'transform:scale(1)'], [T, 'transform:scale(1)']]);
-  SQ(p, [[t.drop[1], 1], [t.stamp, 1.1], [t.stamp2, 1.1]]);
+  SQ(p, [[t.drop[1], 1], [t.stamp, 1.1], [t.stamp2, 1.1]], t.work);
   [t.tick1, ...t.ticks2].forEach((x, i) => tickKF(`tk${i + 1}${p}`, x, t.reset));
   const { r, x0, x1 } = lensGeo(p), k = t.ticks2;
   kf(`lens${p}`, [[0, txy(0, 0)], [t.read1[0], txy(0, 0), E.out], [t.read1[0] + .2, txy(x0, r(0)), E.io], [t.tick1, txy(x1, r(0)), E.io], [t.tick1 + .1, txy(x0, r(1)), E.io], [t.fail, txy(x1, r(1))],
@@ -553,7 +582,6 @@ const lensGeo = p => {
   const pip = (k, a, b) => kf(`pip-${k}`, [[0, op(0)], [a - .1, op(0)], [a, op(1)], [b, op(1)], [b + .1, op(0)], [T, op(0)]]);
   lbl('int', t.pop[0], t.m1[0]); pip('int', t.pop[0], t.m1[0]);
   lbl('plan', ...t.plan); pip('plan', ...t.plan); lbl('dev', t.m2[1], t.m3[0]); pip('dev', t.m2[1], t.m3[0]); lbl('rev', ...t.read); pip('rev', ...t.read);
-  lbl('lgtm', t.hold[0], t.m5[1]); pip('lgtm', t.hold[0], t.m5[1]);
   const flips = [glob('B', TB.flip), glob('A', TA.flip)].sort((x, y) => x - y);
   const halo = [[0, 'opacity:0;transform:scale(1.45)']], bump = [[0, 'transform:scale(1)']], glow = [[0, op(.35)]];
   flips.forEach(f => { halo.push([f, 'opacity:0;transform:scale(1)'], [f + .01, 'opacity:.8;transform:scale(1)', E.out], [f + 1.1, 'opacity:0;transform:scale(1.45)']); bump.push([f, 'transform:scale(1)', E.out], [f + .12, 'transform:scale(1.06)', E.back], [f + .6, 'transform:scale(1)']); glow.push([f, op(.35)], [f + .1, op(1)], [f + 1.4, op(.35)]); });
@@ -563,15 +591,15 @@ const lensGeo = p => {
 
 // ---------------------------------------------------------------- assemble
 // painter's order: brand + operator, rail, back line, main (parcels behind the Lead), front line, the Lead, main (parcels in front)
-const BODY = [floor(), `<g>${brand()}</g>`, operator(), `<g mask="url(#railMask)">${rail()}</g>`, line('A'), mainLane(), mainStrip('back'), line('B'), lead(), mainStrip('front'),
-  `<polygon fill="url(#farFade)" points="${pts([P(MX0 - 40, 0, 470), P(MX1 + 60, 0, 470), P(MX1 + 60, 150, 1300), P(MX0 - 40, 150, 1300)])}"/>`,
+const BODY = [floor(), `<g>${brand()}</g>`, operator(), `<g mask="url(#railMask)">${rail()}</g>`, line('A'),
+  `<g mask="url(#mainMask)">${mainLane()}${mainStrip('far')}</g>`, gantry(), mainStrip('back'), line('B'), lead(), mainStrip('front'),
   `<rect x="980" y="${H - 22}" width="${W - 980}" height="22" fill="url(#nearFade)"/>`];
-const per = ['cable', 'hook', 'fan', 'emit', 'scan', 'row1', 'row2', 'row3', 'stamp', 'ready', 'press', 'cloud', 'boom',
-  ...PUFFS.map((_, i) => `pf${i}`), ...SYMS.map((_, i) => `sym${i}`),
+const per = ['cable', 'hook', 'fan', 'emit', 'scan', 'row1', 'row2', 'row3', 'stamp', 'ready', 'press', 'boom',
+  ...SYMS.map((_, i) => `sym${i}`),
   'lens', 'door', 'lampR', 'lampG', 'glow', 'ciA', 'ciG', 'ciGlowA', 'ciGlowG', 'mx', 'belt', 'my', 'vis', 'pop', 'sq', 'tk1', 'tk2', 'tk3',
   ...['pl', 'dv', 'rv'].flatMap(k => [`lm${k}`, `lo${k}`, `lg${k}`, `lr${k}`]), ...['pl', 'dv', 'rv', 'lg'].map(k => `nd${k}`), 'rv', 'mg', 'mgd'];
 const names = [...per.flatMap(n => [n + 'A', n + 'B']), 'sh', 'el', 'wr', 'carryA', 'carryB', 'landA', 'landB', 'msqA', 'msqB', 'car', 'mstrip',
-  'halo', 'bump', 'sglow', ...['int', 'plan', 'dev', 'rev', 'lgtm'].flatMap(k => [`lbl-${k}`, `pip-${k}`]), ...DYN];
+  'halo', 'bump', 'sglow', ...['int', 'plan', 'dev', 'rev'].flatMap(k => [`lbl-${k}`, `pip-${k}`]), 'chgA', 'x2A', ...DYN];
 const css = `
 .a{animation-duration:${T}s;animation-iteration-count:infinite;animation-fill-mode:both;animation-delay:${f2(-mod(COLD, T))}s}
 .pA .a{animation-delay:${f2(-mod(COLD - SHIFT.A, T))}s}.pB .a{animation-delay:${f2(-mod(COLD - SHIFT.B, T))}s}
@@ -591,13 +619,14 @@ const defs = `<defs>
   <radialGradient id="gA"><stop offset="0" stop-color="#F5A524" stop-opacity=".45"/><stop offset="1" stop-color="#F5A524" stop-opacity="0"/></radialGradient>
   <radialGradient id="gS" cx="50%" cy="45%" r="60%"><stop offset="0" stop-color="#22C55E" stop-opacity=".45"/><stop offset="1" stop-color="#22C55E" stop-opacity="0"/></radialGradient>
   <linearGradient id="floorG" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#ECE9F1"/><stop offset="1" stop-color="#ECE9F1" stop-opacity="0"/></linearGradient>
-  <linearGradient id="farFade" gradientUnits="userSpaceOnUse" x1="${f2(P(MXC, 40, 470)[0])}" y1="${f2(P(MXC, 40, 470)[1])}" x2="${f2(P(MXC, 40, 680)[0])}" y2="${f2(P(MXC, 40, 680)[1])}"><stop offset="0" stop-color="${BG}" stop-opacity="0"/><stop offset="1" stop-color="${BG}"/></linearGradient>
   <linearGradient id="nearFade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${BG}" stop-opacity="0"/><stop offset="1" stop-color="${BG}"/></linearGradient>
   <linearGradient id="railMaskG" gradientUnits="userSpaceOnUse" x1="${f2(rm0[0])}" y1="${f2(rm0[1])}" x2="${f2(rm1[0])}" y2="${f2(rm1[1])}"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#000"/></linearGradient>
   <mask id="railMask" maskUnits="userSpaceOnUse" x="0" y="0" width="${W}" height="${H}"><rect width="${W}" height="${H}" fill="url(#railMaskG)"/></mask>
+  <linearGradient id="mainMaskG" gradientUnits="userSpaceOnUse" x1="${f2(P(MXC, 40, 470)[0])}" y1="${f2(P(MXC, 40, 470)[1])}" x2="${f2(P(MXC, 40, 680)[0])}" y2="${f2(P(MXC, 40, 680)[1])}"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#000"/></linearGradient>
+  <mask id="mainMask" maskUnits="userSpaceOnUse" x="0" y="0" width="${W}" height="${H}"><rect width="${W}" height="${H}" fill="url(#mainMaskG)"/></mask>
   <pattern id="hz" patternUnits="userSpaceOnUse" width="8" height="8" patternTransform="rotate(45)"><rect width="8" height="8" fill="${HZ_Y}"/><rect width="4" height="8" fill="${INK}"/></pattern>
 </defs>`;
-const svg = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="lgtmgate: two production lines, one behind the other. On each, stations do the work: one prints the acceptance checklist on the issue's label; at the development station the head works on the parcel and only then opens a draft pull request, shown as a grey PR label; one reads and ticks every criterion. The LGTM gate has two lights, CI and checklist, and opens only when both are green; the PR label then turns green. On the back line the review station's light turns red; the belt carries the parcel back to be fixed, CI runs again, and it passes the second time. A single Lead arm rides an endless rail and, once the human operator has pressed MERGE on the runs monitor, sets each pull request onto the main lane, where its label turns purple, among pull requests from other pipelines.">
+const svg = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="lgtmgate: two production lines, one behind the other. Each station has a status light: orange while it works, green when done, red on an error. One station prints the acceptance checklist; at the development station the parcel shakes while code flies out of it, then a grey draft PR label appears; the review station ticks each criterion in green. On the back line one criterion gets a red cross, the station light and the PR label turn red, the belt carries the parcel back to be fixed, CI runs again and the second review passes: the label turns green. The LGTM gate opens only when its CI and checklist lights are both green. A human operator next to the belts watches one row per workflow and presses MERGE; a single Lead arm on an endless rail then sets each pull request on the main lane, under a gantry sign reading main, among pull requests from other pipelines.">
 <style>${css}${KF.join('\n')}</style>
 ${defs}
 <rect width="${W}" height="${H}" fill="${BG}"/>
@@ -614,5 +643,9 @@ p{font:13px -apple-system,"Segoe UI",Inter,Helvetica,Arial,sans-serif;color:#5B6
 <!-- Generated by gen-header-v8.mjs. One self-contained <svg>: CSS keyframes only, no JS, no web font. -->
 ${svg}
 </div><p>Mockup v8 · 1280×344 · 18 s loop · SVG + CSS keyframes · respects prefers-reduced-motion on this page.</p></main></body></html>`;
-writeFileSync(OUT, html);
+// `.svg` output: the bare SVG for the README (a card with rounded corners), otherwise the mockup page
+const card = svg.replace('</defs>', `  <clipPath id="card"><rect width="${W}" height="${H}" rx="20"/></clipPath>\n</defs>`)
+  .replace(`<rect width="${W}" height="${H}" fill="${BG}"/>`, `<g clip-path="url(#card)"><rect width="${W}" height="${H}" fill="${BG}"/>`)
+  .replace(/<\/svg>$/, '</g>\n</svg>');
+writeFileSync(OUT, OUT.endsWith('.svg') ? `<?xml version="1.0" encoding="UTF-8"?>\n<!-- Generated by scripts/gen-readme-header.mjs. CSS keyframes only, no JS, no web font. -->\n${card}\n` : html);
 console.log('ok', OUT, 'bytes', html.length, 'layers', DYN.join(','));
