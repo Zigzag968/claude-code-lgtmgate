@@ -70,7 +70,7 @@ const moves = (v0, steps, fmt, ease = E.move) => {
 };
 // numeric twin: frames [[t, value, easing?]]; CSS applies a frame's easing until the next frame (default `ease`)
 const bez = spec => {
-  const [x1, y1, x2, y2] = spec.match(/[-\d.]+/g).map(Number);
+  const [x1, y1, x2, y2] = spec.slice(spec.indexOf('(') + 1, spec.lastIndexOf(')')).split(',').map(Number);   // not a regex: 'cubic-bezier' has a '-'
   const cx = s => 3 * (1 - s) ** 2 * s * x1 + 3 * (1 - s) * s * s * x2 + s ** 3;
   const cy = s => 3 * (1 - s) ** 2 * s * y1 + 3 * (1 - s) * s * s * y2 + s ** 3;
   return u => { let lo = 0, hi = 1, s = u; for (let i = 0; i < 50; i++) { s = (lo + hi) / 2; if (cx(s) < u) lo = s; else hi = s; } return cy(s); };
