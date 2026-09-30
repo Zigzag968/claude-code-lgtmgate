@@ -3429,6 +3429,22 @@ await testCase('T109j worktreeFreshnessNote: behind:100 → plural "commits"', a
   return { ok: true }
 })
 
+// T9001 (#9) — Morgan's initial AND re-review prompts carry the exact one-line-per-box template that
+// `scripts/lead-merge.sh --tick-from-review` matches (never grouped, never by index). Source-level: the
+// shared UNTICKABLE_LINE_RULE text is present and interpolated into both Morgan prompts.
+await testCase('T9001 Morgan prompts (initial + re-review) require one matchable tick-pending line per untickable box', async () => {
+  const src = SUITE_ARGS.fpSource
+  if (!src) {
+    log('SKIP — T9001: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const tpl = '`- [ ] **<box text verbatim>** — verified, tick pending (permissions): <command> -> <verbatim output>`'
+  const e1 = includes('template sentence', src, 'write ONE line per box, exactly ' + tpl)
+  const e2 = includes('never grouped / never by index', src, 'never grouped ("Boxes 1-4"), never cited by index ("Box 2")')
+  const e3 = eq('interpolations in the Morgan prompts', src.split('${UNTICKABLE_LINE_RULE}').length - 1, 2)
+  return (e1 || e2 || e3) ? (e1 || e2 || e3) : { ok: true }
+})
+
 // T123 (#42) — every test ID is unique across the suite. Must stay the LAST case so `results`
 // holds every other case name. Includes a negative control proving the detector really detects.
 await testCase('T123 test IDs are unique across the suite (no duplicated T<n>)', async () => {
