@@ -7,7 +7,9 @@
 # #42, #43) showed scope creep: credential-path probing, an unauthorized `git clean -fd`,
 # and an attempt to read the real SSH key while reproducing a bug. This hook closes the
 # destructive-git gap deterministically, the same way deny-bare-rm.sh closes the bare-rm
-# gap — see that hook for the compound-command matching rationale.
+# gap — same whole-command matching approach. The bare recursive-rm rule (worktree
+# directories) lives at the bottom of THIS file: there is no separate deny-bare-rm.sh
+# in hooks/.
 #
 # See agents/theo.md (blast-radius interdits) and .claude/rules/pr-acceptance.md
 # (Autonomy in unsupervised sessions).
@@ -51,18 +53,24 @@ if printf '%s' "$normalized" | grep -qE '(^|[;&|[:space:]])git[[:space:]]+checko
   deny "git checkout -- <path> (discard) is denied for agent sessions, including inside compound commands. Restoring a file via 'git checkout <branch> -- <path>' is not covered either — use a non-destructive approach or fail explicitly instead. See .claude/rules/pr-acceptance.md (Autonomy in unsupervised sessions)."
 fi
 
+# SANCTIONED PATH: `bash scripts/cleanup-worktree.sh <path>` removes a merged, clean worktree.
+# It is deliberately NOT matched by anything below (this hook inspects command TEXT only; the
+# script's internal git calls run in a subprocess it never sees) and there is NO name-based
+# early exit for it: a compound `bash scripts/cleanup-worktree.sh x; <raw removal> y` must
+# stay denied.
+#
 # git worktree remove (any flags, including without --force). A shared worktree can be in
 # use by a concurrent pipeline run — removing it out from under that run is destructive
 # regardless of --force (issue #129: a read-only investigation agent ran `git worktree
 # remove --force` on a worktree a concurrent run was using).
 if printf '%s' "$normalized" | grep -qE '(^|[;&|[:space:]])git[[:space:]]+worktree[[:space:]]+remove([[:space:]]|$)'; then
-  deny "git worktree remove is denied for agent sessions, including inside compound commands. A shared worktree may be in use by a concurrent pipeline run — removing it is never an agent action. See .claude/rules/pr-acceptance.md (Autonomy in unsupervised sessions)."
+  deny "git worktree remove is denied for agent sessions, including inside compound commands. A shared worktree may be in use by a concurrent pipeline run — removing it is never an agent action. Use scripts/cleanup-worktree.sh <path> for a merged, clean worktree. See .claude/rules/pr-acceptance.md (Autonomy in unsupervised sessions)."
 fi
 
 # git worktree prune (any flags). Same rationale as worktree remove (#129) — pruning can
 # discard a worktree entry a concurrent run still depends on.
 if printf '%s' "$normalized" | grep -qE '(^|[;&|[:space:]])git[[:space:]]+worktree[[:space:]]+prune([[:space:]]|$)'; then
-  deny "git worktree prune is denied for agent sessions, including inside compound commands. A shared worktree entry may still be in use by a concurrent pipeline run. See .claude/rules/pr-acceptance.md (Autonomy in unsupervised sessions)."
+  deny "git worktree prune is denied for agent sessions, including inside compound commands. A shared worktree entry may still be in use by a concurrent pipeline run. Use scripts/cleanup-worktree.sh <path> for a merged, clean worktree. See .claude/rules/pr-acceptance.md (Autonomy in unsupervised sessions)."
 fi
 
 # git push --force / -f / --force-with-lease.
@@ -85,6 +93,26 @@ if printf '%s' "$normalized" | grep -qE '(^|[;&|[:space:]])gh[[:space:]]+api([[:
   && printf '%s' "$normalized" | grep -qiE '(^|[;&|[:space:]])(-X|--method)[[:space:]]+delete([[:space:]]|$)' \
   && printf '%s' "$normalized" | grep -qE 'git/refs/heads/'; then
   deny "gh api -X DELETE / --method DELETE on git/refs/heads/* (remote-branch deletion) is denied for agent sessions, including inside compound commands. Deleting a remote branch is an external gesture, never an agent action. See .claude/rules/pr-acceptance.md (Autonomy in unsupervised sessions)."
+fi
+
+# Bare recursive rm of a worktree: a DIRECT child of the worktree root (or the root itself).
+# A deeper path (e.g. <root>/issue-1/node_modules) stays allowed. Whole-command matching like
+# the sibling rules (accepted approximation). Root derived via hooks/lib-worktree-root.sh,
+# sourced after the jq fail-closed check above. Sanctioned path: scripts/cleanup-worktree.sh.
+# shellcheck source=hooks/lib-worktree-root.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib-worktree-root.sh" 2>/dev/null || true
+if declare -F resolve_worktree_root >/dev/null 2>&1; then
+  wt_root="$(resolve_worktree_root)"
+  if [ -n "$wt_root" ]; then
+    wt_root_re="$(printf '%s' "$wt_root" | sed -E 's/[][\.*^$+?(){}|/]/\\&/g')"
+    wt_lead='(^|[[:space:]"'"'"'=])'
+    wt_tail='([[:space:];&|)"'"'"']|$)'
+    if printf '%s' "$normalized" | grep -qE '(^|[;&|[:space:](])rm[[:space:]]' \
+      && printf '%s' "$normalized" | grep -qE '[[:space:]](-[a-zA-Z]*[rR][a-zA-Z]*|--recursive)([[:space:]]|$)' \
+      && printf '%s' "$normalized" | grep -qE "${wt_lead}${wt_root_re}(/[^/[:space:];&|)\"']+)?/?${wt_tail}"; then
+      deny "A bare recursive rm of a worktree (a direct child of the worktree root) is denied for agent sessions, including inside compound commands. A shared worktree may be in use by a concurrent pipeline run. Use scripts/cleanup-worktree.sh <path> for a merged, clean worktree. See .claude/rules/pr-acceptance.md (Autonomy in unsupervised sessions)."
+    fi
+  fi
 fi
 
 exit 0
