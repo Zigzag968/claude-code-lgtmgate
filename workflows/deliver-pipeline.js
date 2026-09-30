@@ -1081,6 +1081,41 @@ function safePlanTargets(files) {
 }
 // --- safePlanTargets:end ---
 
+// --- oneWayDoor:start --- (pure & self-contained — R3: the 5th design-step signal, computed by the script)
+// R3 one-way-door signal. A diff that adds a status, an `agent()`, a hook or a seam stops at the
+// design step. Two deterministic inputs, never an LLM-filled boolean: (a) Sam's `targetFiles`
+// (hooks/plugin-hooks.json, or a non-test/non-lib script under hooks/ = a hook); (b) the
+// announcement lines Sam's plan carries, `one-way-door: status|agent|hook|seam — <what>`
+// (`one-way-door: none` announces nothing). Returns { kinds: string[], summary: string[<=10] }.
+function oneWayDoorSignals(plan, targetFiles, ctx = {}) {
+  const found = new Map() // kind -> evidence line
+  for (const f of safePlanTargets(targetFiles)) {
+    // guards:parser-begin
+    const isHookScript = f.startsWith('hooks/') && !f.slice(6).includes('/') && /\.(sh|py|js|cjs)$/.test(f)
+      && !f.startsWith('hooks/test-') && !f.startsWith('hooks/lib-')
+    // guards:parser-end
+    if ((f === 'hooks/plugin-hooks.json' || isHookScript) && !found.has('hook')) found.set('hook', `targetFiles: ${f}`)
+  }
+  // guards:parser-begin
+  const announced = String(plan ?? '').match(/^[ \t>*-]*`?one-way-door:[ \t]*(?:status|agent|hook|seam)\b[^\n]*/gim) || []
+  for (const line of announced) {
+    const m = /one-way-door:[ \t]*(status|agent|hook|seam)\b/i.exec(line)
+    const kind = m[1].toLowerCase()
+    if (!found.has(kind)) found.set(kind, `plan: ${line.replace(/^[ \t>*-]*`?/, '').slice(0, 160)}`)
+  }
+  // guards:parser-end
+  const kinds = [...found.keys()]
+  const summary = kinds.length === 0 ? [] : [
+    `R3 one-way-door: the plan for issue #${ctx.issue ?? '?'} adds ${kinds.join(' + ')}.`,
+    ...kinds.map(k => `- ${k}: ${found.get(k)}`),
+    `Plan artifact: ${ctx.planPath || '(none)'}`,
+    'Stopped at the design step (design-step-required): the maintainer decides before dev.',
+    `Relaunch with architectureDecisionApproved:true once the decision is recorded.`,
+  ].slice(0, 10)
+  return { kinds, summary }
+}
+// --- oneWayDoor:end ---
+
 // --- safeAbsorbedIssues:start --- (pure & self-contained — keep extractable by the consuming project's tests)
 // Sanitizes Sam's declared `absorbedIssues` (#174) BEFORE it is spread into the Closes# line handed
 // to Nick. Digit-only charset, deduped, capped at 20 entries, and the epic's own issue number is
@@ -1794,6 +1829,11 @@ if (after('plan', entryStage)) {
 // Reads `pm`/`diag` (top-level, see above) by closure — both are still null/populated correctly
 // regardless of which call site invokes this, fresh Plan-phase or Review-phase amendment.
 const SAM_LAYER_RULE = 'LAYER RULE: plan the smallest change that removes the cause class; never a `simulate.*` seam; say in the plan if the diff adds a status, an `agent()`, a hook or a seam; list `patch-avoided:` with the patches you rejected.'
+// #77 — design doc import (Sam + Morgan prompts only; agents/sam.md stays untouched). Harmless when the file is absent.
+const DESIGN_IMPORT_SAM = 'Read `@DESIGN.md` at the repo root if it exists (design decisions and one-way doors); if it is absent, skip this silently. '
+const DESIGN_IMPORT_MORGAN = 'Read `@DESIGN.md` at the repo root if it exists and check the diff against its decisions; if it is absent, skip this silently.\n'
+// R3 (#77): the announcement line the SCRIPT parses (oneWayDoorSignals) — one line per kind, or `none`.
+const SAM_ONE_WAY_DOOR = 'ONE-WAY-DOOR ANNOUNCEMENT: in the plan text, state on its own line for each kind the diff adds — `one-way-door: status — <what>`, `one-way-door: agent — <what>`, `one-way-door: hook — <what>`, `one-way-door: seam — <what>` — or the single line `one-way-door: none`. The script parses these lines; a kind you announce stops the run at the design step. '
 const samScoutPrompt = ({ fixBlock = '', auditFixBlock = '', reviewFixBlock = '' } = {}) => {
   // B4: whenever the design-step trigger fired for this issue, the plan MUST
   // explicitly answer the split question. Recomputed here (not a captured outer const) so this
@@ -1814,6 +1854,7 @@ const samScoutPrompt = ({ fixBlock = '', auditFixBlock = '', reviewFixBlock = ''
     `The durable history lives in the issue/PR thread and in git commits, never inside the plan (the artifact itself is gitignored build output). ` +
     `An amended plan is about the size of a fresh plan for the current scope — usually SMALLER than the previous revision, never monotonically larger. ` +
     `${SAM_LAYER_RULE} ` +
+    `${SAM_ONE_WAY_DOOR}${DESIGN_IMPORT_SAM}` +
     `Author the acceptance checklist against ${conventionsRule} — in particular its Format-status and Test-status acceptance-item sections: never assert a whole-repo clean state the base branch cannot satisfy. ` +
     `Then post an INDEX comment on issue #${issue} — never the full plan, whatever its size. The index comment is exactly: ${planMarker} alone on its first line, a condensed summary (~15 lines max), the acceptance checklist VERBATIM, and a pointer to the canonical artifact "${planPath}" in the shared worktree. ` +
     `HARD CAP: keep that comment under ${planCommentMaxChars} characters (GitHub rejects an issue-comment body over 65536 chars); it is an index, so the bound holds by construction — if you approach it, cut summary prose, never the checklist. ` +
@@ -1990,6 +2031,21 @@ if (after('plan', entryStage)) {
     trace.push(`plan-audit-amend:${auditRound}`)
     auditFixBlock = composeAuditFixBlock(auditResult.findings)
     log(`Plan audit: blocking finding(s) — looping back to the scout for one amendment round (round ${auditRound})`)
+  }
+
+  // R3 (#77) — 5th design-step signal, computed here from Sam's plan + targetFiles (never an
+  // LLM-filled field). Same status and bypass as the trigger above: no new status, agent or seam.
+  const oneWayDoor = oneWayDoorSignals(sam.plan, sam.targetFiles, { issue, planPath })
+  if (oneWayDoor.kinds.length > 0 && !architectureDecisionApproved) {
+    log(`R3 one-way-door: plan adds ${oneWayDoor.kinds.join(' + ')} — design step required`)
+    trace.push(`one-way-door:${oneWayDoor.kinds.join('+')}`)
+    await updateStatus('Blocked')
+    return finish({
+      status: 'design-step-required',
+      issue, trace, planPath,
+      oneWayDoorKinds: oneWayDoor.kinds,
+      reason: oneWayDoor.summary.join('\n'),
+    })
   }
 
   if (gate('plan')) return finish({
@@ -3017,6 +3073,7 @@ if (after('review', entryStage)) {
   let v = await callMorganGuarded(
     `Work in the shared worktree "${wtPath}". Review PR #${pr}.\n\n` +
       `${planBlock}\n\n` +
+      `${DESIGN_IMPORT_MORGAN}` +
       `Gate on the acceptance checklist FROM THAT PLAN, review against ${conventionsRule}, ` +
       `${regressionGuardStep}` +
       `For asset/render/human-facing lanes, BEFORE any verdict, execute the real-case live run yourself (the exact command the plan names, deps included) and machine-verify the output contract from the plan (e.g. the exact pixel/asset dimensions and named visual elements the plan calls for, screenshot non-empty, named fields written). Units mock the other side, so seam errors pass with the mock; only a taste judgment then remains for the human-gate. ` +
@@ -3148,6 +3205,7 @@ if (after('review', entryStage)) {
 
     v = await callMorganGuarded(
       `Work in the shared worktree "${wtPath}". Re-review PR #${pr} after Nick's fixes, against the SAME plan and acceptance checklist below. ` +
+        `${DESIGN_IMPORT_MORGAN}` +
         `Re-run the regression guard the same way: ${regressionGuardStep}` +
         `For asset/render/human-facing lanes, BEFORE any verdict, execute the real-case live run yourself (the exact command the plan names, deps included) and machine-verify the output contract from the plan (e.g. the exact pixel/asset dimensions and named visual elements the plan calls for, screenshot non-empty, named fields written). Units mock the other side, so seam errors pass with the mock; only a taste judgment then remains for the human-gate. ` +
         `${artifactProofStep}` +

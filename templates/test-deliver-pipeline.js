@@ -2576,6 +2576,50 @@ await testCase('T97e no design-step signals (0/3, no immature API) → gate neve
   return err ? err : { ok: true }
 })
 
+// T77 (#77, R3) — 5th design-step signal computed by the script from Sam's plan announcement and
+// targetFiles: a plan adding a status / agent / hook / seam ends the run in design-step-required.
+const T77_THEO = { confirmed: true, evidence: 'e', actualCause: '', persistentStateSignal: false, authSecurityBoundarySignal: false, deployConfigSignal: false, immatureVendorApiSignal: false }
+await testCase('T77a R3: a plan announcing a new status → design-step-required with a <=10-line summary', async () => {
+  const r = await run({
+    mode: 'semi',
+    simulate: { theo: T77_THEO, sam: 'GO', samPlan: '## Plan\n1. add it\none-way-door: status — new `foo-blocked` terminal status\n' },
+  })
+  const e1 = eq('status', r.status, 'design-step-required')
+  const e2 = eq('oneWayDoorKinds', JSON.stringify(r.oneWayDoorKinds), JSON.stringify(['status']))
+  const e3 = String(r.reason || '').split('\n').length <= 10 && String(r.reason).includes('foo-blocked')
+    ? null : { ok: false, msg: `bad summary: ${JSON.stringify(r.reason)}` }
+  const err = e1 || e2 || e3
+  return err ? err : { ok: true }
+})
+
+await testCase('T77b R3: targetFiles touching hooks/plugin-hooks.json → design-step-required (hook)', async () => {
+  const r = await run({
+    mode: 'semi',
+    simulate: { theo: T77_THEO, sam: 'GO', samPlan: 'plan\none-way-door: none', samTargetFiles: ['hooks/plugin-hooks.json'] },
+  })
+  const err = eq('status', r.status, 'design-step-required') || eq('kinds', JSON.stringify(r.oneWayDoorKinds), JSON.stringify(['hook']))
+  return err ? err : { ok: true }
+})
+
+await testCase('T77c R3 negative: no announcement (`one-way-door: none`, ordinary targets) → plan-ready, R3 does not trigger', async () => {
+  const r = await run({
+    mode: 'semi',
+    simulate: { theo: T77_THEO, sam: 'GO', samPlan: 'plan\none-way-door: none', samTargetFiles: ['workflows/deliver-pipeline.js', 'hooks/test-block-merge-unchecked.sh'] },
+  })
+  const err = eq('status', r.status, 'plan-ready')
+  return err ? err : { ok: true }
+})
+
+await testCase('T77d R3 + architectureDecisionApproved:true → announced status no longer stops the run', async () => {
+  const r = await run({
+    mode: 'semi',
+    architectureDecisionApproved: true,
+    simulate: { theo: T77_THEO, sam: 'GO', samPlan: 'one-way-door: agent — new reviewer agent' },
+  })
+  const err = eq('status', r.status, 'plan-ready')
+  return err ? err : { ok: true }
+})
+
 // T98a (#103, advisory default) — a plan target moved upstream → note+trace+return fields carry
 // it, no routing change (status stays 'ready').
 await testCase('T98a plan-stale advisory → trace + planStaleFiles + planTargetsChecked, status unaffected', async () => {
