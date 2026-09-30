@@ -5,7 +5,7 @@
 //
 // v10 = v9 + review feedback:
 // - the Lead's links pass behind the parcel it carries (only the gripper stays in front): no more box popping behind the arm
-// - an overhead gantry sign over main (branch icon, "main", a lane arrow): the lane leads into main
+// - a sign hung over main (branch icon, "main", a lane arrow): the lane leads into main
 // - Nick's workshop: no cloud, the parcel itself shakes and squashes while code and tools fly out, then the PR opens
 // - PR label: grey draft, red once Morgan sends it back, green once his review passes, and it stays green on main
 // - Morgan's marks are green ticks or a red cross (black is for Sam's checklist); the LGTM belt label no longer changes
@@ -268,7 +268,7 @@ function mainLane() {
 // Depth sort against the moving Lead and the gantry: a parcel on main is drawn beyond the gantry while it is past it,
 // in front of the arm only while it is nearer to us (smaller z) than the carriage. A parcel that changes layer gets a copy
 // in each layer it visits, switched on/off in step.
-const ZG = 440;                                                     // the gantry over main, behind both landing points
+const ZG = 420;                                                     // the main sign's depth: behind both landing points and the carriage
 const STRIP_J = [];
 for (let j = 5; j >= -6; j--) {
   const m = mod(j, 4), who = WHO[m] || null;
@@ -300,12 +300,12 @@ function mainStrip(layer) {
   }
   return `<g class="a mstrip">${s}</g>`;
 }
-// an overhead gantry sign over main, like a motorway lane sign: this lane leads into main
+// the main sign: a panel hung from the ceiling by two cables over the lane (no posts: it must not read as a gate)
 function gantry() {
-  const x0 = MX0 - 18, x1 = MX1 + 14, top = 134, sx0 = MX0 - 12, sx1 = MX1 + 10, sy0 = 94, sy1 = top - 10;
-  let s = box(x0, 0, ZG, 7, top, 7, 'gt') + box(x1 - 3, 0, ZG, 7, top, 7, 'gt') + box(x0, top - 8, ZG, x1 - x0 + 4, 8, 7, 'gt');
-  s += box(sx0, sy0, ZG - 3, sx1 - sx0, sy1 - sy0, 3, 'sg');
-  const [a, b] = P(sx0, sy1, ZG - 3), h = sy1 - sy0;
+  const sx0 = MX0 - 12, sx1 = MX1 + 10, sy0 = 96, sy1 = 124, h = sy1 - sy0;
+  const [a, b] = P(sx0, sy1, ZG - 3), [c] = P(sx1, sy1, ZG - 3);
+  let s = `<path d="M${f2(a + 8)} 0V${f2(b)}M${f2(c - 8)} 0V${f2(b)}" stroke="#8C93A0" stroke-width="1.6"/>`;
+  s += box(sx0, sy0, ZG - 3, sx1 - sx0, h, 3, 'sg');
   s += `<g transform="translate(${f2(a)} ${f2(b)})"><g fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="${h / 2 - 6}" r="2.7"/><circle cx="11" cy="${h / 2 + 6}" r="2.7"/><circle cx="20" cy="${h / 2 - 3}" r="2.7"/><path d="M11 ${h / 2 - 3.3} v6.6 M20 ${h / 2 - .3} c0 4 -5 4 -8 5"/></g>`
     + `<text x="28" y="${h / 2 + 6.3}" class="mono" font-size="18" font-weight="800" fill="#fff">main</text>`
     + `<path d="M${sx1 - sx0 - 10} ${h / 2 - 8} v15 M${sx1 - sx0 - 15.5} ${h / 2 + 2} l5.5 6 l5.5 -6" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></g>`;
