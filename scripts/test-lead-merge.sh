@@ -2,7 +2,8 @@
 # Regression test for scripts/lead-merge.sh (#74). Offline: a fake `gh` on PATH logs every call
 # to a file; the git side is a throwaway repo + bare origin under $TMPDIR (the real worktree is
 # never touched). Cases: open box, missing markers, happy path order, no auto-merge flag,
-# --merge used, CI failure, idempotent re-run.
+# --merge used, CI failure, idempotent re-run, main moved (own bump + unrelated commit) after the
+# branch was cut, conflicting main, remote head ahead of local, stale/no-checks polling.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -15,15 +16,26 @@ bad() { echo "FAIL: $1"; FAIL=$((FAIL + 1)); }
 mkdir -p "$BASE/bin"
 cat > "$BASE/bin/gh" <<'FAKE'
 #!/usr/bin/env bash
+if [ "$1 $2 $3" = "pr checks --help" ]; then
+  [ "${FAKE_HAS_REQUIRED:-1}" -eq 1 ] && echo "      --required   Only show checks that are required"
+  exit 0
+fi
 echo "gh $*" >> "$FAKE_LOG"
 case "$1 $2" in
   "pr view")
     case "$*" in
+      *headRefOid*)
+        stale="$(cat "$FAKE_LOG.stale" 2>/dev/null || echo "${FAKE_STALE:-0}")"
+        if [ "$stale" -gt 0 ]; then
+          echo $((stale - 1)) > "$FAKE_LOG.stale"
+          echo '{"headRefOid":"0000000","statusCheckRollup":[]}'
+        else
+          echo "{\"headRefOid\":\"$(git --git-dir="$FAKE_REMOTE" rev-parse "$FAKE_BRANCH")\",\"statusCheckRollup\":[{\"name\":\"ci\"}]}"
+        fi ;;
       *headRefName*) echo "$FAKE_BRANCH" ;;
       *) cat "$FAKE_BODY" ;;
     esac ;;
-  "pr update-branch")
-    echo "REMOTE-HEAD-AT-UPDATE: $(git --git-dir="$FAKE_REMOTE" log -1 --format=%s "$FAKE_BRANCH")" >> "$FAKE_LOG" ;;
+  "pr update-branch") echo "fake gh: update-branch must not be called" >&2; exit 98 ;;
   "pr checks") [ "${FAKE_CHECKS_RC:-0}" -eq 0 ] || exit "$FAKE_CHECKS_RC" ;;
   "pr merge") ;;
   *) echo "fake gh: unexpected: $*" >&2; exit 99 ;;
@@ -50,9 +62,22 @@ setup() {
 
 run() { # <dir> <body-file> [checks-rc]
   local d="$1"
-  : > "$d/log"
+  : > "$d/log"; : > "$d/pushes"; rm -f "$d/log.stale"
+  [ -n "${FAKE_STALE:-}" ] && echo "$FAKE_STALE" > "$d/log.stale"
+  printf '#!/bin/sh\necho "$1" >> "%s/pushes"\n' "$d" > "$d/origin.git/hooks/update"; chmod +x "$d/origin.git/hooks/update"
   ( cd "$d/work" && PATH="$BASE/bin:$PATH" FAKE_LOG="$d/log" FAKE_BODY="$2" FAKE_BRANCH=feat/x \
-      FAKE_REMOTE="$d/origin.git" FAKE_CHECKS_RC="${3:-0}" bash "$SCRIPT" 7 -R o/r ) > "$d/out" 2>&1
+      FAKE_REMOTE="$d/origin.git" FAKE_CHECKS_RC="${3:-0}" LEAD_MERGE_POLL_SLEEP=0 bash "$SCRIPT" 7 -R o/r ) > "$d/out" 2>&1
+}
+# push a commit to origin/main from a second clone: main_commit <dir> <bump 0|1> <file> <content>
+main_commit() {
+  local d="$1" bump="$2"
+  [ -d "$d/other" ] || git clone -q "$d/origin.git" "$d/other" 2>/dev/null
+  ( cd "$d/other" && git config user.email t@t && git config user.name t && git checkout -q main \
+    && if [ "$bump" = 1 ]; then
+         sed -i.bak 's/"version": "0.8.80"/"version": "0.8.81"/' .claude-plugin/plugin.json
+         sed -i.bak "s/version: '0.8.80'/version: '0.8.81'/" workflows/deliver-pipeline.js; rm -f ./*.bak .claude-plugin/*.bak workflows/*.bak
+       fi \
+    && printf '%s\n' "$4" > "$3" && git add -A && git commit -qm "main: $3" && git push -q origin main ) >/dev/null 2>&1
 }
 
 printf 'Closes #1\n<!-- acceptance:start -->\n- [x] a\n- [ ] b\n<!-- acceptance:end -->\n' > "$BASE/open.md"
@@ -71,10 +96,12 @@ D="$(setup nomark)"; run "$D" "$BASE/nomark.md"; rc=$?
 # 3. happy path
 D="$(setup happy)"; run "$D" "$BASE/good.md"; rc=$?
 [ "$rc" -eq 0 ] && ok "happy path rc=0" || bad "happy path rc=$rc: $(tail -3 "$D/out")"
-grep -q '^REMOTE-HEAD-AT-UPDATE: chore: bump 0.8.81 (lead-merge)$' "$D/log" \
-  && ok "bump commit pushed before pr update-branch" || bad "bump not on remote at update-branch: $(cat "$D/log")"
-seq="$(grep -oE 'pr (update-branch|checks|merge)' "$D/log" | tr '\n' ',')"
-[ "$seq" = "pr update-branch,pr checks,pr merge," ] && ok "order update-branch < checks < merge" || bad "order: $seq"
+seq="$(grep -oE 'pr (update-branch|checks|merge)|pr view 7 -R o/r --json headRefOid' "$D/log" | tr '\n' ',')"
+[ "$seq" = "pr view 7 -R o/r --json headRefOid,pr checks,pr merge," ] && ok "order: base merge+bump+push (one push) < poll < checks < merge" || bad "order: $seq"
+[ "$(wc -l < "$D/pushes" | tr -d ' ')" = 1 ] && ok "exactly one push" || bad "push count: $(cat "$D/pushes")"
+! grep -q 'update-branch' "$D/log" && ok "no gh pr update-branch" || bad "update-branch called"
+git -C "$D/origin.git" log -1 --format=%s feat/x | grep -qx 'chore: bump 0.8.81 (lead-merge)' && ok "bump commit is the pushed head" || bad "remote head not the bump"
+grep -q -- '--required' "$D/log" && ok "checks use --required when supported" || bad "--required missing"
 grep -q -- '--watch --fail-fast' "$D/log" && ok "checks use --watch --fail-fast" || bad "checks flags"
 grep -q 'pr merge 7 -R o/r --merge' "$D/log" && ok "merge uses --merge" || bad "merge flag"
 ! grep -q -e '--auto' -e '--squash' "$D/log" && ok "no auto/squash flag in any gh call" || bad "forbidden flag in log"
@@ -90,6 +117,52 @@ grep -q '"version": "0.8.81"' "$D/work/.claude-plugin/plugin.json" \
 # 5. CI failure -> no merge
 D="$(setup ci)"; run "$D" "$BASE/good.md" 1; rc=$?
 [ "$rc" -ne 0 ] && grep -q 'pr checks' "$D/log" && ! grep -q 'pr merge' "$D/log" && ok "checks failure: no merge" || bad "checks failure (rc=$rc)"
+
+# 6. main moved after the branch was cut: own bump + unrelated commit
+D="$(setup moved)"; main_commit "$D" 1 g.txt other; run "$D" "$BASE/good.md"; rc=$?
+[ "$rc" -eq 0 ] && ok "moved main: rc=0" || bad "moved main rc=$rc: $(tail -3 "$D/out")"
+head_sha="$(git -C "$D/origin.git" rev-parse feat/x)"
+git -C "$D/origin.git" show "$head_sha:.claude-plugin/plugin.json" | grep -q '"version": "0.8.82"' \
+  && git -C "$D/origin.git" show "$head_sha:workflows/deliver-pipeline.js" | grep -q "version: '0.8.82'" \
+  && ok "version = max(branch, main)+1 = 0.8.82" || bad "moved main version"
+git -C "$D/origin.git" merge-base --is-ancestor "$(git -C "$D/origin.git" rev-parse main)" "$head_sha" \
+  && ok "pushed branch contains origin/main" || bad "main not merged into branch"
+git -C "$D/origin.git" show "$head_sha:g.txt" >/dev/null 2>&1 && ok "unrelated main commit present" || bad "g.txt missing"
+[ "$(wc -l < "$D/pushes" | tr -d ' ')" = 1 ] && grep -q 'pr merge' "$D/log" && ok "moved main: one push, merged" || bad "moved main push/merge: $(cat "$D/pushes")"
+
+# 7. main conflicts in a non-version file: dies before any push, no merge call
+D="$(setup conflict)"; main_commit "$D" 0 f.txt other; run "$D" "$BASE/good.md"; rc=$?
+[ "$rc" -ne 0 ] && [ ! -s "$D/pushes" ] && ! grep -qE 'pr merge|pr checks' "$D/log" \
+  && [ -z "$(git -C "$D/work" status --porcelain)" ] && ok "conflict: died, no push, merge aborted, no merge call" || bad "conflict case (rc=$rc)"
+
+# 8. main bumped after our bump was pushed (version-only conflict): main's copy taken, re-bumped
+D="$(setup vconf)"; run "$D" "$BASE/good.md"; main_commit "$D" 1 g.txt other; run "$D" "$BASE/good.md"; rc=$?
+[ "$rc" -eq 0 ] && grep -q '"version": "0.8.82"' "$D/work/.claude-plugin/plugin.json" \
+  && ok "version-only conflict resolved, re-bumped to 0.8.82" || bad "vconf rc=$rc: $(tail -3 "$D/out")"
+
+# 9. remote head ahead of local (previous run pushed): fast-forward, no second bump
+D="$(setup ahead)"; run "$D" "$BASE/good.md"
+git -C "$D/work" checkout -q -B feat/x HEAD~1 >/dev/null 2>&1
+run "$D" "$BASE/good.md"; rc=$?
+[ "$rc" -eq 0 ] && [ "$(git -C "$D/work" log --format=%s | grep -c 'chore: bump')" -eq 1 ] && [ ! -s "$D/pushes" ] \
+  && ok "remote ahead: fast-forwarded, no second bump, no push" || bad "ahead case (rc=$rc): $(tail -3 "$D/out")"
+
+# 9b. diverged local vs remote: refused before any push
+D="$(setup diverged)"; ( cd "$D/work" && echo more > h.txt && git add -A && git commit -qm local-only ) >/dev/null 2>&1
+main_commit "$D" 0 k.txt k >/dev/null 2>&1
+( cd "$D/other" && git checkout -q feat/x && echo r > r.txt && git add -A && git commit -qm remote-only && git push -q origin feat/x ) >/dev/null 2>&1
+run "$D" "$BASE/good.md"; rc=$?
+[ "$rc" -ne 0 ] && [ ! -s "$D/pushes" ] && grep -q diverged "$D/out" && ok "diverged: refused" || bad "diverged (rc=$rc)"
+
+# 10. checks race: first polls report the old sha / no checks
+D="$(setup race)"; FAKE_STALE=3 run "$D" "$BASE/good.md"; rc=$?
+[ "$rc" -eq 0 ] && [ "$(grep -c 'json headRefOid' "$D/log")" -eq 4 ] && ok "polls until pushed sha + checks reported (4 polls)" || bad "race (rc=$rc): $(cat "$D/log")"
+D="$(setup never)"; FAKE_STALE=99 LEAD_MERGE_POLL_MAX=3 run "$D" "$BASE/good.md"; rc=$?
+[ "$rc" -ne 0 ] && ! grep -q 'pr merge' "$D/log" && ok "never reports checks: bounded, no merge" || bad "never (rc=$rc)"
+
+# 11. gh without --required: watch without it
+D="$(setup noreq)"; FAKE_HAS_REQUIRED=0 run "$D" "$BASE/good.md"; rc=$?
+[ "$rc" -eq 0 ] && ! grep -q -- '--required' "$D/log" && ok "no --required when unsupported" || bad "noreq (rc=$rc)"
 
 echo "[lead-merge test] passed=$PASS failed=$FAIL"
 [ "$FAIL" -eq 0 ]

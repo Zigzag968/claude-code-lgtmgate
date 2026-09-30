@@ -115,8 +115,10 @@ resolved `ready`/`no-go`/`escalate`), do a check-in pass rather than silently ab
 - The PR is ready (LGTM, acceptance checklist checked). **Do not merge on your own initiative.**
 - **Merge only through `scripts/lead-merge.sh <pr>`**, on an explicit user order, run from the PR worktree:
   - checks the acceptance checklist (`scripts/lib/acceptance-check.sh`, same lib as the merge hook); any `- [ ]` refuses
-  - bumps the patch version (`.claude-plugin/plugin.json` + `BUILD`), commits, pushes — PRs themselves never bump
-  - `gh pr update-branch` (merge, never a history rewrite), then `gh pr checks --watch --fail-fast`
+  - refuses unless on the PR head branch, clean, and in sync with the remote head (fast-forwards if behind, refuses if diverged)
+  - brings the base in locally first: `git fetch origin main` + `git merge --no-edit origin/main` (merge only; a conflict aborts the merge and stops before any push; a conflict limited to the version files takes main's copy). No `gh pr update-branch`: the local merge already makes the branch current
+  - then bumps the patch version from the merged tree (patch+1 over max(branch, main): `.claude-plugin/plugin.json` + `BUILD`), commits, pushes once — PRs themselves never bump
+  - waits until the PR reports the pushed sha with at least one check (bounded poll, cli/cli#7401), then `gh pr checks --watch --fail-fast` (`--required` when the installed gh supports it)
   - `gh pr merge --merge --delete-branch` (never the auto-merge flag)
   - then sync the main checkout: `git fetch origin && git merge --ff-only origin/main`
 - **No resume across a pin move**: never `resumeFromRunId` a run after the plugin version or pin changed (`BUILD` differs from the one the run started on) — relaunch fresh.
