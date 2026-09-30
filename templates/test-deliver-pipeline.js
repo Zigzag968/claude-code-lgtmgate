@@ -2813,6 +2813,23 @@ await testCase('T104d provisionCmdPreview: SCRIPT invocation + extraLinks args p
 // (T23b lives next to T23 above; T109-T115 below)
 // ---------------------------------------------------------------------------
 
+// T270 (#107) — every Morgan blocker is a checklist item (structured itemOwner 'checklist-wording-defect'
+// with proof) and plan amendment is off (default): park as verified-untickable, never a Nick round.
+await testCase('T270 all blockers checklist-wording-defect (amend off) → verified-untickable, zero Nick round', async () => {
+  const CHK = '- [ ] `grep -c FOO file` prints exactly 1'
+  const r = await run({
+    mode: 'auto',
+    simulate: {
+      sam: 'GO',
+      morgan: [{ verdict: 'REQUIRED_CHANGES', items: [CHK], itemOwners: [{ item: CHK, itemOwner: 'checklist-wording-defect', proof: '$ grep -c FOO file\n2' }] }],
+    },
+  })
+  const e1 = eq('status', r.status, 'verified-untickable')
+  const e2 = eq('untickableItems.length', r.untickableItems?.length, 1)
+  const e3 = (r.trace || []).some(t => /^nick/i.test(String(t))) ? { ok: false, msg: `Nick dispatched: trace=${JSON.stringify(r.trace)}` } : null
+  return e1 || e2 || e3 || { ok: true }
+})
+
 // T109 — Morgan classifies a REQUIRED_CHANGES item as a checklist-wording-defect with a concrete
 // proof; maxPlanAmendRounds:1 routes it to Sam for ONE amendment round instead of Nick. Every
 // item was plan-routed (codeItems empty) so Nick is skipped entirely that round. Round 1 Morgan
