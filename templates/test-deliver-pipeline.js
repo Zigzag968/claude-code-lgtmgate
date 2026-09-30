@@ -2196,6 +2196,19 @@ await testCase('T121 nickPrompt includes the raw issue brief alongside the plan 
   return err ? err : { ok: true }
 })
 
+// #76: R2 rule lives in Nick's Dev-phase prompt (no workflow probe): no-fixture label + Refs # fallback.
+await testCase('T76 nickPrompt carries the R2 fixture rule (no-fixture, fixtures/incidents/, Refs #) (#76)', async () => {
+  const r = await run({
+    mode: 'auto',
+    brief: 'r2-rule-probe',
+    simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] },
+  })
+  const err = includes('nickPromptPreview', r.nickPromptPreview, 'no-fixture')
+    || includes('nickPromptPreview', r.nickPromptPreview, 'fixtures/incidents/')
+    || includes('nickPromptPreview', r.nickPromptPreview, 'Refs #')
+  return err ? err : { ok: true }
+})
+
 // ---------------------------------------------------------------------------
 // #87 fixtures — recordDecision's deterministic single-shell-chain body sync
 // ---------------------------------------------------------------------------

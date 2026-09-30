@@ -104,6 +104,12 @@ resolved `ready`/`no-go`/`escalate`), do a check-in pass rather than silently ab
   default 30 min; the guard `Stop` hook detects this automatically and re-prompts) -> mark it blocked
   and escalate to the user, never leave it as-is.
 
+### R2 fixture rule (`no-fixture`)
+- Nick's Dev-phase prompt carries it: issue labelled `type:bug` AND diff touches `workflows/`.
+- Acceptance item added: `fixtures/incidents/<issue>-*.json` present, replayed red on base and green on branch by `scripts/run-offline.cjs`.
+- No such fixture in the branch: Nick sets label `no-fixture` on the issue and opens the PR body with `Refs #<N>` (not the close keyword), so the issue stays open.
+- Label is set by Nick, not by a workflow probe; the Lead treats a `no-fixture` issue as not done.
+
 ## 6. On `ready` — worktree cleanup (after user order)
 - The PR is ready (LGTM, acceptance checklist checked). **Do not merge on your own initiative.**
 - **Only remove the worktree after an explicit order from the user** (uncommitted work could still live there). The SubagentStop hook only warns, never deletes.
