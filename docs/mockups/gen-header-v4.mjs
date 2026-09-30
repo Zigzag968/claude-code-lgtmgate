@@ -71,7 +71,7 @@ const HOIST = 110;                                                          // d
 const TL = {
   drop: [.10, 1.00], cableUp: [1.25, 1.80], m1: [1.45, 2.05], plan: [2.05, 3.25], m2: [3.25, 3.85],
   dev: [3.85, 4.85], m3: [4.85, 5.45], rev: [5.45, 7.05], m4: [7.05, 7.65], hold: [7.65, 8.45], flip: 8.45,
-  door: [8.50, 8.90], m5: [8.95, 9.55], doorDown: [9.70, 10.10], pickDown: [9.55, 9.95], grip: 9.95,
+  door: [8.50, 8.90], m5: [8.95, 9.55], doorDown: [10.20, 10.60], pickDown: [9.55, 9.95], grip: 9.95,
   swing: [10.05, 10.95], release: 10.95, back: [11.05, 11.65], reset: 11.00, pop: [11.60, 11.95],
 };
 
@@ -176,7 +176,7 @@ function labels() {
 
 // ---------------------------------------------------------------- main lane (runs away from us along z)
 const MX0 = 1130, MX1 = 1200, MXC = (MX0 + MX1) / 2 + 0;            // belt x span; parcels centred on MXC
-const PITCH = 105, MTREAD = 21;                                     // 3 slots per loop = 315 = 15 treads
+const PITCH = 180, MTREAD = 20;                                     // 3 slots per loop = 540 = 27 treads
 const zSlot = q => ZF + q * PITCH;                                  // parcel front z for slot q (q=0: drop point)
 const slotShift = n => [n * PITCH * KX, -n * PITCH * KY];
 function mainLane() {
@@ -186,7 +186,7 @@ function mainLane() {
   s += box(MX0 - 4, 0, z0, MX1 - MX0 + 8, BH, z1 - z0, 'mn');
   const topFace = [P(MX0 - 4, BH, z0), P(MX1 + 4, BH, z0), P(MX1 + 4, BH, z1), P(MX0 - 4, BH, z1)];
   let ticks = '';
-  for (let z = z0 - 315; z < z1; z += MTREAD) { const a = P(MX0, BH, z), b = P(MX1, BH, z); ticks += `M${f2(a[0])} ${f2(a[1])}L${f2(b[0])} ${f2(b[1])}`; }
+  for (let z = z0 - 3 * PITCH; z < z1; z += MTREAD) { const a = P(MX0, BH, z), b = P(MX1, BH, z); ticks += `M${f2(a[0])} ${f2(a[1])}L${f2(b[0])} ${f2(b[1])}`; }
   s += `<clipPath id="mainClip"><polygon points="${pts(topFace)}"/></clipPath><g clip-path="url(#mainClip)"><path class="a mstrip" d="${ticks}" stroke="#D6CFEE" stroke-width="3" stroke-linecap="round" fill="none"/></g>`;
   // "main", stencilled on the lane's right side face (branch glyph + word)
   const o = P(MX1 + 4, 5, -40);
@@ -205,7 +205,7 @@ function mainStrip(onlyJ) {
     const body = kind === 'ours' ? parcel('#142', 'final') : parcel(OTHER[mod(j, 3)], 'final');
     const vis = kind === 'ours' ? (j >= 1 ? '' : j === -2 ? ' class="a landed"' : ' opacity="0"') : '';
     const piv = P(MXC, BH, ZF);
-    s += `<g transform="translate(${f2(dx)} ${f2(dy)})"${vis}><g transform="translate(${f2(piv[0])} ${f2(piv[1])})"><g${j === -2 ? ' class="a msquash"' : ''}><g transform="translate(${f2(-piv[0])} ${f2(-piv[1])})"><g transform="translate(${MXC} 0)">${body}</g></g></g></g>`;
+    s += `<g transform="translate(${f2(dx)} ${f2(dy)})"${vis}><g transform="translate(${f2(piv[0])} ${f2(piv[1])})"><g${j === -2 ? ' class="a msquash"' : ''}><g transform="translate(${f2(-piv[0])} ${f2(-piv[1])})"><g transform="translate(${MXC} 0)">${body}</g></g></g></g></g>`;
   }
   return s;
 }
@@ -213,7 +213,7 @@ function mainStrip(onlyJ) {
 // ---------------------------------------------------------------- the Lead: articulated arm between the line and main
 const SH = P(1056, 46, ZC), L1 = 80, L2 = 74, GRIP = 19;
 const TOOL = { pick: P(XS.pick, TOPY, ZC), place: P(MXC, TOPY, ZC) };
-TOOL.home = [SH[0], TOOL.pick[1] - 100];
+TOOL.home = [SH[0], TOOL.pick[1] - 70];
 function ik([tx_, ty_], prefer) {
   const wx = tx_, wy = ty_ - GRIP, dx = wx - SH[0], dy = wy - SH[1], d = Math.hypot(dx, dy);
   const c = Math.max(-1, Math.min(1, (d * d - L1 * L1 - L2 * L2) / (2 * L1 * L2)));
@@ -223,7 +223,9 @@ function ik([tx_, ty_], prefer) {
   });
   return prefer > 0 ? sols[0] : sols[1];
 }
-const POSE = { home: ik(TOOL.home, 1), pick: ik(TOOL.pick, 1), place: ik(TOOL.place, -1) };
+// elbow-up on both sides: the arm reaches down from above at pick and at place, and the swing
+// between them passes through the upright pose, lifting the parcel over the Lead's head
+const POSE = { home: ik(TOOL.home, -1), pick: ik(TOOL.pick, -1), place: ik(TOOL.place, 1) };
 function arm() {
   const cap = (len, th) => `<rect x="${-th / 2}" y="${-th / 2}" width="${len + th}" height="${th}" rx="${th / 2}"/>`;
   const topC = P(0, TOPY, ZC);
@@ -322,7 +324,7 @@ const MOVES = [[3.2, 4.0], [7.2, 8.0], [11.2, 12.0]];
   if (fr[fr.length - 1][0] < T) fr.push([T, txy(...slotShift(n))]);
   kf('mstrip', fr);
 }
-step('landed', TL.release, T - .001);
+kf('landed', [[0, op(0)], [TL.release - .001, op(0)], [TL.release, op(1)], [T, op(1)]]);   // hands over to its twin exactly at the seam
 kf('msquash', [[0, 'transform:scale(1,1)'], [TL.release, 'transform:scale(1,1)'], [TL.release + .06, 'transform:scale(1.05,.92)', E.out], [TL.release + .24, 'transform:scale(.99,1.02)'], [TL.release + .4, 'transform:scale(1,1)'], [T, 'transform:scale(1,1)']]);
 step('occl', 8.0, 11.2 - .001);
 // logo pulse on the verdict
