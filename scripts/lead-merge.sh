@@ -42,8 +42,10 @@
 #     ticked; an unmatched box stays open. The tick turns that line's `- [ ]` into `- [x]` and appends
 #     ` — ticked by lead-merge from Morgan's review`. PATCH via REST (`pulls/<N>`).
 #   - Limitation: index-style proofs ("Box 2: `cmd` -> out") and one line covering several boxes ("Boxes 1-4 verified")
-#     are NOT matched (too loose to map to a box reliably): those boxes stay open and the merge is refused. A Nick
-#     push-note after Morgan's verdict is not detected: the Lead re-verifies stale proofs before using the flag.
+#     are NOT matched (too loose to map to a box reliably): those boxes stay open and the merge is refused.
+#   - Stale proofs: refused (`FAIL: tick-from-review: a push followed Morgan's verdict; re-review first`, nothing ticked)
+#     when a marker comment (e.g. a Nick push-note) follows the chosen verdict, or when the PR head commit date
+#     (REST `pulls/<N>` head sha -> `commits/<sha>` committer date) is later than the verdict's `created_at`.
 # Afterwards prints the manual step to sync the local main. The PR itself never bumps: this script does.
 # Env: LEAD_MERGE_POLL_MAX (default 30), LEAD_MERGE_POLL_SLEEP seconds (default 10).
 set -euo pipefail
@@ -129,7 +131,8 @@ fi
 if [ "$TICK" -eq 1 ] && [ "$rc" -eq 1 ]; then
   tick_tmp="$(mktemp -d "${TMPDIR:-/tmp}/lead-merge-tick.XXXXXX")"
   gh api "repos/$REPO/issues/$PR/comments" --paginate > "$tick_tmp/comments.json" || die "cannot read the comments of PR #$PR"
-  PR="$PR" python3 - "$tick_tmp/comments.json" > "$tick_tmp/review.txt" <<'PY' || die "PR #$PR has no Morgan review comment (marker '<!-- pipeline-review-round pr=$PR -->' with a multi-line verdict); nothing ticked, nothing merged"
+  pick_rc=0
+  PR="$PR" python3 - "$tick_tmp/comments.json" "$tick_tmp/verdict_at.txt" > "$tick_tmp/review.txt" <<'PY' || pick_rc=$?
 import json, os, sys
 raw, dec, i, comments = open(sys.argv[1]).read(), json.JSONDecoder(), 0, []
 while i < len(raw):
@@ -138,15 +141,33 @@ while i < len(raw):
     obj, i = dec.raw_decode(raw, i)
     comments.extend(obj if isinstance(obj, list) else [obj])
 marker = "<!-- pipeline-review-round pr=%s -->" % os.environ["PR"]
-best = None
-for c in comments:
+def marked(c):
     lines = (c.get("body") or "").replace("\r", "").split("\n")
-    if lines and lines[0].strip() == marker and len([l for l in lines[1:] if l.strip()]) >= 2:
-        best = c["body"]
+    return lines, bool(lines) and lines[0].strip() == marker
+best = None
+for n, c in enumerate(comments):
+    lines, is_marked = marked(c)
+    if is_marked and len([l for l in lines[1:] if l.strip()]) >= 2:
+        best = n
 if best is None:
     sys.exit(1)
-print(best)
+if any(marked(c)[1] for c in comments[best + 1:]):
+    sys.exit(2)  # a later marker comment (e.g. a Nick push-note): the verdict is stale
+open(sys.argv[2], "w").write(comments[best].get("created_at") or "")
+print(comments[best]["body"])
 PY
+  case "$pick_rc" in
+    0) ;;
+    2) die "FAIL: tick-from-review: a push followed Morgan's verdict; re-review first" ;;
+    *) die "PR #$PR has no Morgan review comment (marker '<!-- pipeline-review-round pr=$PR -->' with a multi-line verdict); nothing ticked, nothing merged" ;;
+  esac
+  # the PR head must not be newer than the verdict (REST: pulls/<N> head sha -> commits/<sha> committer date)
+  head_sha="$(gh api "repos/$REPO/pulls/$PR" --jq .head.sha)" || die "cannot read the head sha of PR #$PR"
+  head_date="$(gh api "repos/$REPO/commits/$head_sha" --jq .commit.committer.date)" || die "cannot read the commit date of $head_sha"
+  verdict_at="$(cat "$tick_tmp/verdict_at.txt")"
+  [ -n "$head_date" ] && [ -n "$verdict_at" ] || die "tick-from-review: cannot compare the head commit date with the verdict date; nothing ticked"
+  python3 -c 'import sys; sys.exit(0 if sys.argv[1] <= sys.argv[2] else 1)' "$head_date" "$verdict_at" \
+    || die "FAIL: tick-from-review: a push followed Morgan's verdict; re-review first"
   printf '%s\n' "$body" > "$tick_tmp/body.txt"
   python3 - "$tick_tmp/body.txt" "$tick_tmp/review.txt" > "$tick_tmp/newbody.txt" <<'PY' || die "tick step failed"
 import re, sys
