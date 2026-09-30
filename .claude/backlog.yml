@@ -9,7 +9,7 @@ repo: Zigzag968/claude-code-lgtmgate
 labels:
   type: [bug, feature, tech-debt, docs, epic]
   status: [inbox, needs-info, ready]
-  priority: [0-now, 1-next, 2-later]
+  priority: ["0", "1", "2"]
   exec: [agent, human]
   size: [S, M, L]
   area: []
@@ -32,18 +32,18 @@ roles:
 executor_flags: [nightly]
 exclusions: [cross-repo]
 protected: [nightly, cross-repo, "auto:*"]
-# Priority ranks developments, it is not a WIP queue (maintainer, 2026-09-30): an epic carries the
-# priority, its children inherit it, the Lead follows the order written in the epic body. Caps are
-# therefore only a sanity ceiling during the v1 milestone.
+# priority ranks WORKSTREAMS, not a sequence and not a WIP queue (maintainer, 2026-09-30): the
+# robustness milestone is the only "0" workstream, everything in it is priority:0; less urgent work
+# is 1 or 2 and is not picked while a 0 workstream exists. Caps are a sanity ceiling only.
 caps:
-  "priority:0-now": 40
-  "priority:1-next": 40
+  "priority:0": 40
+  "priority:1": 40
 legacy_map:
   bug: "type:bug"
   enhancement: "type:feature"
   documentation: "type:docs"
-  P0: "priority:0-now"
-  P1: "priority:1-next"
-  P2: "priority:2-later"
+  P0: "priority:0"
+  P1: "priority:1"
+  P2: "priority:2"
   interactive: "exec:human"
 legacy_keep: [bug, enhancement, documentation, P0, P1, P2, interactive]
