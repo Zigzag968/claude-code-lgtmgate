@@ -68,7 +68,7 @@ jobs:
         run: npm install -g @anthropic-ai/claude-code
       - name: Validate marketplace and plugin manifests as committed
         run: |
-          claude plugin validate .
+          claude plugin validate ./
           claude plugin validate ./plugins/backlog
       - name: Point the lgtmgate entry at this checkout (CI-only, never committed)
         run: |
@@ -79,13 +79,13 @@ jobs:
               data = json.load(f)
           for entry in data["plugins"]:
               if entry["name"] == "lgtmgate":
-                  entry["source"] = "."
+                  entry["source"] = "./"
           with open(path, "w") as f:
               json.dump(data, f, indent=2)
           PY
       - name: Add local marketplace and install lgtmgate as a first-time user would
         run: |
-          claude plugin marketplace add .
+          claude plugin marketplace add ./
           claude plugin install lgtmgate@zigzag-plugins
       - name: Confirm it actually loaded (manifest + hooks + workflows resolved, no errors)
         run: |
