@@ -136,6 +136,26 @@ assert_exit "negative: git worktree list" 0 "$(run_hook "git worktree list")"
 assert_exit "compound command: git worktree remove --force inside &&" 2 \
   "$(run_hook "cd /tmp && git worktree remove --force /tmp/x")"
 
+# --- cases 20+: git reset --hard anchored on token boundaries (#41) ------
+
+assert_exit "reset --hard bare" 2 "$(run_hook "git reset --hard")"
+assert_exit "reset --hard HEAD~1" 2 "$(run_hook "git reset --hard HEAD~1")"
+assert_exit "git -C path reset --hard" 2 "$(run_hook "git -C /tmp/x reset --hard")"
+assert_exit "reset --hard after &&" 2 "$(run_hook "cd /tmp && git reset --hard")"
+assert_exit "reset --hard; trailing semicolon" 2 "$(run_hook "git reset --hard;")"
+assert_exit "reset --hard;; trailing" 2 "$(run_hook "git reset --hard;;")"
+assert_exit "reset --hard&&ls no space" 2 "$(run_hook "git reset --hard&&ls")"
+assert_exit "reset --hard|cat pipe" 2 "$(run_hook "git reset --hard|cat")"
+assert_exit "reset --hard in subshell" 2 "$(run_hook "(git reset --hard)")"
+assert_exit "reset --hard in bash -c quotes" 2 "$(run_hook 'bash -c "git reset --hard"')"
+
+assert_exit "reset --soft; echo --hard is allowed" 0 "$(run_hook "git reset --soft HEAD; echo --hard")"
+assert_exit "reset HEAD;echo --hard is allowed" 0 "$(run_hook "git reset HEAD;echo --hard")"
+assert_exit "reset HEAD && rm x --hard is allowed" 0 "$(run_hook "git reset HEAD && rm x --hard")"
+assert_exit "reset --soft HEAD~1 is allowed" 0 "$(run_hook "git reset --soft HEAD~1")"
+assert_exit "reset HEAD file is allowed" 0 "$(run_hook "git reset HEAD file.txt")"
+assert_exit "reset --hardware is allowed" 0 "$(run_hook "git reset --hardware")"
+
 # --- summary -------------------------------------------------------------
 
 echo "${pass_count}/${total} PASS"
