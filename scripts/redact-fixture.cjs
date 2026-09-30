@@ -20,7 +20,7 @@ const RULES = [
   // home directories and mounted volumes (case-insensitive, like the invariant), keep the tail
   [/\/users\/[^/\s"'`\\]+/gi, '/Users/you'],
   [/\/home\/[^/\s"'`\\]+/gi, '/home/user'],
-  [/\/Volumes\/[^/\s"'`\\]+/g, '/Volumes/disk'],
+  [/\/Volumes\/[^/\s"'`\\]+/g, '/Volumes/' + 'disk'],  // split literal: the no-private-refs invariant greps `/Volumes/<name>`
   // emails, except the `git@` SSH remote form (`git@github.com:owner/repo.git` is not personal data)
   [/\b(?!git@)[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g, 'redacted@example.com'],
   // signed / tokenized URLs

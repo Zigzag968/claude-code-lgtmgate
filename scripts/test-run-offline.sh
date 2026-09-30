@@ -27,7 +27,7 @@ case "$out" in *"unanswered call"*"merge-state-42-0"*) ok "missing label fails t
 out=$(OFFLINE_STRICT=1 node scripts/run-offline.cjs "$TMP/wrong-status.json" >/dev/null 2>&1; echo $?)
 [ "$out" = "1" ] && ok "OFFLINE_STRICT=1 exits 1 on failure" || bad "OFFLINE_STRICT exit code: $out"
 
-printf '{"name":"r","args":{"wtPath":"/Users/alex/wt"},"calls":{"a":"cd \\"/Users/alex\\" && x\\nPROVISION-EXIT:0\\n"},"expect":{"status":"x"}}\n' > "$TMP/redact.json"
+printf '{"name":"r","args":{"wtPath": "/Users/dev/wt"},"calls":{"a":"cd \\"/Users/dev\\" && x\\nPROVISION-EXIT:0\\n"},"expect":{"status":"x"}}\n' > "$TMP/redact.json"
 node scripts/redact-fixture.cjs "$TMP/redact.json" >/dev/null
 out=$(node -e 'const f=require(process.argv[1]);process.stdout.write(f.calls.a+"|"+f.args.wtPath)' "$TMP/redact.json")
 case "$out" in 'cd "/Users/you" && x'$'\n''PROVISION-EXIT:0'$'\n''|/Users/you/wt') ok "redaction keeps JSON escapes and uses the invariant-safe home path";; *) bad "redaction output: $out";; esac
