@@ -12,23 +12,31 @@
   per station, and every station follows the same grammar: the parcel settles, the tool engages,
   the transformation happens at the point of contact, the tool releases. The stations fire in a
   left-to-right cascade (0.3 s apart), never all at once, so the eye reads the line in order.
+  At the end of the line a two-link arm lifts the LGTM'd parcel off the pipeline belt and sets it
+  on the MAIN lane, a separate conveyor that runs continuously: the merge is a gesture outside the
+  pipeline, and the lane suggests other pipelines feed it too.
 
   One 5 s cycle:
     0.5 s  hoist lowers a new issue onto the belt
-    0.7 s  PLAN   print head touches the parcel and lays the plan band under its nib
-    1.0 s  DEV    press hits the parcel: the issue glyph becomes a PR glyph on impact
-    1.3 s  REVIEW scanner sweeps the parcel, approval badge appears when the beam returns
-    1.6 s  LGTM   the parcel is inside the gate unit: screen blinks (evaluating), flips red -> green,
-                  "LGTM", the exit door slides up, the parcel's band turns green
-    3.0 s  INDEX  the belt advances one station; the LGTM'd parcel leaves through the open door
-    4.0 s  CLOSE  door down, screen back to red
+    0.7 s  PLAN   print head touches the parcel; three checkboxes appear under its nib
+    1.0 s  DEV    press hits the parcel: a "PR" label is stuck on (draft PR)
+    1.3 s  REVIEW scanner sweeps; each box gets ticked as the beam crosses it
+    1.6 s  LGTM   parcel is inside the gate unit: screen blinks (evaluating), flips red -> green,
+                  "LGTM", the exit door slides up, the PR label turns green (mergeable)
+    2.8 s  INDEX  the belt advances one station; the LGTM'd parcel leaves through the open door
+    3.7 s  ARM    reaches over, grips, carries the parcel over the top, sets it on MAIN
+    3.8 s  CLOSE  door down, screen back to red
   Each parcel makes the whole journey (25 s = 5 cycles): one journey keyframe set applied to five
-  parcel elements with animation-delay 0 / -5 / -10 / -15 / -20 s.
-  A parcel never becomes "merged": LGTM means mergeable; merging stays a human gesture.
+  parcel elements with animation-delay 0 / -5 / -10 / -15 / -20 s. The carried card and the card on
+  the MAIN lane are separate elements that take over at the exact hand-off instants.
+  Arm poses come from a 2-link inverse-kinematics solve (shoulder 735,150 · L1 68 · L2 48); a wrist
+  joint is rotated by 180° - (upper + forearm) with identical keyframes so the gripper always points
+  down and the card simply hangs from it. A parcel never becomes "merged" on the pipeline: LGTM
+  means mergeable; the merge is the arm's gesture, outside the gate.
 
-  Easings: Material 3 motion tokens (emphasized .2,0,0,1 · decelerate .05,.7,.1,1) and easings.net
-  (easeOutBack .34,1.56,.64,1 · easeInOutCubic .65,0,.35,1 · easeOutCubic .33,1,.68,1 ·
-  easeInQuad .11,0,.5,0 · easeOutQuint .22,1,.36,1 · easeInCubic .32,0,.67,0).
+  Easings: Material 3 motion tokens (emphasized .2,0,0,1 · decelerate .05,.7,.1,1 · accelerate
+  .3,0,.8,.15) and easings.net (easeOutBack .34,1.56,.64,1 · easeInOutCubic .65,0,.35,1 ·
+  easeOutCubic .33,1,.68,1 · easeInQuad .11,0,.5,0 · easeOutQuint .22,1,.36,1 · easeInCubic .32,0,.67,0).
   Colours: GitHub Primer base scale (green #1f883d/#1a7f37, red #cf222e, ink #1f2328, muted #59636e,
   border #d1d9e0) + the existing brand purple #4b2fe0 / #8b6bff.
 -->
@@ -94,31 +102,35 @@
   .tagline { font: 400 17px/1.3 var(--sans); color: #5b6472; max-width: 262px; margin: 0; }
 
   /* ───────────────────────── the line ───────────────────────── */
-  .line { position: absolute; left: 450px; top: 0; width: 860px; height: 320px; }
+  .line { position: absolute; left: 440px; top: 0; width: 860px; height: 320px; }
 
-  .rail { position: absolute; left: 24px; top: 58px; width: 540px; height: 3px; border-radius: 2px; background: var(--line); }
+  .rail { position: absolute; left: 24px; top: 58px; width: 428px; height: 3px; border-radius: 2px; background: var(--line); }
   .rail::before, .rail::after { content: ""; position: absolute; top: -3px; width: 9px; height: 9px; border-radius: 50%; background: var(--line); }
   .rail::before { left: -4px; } .rail::after { right: -4px; }
 
-  .belt {
-    position: absolute; left: 8px; top: 232px; width: 852px; height: 16px; border-radius: 8px; z-index: 2;
+  .belt, .lane {
+    position: absolute; top: 232px; height: 16px; border-radius: 8px; z-index: 2;
     background-color: var(--belt);
-    background-image: linear-gradient(90deg, transparent 0 10px, rgba(255,255,255,.2) 10px 15px);
-    background-size: 15px 100%; background-repeat: repeat-x;
-    animation: belt var(--cycle) infinite;
+    background-image: linear-gradient(90deg, transparent 0 18px, rgba(255,255,255,.2) 18px 25px);
+    background-size: 25px 100%; background-repeat: repeat-x;                             /* 25 px slats: one index step (125 px) is exactly 5 slats */
   }
-  .belt-shadow { position: absolute; left: 20px; top: 244px; width: 828px; height: 14px; border-radius: 50%; background: rgba(31,35,40,.16); filter: blur(6px); z-index: 1; }
+  .belt { left: 8px; width: 712px; animation: belt var(--cycle) infinite; }              /* the pipeline: indexes one station per cycle */
+  .lane { left: 752px; width: 160px; animation: lane var(--cycle) linear infinite; }     /* MAIN: runs continuously (deliberately linear) */
+  .belt-shadow, .lane-shadow { position: absolute; top: 244px; height: 14px; border-radius: 50%; background: rgba(31,35,40,.16); filter: blur(6px); z-index: 1; }
+  .belt-shadow { left: 20px; width: 690px; }
+  .lane-shadow { left: 764px; width: 140px; }
 
   .lb { position: absolute; top: 276px; transform: translateX(-50%); white-space: nowrap; font: 700 12px/1 var(--sans); letter-spacing: .14em; text-transform: uppercase; color: var(--label); }
   .lb::before { content: ""; position: absolute; left: 50%; top: -22px; width: 1px; height: 16px; background: currentColor; opacity: .5; }
-  .lb-plan   { left: 210px; animation: lb-plan var(--cycle) infinite; }
-  .lb-dev    { left: 360px; animation: lb-dev var(--cycle) infinite; }
-  .lb-review { left: 510px; animation: lb-review var(--cycle) infinite; }
-  .lb-lgtm   { left: 660px; animation: lb-lgtm var(--cycle) infinite; }
+  .lb-plan   { left: 165px; animation: lb-plan var(--cycle) infinite; }
+  .lb-dev    { left: 290px; animation: lb-dev var(--cycle) infinite; }
+  .lb-review { left: 415px; animation: lb-review var(--cycle) infinite; }
+  .lb-lgtm   { left: 540px; animation: lb-lgtm var(--cycle) infinite; }
+  .lb-main   { left: 796px; }
 
   /* hoist at the intake */
-  .trolley { position: absolute; left: 46px; top: 53px; width: 28px; height: 12px; border-radius: 4px; background: var(--steel); z-index: 3; }
-  .crane { position: absolute; left: 44px; top: 61px; width: 32px; height: 105px; overflow: hidden; z-index: 4; }
+  .trolley { position: absolute; left: 26px; top: 53px; width: 28px; height: 12px; border-radius: 4px; background: var(--steel); z-index: 3; }
+  .crane { position: absolute; left: 24px; top: 61px; width: 32px; height: 105px; overflow: hidden; z-index: 4; }
   .crane .rig { position: absolute; left: 0; top: 0; width: 32px; height: 105px; animation: crane var(--cycle) infinite; }
   .crane .cable { position: absolute; left: 15px; top: 0; width: 2px; height: 100px; background: #8b949e; }
   .crane .grip { position: absolute; left: 4px; top: 99px; width: 24px; height: 6px; border-radius: 2px 2px 0 0; background: var(--steel); }
@@ -127,41 +139,55 @@
   .fx { position: absolute; top: 61px; z-index: 3; }
   .fx .hanger { position: absolute; left: -1px; top: 0; width: 2px; background: var(--line); }
 
-  .fx-plan { left: 210px; }
+  .fx-plan { left: 165px; }
   .fx-plan .hanger { height: 52px; }
   .fx-plan .head { position: absolute; left: -19px; top: 52px; width: 38px; height: 16px; border-radius: 4px; background: var(--steel); animation: plan-head var(--cycle) infinite; }
   .fx-plan .head::after { content: ""; position: absolute; left: 13px; top: 16px; border: 6px solid transparent; border-top: 7px solid var(--steel); border-bottom: 0; }
 
-  .fx-dev { left: 360px; }
+  .fx-dev { left: 290px; }
   .fx-dev .rod { position: absolute; left: -3px; top: 0; width: 6px; height: 48px; background: #6e7781; transform-origin: 50% 0; animation: press-rod var(--cycle) infinite; }
   .fx-dev .head { position: absolute; left: -24px; top: 46px; width: 48px; height: 18px; border-radius: 4px; background: var(--steel); animation: press-head var(--cycle) infinite; }
 
-  .fx-scan { left: 510px; }
+  .fx-scan { left: 415px; }
   .fx-scan .hanger { height: 44px; }
   .fx-scan .body { position: absolute; left: -20px; top: 44px; width: 40px; height: 18px; border-radius: 4px; background: var(--steel); }
   .fx-scan .lens { position: absolute; left: -6px; top: 56px; width: 12px; height: 12px; border-radius: 50%; background: #2b3137; box-shadow: inset 0 0 0 2px var(--steel); animation: lens var(--cycle) infinite; }
   .fx-scan .beam { position: absolute; left: -1px; top: 62px; width: 3px; height: 108px; opacity: 0; background: linear-gradient(180deg, rgba(9,105,218,.95), rgba(9,105,218,.35)); animation: beam var(--cycle) infinite; }
   .fx-scan .beam::after { content: ""; position: absolute; left: -13px; top: 0; width: 28px; height: 100%; background: linear-gradient(90deg, transparent, rgba(9,105,218,.25), transparent); }
 
-  /* ───────────────────────── parcels (one GitHub issue each) ───────────────────────── */
-  .parcel { position: absolute; left: -44px; top: 166px; width: 88px; height: 66px; z-index: 3; will-change: transform; animation: journey var(--journey) infinite; animation-delay: var(--d, 0s); }
-  .parcel .body {
-    position: absolute; inset: 0; border-radius: 10px; background: #fff; border: 1.5px solid #c9d1d9; box-sizing: border-box; overflow: hidden;
+  /* ───────────────────────── parcel face (shared by the journey parcels, the carried card and the MAIN card) ───────────────────────── */
+  .card {
+    position: absolute; inset: 0; border-radius: 10px; background: #fff; border: 1.5px solid #c9d1d9; box-sizing: border-box;
     box-shadow: 0 10px 18px -10px rgba(31,35,40,.5); transform-origin: 50% 100%;
-    animation: squash var(--journey) infinite; animation-delay: var(--d, 0s);
   }
-  .parcel .band { position: absolute; left: 0; top: 0; width: 100%; height: 11px; background-color: var(--purple); transform: scaleX(0); transform-origin: 0 50%; animation: band var(--journey) infinite; animation-delay: var(--d, 0s); }
-  .parcel .band::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(255,255,255,.28), rgba(255,255,255,0)); }
-  .parcel .glyph { position: absolute; left: 0; right: 0; top: 11px; bottom: 0; }
-  .parcel .glyph svg { position: absolute; inset: 0; margin: auto; width: 28px; height: 28px; }
-  .parcel .glyph .issue { animation: ico-issue var(--journey) infinite; animation-delay: var(--d, 0s); }
-  .parcel .glyph .pr { transform: scale(0); animation: ico-pr var(--journey) infinite; animation-delay: var(--d, 0s); }
-  .parcel .badge { position: absolute; right: -7px; top: -7px; width: 20px; height: 20px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 2.5px #fff; transform: scale(0); animation: badge var(--journey) infinite; animation-delay: var(--d, 0s); }
-  .parcel .badge svg { position: absolute; inset: 0; margin: auto; width: 12px; height: 12px; }
-  .parcel .badge path { fill: none; stroke: #fff; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+  .card .issue { position: absolute; left: 9px; top: 8px; width: 14px; height: 14px; }
+  .card .pr {
+    position: absolute; right: 7px; top: 7px; padding: 3px 5px 2px; border-radius: 4px; background: var(--steel); color: #fff;
+    font: 800 9px/1 var(--sans); letter-spacing: .1em; transform: rotate(-5deg) scale(0); transform-origin: 50% 50%;
+  }
+  .card .boxes { position: absolute; left: 18px; top: 34px; display: flex; gap: 8px; }
+  .card .boxes i { position: relative; display: block; width: 12px; height: 12px; border: 1.5px solid #c9d1d9; border-radius: 3px; box-sizing: border-box; transform: scale(0); }
+  .card .tick { position: absolute; inset: -1.5px; border-radius: 3px; background: var(--green); transform: scale(0); }
+  .card .tick svg { position: absolute; inset: 0; margin: auto; width: 9px; height: 9px; }
+  .card .tick path { fill: none; stroke: #fff; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+  /* finished state: green PR label, all boxes ticked */
+  .done .pr { transform: rotate(-5deg) scale(1); background: var(--green); }
+  .done .boxes i, .done .tick { transform: scale(1); }
+
+  /* journey parcels: one keyframe set, five elements staggered by one cycle */
+  .parcel { position: absolute; left: -44px; top: 166px; width: 88px; height: 66px; z-index: 3; will-change: transform; animation: journey var(--journey) infinite; animation-delay: var(--d, 0s); }
+  .parcel .card { animation: squash var(--journey) infinite; animation-delay: var(--d, 0s); }
+  .parcel .pr { animation: pr-label var(--journey) infinite; animation-delay: var(--d, 0s); }
+  .parcel .boxes i, .parcel .tick { animation-duration: var(--journey); animation-iteration-count: infinite; animation-delay: var(--d, 0s); animation-timing-function: cubic-bezier(.34, 1.56, .64, 1); }
+  .parcel .boxes i:nth-child(1) { animation-name: box-1; } .parcel .boxes i:nth-child(1) .tick { animation-name: tick-1; }
+  .parcel .boxes i:nth-child(2) { animation-name: box-2; } .parcel .boxes i:nth-child(2) .tick { animation-name: tick-2; }
+  .parcel .boxes i:nth-child(3) { animation-name: box-3; } .parcel .boxes i:nth-child(3) .tick { animation-name: tick-3; }
+
+  /* the card riding the MAIN lane after the drop */
+  .lane-parcel { position: absolute; left: -44px; top: 166px; width: 88px; height: 66px; z-index: 3; opacity: 0; animation: lane-parcel var(--cycle) infinite; }
 
   /* ───────────────────────── the gate unit ───────────────────────── */
-  .gate { position: absolute; left: 588px; top: 0; width: 144px; height: 320px; }
+  .gate { position: absolute; left: 468px; top: 0; width: 144px; height: 320px; }
   .gate .post { position: absolute; top: 140px; width: 6px; height: 92px; border-radius: 2px 2px 0 0; background: var(--muted); z-index: 5; }
   .gate .post.l { left: 0; } .gate .post.r { right: 0; }
   .gate .beam { position: absolute; left: 0; top: 136px; width: 144px; height: 8px; border-radius: 3px; background: var(--muted); z-index: 5; }
@@ -193,11 +219,28 @@
   .screen .ok .w i:nth-child(3) { animation: letter-3 var(--cycle) infinite; }
   .screen .ok .w i:nth-child(4) { animation: letter-4 var(--cycle) infinite; }
 
+  /* ───────────────────────── the arm (shoulder at 735,150 · upper 68 · forearm 48) ───────────────────────── */
+  .arm { position: absolute; left: 735px; top: 150px; width: 0; height: 0; z-index: 7; }
+  .arm .column { position: absolute; left: -10px; top: 0; width: 20px; height: 100px; border-radius: 5px 5px 0 0; background: var(--steel); }
+  .arm .base { position: absolute; left: -16px; top: 100px; width: 32px; height: 6px; border-radius: 2px; background: var(--muted); }
+  .arm .upper { position: absolute; left: -5px; top: -68px; width: 10px; height: 68px; border-radius: 5px; background: var(--steel); transform-origin: 50% 100%; animation: arm-upper var(--cycle) infinite; }
+  .arm .shoulder { position: absolute; left: -8px; top: -8px; width: 16px; height: 16px; border-radius: 50%; background: #8b949e; box-shadow: inset 0 0 0 4px var(--steel); }
+  .arm .fore { position: absolute; left: 1px; top: -48px; width: 8px; height: 48px; border-radius: 4px; background: var(--steel); transform-origin: 50% 100%; animation: arm-fore var(--cycle) infinite; }
+  .arm .elbow { position: absolute; left: -2px; top: -7px; width: 14px; height: 14px; border-radius: 50%; background: #8b949e; box-shadow: inset 0 0 0 3.5px var(--steel); }
+  /* wrist joint at the forearm tip: rotated by 180° - (upper + forearm) with identical keyframes, so the gripper always points down */
+  .arm .wrist { position: absolute; left: 4px; top: 0; width: 0; height: 0; animation: arm-wrist var(--cycle) infinite; }
+  .arm .grip { position: absolute; left: -11px; top: -6px; width: 22px; height: 6px; border-radius: 2px; background: var(--steel); }
+  .arm .finger { position: absolute; top: -12px; width: 4px; height: 7px; border-radius: 1px; background: var(--steel); }
+  .arm .finger.l { left: -9px; } .arm .finger.r { left: 5px; }
+  /* the card hanging from the fingers (the wrist frame is upside down in world space, hence the static 180° flip); visible only while carried */
+  .arm .carried { position: absolute; left: -44px; top: -78px; width: 88px; height: 66px; transform: rotate(180deg); opacity: 0; animation: arm-card var(--cycle) infinite; }
+
   /* ───────────────────────── scene keyframes — 5 s cycle, 1 s = 20 % ───────────────────────── */
   @keyframes belt {
-    0%, 60%   { background-position: 0 0;     animation-timing-function: cubic-bezier(.2, 0, 0, 1); }
-    78%, 100% { background-position: 150px 0; }
+    0%, 56%   { background-position: 0 0;     animation-timing-function: cubic-bezier(.2, 0, 0, 1); }
+    74%, 100% { background-position: 125px 0; }
   }
+  @keyframes lane { from { background-position: 0 0; } to { background-position: 500px 0; } }  /* 100 px/s (20 slats per cycle), the card rides at the same speed */
   /* hoist: 0.5 s lower, release, 1.6 s lift */
   @keyframes crane {
     0%, 10%    { transform: translateY(-240px); animation-timing-function: cubic-bezier(.4, 0, .15, 1); }
@@ -225,48 +268,48 @@
     25%, 28%  { transform: scaleY(1.833); animation-timing-function: cubic-bezier(.33, 1, .68, 1); }
     34%, 100% { transform: scaleY(1); }
   }
-  /* REVIEW, 1.3 s: lens on, sweep there and back, lens off as the badge lands */
+  /* REVIEW, 1.3 s: lens on, sweep left to right (ticks land as the beam crosses each box), return, lens off */
   @keyframes lens {
     0%, 26%   { background: #2b3137;    box-shadow: inset 0 0 0 2px var(--steel), 0 0 0 0 rgba(9,105,218,0); }
-    27%, 41%  { background: var(--blue); box-shadow: inset 0 0 0 2px var(--steel), 0 0 12px 2px rgba(9,105,218,.6); }
-    43%, 100% { background: #2b3137;    box-shadow: inset 0 0 0 2px var(--steel), 0 0 0 0 rgba(9,105,218,0); }
+    27%, 44%  { background: var(--blue); box-shadow: inset 0 0 0 2px var(--steel), 0 0 12px 2px rgba(9,105,218,.6); }
+    46%, 100% { background: #2b3137;    box-shadow: inset 0 0 0 2px var(--steel), 0 0 0 0 rgba(9,105,218,0); }
   }
   @keyframes beam {
     0%, 27%   { transform: translateX(-44px); opacity: 0; }
     28%       { transform: translateX(-44px); opacity: 1; animation-timing-function: cubic-bezier(.65, 0, .35, 1); }
-    34%       { transform: translateX(44px);  opacity: 1; animation-timing-function: cubic-bezier(.65, 0, .35, 1); }
-    40%       { transform: translateX(-44px); opacity: 1; }
-    41%, 100% { transform: translateX(-44px); opacity: 0; }
+    40%       { transform: translateX(44px);  opacity: 1; animation-timing-function: cubic-bezier(.65, 0, .35, 1); }
+    46%       { transform: translateX(-44px); opacity: 1; }
+    47%, 100% { transform: translateX(-44px); opacity: 0; }
   }
-  /* LGTM, 1.6 s: evaluate (two blinks) → flash → green → check → letters → door; back to red at 4.1 s */
+  /* LGTM, 1.6 s: evaluate (two blinks) → flash → green → check → letters → door; back to red at 3.9 s */
   @keyframes closed {
     0%, 32%   { opacity: 1;   transform: scale(1); }
     33%       { opacity: .15; transform: scale(1); }
     34%       { opacity: 1;   transform: scale(1); }
     35%       { opacity: .15; transform: scale(1); }
     36%, 39%  { opacity: 1;   transform: scale(1);  animation-timing-function: cubic-bezier(.32, 0, .67, 0); }
-    40%, 92%  { opacity: 0;   transform: scale(.6); animation-timing-function: cubic-bezier(.33, 1, .68, 1); }
-    94%, 100% { opacity: 1;   transform: scale(1); }
+    40%, 88%  { opacity: 0;   transform: scale(.6); animation-timing-function: cubic-bezier(.33, 1, .68, 1); }
+    90%, 100% { opacity: 1;   transform: scale(1); }
   }
   @keyframes disp {
     0%, 39%   { background-color: #16191d;      animation-timing-function: cubic-bezier(.33, 1, .68, 1); }
     40%       { background-color: #e6f7ea;      animation-timing-function: cubic-bezier(.33, 1, .68, 1); }
-    43%, 82%  { background-color: var(--green); animation-timing-function: cubic-bezier(.65, 0, .35, 1); }
-    94%, 100% { background-color: #16191d; }
+    43%, 78%  { background-color: var(--green); animation-timing-function: cubic-bezier(.65, 0, .35, 1); }
+    90%, 100% { background-color: #16191d; }
   }
   @keyframes ok-check {
     0%, 40%   { opacity: 0; transform: scale(.3); animation-timing-function: cubic-bezier(.34, 1.56, .64, 1); }
-    47%, 82%  { opacity: 1; transform: scale(1); }
-    86%, 100% { opacity: 0; transform: scale(.3); }
+    47%, 78%  { opacity: 1; transform: scale(1); }
+    82%, 100% { opacity: 0; transform: scale(.3); }
   }
-  @keyframes letter-1 { 0%, 42% { opacity: 0; transform: translateY(8px); animation-timing-function: cubic-bezier(.22, 1, .36, 1); } 46%, 82% { opacity: 1; transform: translateY(0); } 86%, 100% { opacity: 0; transform: translateY(8px); } }
-  @keyframes letter-2 { 0%, 43% { opacity: 0; transform: translateY(8px); animation-timing-function: cubic-bezier(.22, 1, .36, 1); } 47%, 82% { opacity: 1; transform: translateY(0); } 86%, 100% { opacity: 0; transform: translateY(8px); } }
-  @keyframes letter-3 { 0%, 44% { opacity: 0; transform: translateY(8px); animation-timing-function: cubic-bezier(.22, 1, .36, 1); } 48%, 82% { opacity: 1; transform: translateY(0); } 86%, 100% { opacity: 0; transform: translateY(8px); } }
-  @keyframes letter-4 { 0%, 45% { opacity: 0; transform: translateY(8px); animation-timing-function: cubic-bezier(.22, 1, .36, 1); } 49%, 82% { opacity: 1; transform: translateY(0); } 86%, 100% { opacity: 0; transform: translateY(8px); } }
+  @keyframes letter-1 { 0%, 42% { opacity: 0; transform: translateY(8px); animation-timing-function: cubic-bezier(.22, 1, .36, 1); } 46%, 78% { opacity: 1; transform: translateY(0); } 82%, 100% { opacity: 0; transform: translateY(8px); } }
+  @keyframes letter-2 { 0%, 43% { opacity: 0; transform: translateY(8px); animation-timing-function: cubic-bezier(.22, 1, .36, 1); } 47%, 78% { opacity: 1; transform: translateY(0); } 82%, 100% { opacity: 0; transform: translateY(8px); } }
+  @keyframes letter-3 { 0%, 44% { opacity: 0; transform: translateY(8px); animation-timing-function: cubic-bezier(.22, 1, .36, 1); } 48%, 78% { opacity: 1; transform: translateY(0); } 82%, 100% { opacity: 0; transform: translateY(8px); } }
+  @keyframes letter-4 { 0%, 45% { opacity: 0; transform: translateY(8px); animation-timing-function: cubic-bezier(.22, 1, .36, 1); } 49%, 78% { opacity: 1; transform: translateY(0); } 82%, 100% { opacity: 0; transform: translateY(8px); } }
   @keyframes screen-glow {
     0%, 39%   { box-shadow: 0 10px 22px -12px rgba(75,47,224,.55), 0 0 22px -2px rgba(207,34,46,.45); animation-timing-function: cubic-bezier(.33, 1, .68, 1); }
-    44%, 82%  { box-shadow: 0 10px 22px -12px rgba(75,47,224,.55), 0 0 48px 4px rgba(31,136,61,.55); animation-timing-function: cubic-bezier(.65, 0, .35, 1); }
-    94%, 100% { box-shadow: 0 10px 22px -12px rgba(75,47,224,.55), 0 0 22px -2px rgba(207,34,46,.45); }
+    44%, 78%  { box-shadow: 0 10px 22px -12px rgba(75,47,224,.55), 0 0 48px 4px rgba(31,136,61,.55); animation-timing-function: cubic-bezier(.65, 0, .35, 1); }
+    90%, 100% { box-shadow: 0 10px 22px -12px rgba(75,47,224,.55), 0 0 22px -2px rgba(207,34,46,.45); }
   }
   @keyframes ring {
     0%, 39.9% { transform: scale(1); opacity: 0; }
@@ -275,52 +318,93 @@
   }
   @keyframes door {
     0%, 44%   { transform: translateY(0);     background-color: var(--red);   animation-timing-function: cubic-bezier(.05, .7, .1, 1); }
-    54%, 80%  { transform: translateY(-90px); background-color: var(--green); animation-timing-function: cubic-bezier(.2, 0, 0, 1); }
-    90%, 100% { transform: translateY(0);     background-color: var(--red); }
+    54%, 76%  { transform: translateY(-90px); background-color: var(--green); animation-timing-function: cubic-bezier(.2, 0, 0, 1); }
+    86%, 100% { transform: translateY(0);     background-color: var(--red); }
   }
-  @keyframes mark-disp  { 0%, 44% { background-color: #16191d; } 48%, 82% { background-color: var(--green); } 92%, 100% { background-color: #16191d; } }
-  @keyframes mark-check { 0%, 44% { stroke: #6e7681; } 48%, 82% { stroke: #fff; } 92%, 100% { stroke: #6e7681; } }
+  @keyframes mark-disp  { 0%, 44% { background-color: #16191d; } 48%, 78% { background-color: var(--green); } 88%, 100% { background-color: #16191d; } }
+  @keyframes mark-check { 0%, 44% { stroke: #6e7681; } 48%, 78% { stroke: #fff; } 88%, 100% { stroke: #6e7681; } }
   @keyframes mark-glow {
     0%, 44%   { box-shadow: inset 0 0 0 1px rgba(255,255,255,.18), 0 10px 22px -12px rgba(75,47,224,.55), 0 0 0 0 rgba(31,136,61,0); }
-    48%, 82%  { box-shadow: inset 0 0 0 1px rgba(255,255,255,.18), 0 10px 22px -12px rgba(75,47,224,.55), 0 0 28px 2px rgba(31,136,61,.35); }
-    92%, 100% { box-shadow: inset 0 0 0 1px rgba(255,255,255,.18), 0 10px 22px -12px rgba(75,47,224,.55), 0 0 0 0 rgba(31,136,61,0); }
+    48%, 78%  { box-shadow: inset 0 0 0 1px rgba(255,255,255,.18), 0 10px 22px -12px rgba(75,47,224,.55), 0 0 28px 2px rgba(31,136,61,.35); }
+    88%, 100% { box-shadow: inset 0 0 0 1px rgba(255,255,255,.18), 0 10px 22px -12px rgba(75,47,224,.55), 0 0 0 0 rgba(31,136,61,0); }
   }
   /* station labels light up while their tool works, in the same cascade */
   @keyframes lb-plan   { 0%, 13% { color: var(--label); } 14%, 33% { color: var(--ink-2); } 35%, 100% { color: var(--label); } }
   @keyframes lb-dev    { 0%, 19% { color: var(--label); } 20%, 33% { color: var(--ink-2); } 35%, 100% { color: var(--label); } }
-  @keyframes lb-review { 0%, 25% { color: var(--label); } 26%, 43% { color: var(--ink-2); } 45%, 100% { color: var(--label); } }
-  @keyframes lb-lgtm   { 0%, 31% { color: var(--label); } 32%, 41% { color: var(--ink-2); } 43%, 82% { color: var(--green-fg); } 86%, 100% { color: var(--label); } }
+  @keyframes lb-review { 0%, 25% { color: var(--label); } 26%, 45% { color: var(--ink-2); } 47%, 100% { color: var(--label); } }
+  @keyframes lb-lgtm   { 0%, 31% { color: var(--label); } 32%, 41% { color: var(--ink-2); } 43%, 78% { color: var(--green-fg); } 82%, 100% { color: var(--label); } }
+
+  /* ARM, 3.7 s: swing over to the pick point (empty), grip, carry over the top, set down on MAIN, fold back */
+  @keyframes arm-upper {
+    0%, 74%   { transform: rotate(22.5deg);   animation-timing-function: cubic-bezier(.2, 0, 0, 1); }  /* home: gripper hovering above MAIN */
+    80%, 82%  { transform: rotate(-52.63deg); animation-timing-function: cubic-bezier(.3, 0, .8, .15); }
+    86%       { transform: rotate(0deg);      animation-timing-function: cubic-bezier(.05, .7, .1, 1); }
+    90%, 92%  { transform: rotate(50.52deg);  animation-timing-function: cubic-bezier(.2, 0, 0, 1); }
+    100%      { transform: rotate(22.5deg); }
+  }
+  @keyframes arm-fore {
+    0%, 74%   { transform: rotate(110.7deg);   animation-timing-function: cubic-bezier(.2, 0, 0, 1); }
+    80%, 82%  { transform: rotate(-107.95deg); animation-timing-function: cubic-bezier(.3, 0, .8, .15); }
+    86%       { transform: rotate(0deg);       animation-timing-function: cubic-bezier(.05, .7, .1, 1); }
+    90%, 92%  { transform: rotate(119.26deg);  animation-timing-function: cubic-bezier(.2, 0, 0, 1); }
+    100%      { transform: rotate(110.7deg); }
+  }
+  @keyframes arm-wrist {
+    0%, 74%   { transform: rotate(46.8deg);   animation-timing-function: cubic-bezier(.2, 0, 0, 1); }   /* 180 - (22.5 + 110.7) */
+    80%, 82%  { transform: rotate(340.58deg); animation-timing-function: cubic-bezier(.3, 0, .8, .15); } /* 180 - (-52.63 - 107.95) */
+    86%       { transform: rotate(180deg);    animation-timing-function: cubic-bezier(.05, .7, .1, 1); }  /* 180 - 0 */
+    90%, 92%  { transform: rotate(10.22deg);  animation-timing-function: cubic-bezier(.2, 0, 0, 1); }   /* 180 - (50.52 + 119.26) */
+    100%      { transform: rotate(46.8deg); }
+  }
+  @keyframes arm-card {
+    0%, 80%     { opacity: 0; }
+    80.1%, 91.9% { opacity: 1; }
+    92%, 100%   { opacity: 0; }
+  }
+  /* the card on MAIN: appears where the arm releases it, rides right at the lane's speed, continues across the loop boundary */
+  @keyframes lane-parcel {
+    0%          { transform: translateX(836px); opacity: 1; animation-timing-function: linear; }
+    12%         { transform: translateX(896px); opacity: 1; animation-timing-function: step-end; }
+    12.1%, 91.9% { transform: translateX(796px); opacity: 0; }
+    92%         { transform: translateX(796px); opacity: 1; animation-timing-function: linear; }
+    100%        { transform: translateX(836px); opacity: 1; }
+  }
 
   /* ───────────────────────── parcel journey — 25 s, 1 s = 4 % ───────────────────────── */
   @keyframes journey {
-    0%, 2%       { transform: translate(60px, -240px); animation-timing-function: cubic-bezier(.4, 0, .15, 1); }  /* lowered by the hoist */
-    5.6%, 12%    { transform: translate(60px, 0);      animation-timing-function: cubic-bezier(.2, 0, 0, 1); }
-    15.6%, 32%   { transform: translate(210px, 0);     animation-timing-function: cubic-bezier(.2, 0, 0, 1); }   /* PLAN */
-    35.6%, 52%   { transform: translate(360px, 0);     animation-timing-function: cubic-bezier(.2, 0, 0, 1); }   /* DEV */
-    55.6%, 72%   { transform: translate(510px, 0);     animation-timing-function: cubic-bezier(.2, 0, 0, 1); }   /* REVIEW */
-    75.6%, 92%   { transform: translate(660px, 0);     animation-timing-function: cubic-bezier(.2, 0, 0, 1); }   /* inside the gate unit */
-    95.6%        { transform: translate(920px, 0);     animation-timing-function: step-end; }                    /* out through the open door */
-    96%, 100%    { transform: translate(60px, -240px); }
+    0%, 2%       { transform: translate(40px, -240px); animation-timing-function: cubic-bezier(.4, 0, .15, 1); }  /* lowered by the hoist */
+    5.6%, 11.2%  { transform: translate(40px, 0);      animation-timing-function: cubic-bezier(.2, 0, 0, 1); }
+    14.8%, 31.2% { transform: translate(165px, 0);     animation-timing-function: cubic-bezier(.2, 0, 0, 1); }   /* PLAN */
+    34.8%, 51.2% { transform: translate(290px, 0);     animation-timing-function: cubic-bezier(.2, 0, 0, 1); }   /* DEV */
+    54.8%, 71.2% { transform: translate(415px, 0);     animation-timing-function: cubic-bezier(.2, 0, 0, 1); }   /* REVIEW */
+    74.8%, 91.2% { transform: translate(540px, 0);     animation-timing-function: cubic-bezier(.2, 0, 0, 1); }   /* inside the gate unit */
+    94.8%, 95.9% { transform: translate(665px, 0);     animation-timing-function: step-end; }                    /* pick point, then the arm takes over */
+    96%, 100%    { transform: translate(40px, -240px); }
   }
   @keyframes squash {
-    0%, 5.4%       { transform: scale(1, 1); }
-    5.6%           { transform: scale(1.03, .95); animation-timing-function: cubic-bezier(.34, 1.56, .64, 1); }  /* landing */
-    6.8%, 44.8%    { transform: scale(1, 1); }
-    45.2%          { transform: scale(1.05, .9);  animation-timing-function: cubic-bezier(.34, 1.56, .64, 1); }  /* press impact */
-    47%, 88.4%     { transform: scale(1, 1); }
-    89%            { transform: scale(1.04, 1.04); animation-timing-function: cubic-bezier(.34, 1.56, .64, 1); } /* verdict pulse */
-    90.4%, 100%    { transform: scale(1, 1); }
+    0%, 5.4%     { transform: scale(1, 1); }
+    5.6%         { transform: scale(1.03, .95); animation-timing-function: cubic-bezier(.34, 1.56, .64, 1); }  /* landing */
+    6.8%, 44.8%  { transform: scale(1, 1); }
+    45.2%        { transform: scale(1.05, .9);  animation-timing-function: cubic-bezier(.34, 1.56, .64, 1); }  /* press impact */
+    47%, 88.4%   { transform: scale(1, 1); }
+    89%          { transform: scale(1.04, 1.04); animation-timing-function: cubic-bezier(.34, 1.56, .64, 1); } /* verdict pulse */
+    90.4%, 100%  { transform: scale(1, 1); }
   }
-  /* the plan band grows under the print head's nib, then turns green at the verdict */
-  @keyframes band {
-    0%, 23.4%    { transform: scaleX(0); background-color: var(--purple); animation-timing-function: cubic-bezier(.65, 0, .35, 1); }
-    25.8%, 88.6% { transform: scaleX(1); background-color: var(--purple); animation-timing-function: cubic-bezier(.33, 1, .68, 1); }
-    89.6%, 95.6% { transform: scaleX(1); background-color: var(--green);  animation-timing-function: step-end; }
-    96%, 100%    { transform: scaleX(0); background-color: var(--purple); }
+  /* three checkboxes appear under the print head's nib, left to right */
+  @keyframes box-1 { 0%, 24.36% { transform: scale(0); } 24.96%, 95.9% { transform: scale(1); animation-timing-function: step-end; } 96%, 100% { transform: scale(0); } }
+  @keyframes box-2 { 0%, 24.6%  { transform: scale(0); } 25.2%, 95.9%  { transform: scale(1); animation-timing-function: step-end; } 96%, 100% { transform: scale(0); } }
+  @keyframes box-3 { 0%, 24.84% { transform: scale(0); } 25.44%, 95.9% { transform: scale(1); animation-timing-function: step-end; } 96%, 100% { transform: scale(0); } }
+  /* the PR label is stuck on by the press, then turns green at the verdict (draft -> mergeable) */
+  @keyframes pr-label {
+    0%, 45%      { transform: rotate(-5deg) scale(0); background-color: var(--steel); animation-timing-function: cubic-bezier(.34, 1.56, .64, 1); }
+    46.2%, 88.6% { transform: rotate(-5deg) scale(1); background-color: var(--steel); animation-timing-function: cubic-bezier(.33, 1, .68, 1); }
+    89.6%, 95.9% { transform: rotate(-5deg) scale(1); background-color: var(--green); animation-timing-function: step-end; }
+    96%, 100%    { transform: rotate(-5deg) scale(0); background-color: var(--steel); }
   }
-  @keyframes ico-issue { 0%, 45%   { transform: scale(1); animation-timing-function: cubic-bezier(.32, 0, .67, 0); } 45.6%, 95.6% { transform: scale(0); animation-timing-function: step-end; } 96%, 100% { transform: scale(1); } }
-  @keyframes ico-pr    { 0%, 45.2% { transform: scale(0); animation-timing-function: cubic-bezier(.34, 1.56, .64, 1); } 46.4%, 95.6% { transform: scale(1); animation-timing-function: step-end; } 96%, 100% { transform: scale(0); } }
-  @keyframes badge     { 0%, 68%   { transform: scale(0); animation-timing-function: cubic-bezier(.34, 1.56, .64, 1); } 69.2%, 95.6% { transform: scale(1); animation-timing-function: step-end; } 96%, 100% { transform: scale(0); } }
+  /* the boxes get ticked as the scanner beam crosses them */
+  @keyframes tick-1 { 0%, 66.56% { transform: scale(0); } 67.16%, 95.9% { transform: scale(1); animation-timing-function: step-end; } 96%, 100% { transform: scale(0); } }
+  @keyframes tick-2 { 0%, 66.8%  { transform: scale(0); } 67.4%, 95.9%  { transform: scale(1); animation-timing-function: step-end; } 96%, 100% { transform: scale(0); } }
+  @keyframes tick-3 { 0%, 67.04% { transform: scale(0); } 67.64%, 95.9% { transform: scale(1); animation-timing-function: step-end; } 96%, 100% { transform: scale(0); } }
 
   /* reduced motion: hold the LGTM frame as a still */
   @media (prefers-reduced-motion: reduce) {
@@ -343,7 +427,7 @@
 <body>
 <div class="stage">
   <div class="wrap">
-  <div class="banner" role="img" aria-label="lgtmgate — GitHub issues move down an assembly line through plan, dev and review, then enter the gate unit whose screen turns green and reads LGTM before the door opens">
+  <div class="banner" role="img" aria-label="lgtmgate — GitHub issues move down an assembly line through plan, dev and review, enter the gate unit whose screen turns green and reads LGTM, then an arm sets the approved pull request on the main lane">
 
     <!-- brand -->
     <div class="brand">
@@ -368,43 +452,42 @@
 
       <div class="belt-shadow"></div>
       <div class="belt"></div>
+      <div class="lane-shadow"></div>
+      <div class="lane"></div>
 
       <!-- five parcels, one journey, staggered by one cycle each -->
-      <div class="parcel" style="--d: 0s">
-        <div class="body"><div class="band"></div><div class="glyph">
-          <svg class="issue" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="#1a7f37" stroke-width="1.8"/><circle cx="8" cy="8" r="1.7" fill="#1a7f37"/></svg>
-          <svg class="pr" viewBox="0 0 16 16" fill="none" stroke="#1a7f37" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="4" cy="3.5" r="1.9"/><circle cx="4" cy="12.5" r="1.9"/><circle cx="12" cy="12.5" r="1.9"/><path d="M4 5.4v5.2"/><path d="M8.6 3.5H10a2 2 0 0 1 2 2v5.1"/><path d="M7.2 1.6 8.9 3.5 7.2 5.4"/></svg>
-        </div></div>
-        <div class="badge"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div>
-      </div>
-      <div class="parcel" style="--d: -5s">
-        <div class="body"><div class="band"></div><div class="glyph">
-          <svg class="issue" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="#1a7f37" stroke-width="1.8"/><circle cx="8" cy="8" r="1.7" fill="#1a7f37"/></svg>
-          <svg class="pr" viewBox="0 0 16 16" fill="none" stroke="#1a7f37" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="4" cy="3.5" r="1.9"/><circle cx="4" cy="12.5" r="1.9"/><circle cx="12" cy="12.5" r="1.9"/><path d="M4 5.4v5.2"/><path d="M8.6 3.5H10a2 2 0 0 1 2 2v5.1"/><path d="M7.2 1.6 8.9 3.5 7.2 5.4"/></svg>
-        </div></div>
-        <div class="badge"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div>
-      </div>
-      <div class="parcel" style="--d: -10s">
-        <div class="body"><div class="band"></div><div class="glyph">
-          <svg class="issue" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="#1a7f37" stroke-width="1.8"/><circle cx="8" cy="8" r="1.7" fill="#1a7f37"/></svg>
-          <svg class="pr" viewBox="0 0 16 16" fill="none" stroke="#1a7f37" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="4" cy="3.5" r="1.9"/><circle cx="4" cy="12.5" r="1.9"/><circle cx="12" cy="12.5" r="1.9"/><path d="M4 5.4v5.2"/><path d="M8.6 3.5H10a2 2 0 0 1 2 2v5.1"/><path d="M7.2 1.6 8.9 3.5 7.2 5.4"/></svg>
-        </div></div>
-        <div class="badge"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div>
-      </div>
-      <div class="parcel" style="--d: -15s">
-        <div class="body"><div class="band"></div><div class="glyph">
-          <svg class="issue" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="#1a7f37" stroke-width="1.8"/><circle cx="8" cy="8" r="1.7" fill="#1a7f37"/></svg>
-          <svg class="pr" viewBox="0 0 16 16" fill="none" stroke="#1a7f37" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="4" cy="3.5" r="1.9"/><circle cx="4" cy="12.5" r="1.9"/><circle cx="12" cy="12.5" r="1.9"/><path d="M4 5.4v5.2"/><path d="M8.6 3.5H10a2 2 0 0 1 2 2v5.1"/><path d="M7.2 1.6 8.9 3.5 7.2 5.4"/></svg>
-        </div></div>
-        <div class="badge"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div>
-      </div>
-      <div class="parcel" style="--d: -20s">
-        <div class="body"><div class="band"></div><div class="glyph">
-          <svg class="issue" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="#1a7f37" stroke-width="1.8"/><circle cx="8" cy="8" r="1.7" fill="#1a7f37"/></svg>
-          <svg class="pr" viewBox="0 0 16 16" fill="none" stroke="#1a7f37" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="4" cy="3.5" r="1.9"/><circle cx="4" cy="12.5" r="1.9"/><circle cx="12" cy="12.5" r="1.9"/><path d="M4 5.4v5.2"/><path d="M8.6 3.5H10a2 2 0 0 1 2 2v5.1"/><path d="M7.2 1.6 8.9 3.5 7.2 5.4"/></svg>
-        </div></div>
-        <div class="badge"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div>
-      </div>
+      <div class="parcel" style="--d: 0s"><div class="card">
+        <svg class="issue" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="#1a7f37" stroke-width="1.8"/><circle cx="8" cy="8" r="1.7" fill="#1a7f37"/></svg>
+        <span class="pr">PR</span>
+        <span class="boxes"><i><b class="tick"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></b></i><i><b class="tick"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></b></i><i><b class="tick"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></b></i></span>
+      </div></div>
+      <div class="parcel" style="--d: -5s"><div class="card">
+        <svg class="issue" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="#1a7f37" stroke-width="1.8"/><circle cx="8" cy="8" r="1.7" fill="#1a7f37"/></svg>
+        <span class="pr">PR</span>
+        <span class="boxes"><i><b class="tick"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></b></i><i><b class="tick"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></b></i><i><b class="tick"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></b></i></span>
+      </div></div>
+      <div class="parcel" style="--d: -10s"><div class="card">
+        <svg class="issue" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="#1a7f37" stroke-width="1.8"/><circle cx="8" cy="8" r="1.7" fill="#1a7f37"/></svg>
+        <span class="pr">PR</span>
+        <span class="boxes"><i><b class="tick"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></b></i><i><b class="tick"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></b></i><i><b class="tick"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></b></i></span>
+      </div></div>
+      <div class="parcel" style="--d: -15s"><div class="card">
+        <svg class="issue" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="#1a7f37" stroke-width="1.8"/><circle cx="8" cy="8" r="1.7" fill="#1a7f37"/></svg>
+        <span class="pr">PR</span>
+        <span class="boxes"><i><b class="tick"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></b></i><i><b class="tick"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></b></i><i><b class="tick"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></b></i></span>
+      </div></div>
+      <div class="parcel" style="--d: -20s"><div class="card">
+        <svg class="issue" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="#1a7f37" stroke-width="1.8"/><circle cx="8" cy="8" r="1.7" fill="#1a7f37"/></svg>
+        <span class="pr">PR</span>
+        <span class="boxes"><i><b class="tick"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></b></i><i><b class="tick"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></b></i><i><b class="tick"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></b></i></span>
+      </div></div>
+
+      <!-- the approved card riding the MAIN lane -->
+      <div class="lane-parcel done"><div class="card">
+        <svg class="issue" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="#1a7f37" stroke-width="1.8"/><circle cx="8" cy="8" r="1.7" fill="#1a7f37"/></svg>
+        <span class="pr">PR</span>
+        <span class="boxes"><i><b class="tick"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></b></i><i><b class="tick"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></b></i><i><b class="tick"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></b></i></span>
+      </div></div>
 
       <div class="gate">
         <div class="post l"></div><div class="post r"></div>
@@ -419,10 +502,30 @@
         </div>
       </div>
 
+      <!-- the arm: column, upper arm, forearm, gripper; the carried card hangs from the fingers -->
+      <div class="arm">
+        <div class="column"></div><div class="base"></div>
+        <div class="upper">
+          <div class="fore">
+            <div class="wrist">
+            <div class="grip"></div><div class="finger l"></div><div class="finger r"></div>
+            <div class="carried done"><div class="card">
+              <svg class="issue" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="#1a7f37" stroke-width="1.8"/><circle cx="8" cy="8" r="1.7" fill="#1a7f37"/></svg>
+              <span class="pr">PR</span>
+              <span class="boxes"><i><b class="tick"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></b></i><i><b class="tick"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></b></i><i><b class="tick"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></b></i></span>
+            </div></div>
+            </div>
+          </div>
+          <div class="elbow"></div>
+        </div>
+        <div class="shoulder"></div>
+      </div>
+
       <div class="lb lb-plan">Plan</div>
       <div class="lb lb-dev">Dev</div>
       <div class="lb lb-review">Review</div>
       <div class="lb lb-lgtm">LGTM</div>
+      <div class="lb lb-main">Main</div>
     </div>
   </div>
   </div>
@@ -437,8 +540,9 @@
     <div class="beat" style="left:26%">review</div>
     <div class="beat" style="left:32%">evaluate</div>
     <div class="beat" style="left:40%">green</div>
-    <div class="beat" style="left:60%">index</div>
-    <div class="beat" style="left:80%">close</div>
+    <div class="beat" style="left:56%">index</div>
+    <div class="beat" style="left:74%">arm</div>
+    <div class="beat" style="left:92%">main</div>
   </div>
 </div>
 </body>
