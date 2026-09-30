@@ -27,7 +27,9 @@ prnum=""; repoflag=""
 if printf '%s' "$cmd" | grep -qE 'gh[[:space:]]+pr[[:space:]]+merge'; then
   # Explicit PR number (gh pr merge 39) if present, else the current branch's PR.
   prnum="$(printf '%s' "$cmd" | grep -oE 'gh[[:space:]]+pr[[:space:]]+merge[[:space:]]+[0-9]+' | grep -oE '[0-9]+$' || true)"
-elif printf '%s' "$cmd" | grep -qE '(^|[[:space:]/])lead-merge\.sh([[:space:]]|$)'; then
+# Only an executed call counts (command position, optionally after bash/sh): `grep ... lead-merge.sh`
+# or `cat scripts/lead-merge.sh` merely name the file.
+elif printf '%s' "$cmd" | grep -qE '(^|[;&|(])[[:space:]]*((bash|sh)[[:space:]]+)?([^[:space:];&|]*/)?lead-merge\.sh([[:space:]]|$)'; then
   # --tick-from-review (#9) exists to tick the boxes Morgan proved: the script ticks, re-checks the
   # body and refuses the merge if any box is still open, so the pre-check here would only block it.
   if printf '%s' "$cmd" | grep -qE 'lead-merge\.sh[^;&|]*--tick-from-review'; then exit 0; fi

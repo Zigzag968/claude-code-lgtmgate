@@ -271,6 +271,12 @@ grep -qF -- '- [x] `bash t.sh` exits 0 — ticked by lead-merge from Morgan'"'"'
   && [ "$(grep -c 'pulls/7 -F body' "$D/log")" = 1 ] && ok "tick: REST PATCH pulls/7, line ticked with suffix" || bad "tick patch: $(cat "$D/log.patch" 2>/dev/null)"
 [ "$(grep -n 'PATCH repos/o/r/pulls/7' "$D/log" | cut -d: -f1)" -lt "$(grep -n 'pr merge' "$D/log" | cut -d: -f1)" ] && ok "tick happens before the merge" || bad "tick order"
 
+# 15a2. Morgan's template proof without backticks (`<command> -> <output>`) is accepted
+printf '%s\n%s\n%s\n' "$MK" 'Tick pending.' \
+  '- [ ] **`bash t.sh` exits 0** — verified, tick pending (permissions): bash t.sh -> exit 0, PASS 5/5' > "$BASE/rv1b.md"
+D="$(setup tk-arrow)"; tick_body "$B1" "$BASE/tk1b.md"; mkc "$D" "$BASE/rv1b.md"; tick_run "$D" "$BASE/tk1b.md"; rc=$?
+[ "$rc" -eq 0 ] && grep -q 'pr merge 7 -R o/r --merge' "$D/log" && ok "tick-from-review: arrow-form proof accepted" || bad "tick arrow (rc=$rc): $(tail -3 "$D/out")"
+
 # 15b. box without proof stays open, merge refused; proven one is ticked
 tick_body "$B1
 $B2" "$BASE/tk2.md"; D="$(setup tk-noproof)"; mkc "$D" "$BASE/rv1.md"; tick_run "$D" "$BASE/tk2.md"; rc=$?
