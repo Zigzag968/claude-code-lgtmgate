@@ -221,7 +221,7 @@ export const meta = {
 // `version`, checked against plugin.json by templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '0.8.85', cutFrom: '24bc6d7' }
+const BUILD = { plugin: 'lgtmgate', version: '0.8.86', cutFrom: '20122a2' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -380,6 +380,11 @@ log(`worktreeRoot: ${worktreeRoot ?? '(unresolved)'} (env=${runtimeEnv.LGTMGATE_
 // derives the repo from the worktree).
 const repo = config.repo || null
 const prFlag = repo ? ` -R ${repo}` : ''
+// Sandbox-safe push (#108): SSH (port 22 / agent socket) is blocked in the agent sandbox, HTTPS to
+// github.com:443 through the gh credential helper is not. Exact command, also quoted to the Lead
+// by the delivered-no-pr escalation. `repo` absent -> Nick derives the slug from the origin URL.
+const httpsPushCmdFor = (branch) =>
+  `git -c credential.helper= -c credential.helper='!gh auth git-credential' push https://github.com/${repo || '<owner>/<repo from git remote get-url origin>'}.git refs/heads/${branch}:refs/heads/${branch}`
 let conventionsRule = config.conventionsRule || '.claude/rules/conventions.md'
 // lgtmgate#139: on a crash-resume ('dev'/'review' entry) re-verify baseBranch/conventionsRule
 // against the worktree's OWN pipeline.config.json instead of trusting the possibly-stale
@@ -2334,6 +2339,7 @@ if (after('dev', entryStage)) {
       `When deleting repo-tracked files, use \`git rm <file>\` instead of bare \`rm\` — bare rm is sandbox-denied and burns permission rounds. ` +
       `${SANDBOX_INSTALL_HINT} ` +
       `Push the branch explicitly before opening the PR: \`git push origin ${expectedBranchName}\` (no upstream flag — the sandbox cannot write the worktree's .git/config, CC bug #51818; see .claude/rules/git-workflow.md). ` +
+      `If that push fails because the SSH remote is unreachable in the sandbox (\`ssh_dispatch_run_fatal\`, \`Broken pipe\`, \`Connection refused\`, \`Could not resolve hostname\`; CC issues #30619, #33300), retry ONCE over HTTPS through the gh credential helper (github.com:443 is reachable, SSH is not): \`${httpsPushCmdFor(expectedBranchName)}\` (explicit refspec, no upstream flag, no sandbox bypass). If the HTTPS push fails too, do not bypass the sandbox and do not open a PR: stop, return prNumber 0 with a summary that quotes the failing command and its error. ` +
       `Open a PR (draft) with EXPLICIT refs — gh resolves HEAD from the invoking cwd, not the worktree branch: \`gh pr create --draft${prFlag} --base ${baseBranch} --head ${expectedBranchName} ...\`. ` +
       `${r2Note}` +
       `Compose the PR body in this order (artifact-first structure): first line \`${closesLine}\` — one \`Closes #N\` per fully-resolved issue (the epic plus every issue Sam's plan explicitly named as fully resolved by this bundle; never for an issue flagged partial/residual in the plan — that one stays open, with a forward-reference comment on the child issue instead, as already practiced); ${subIssuesGateNote(subIssuesUncovered, issue)}then a \`## What this ships\` H2 with a bullet summary of the diff; then, ONLY IF the acceptance checklist below contains a \`[human-gate]\` item, an optional \`## <Human> — N gestures\` H2 listing those manual human actions (omit this H2 entirely when no \`[human-gate]\` item exists — never ship an empty stub section); then a \`## Acceptance checklist\` H2. Copy the acceptance checklist into the PR body between \`<!-- acceptance:start -->\`/\`<!-- acceptance:end -->\`. Leave an EMPTY \`<!-- decision-log:start -->\`/\`<!-- decision-log:end -->\` marker pair right after the acceptance block — workflow-owned, never hand-fill it. Close with a \`<details><summary>Technical detail</summary>\` fold holding the test plan / feature flag / risk notes. Post a comment on issue #${issue} linking the PR, then idle.`
@@ -2372,7 +2378,9 @@ if (after('review', entryStage)) {
     if (noPrDelivery) {
       log('No-PR terminal delivery: nick reported testsPass=true with a summary and no PR — skipping Review')
       trace.push('delivered-no-pr')
-      return finish({ status: 'delivered-no-pr', issue, summary: nick.summary, trace })
+      const leadAction = `Lead: if the branch was not pushed (SSH blocked in the sandbox, #108), push it with \`${httpsPushCmdFor(expectedBranchName)}\`, then open the PR with \`gh pr create --draft${prFlag} --base ${baseBranch} --head ${expectedBranchName}\` and relaunch with entryStage:"review" + prNumber.`
+      log(`delivered-no-pr: ${leadAction}`)
+      return finish({ status: 'delivered-no-pr', issue, summary: nick.summary, leadAction, trace })
     }
     // Dev-stage failure with no evidence and no PR (lgtmgate#262) — whatever the cause
     // (permission gap, agent crash, anything), stay inside the pipeline's normal status
