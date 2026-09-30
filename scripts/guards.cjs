@@ -24,16 +24,21 @@
 //      plugins/backlog/tests (test-*.sh|cjs|js), plus scripts/run-offline.cjs, appears inside a
 //      `run:` step (single-line or `run: |` body) of .github/workflows/guards.yml, YAML comments
 //      excluded, except the documented exemptions below.
+//   sam-parity (#75): agents/sam.md and samScoutPrompt (workflows/deliver-pipeline.js) both carry
+//      the token `patch-avoided:` and the byte-identical LAYER_RULE sentence (defined once below),
+//      and neither carries a `root-cause:` field (doctrine v3 has no LLM-filled field).
 //   Invariant 1 (relaxed) version floor: .claude-plugin/plugin.json version >= origin/main's.
 //      Since #74 (scripts/lead-merge.sh bumps at merge; bump-required is retired) this floor is
 //      the only version check besides stamp-parity in templates/test-canonical-guards.sh.
 //
 // Env (test seams, all optional)
-//   GUARDS_ONLY            comma list among r1,wired,version (default: all)
+//   GUARDS_ONLY            comma list among r1,wired,version,parity (default: all)
 //   GUARDS_BASE_FILE       workflow file used as the base for R1 (default: git show origin/main:<file>)
 //   GUARDS_BRANCH_FILE     workflow file used as the branch for R1 (default: workflows/deliver-pipeline.js)
 //   GUARDS_BASE_MANIFEST   base plugin.json path for the version floor (default: git show origin/main:...)
 //   GUARDS_BRANCH_MANIFEST branch plugin.json path (default: .claude-plugin/plugin.json)
+//   GUARDS_SAM_FILE        Sam persona for sam-parity (default: agents/sam.md)
+//   GUARDS_SAM_JS_FILE     workflow file for sam-parity (default: workflows/deliver-pipeline.js)
 //   GUARDS_ROOT            repo root (default: parent of scripts/)
 
 const fs = require('fs')
@@ -44,7 +49,7 @@ const ROOT = process.env.GUARDS_ROOT || path.resolve(__dirname, '..')
 const WORKFLOW = 'workflows/deliver-pipeline.js'
 const MANIFEST = '.claude-plugin/plugin.json'
 const GUARDS_YML = '.github/workflows/guards.yml'
-const ONLY = process.env.GUARDS_ONLY ? process.env.GUARDS_ONLY.split(',') : ['r1', 'wired', 'version']
+const ONLY = process.env.GUARDS_ONLY ? process.env.GUARDS_ONLY.split(',') : ['r1', 'wired', 'version', 'parity']
 
 // Suites that are NOT named in guards.yml, each with its reason. Add a suite here only if it is
 // red on main (report it, do not wire it) or is run through another runner.
@@ -52,6 +57,9 @@ const EXEMPT = {
   'templates/test-deliver-pipeline.js': 'flow suite, loaded and run by scripts/run-flow-suite.cjs',
 }
 // plugins/backlog/tests/*.py are python unittest modules run by discovery: never matched here.
+
+// The one Sam mandate sentence, byte-identical in agents/sam.md and in samScoutPrompt.
+const LAYER_RULE = 'LAYER RULE: plan the smallest change that removes the cause class; never a `simulate.*` seam; say in the plan if the diff adds a status, an `agent()`, a hook or a seam; list `patch-avoided:` with the patches you rejected.'
 
 let failed = 0
 const out = (s) => console.log(s)
@@ -267,7 +275,25 @@ function checkVersion() {
   else out(`PASS: version-floor: branch ${nv.join('.')} >= origin/main ${bv.join('.')}`)
 }
 
+// ---- sam-parity (#75) ---------------------------------------------------------------------------
+function checkSamParity() {
+  const sites = [
+    ['agents/sam.md', readOr(process.env.GUARDS_SAM_FILE || path.join(ROOT, 'agents/sam.md'))],
+    [WORKFLOW, readOr(process.env.GUARDS_SAM_JS_FILE || path.join(ROOT, WORKFLOW))],
+  ]
+  const problems = []
+  for (const [name, txt] of sites) {
+    if (txt === null) { problems.push(`${name} unreadable`); continue }
+    if (!txt.includes('patch-avoided:')) problems.push(`${name} lacks the token patch-avoided:`)
+    if (!txt.includes(LAYER_RULE)) problems.push(`${name} lacks the LAYER RULE sentence`)
+    if (txt.includes('root-cause:')) problems.push(`${name} carries a root-cause: field`)
+  }
+  if (problems.length) bad(`FAIL: sam-parity: ${problems.join('; ')}`)
+  else out('PASS: sam-parity: patch-avoided: and the LAYER RULE sentence on both sides, no root-cause: field')
+}
+
 if (ONLY.includes('r1')) checkR1()
 if (ONLY.includes('wired')) checkWired()
 if (ONLY.includes('version')) checkVersion()
+if (ONLY.includes('parity')) checkSamParity()
 process.exit(failed ? 1 : 0)

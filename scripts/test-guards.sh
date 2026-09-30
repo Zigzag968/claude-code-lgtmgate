@@ -149,6 +149,22 @@ $WIRED_RUN
 run_wired "$T/w5"
 if [ "$RC" -ne 0 ]; then ok "suite named only in a step name (not a run:) -> FAIL"; else ko "name-only (rc=$RC) $OUT"; fi
 
+# ---- sam-parity ----
+LR="$(node -e "const s=require('fs').readFileSync('scripts/guards.cjs','utf8');console.log(/const LAYER_RULE = '(.*)'\n/.exec(s)[1])")"
+printf '%s\nlist patch-avoided: x\n' "$LR" > "$T/sam-ok.md"
+run_parity() { OUT="$(GUARDS_ONLY=parity GUARDS_SAM_FILE="$1" GUARDS_SAM_JS_FILE="$2" node scripts/guards.cjs 2>&1)"; RC=$?; }
+run_parity "$T/sam-ok.md" "$T/sam-ok.md"
+if [ "$RC" -eq 0 ] && echo "$OUT" | grep -q '^PASS: sam-parity'; then ok "sam-parity: both sides carry token + sentence -> PASS"; else ko "sam-parity positive (rc=$RC) $OUT"; fi
+printf 'nothing here\n' > "$T/sam-notoken.md"
+run_parity "$T/sam-notoken.md" "$T/sam-ok.md"
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: sam-parity:.*lacks the token patch-avoided:'; then ok "sam-parity: token missing on one side -> FAIL"; else ko "sam-parity token (rc=$RC) $OUT"; fi
+printf 'list patch-avoided: x\n' > "$T/sam-nosentence.md"
+run_parity "$T/sam-ok.md" "$T/sam-nosentence.md"
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: sam-parity:.*LAYER RULE sentence'; then ok "sam-parity: sentence missing on one side -> FAIL"; else ko "sam-parity sentence (rc=$RC) $OUT"; fi
+printf '%s\nlist patch-avoided: x\nroot-cause: y\n' "$LR" > "$T/sam-rc.md"
+run_parity "$T/sam-rc.md" "$T/sam-ok.md"
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: sam-parity:.*root-cause:'; then ok "sam-parity: root-cause: present -> FAIL"; else ko "sam-parity root-cause (rc=$RC) $OUT"; fi
+
 STATUS=ok; [ "$FAIL_N" -eq 0 ] || STATUS=fail
 echo "[test-guards] status=${STATUS} passed=${PASS_N} failed=${FAIL_N}"
 [ "$FAIL_N" -eq 0 ]
