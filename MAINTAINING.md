@@ -331,3 +331,29 @@ three items this section used to defer:
   active, `guards` a required check, zero bypass actors.
 - (c) The switch itself is done; anything still open under legacy#253's open-source epic is tracked
   there, not here.
+
+## 12. Release channels: stable and beta
+
+Claude Code has no release-channel concept: one marketplace serves one version of each plugin.
+Two marketplaces in this repo therefore serve two channels of the same plugin:
+
+| Channel | File | Source | Who | Moves when |
+|---|---|---|---|---|
+| stable | `.claude-plugin/marketplace.json` (`zigzag-plugins`) | `github` + pinned `sha` | real consumer repos, user scope | the one-line "move the pin" PR (§4) after a canary run, + tag |
+| beta | `.claude-plugin/marketplace-beta.json` (`zigzag-plugins-beta`) | `github` + `ref: main`, no `sha` | the `lgtmgate-canary` repo and this repo, **local scope** | every merge on `main` (the version bump makes `plugin update` pick it up) |
+
+Hard rule: **one `lgtmgate` manifest active per repo**. Two enabled plugins with the same manifest
+name shadow each other silently (anthropics/claude-code#45266) and their hooks fire twice.
+
+Switch a repo to beta (per machine, never committed — `.claude/settings.local.json` is gitignored):
+
+```bash
+claude plugin install lgtmgate@zigzag-plugins-beta --scope local
+claude plugin disable lgtmgate@zigzag-plugins --scope local   # only if stable is enabled at user scope
+```
+then `/reload-plugins`. Back to stable: `enable` stable / `disable` beta at local scope.
+Pick up a new beta: `claude plugin marketplace update zigzag-plugins-beta && claude plugin update lgtmgate@zigzag-plugins-beta`, restart, check the `buildStamp` (§9).
+
+Migration from the pre-rename plugin name: `marketplace.json` carries `renames: { "agent-pipeline": "lgtmgate" }`;
+on a machine still enabling `agent-pipeline@zigzag-plugins`, run `claude plugin marketplace update zigzag-plugins`
+then `claude plugin install lgtmgate@zigzag-plugins`.
