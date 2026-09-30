@@ -1793,6 +1793,7 @@ if (after('plan', entryStage)) {
 // extraction, apart from the one new acceptanceChecklist sentence (see the OUTPUT-SPEC line).
 // Reads `pm`/`diag` (top-level, see above) by closure — both are still null/populated correctly
 // regardless of which call site invokes this, fresh Plan-phase or Review-phase amendment.
+const SAM_LAYER_RULE = 'LAYER RULE: plan the smallest change that removes the cause class; never a `simulate.*` seam; say in the plan if the diff adds a status, an `agent()`, a hook or a seam; list `patch-avoided:` with the patches you rejected.'
 const samScoutPrompt = ({ fixBlock = '', auditFixBlock = '', reviewFixBlock = '' } = {}) => {
   // B4: whenever the design-step trigger fired for this issue, the plan MUST
   // explicitly answer the split question. Recomputed here (not a captured outer const) so this
@@ -1812,6 +1813,7 @@ const samScoutPrompt = ({ fixBlock = '', auditFixBlock = '', reviewFixBlock = ''
     `REWRITE IN PLACE — accretion is the defect. On an amendment / re-plan round, OVERWRITE "${planPath}" with the CURRENT plan only: NO before/after or delta tables, NO "AMENDMENT N" headers, NO superseded sections kept "for traceability", NO revision archaeology. ` +
     `The durable history lives in the issue/PR thread and in git commits, never inside the plan (the artifact itself is gitignored build output). ` +
     `An amended plan is about the size of a fresh plan for the current scope — usually SMALLER than the previous revision, never monotonically larger. ` +
+    `${SAM_LAYER_RULE} ` +
     `Author the acceptance checklist against ${conventionsRule} — in particular its Format-status and Test-status acceptance-item sections: never assert a whole-repo clean state the base branch cannot satisfy. ` +
     `Then post an INDEX comment on issue #${issue} — never the full plan, whatever its size. The index comment is exactly: ${planMarker} alone on its first line, a condensed summary (~15 lines max), the acceptance checklist VERBATIM, and a pointer to the canonical artifact "${planPath}" in the shared worktree. ` +
     `HARD CAP: keep that comment under ${planCommentMaxChars} characters (GitHub rejects an issue-comment body over 65536 chars); it is an index, so the bound holds by construction — if you approach it, cut summary prose, never the checklist. ` +
