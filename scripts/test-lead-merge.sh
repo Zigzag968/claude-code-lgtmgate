@@ -36,7 +36,13 @@ case "$1 $2" in
       *) cat "$FAKE_BODY" ;;
     esac ;;
   "pr update-branch") echo "fake gh: update-branch must not be called" >&2; exit 98 ;;
-  "pr checks") [ "${FAKE_CHECKS_RC:-0}" -eq 0 ] || exit "$FAKE_CHECKS_RC" ;;
+  "pr checks")
+    noreq="$(cat "$FAKE_LOG.noreq" 2>/dev/null || echo "${FAKE_NOREQ:-0}")"
+    if [ "$noreq" -gt 0 ]; then
+      echo $((noreq - 1)) > "$FAKE_LOG.noreq"
+      echo "no required checks reported on the 'feat/x' branch"; exit 1
+    fi
+    [ "${FAKE_CHECKS_RC:-0}" -eq 0 ] || exit "$FAKE_CHECKS_RC" ;;
   "pr merge") [ "${FAKE_MERGE_RC:-0}" -eq 0 ] || exit "$FAKE_MERGE_RC" ;;
   "api repos/o/r/commits/"*) echo "${FAKE_HEAD_DATE:-2025-12-31T00:00:00Z}" ;; # --tick-from-review head date (#9)
   "api repos/o/r/pulls/7")
@@ -79,7 +85,7 @@ setup() {
 
 run() { # <dir> <body-file> [checks-rc]
   local d="$1"
-  : > "$d/log"; : > "$d/pushes"; rm -f "$d/log.stale" "$d/log.patch"; mkdir -p "$d/issues"
+  : > "$d/log"; : > "$d/pushes"; rm -f "$d/log.stale" "$d/log.patch" "$d/log.noreq"; mkdir -p "$d/issues"
   [ -n "${FAKE_STALE:-}" ] && echo "$FAKE_STALE" > "$d/log.stale"
   printf '#!/bin/sh\necho "$1" >> "%s/pushes"\n' "$d" > "$d/origin.git/hooks/update"; chmod +x "$d/origin.git/hooks/update"
   ( cd "$d/work" && PATH="$BASE/bin:$PATH" FAKE_LOG="$d/log" FAKE_BODY="$2" FAKE_BRANCH=feat/x \
@@ -114,7 +120,7 @@ D="$(setup nomark)"; run "$D" "$BASE/nomark.md"; rc=$?
 D="$(setup happy)"; run "$D" "$BASE/good.md"; rc=$?
 [ "$rc" -eq 0 ] && ok "happy path rc=0" || bad "happy path rc=$rc: $(tail -3 "$D/out")"
 seq="$(grep -oE 'pr (update-branch|checks|merge)|pr view 7 -R o/r --json headRefOid' "$D/log" | tr '\n' ',')"
-[ "$seq" = "pr view 7 -R o/r --json headRefOid,pr checks,pr merge," ] && ok "order: base merge+bump+push (one push) < poll < checks < merge" || bad "order: $seq"
+[ "$seq" = "pr view 7 -R o/r --json headRefOid,pr checks,pr checks,pr merge," ] && ok "order: base merge+bump+push (one push) < poll < required-checks probe < checks < merge" || bad "order: $seq"
 [ "$(wc -l < "$D/pushes" | tr -d ' ')" = 1 ] && ok "exactly one push" || bad "push count: $(cat "$D/pushes")"
 ! grep -q 'update-branch' "$D/log" && ok "no gh pr update-branch" || bad "update-branch called"
 git -C "$D/origin.git" log -1 --format=%s feat/x | grep -qx 'chore: bump 0.8.81 (lead-merge)' && ok "bump commit is the pushed head" || bad "remote head not the bump"
@@ -176,6 +182,10 @@ D="$(setup race)"; FAKE_STALE=3 run "$D" "$BASE/good.md"; rc=$?
 [ "$rc" -eq 0 ] && [ "$(grep -c 'json headRefOid' "$D/log")" -eq 4 ] && ok "polls until pushed sha + checks reported (4 polls)" || bad "race (rc=$rc): $(cat "$D/log")"
 D="$(setup never)"; FAKE_STALE=99 LEAD_MERGE_POLL_MAX=3 run "$D" "$BASE/good.md"; rc=$?
 [ "$rc" -ne 0 ] && ! grep -q 'pr merge' "$D/log" && ok "never reports checks: bounded, no merge" || bad "never (rc=$rc)"
+D="$(setup reqlate)"; FAKE_NOREQ=2 run "$D" "$BASE/good.md"; rc=$?
+[ "$rc" -eq 0 ] && grep -q 'pr merge' "$D/log" && ok "required checks registered late: keeps polling, then merges" || bad "reqlate (rc=$rc): $(tail -3 "$D/out")"
+D="$(setup reqnever)"; FAKE_NOREQ=99 LEAD_MERGE_POLL_MAX=3 run "$D" "$BASE/good.md"; rc=$?
+[ "$rc" -ne 0 ] && ! grep -q 'pr merge' "$D/log" && ok "required checks never registered: bounded, no merge" || bad "reqnever (rc=$rc)"
 
 # 11. gh without --required: watch without it
 D="$(setup noreq)"; FAKE_HAS_REQUIRED=0 run "$D" "$BASE/good.md"; rc=$?

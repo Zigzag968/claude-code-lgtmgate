@@ -325,6 +325,17 @@ done
 [ "$seen" -eq 1 ] || die "PR #$PR never reported checks for $pushed_sha after $poll_max polls; not merging"
 req=""
 if gh pr checks --help 2>&1 | grep -q -- --required; then req="--required"; fi
+# Required checks can register after other workflows (CodeQL): `--required` then exits 1 with
+# "no required checks reported". Keep polling (same bound) until they appear.
+if [ -n "$req" ]; then
+  n=0
+  # Capture first: under pipefail a `gh ... | grep -q` condition takes gh's exit 1 and never loops.
+  while out="$(gh pr checks "$PR" -R "$REPO" --required 2>&1 || true)"; printf '%s' "$out" | grep -q 'no required checks reported'; do
+    n=$((n + 1))
+    [ "$n" -lt "$poll_max" ] || die "PR #$PR never reported its required checks after $poll_max polls; not merging"
+    sleep "$poll_sleep"
+  done
+fi
 # shellcheck disable=SC2086
 gh pr checks "$PR" -R "$REPO" --watch --fail-fast $req || die "CI checks failed; not merging"
 
