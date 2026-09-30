@@ -2,7 +2,7 @@
 name: next
 description: Print the next backlog issue an agent may pick up (read-only)
 disable-model-invocation: true
-argument-hint: [--json] [--executor <label>]
+argument-hint: "[--json] [--executor <label>]"
 ---
 
 # /backlog:next
