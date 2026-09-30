@@ -37,7 +37,14 @@ case "$1 $2" in
     esac ;;
   "pr update-branch") echo "fake gh: update-branch must not be called" >&2; exit 98 ;;
   "pr checks") [ "${FAKE_CHECKS_RC:-0}" -eq 0 ] || exit "$FAKE_CHECKS_RC" ;;
-  "pr merge") ;;
+  "pr merge") [ "${FAKE_MERGE_RC:-0}" -eq 0 ] || exit "$FAKE_MERGE_RC" ;;
+  "api repos/o/r/pulls/7")
+    case "$*" in
+      *merged_at*) [ "${FAKE_MERGED:-true}" = true ] && echo "2026-10-01T00:00:00Z" || echo null ;;
+      *) echo "${FAKE_MERGED:-true}" ;;
+    esac ;;
+  "api repos/o/r/issues/"*) n="${2##*/}"; cat "$FAKE_ISSUES/$n" 2>/dev/null || echo open ;;
+  "api -X") case "$*" in *"issues/"*) ;; *) echo "fake gh: unexpected: $*" >&2; exit 99 ;; esac ;;
   *) echo "fake gh: unexpected: $*" >&2; exit 99 ;;
 esac
 exit 0
@@ -62,11 +69,11 @@ setup() {
 
 run() { # <dir> <body-file> [checks-rc]
   local d="$1"
-  : > "$d/log"; : > "$d/pushes"; rm -f "$d/log.stale"
+  : > "$d/log"; : > "$d/pushes"; rm -f "$d/log.stale"; mkdir -p "$d/issues"
   [ -n "${FAKE_STALE:-}" ] && echo "$FAKE_STALE" > "$d/log.stale"
   printf '#!/bin/sh\necho "$1" >> "%s/pushes"\n' "$d" > "$d/origin.git/hooks/update"; chmod +x "$d/origin.git/hooks/update"
   ( cd "$d/work" && PATH="$BASE/bin:$PATH" FAKE_LOG="$d/log" FAKE_BODY="$2" FAKE_BRANCH=feat/x \
-      FAKE_REMOTE="$d/origin.git" FAKE_CHECKS_RC="${3:-0}" LEAD_MERGE_POLL_SLEEP=0 bash "$SCRIPT" 7 -R o/r ) > "$d/out" 2>&1
+      FAKE_REMOTE="$d/origin.git" FAKE_CHECKS_RC="${3:-0}" FAKE_ISSUES="$d/issues" LEAD_MERGE_POLL_SLEEP=0 bash "$SCRIPT" 7 -R o/r ) > "$d/out" 2>&1
 }
 # push a commit to origin/main from a second clone: main_commit <dir> <bump 0|1> <file> <content>
 main_commit() {
@@ -163,6 +170,24 @@ D="$(setup never)"; FAKE_STALE=99 LEAD_MERGE_POLL_MAX=3 run "$D" "$BASE/good.md"
 # 11. gh without --required: watch without it
 D="$(setup noreq)"; FAKE_HAS_REQUIRED=0 run "$D" "$BASE/good.md"; rc=$?
 [ "$rc" -eq 0 ] && ! grep -q -- '--required' "$D/log" && ok "no --required when unsupported" || bad "noreq (rc=$rc)"
+
+# 12. issue closing after a verified merge (#109)
+printf 'Closes #5\nfixes: #6, Resolved #8 and closes #5 again; Refs #9; Fixes o/other#77\n<!-- acceptance:start -->\n- [x] a\n<!-- acceptance:end -->\n' > "$BASE/close.md"
+mut() { grep -cE 'gh api -X (POST|PATCH) repos/o/r/issues/' "$1/log" | tr -d ' '; }
+D="$(setup cl-fail)"; FAKE_MERGE_RC=1 run "$D" "$BASE/close.md"; rc=$?
+[ "$rc" -ne 0 ] && [ "$(mut "$D")" = 0 ] && ! grep -q 'repos/o/r/issues' "$D/log" && ok "merge failure: non-zero, no issue call" || bad "merge failure (rc=$rc)"
+D="$(setup cl-unmerged)"; FAKE_MERGED=false run "$D" "$BASE/close.md"; rc=$?
+[ "$rc" -ne 0 ] && [ "$(mut "$D")" = 0 ] && ! grep -q 'repos/o/r/issues' "$D/log" && ok "not read back as merged: non-zero, no issue call" || bad "unmerged (rc=$rc)"
+D="$(setup cl-ok)"; mkdir -p "$D/issues"; echo closed > "$D/issues/8"; run "$D" "$BASE/close.md"; rc=$?
+[ "$rc" -eq 0 ] && ok "merged with closing refs: rc=0" || bad "closing rc=$rc: $(tail -3 "$D/out")"
+for n in 5 6; do
+  [ "$(grep -c "gh api -X POST repos/o/r/issues/$n/comments -f body=Fixed by #7 (merged)\." "$D/log")" = 1 ] \
+    && [ "$(grep -c "gh api -X PATCH repos/o/r/issues/$n -f state=closed -f state_reason=completed" "$D/log")" = 1 ] \
+    && ok "open Closes #$n: one comment + one close" || bad "issue #$n calls: $(grep "issues/$n" "$D/log")"
+done
+! grep -qE 'X (POST|PATCH) repos/o/r/issues/8' "$D/log" && ok "already-closed #8: no call" || bad "closed issue touched"
+! grep -qE 'repos/o/r/issues/(9|77)' "$D/log" && ok "Refs #9 and other-repo ref: no call" || bad "Refs/other-repo touched"
+[ "$(mut "$D")" = 4 ] && ok "dedup: 4 mutating calls total" || bad "mutating calls: $(mut "$D")"
 
 echo "[lead-merge test] passed=$PASS failed=$FAIL"
 [ "$FAIL" -eq 0 ]

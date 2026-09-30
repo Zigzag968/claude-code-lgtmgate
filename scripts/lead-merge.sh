@@ -17,6 +17,10 @@
 #   6. wait until the PR reports the pushed sha with at least one check (bounded poll, cli/cli#7401),
 #      then gh pr checks --watch --fail-fast (--required when supported).
 #   7. gh pr merge --merge --delete-branch (never the auto-merge flag).
+#   8. read the PR back over REST (merged == true and merged_at set); only then close, with the comment
+#      `Fixed by #<PR> (merged).`, each still-open issue named by a closing keyword (Closes/Fixes/Resolves #N,
+#      same repo, parsed from the body read BEFORE the merge). `Refs #N` is never closed. A failed merge or a
+#      PR not read back as merged exits non-zero and touches no issue (#109).
 # Afterwards prints the manual step to sync the local main. The PR itself never bumps: this script does.
 # Env: LEAD_MERGE_POLL_MAX (default 30), LEAD_MERGE_POLL_SLEEP seconds (default 10).
 set -euo pipefail
@@ -163,4 +167,31 @@ gh pr checks "$PR" -R "$REPO" --watch --fail-fast $req || die "CI checks failed;
 # --- 7. merge ------------------------------------------------------------------
 gh pr merge "$PR" -R "$REPO" --merge --delete-branch || die "gh pr merge failed"
 
+# --- 8. verified merge -> close the referenced issues (#109) ---------------------
+# Never trust the merge exit code alone: read the PR back (REST, not GraphQL) before closing anything.
+merged="$(gh api "repos/$REPO/pulls/$PR" --jq .merged)" || die "cannot read PR #$PR back after merge; no issue closed"
+merged_at="$(gh api "repos/$REPO/pulls/$PR" --jq .merged_at)" || die "cannot read PR #$PR merged_at; no issue closed"
+{ [ "$merged" = "true" ] && [ -n "$merged_at" ] && [ "$merged_at" != "null" ]; } \
+  || die "PR #$PR is not merged (merged=$merged merged_at=$merged_at); no issue closed"
+# Closing keywords only (same-repo #N; owner/repo#N never matches), case-insensitive, deduplicated.
+closing_issues="$(printf '%s\n' "$body" | python3 -c '
+import re, sys
+seen = []
+for m in re.finditer(r"(?<![\w/])(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s+#(\d+)\b", sys.stdin.read(), re.I):
+    if m.group(1) not in seen:
+        seen.append(m.group(1))
+print("\n".join(seen))')" || die "cannot parse closing references; PR #$PR is merged, close issues by hand"
+close_failed=0
+for issue in $closing_issues; do
+  state="$(gh api "repos/$REPO/issues/$issue" --jq .state)" || { echo "lead-merge: cannot read issue #$issue state" >&2; close_failed=1; continue; }
+  [ "$state" = "open" ] || { echo "lead-merge: issue #$issue is $state, left untouched"; continue; }
+  if gh api -X POST "repos/$REPO/issues/$issue/comments" -f body="Fixed by #$PR (merged)." >/dev/null \
+     && gh api -X PATCH "repos/$REPO/issues/$issue" -f state=closed -f state_reason=completed >/dev/null; then
+    echo "lead-merge: closed issue #$issue"
+  else
+    echo "lead-merge: failed to close issue #$issue" >&2; close_failed=1
+  fi
+done
+
 echo "lead-merge: PR #$PR merged. Next manual step: in the main checkout run 'git fetch origin && git merge --ff-only origin/main'."
+[ "$close_failed" -eq 0 ] || die "PR #$PR merged, but some referenced issues could not be closed; close them by hand"
