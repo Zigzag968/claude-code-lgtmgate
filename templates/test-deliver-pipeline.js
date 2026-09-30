@@ -3445,6 +3445,20 @@ await testCase('T9001 Morgan prompts (initial + re-review) require one matchable
   return (e1 || e2 || e3) ? (e1 || e2 || e3) : { ok: true }
 })
 
+// T9030 (#30) — Morgan's initial AND re-review prompts treat an absent or empty acceptance block as
+// REQUIRED_CHANGES. Source-level: the shared ACCEPTANCE_PRESENCE_RULE literal is present and is
+// interpolated into both Morgan prompts.
+await testCase('T9030 Morgan prompts (initial + re-review) treat an absent or empty acceptance block as REQUIRED_CHANGES', async () => {
+  const src = SUITE_ARGS.fpSource
+  if (!src) {
+    log('SKIP — T9030: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const e1 = includes('literal items line', src, 'Acceptance block absent or empty')
+  const e2 = eq('interpolations in the Morgan prompts', src.split('${ACCEPTANCE_PRESENCE_RULE}').length - 1, 2)
+  return (e1 || e2) ? (e1 || e2) : { ok: true }
+})
+
 // T130 (#130) — run identity: the first log() is `deliver #<issue> — <brief>`, `Setup` is the first
 // declared phase and is entered before any agent call, and every agent label carries the issue number.
 // Source-anchored: the suite-scope log() cannot intercept the pipeline's own log (run-flow-suite.cjs).
