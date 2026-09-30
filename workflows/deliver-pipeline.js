@@ -224,7 +224,7 @@ export const meta = {
 // `version`, checked against plugin.json by templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '0.8.94', cutFrom: '6c6085a' }
+const BUILD = { plugin: 'lgtmgate', version: '0.8.95', cutFrom: 'e6e6494' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -1861,6 +1861,7 @@ if (after('plan', entryStage)) {
 // Reads `pm`/`diag` (top-level, see above) by closure — both are still null/populated correctly
 // regardless of which call site invokes this, fresh Plan-phase or Review-phase amendment.
 const SAM_LAYER_RULE = 'LAYER RULE: plan the smallest change that removes the cause class; never a `simulate.*` seam; say in the plan if the diff adds a status, an `agent()`, a hook or a seam; list `patch-avoided:` with the patches you rejected.'
+const ACCEPTANCE_PROOF_RULE = 'ACCEPTANCE PROOF RULE: (1) every acceptance item is a command you RAN in the provisioned worktree during planning; the plan carries a "Proof log" listing, per item, the command and its real output pasted verbatim (output on the base branch: green for state-preservation checks, red for the stated reason for a check the change must turn green); (2) a command you saw fail for any other reason, or could not run (missing gitignored directory, no network), is rewritten to run in the worktree or dropped, never inscribed as-is and never excused in Risks; (3) an item describes a verifiable state of the repo or branch only: never an external-world state (e.g. "no known advisory for pinned dependency X", a network service, a file present only outside the worktree) and never a negative universal claim ("no known X", "absence of Y") about anything outside the diff; write commands that run as-is from a plain bash script.'
 const samScoutPrompt = ({ fixBlock = '', auditFixBlock = '', reviewFixBlock = '' } = {}) => {
   // B4: whenever the design-step trigger fired for this issue, the plan MUST
   // explicitly answer the split question. Recomputed here (not a captured outer const) so this
@@ -1882,6 +1883,7 @@ const samScoutPrompt = ({ fixBlock = '', auditFixBlock = '', reviewFixBlock = ''
     `An amended plan is about the size of a fresh plan for the current scope — usually SMALLER than the previous revision, never monotonically larger. ` +
     `${SAM_LAYER_RULE} ` +
     `Author the acceptance checklist against ${conventionsRule} — in particular its Format-status and Test-status acceptance-item sections: never assert a whole-repo clean state the base branch cannot satisfy. ` +
+    `${ACCEPTANCE_PROOF_RULE} ` +
     `Then post an INDEX comment on issue #${issue} — never the full plan, whatever its size. The index comment is exactly: ${planMarker} alone on its first line, a condensed summary (~15 lines max), the acceptance checklist VERBATIM, and a pointer to the canonical artifact "${planPath}" in the shared worktree. ` +
     `HARD CAP: keep that comment under ${planCommentMaxChars} characters (GitHub rejects an issue-comment body over 65536 chars); it is an index, so the bound holds by construction — if you approach it, cut summary prose, never the checklist. ` +
     `POST IDEMPOTENTLY: write the index body to ".pipeline/issue-${issue}-comment.md", then look for an existing marked comment with ` +
@@ -1969,6 +1971,7 @@ if (after('plan', entryStage)) {
           `PLAN:\n${samPlan}\n\n` +
           `Verify: (1) a corpus/asset spec is cited when one exists, for human-facing/asset lanes; (2) any external interface is cited from a REAL observed payload, never reconstructed; (3) human-facing/asset lanes have a written output example + named content contracts. Lanes with no human-facing/asset deliverable (pure backend/mechanical) auto-pass item (3) as N/A.\n` +
           `(4) CONFORMANCE COMPLETENESS: the plan MUST contain an acceptance-checklist section. A criterion is an ORPHAN only when it names a concrete deliverable or behavior that no plan step addresses => NOT_CONFORMING (list each orphan in issues). Standard boilerplate verification criteria — full regression/test suite green, lint clean, format-check clean, scope-guard/diff-stat checks — are gate-level (satisfied by the project's own build/test/format commands, never authored as a dedicated plan step) and are EXEMPT from this check; never flag them as orphans. No acceptance-checklist section at all => NOT_CONFORMING.\n` +
+          `(5) ACCEPTANCE PROOF CHECK: NOT_CONFORMING (list each offending item in issues) when an acceptance item has no executed command with its verbatim quoted output in the plan (Proof log), or is phrased as an external-world state or a "no known X" / "absence of Y" claim about anything outside the diff.\n` +
           `Return { verdict: 'CONFORMING'|'NOT_CONFORMING', issues: string[] } — issues empty when CONFORMING.`,
         { schema: PLAN_CHECK, label: `plan-check-${issue}-${planPass}`, model: 'haiku' },
         planPass,
@@ -2008,6 +2011,7 @@ if (after('plan', entryStage)) {
       `AXIS 2 — IDIOMACY vs the CURRENT version of the stack.\n\n` +
       `AXIS 3 — DEBT: classify every non-idiomatic choice as fenced-debt (acceptable, plan must name the exit) / accidental-debt (free to avoid) / structural-mistake (redesign now).\n\n` +
       `NEVER-FROM-MEMORY RULE (hard): any claim about a library, framework, API, version or best practice — including the OWASP Top 10 category list itself — MUST be verified this session against current documentation (context7, else WebSearch) and cited in sources; an unverifiable claim is stated as unverified, never as fact.\n\n` +
+      `ACCEPTANCE PROOF CHECK: an acceptance item lacking an executed command with quoted output, or phrased as an external-world / "no known X" state, is a blocking finding (severity 'blocking', fix = rewrite the item to a command run in the worktree with its output logged).\n` +
       `FINDINGS: ranked most-damaging first; each carries a concrete rewrite mandate as fix, never a hint. severity:'blocking' = the plan must change before dev; 'note' = worth doing, not a blocker; when in doubt, blocking.\n` +
       `VERDICT GRID: SOUND (nothing to change) / SOUND-WITH-NOTES (approach holds, findings still fold in) / NOT_SOUND (approach itself is wrong).\n\n` +
       `Return { verdict: 'SOUND'|'SOUND-WITH-NOTES'|'NOT_SOUND', findings: [{severity, area, title, finding, fix, debtClass?, sources}], stackVerified: string }.`

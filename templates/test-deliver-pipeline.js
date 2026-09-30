@@ -3459,6 +3459,21 @@ await testCase('T9030 Morgan prompts (initial + re-review) treat an absent or em
   return (e1 || e2) ? (e1 || e2) : { ok: true }
 })
 
+// T9036 (#36, #37) — acceptance items are executed commands describing repo states only. Source-level:
+// the shared rule is defined once, interpolated once (Sam prompt), and the blocking check sits in the
+// planCheck prompt and the plan-audit prompt.
+await testCase('T9036 ACCEPTANCE_PROOF_RULE defined once, interpolated once; ACCEPTANCE PROOF CHECK in planCheck and audit prompts', async () => {
+  const src = SUITE_ARGS.fpSource
+  if (!src) {
+    log('SKIP — T9036: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const e1 = eq('ACCEPTANCE_PROOF_RULE occurrences (definition + interpolation)', src.split('ACCEPTANCE_PROOF_RULE').length - 1, 2)
+  const e2 = eq('interpolations in the Sam prompt', src.split('${ACCEPTANCE_PROOF_RULE}').length - 1, 1)
+  const e3 = eq('ACCEPTANCE PROOF CHECK (planCheck + audit)', src.split('ACCEPTANCE PROOF CHECK').length - 1, 2)
+  return (e1 || e2 || e3) ? (e1 || e2 || e3) : { ok: true }
+})
+
 // T130 (#130) — run identity: the first log() is `deliver #<issue> — <brief>`, `Setup` is the first
 // declared phase and is entered before any agent call, and every agent label carries the issue number.
 // Source-anchored: the suite-scope log() cannot intercept the pipeline's own log (run-flow-suite.cjs).
