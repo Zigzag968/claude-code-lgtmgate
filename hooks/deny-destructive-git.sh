@@ -40,7 +40,7 @@ if printf '%s' "$normalized" | grep -qE '(^|[;&|[:space:]])git[[:space:]]+clean(
 fi
 
 # git reset --hard.
-if printf '%s' "$normalized" | grep -qE '(^|[;&|[:space:]])git[[:space:]]+reset([[:space:]]+[^[:space:]]+)*[[:space:]]+--hard([[:space:]]|$)'; then
+if printf '%s' "$normalized" | grep -qE '(^|[;&|[:space:](]|["'"'"'])git[[:space:]]+reset([[:space:]]+[^[:space:];&|]+)*[[:space:]]+--hard([[:space:];&|)"'"'"']|$)'; then
   deny "git reset --hard is denied for agent sessions, including inside compound commands. The base is frozen — never reset it. See .claude/rules/pr-acceptance.md (Autonomy in unsupervised sessions)."
 fi
 
