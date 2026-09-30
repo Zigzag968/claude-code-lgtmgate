@@ -127,13 +127,17 @@ preflight checks** — same exposure class as `commands.test` / `regressionGuard
 README.md's "How it stays generic" trust warning for the full enumeration). A PR touching only
 `pipeline.config.json` is a code-review surface, not inert data.
 
-**Enforcement is human, not mechanical, on this repo.** `.github/workflows/guards.yml` runs
-`templates/test-canonical-guards.sh` and the offline flow suite on every PR to `main` and
-**reports** — it **CANNOT be a required check on this repo**: branch protection and repository
-rulesets are both unavailable here (verified 2026-08-23 — see §5 Trust root for the exact probe).
-The bump is therefore enforced by a **reviewed acceptance-checklist line on every PR that touches
-the shipped surface**, never by CI blocking a merge; `.githooks/pre-commit` (per-clone
-`core.hooksPath` opt-in) is a local pre-check one layer below that, not the enforcement either.
+**Enforcement is mechanical since the public switch (2026-09-29).** `.github/workflows/guards.yml`
+runs `templates/test-canonical-guards.sh` and the offline flow suite on every PR to `main`; the
+`main-protection` ruleset (§5) requires that `guards` check to report success before a merge is
+accepted, and `guards.yml` only triggers on `pull_request` — a commit that never went through a PR
+has no status for that context, so a direct push to `main` is rejected too. A reviewed
+acceptance-checklist line on every PR that touches the shipped surface stays good practice, but it
+is now a second layer on top of the mechanical gate, not the sole enforcement; `.githooks/pre-commit`
+(per-clone `core.hooksPath` opt-in) remains a local pre-check one layer below both.
+(Pre-2026-09-29, while the repo was private, enforcement here was human-only — branch protection
+and rulesets were unavailable on the free private plan; see git history of this section for that
+state.)
 
 **Publishing (human decision, 2026-08-23, route confirmed 2026-09-12): merging the publish PR
 is the human-only gesture — never an agent, never the unattended nightly runner.** A commit
@@ -159,9 +163,10 @@ repo's own `.claude/rules/pr-acceptance.md` "Autonomie en session non supervisee
 distinct, not-yet-decided policy change — tracked separately at issue legacy#140, not documented as
 canonical here.
 
-**This marketplace is PRIVATE — never rely on background auto-update.** The docs state plainly:
-*"private-marketplace auto-updates may fail intermittently."* Every release and every rollback is
-therefore always the same explicit three-step sequence, never a wait-and-see:
+**Never rely on background auto-update — always run the explicit sequence.** Timing of a
+background marketplace refresh isn't guaranteed (it used to be explicitly unreliable while this
+marketplace was private, pre-2026-09-29 — see §5). Every release and every rollback is therefore
+always the same explicit three-step sequence, never a wait-and-see:
 
 ```bash
 claude plugin marketplace update zigzag-plugins
@@ -174,25 +179,30 @@ version.
 
 ## 5. Trust root
 
-**The trust root is push access to `Zigzag968/claude-code-lgtmgate`'s `main`, ALONE.** This repo
-is private on a plan where branch protection and rulesets are both **unavailable** — verified this
-session: `gh api repos/Zigzag968/claude-code-lgtmgate/branches/main/protection` and
-`gh api repos/Zigzag968/claude-code-lgtmgate/rulesets` both return HTTP 403, *"Upgrade to GitHub
-Pro or make this repository public to enable this feature."* So `main` accepts any push from any
-credential with write access, unreviewed: no required reviews, no required status checks, no
-force-push protection. The `sha` pin on the marketplace entry is a **release gate**, not an
-integrity control — it stops unreviewed commits *between* releases from being auto-delivered, and
-it makes "which commit is live" an explicit, reviewable value — but **there is no second control
-behind it**. The marketplace **catalog** that carries the pin is itself fetched from the same
-mutable `ref: main` (git-based marketplace sources support `ref`, not `sha`), so one push to
-`main` moves the catalog and the pin together, in one gesture.
+**Updated 2026-09-30 — the repo went public on 2026-09-29 (open-source cutover, legacy#253/#283);
+the analysis below replaces the pre-flip state.** `Zigzag968/claude-code-lgtmgate` is now public
+(`private: false`), and a `main-protection` ruleset is active:
+`gh api repos/Zigzag968/claude-code-lgtmgate/rulesets` lists it — `deletion` and `non_fast_forward`
+denied, `required_status_checks` on context `guards`, enforcement `active`. **`bypass_actors` is
+empty and `current_user_can_bypass` is `"never"`** — as of this writing, not even the repo owner
+can override a red or missing `guards` check on a merge to `main`; treat that as a deliberate,
+un-relaxed default until a human decides otherwise (no emergency bypass path exists today).
 
-This is an **accepted residual** (human decision, 2026-08-23, option (c)): the repo stays
-private on the free plan; no branch protection/rulesets are purchased. The mitigations actually in
-place are (1) the publish commit is a human-only interactive gesture (§4), never automatable,
-and (2) this repo's `.claude/settings.json` denies any agent session from pushing to `main`
-outright. Making the repo public (free rulesets would then apply) was considered and declined for
-this slice; revisit if the residual proves costly in practice.
+The trust root is therefore now **two layers**: (1) push access to `main` — still gated, since
+`guards.yml` only runs on `pull_request`, so a commit with no PR behind it has no status to satisfy
+the required check and a direct push is rejected; and (2) the `guards` check itself passing on the
+merged SHA. The `sha` pin on the marketplace entry (§4) remains a **separate, additional** release
+gate on top of both — it stops any merged-but-not-yet-released commit from being auto-delivered,
+and keeps "which commit is live" an explicit, reviewable value. The marketplace **catalog** that
+carries the pin is still fetched from the mutable `ref: main` (git-based marketplace sources
+support `ref`, not `sha`), so one push to `main` still moves the catalog and the pin together in
+one gesture — that part of the analysis is unchanged by going public.
+
+The mitigations from the pre-flip era stay in place unchanged: (1) the publish commit is a
+human-only interactive gesture (§4), never automatable, and (2) this repo's `.claude/settings.json`
+denies any agent session from pushing to `main` outright. Both are now redundant with the ruleset
+for the "no unreviewed commit reaches `main`" property, but neither has been removed — belt and
+suspenders, not yet reassessed for whether one layer could safely be dropped.
 
 ## 6. Post-merge ordering (hard)
 
@@ -304,19 +314,20 @@ and restart; a target commit before the merge of step 1 has no `plugins/backlog/
 
 **Caveats to settle at install time (only the human can observe them).** `git-subdir` is a newer
 marketplace source type: an older Claude Code client that does not know it rejects the whole catalog
-(anthropics/claude-code#35805), `lgtmgate` included, so update the client first. And because the
-`url` points at this PRIVATE repo, the clone relies on the user's git credentials.
+(anthropics/claude-code#35805), `lgtmgate` included, so update the client first. The repo is now
+public (§5), so the clone no longer needs the user's git credentials.
 
-## 11. Public-switch checklist (not yet scheduled)
+## 11. Public-switch checklist (closed 2026-09-30 — repo went public 2026-09-29)
 
-If this repo is ever made public, revisit:
+The repo was made public as part of the open-source cutover (legacy#253/#283). Disposition of the
+three items this section used to defer:
 
-- (a) `README.md`'s "This repo's own marketplace is **private**..." line — the behavior it
-  describes ("auto-updates may fail intermittently") no longer applies once the marketplace is
-  public; correct or remove that sentence at that point.
-- (b) `## 5. Trust root` above — the 2026-08-23 human decision accepts staying private (with no
-  branch protection/rulesets) as a residual; re-evaluate that decision explicitly before any
-  switch, since going public also changes the trust-root analysis (free rulesets would then
-  apply).
-- (c) This switch is **not planned by issue legacy#257** (scope S, non-blocking) — this section is a
-  pointer for whoever picks it up later, not a decision made here.
+- (a) `README.md`'s "This repo's own marketplace is **private**..." line — corrected in the same
+  change that closed this checklist: the marketplace is public now, so the
+  "auto-updates may fail intermittently" caveat (which applies to *private* marketplaces per the
+  docs) no longer holds; the explicit three-command update-and-restart sequence (§4) is still
+  recommended practice regardless, just no longer load-bearing for that specific reason.
+- (b) `## 5. Trust root` above — rewritten 2026-09-30 to describe the post-flip state: ruleset
+  active, `guards` a required check, zero bypass actors.
+- (c) The switch itself is done; anything still open under legacy#253's open-source epic is tracked
+  there, not here.

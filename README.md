@@ -149,7 +149,7 @@ claude plugin marketplace update zigzag-plugins
 claude plugin update lgtmgate
 ```
 
-Restart Claude Code to apply. The marketplace's `lgtmgate` entry carries `ref: "main"` **and** a pinned `sha`: an unbumped `plugin.json` version is never delivered, and only a maintainer moving that `sha` on `main` publishes a new release. See `MAINTAINING.md` for the full release/rollback runbook. This repo's own marketplace is **private**; private-marketplace background auto-updates "may fail intermittently" per the docs, so run the two commands above explicitly rather than relying on the background refresh.
+Restart Claude Code to apply. The marketplace's `lgtmgate` entry carries `ref: "main"` **and** a pinned `sha`: an unbumped `plugin.json` version is never delivered, and only a maintainer moving that `sha` on `main` publishes a new release. See `MAINTAINING.md` for the full release/rollback runbook. Run the two commands above explicitly rather than relying on a background refresh — auto-update timing isn't guaranteed even for a public marketplace.
 
 </details>
 
