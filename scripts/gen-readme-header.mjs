@@ -1,5 +1,6 @@
 // The README's animated header: two assembly lines, the LGTM gate, the Lead's arm and the main lane.
 // Usage: node scripts/gen-readme-header.mjs .github/assets/header.svg         (the README header)
+//        node scripts/gen-readme-header.mjs .github/assets/header-dark.svg '{"theme":"dark"}'   (GitHub's dark theme)
 //        node scripts/gen-readme-header.mjs /tmp/header-mockup.html           (a page to review it in a browser)
 // Optional 2nd arg: JSON overrides, e.g. '{"cold":7.9}'. Node stdlib only. Output: one SVG, CSS keyframes, no JS, no web font.
 // After regenerating the SVG, refresh .github/assets/header-static.png (the still under prefers-reduced-motion):
@@ -17,6 +18,25 @@
 import { writeFileSync } from 'fs';
 const OUT = process.argv[2];
 const OPT = JSON.parse(process.argv[3] || '{}');
+const THEME = OPT.theme === 'dark' ? 'dark' : 'light';             // '{"theme":"dark"}' writes the variant for GitHub's dark theme
+// dark theme: every light colour below maps to its dark counterpart; anything not listed (kraft labels, lights, violets,
+// PR labels, screens) keeps its colour. A few uses share a hue in light but not in dark, so they carry their own value
+// (rods #C9C6D5, the wordmark's "gate" #1E1B3B, the logo tile #1E1B3C, the active stage label #1E1B3D).
+const DARK = {
+  '#F7F6F3': '#141821', '#ECE9F1': '#1B2030', '#E9E6EF': '#232839',                                     // card, floor
+  '#EEEDF3': '#3A4052', '#DDDBE6': '#2D3242', '#C9C6D6': '#232736', '#C9C6D5': '#4B5166',                 // structure, rods
+  '#EEEBFA': '#3B3563', '#DCD6F3': '#2F2A52', '#C3BBE6': '#262243',                                     // station columns
+  '#E4E1EC': '#2C3142', '#CDC9DA': '#232735', '#B9B4CA': '#1C1F2B', '#CFCADD': '#3B4154',                 // belts, treads
+  '#E6E2F4': '#302B52', '#CFC8EA': '#262243', '#B7AEDC': '#1F1C38', '#D6CFEE': '#3D3767',                 // main, treads
+  '#B3ADC8': '#4A4F63', '#DAD6E4': '#2E3344',                                                           // rail
+  '#F6DEB4': '#E9CC98', '#ECC893': '#DDB77C', '#D7AD71': '#C39A5E', '#E3C38F': '#D5B27A',                 // kraft
+  '#4A4570': '#6A6496', '#35305A': '#524C7E', '#28244A': '#403B66', '#4A4478': '#7A74A8',                 // Lead, gate frame
+  '#2B2748': '#5B5588', '#3A3558': '#4A4570', '#211E3B': '#3A3558',                                     // arm, hooks, monitor
+  '#4A4568': '#2A2E3C', '#DCD8E8': '#4A4F63',                                                           // unlit lamps
+  '#1E1B3B': '#E6EDF3', '#1E1B3C': '#2B2850', '#1E1B3D': '#E6EDF3', '#55506F': '#8B93A7', '#5B6472': '#8B949E',                 // wordmark, logo, labels
+  '#5B3FE0': '#8B7BFF', '#7B63F0': '#A396FF', '#4A31C4': '#6A58E8', '#5B3DF5': '#9486FF', '#8C93A0': '#5A6072',
+};
+const themed = str => THEME === 'dark' ? str.replace(/#[0-9A-Fa-f]{6}\b/g, h => DARK[h.toUpperCase()] || h) : str;
 
 // ---------------------------------------------------------------- canvas / clock
 const W = 1280, H = 344, T = 18;
@@ -178,7 +198,7 @@ function tools(p) {                                                 // the parts
     // then a small burst: the PR opens
     const x = XS.dev, rod = P(x, 96, z0 + 32);
     s += `<clipPath id="press${p}"><rect x="0" y="${f2(rod[1])}" width="1400" height="400"/></clipPath>`;
-    s += `<g clip-path="url(#press${p})"><g class="a press${p}"><line x1="${f2(rod[0])}" y1="${f2(rod[1] - 40)}" x2="${f2(rod[0])}" y2="${f2(rod[1] + 16)}" stroke="#C9C6D6" stroke-width="6"/>${box(x - 26, 82, z0 + 12, 52, 14, 38, 'ag')}</g></g>`;
+    s += `<g clip-path="url(#press${p})"><g class="a press${p}"><line x1="${f2(rod[0])}" y1="${f2(rod[1] - 40)}" x2="${f2(rod[0])}" y2="${f2(rod[1] + 16)}" stroke="#C9C6D5" stroke-width="6"/>${box(x - 26, 82, z0 + 12, 52, 14, 38, 'ag')}</g></g>`;
     const [cx, cy] = cloudAt(p);
     SYMS.forEach(([glyph], i) => { s += `<g transform="translate(${f2(cx)} ${f2(cy)})"><g class="a sym${i}${p}">${glyph}</g></g>`; });
     s += `<g transform="translate(${f2(cx)} ${f2(cy)})"><g class="a boom${p}" stroke="#5B3DF5" stroke-width="3" stroke-linecap="round">${[...Array(10)].map((_, k) => { const t = (k * 36 + 18) * Math.PI / 180; return `<line x1="${f2(Math.cos(t) * 50)}" y1="${f2(Math.sin(t) * 38)}" x2="${f2(Math.cos(t) * 60)}" y2="${f2(Math.sin(t) * 46)}"/>`; }).join('')}</g></g>`;
@@ -186,7 +206,7 @@ function tools(p) {                                                 // the parts
   { // REVIEW: Morgan's lens reads each criterion and ticks it
     const rest = lensRest(p);
     s += `<clipPath id="lensc${p}"><rect x="0" y="${f2(P(0, 96, z0 + 4)[1])}" width="1400" height="400"/></clipPath>`;
-    s += `<g clip-path="url(#lensc${p})"><g transform="translate(${f2(rest[0])} ${f2(rest[1])})"><g class="a lens${p}"><line x1="0" y1="-12" x2="0" y2="-160" stroke="#C9C6D6" stroke-width="2.6"/><circle r="12" fill="#fff" fill-opacity=".35" stroke="#8069FF" stroke-width="3.2"/><path d="M-6.5 -3.5 a7 7 0 0 1 3.5 -3.6" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"/></g></g></g>`;
+    s += `<g clip-path="url(#lensc${p})"><g transform="translate(${f2(rest[0])} ${f2(rest[1])})"><g class="a lens${p}"><line x1="0" y1="-12" x2="0" y2="-160" stroke="#C9C6D5" stroke-width="2.6"/><circle r="12" fill="#fff" fill-opacity=".35" stroke="#8069FF" stroke-width="3.2"/><path d="M-6.5 -3.5 a7 7 0 0 1 3.5 -3.6" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"/></g></g></g>`;
   }
   // every station's status light: orange in progress, green done, red error, off idle
   for (const [k, x] of [['pl', XS.plan], ['dv', XS.dev], ['rv', XS.rev]]) {
@@ -368,11 +388,11 @@ const LOGO_Y = OPT.logoY ?? 92;
 function brand() {
   return `<g transform="translate(48 ${LOGO_Y})"><g transform="translate(44 44)">
     <rect class="a halo" x="-44" y="-44" width="88" height="88" rx="22" fill="none" stroke="#22C55E" stroke-width="2"/>
-    <g class="a bump"><rect x="-44" y="-44" width="88" height="88" rx="22" fill="${INK}"/><rect x="-32" y="-32" width="64" height="64" rx="13" fill="#0B0A18"/>
+    <g class="a bump"><rect x="-44" y="-44" width="88" height="88" rx="22" fill="#1E1B3C"/><rect x="-32" y="-32" width="64" height="64" rx="13" fill="#0B0A18"/>
       <rect class="a sglow" x="-32" y="-32" width="64" height="64" rx="13" fill="url(#gS)"/>
       <path d="M-13 -5 l9 9 l17 -18" fill="none" stroke="#3DDC84" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
       <text x="0" y="21" text-anchor="middle" class="mono" font-size="9.5" font-weight="700" letter-spacing="2" fill="#3DDC84">LGTM</text></g></g></g>
-  <text x="152" y="${LOGO_Y + 44}" class="wm"><tspan fill="#5B3FE0">lgtm</tspan><tspan fill="${INK}">gate</tspan></text>
+  <text x="152" y="${LOGO_Y + 44}" class="wm"><tspan fill="#5B3FE0">lgtm</tspan><tspan fill="#1E1B3B">gate</tspan></text>
   <text x="153" y="${LOGO_Y + 70}" class="tag">Merge gate for</text><text x="153" y="${LOGO_Y + 89}" class="tag">agent-generated pull requests</text>`;
 }
 // the operator, next to the belts: one schematic row per workflow in progress, its four steps lit like the stations
@@ -578,7 +598,8 @@ const lensGeo = p => {
 // labels (front line clock) + logo pulses on both verdicts (global clock)
 {
   const DIM = '#55506F', t = TB;
-  const lbl = (k, a, b, col = INK) => kf(`lbl-${k}`, [[0, `fill:${DIM}`], [a - .1, `fill:${DIM}`], [a, `fill:${col}`], [b, `fill:${col}`], [b + .1, `fill:${DIM}`], [T, `fill:${DIM}`]]);
+  const lbl = (k, a, b, col = '#1E1B3D') => kf(`lbl-${k}`,   // the active stage label (its own value: light in the dark theme)
+   [[0, `fill:${DIM}`], [a - .1, `fill:${DIM}`], [a, `fill:${col}`], [b, `fill:${col}`], [b + .1, `fill:${DIM}`], [T, `fill:${DIM}`]]);
   const pip = (k, a, b) => kf(`pip-${k}`, [[0, op(0)], [a - .1, op(0)], [a, op(1)], [b, op(1)], [b + .1, op(0)], [T, op(0)]]);
   lbl('int', t.pop[0], t.m1[0]); pip('int', t.pop[0], t.m1[0]);
   lbl('plan', ...t.plan); pip('plan', ...t.plan); lbl('dev', t.m2[1], t.m3[0]); pip('dev', t.m2[1], t.m3[0]); lbl('rev', ...t.read); pip('rev', ...t.read);
@@ -647,5 +668,5 @@ ${svg}
 const card = svg.replace('</defs>', `  <clipPath id="card"><rect width="${W}" height="${H}" rx="20"/></clipPath>\n</defs>`)
   .replace(`<rect width="${W}" height="${H}" fill="${BG}"/>`, `<g clip-path="url(#card)"><rect width="${W}" height="${H}" fill="${BG}"/>`)
   .replace(/<\/svg>$/, '</g>\n</svg>');
-writeFileSync(OUT, OUT.endsWith('.svg') ? `<?xml version="1.0" encoding="UTF-8"?>\n<!-- Generated by scripts/gen-readme-header.mjs. CSS keyframes only, no JS, no web font. -->\n${card}\n` : html);
+writeFileSync(OUT, OUT.endsWith('.svg') ? `<?xml version="1.0" encoding="UTF-8"?>\n<!-- Generated by scripts/gen-readme-header.mjs (${THEME} theme). CSS keyframes only, no JS, no web font. -->\n${themed(card)}\n` : themed(html).replace('background:#ECEBF0', THEME === 'dark' ? 'background:#0D1117' : 'background:#ECEBF0'));
 console.log('ok', OUT, 'bytes', html.length, 'layers', DYN.join(','));
