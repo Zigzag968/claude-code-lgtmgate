@@ -33,7 +33,7 @@
 # 9 headless-empty-argv, 10 pr-body-structure, 11 worktree-root-resolver,
 # 12 blocked-by-signal, 13 single-export, 14 project-item-lookup, 15 bash-3.2-floor,
 # 16 backlog-bump-required, 17 backlog-marketplace-pin, 18 backlog-suite, 19 no-private-refs,
-# 20 reviewer-window-scan-bounded.
+# 20 reviewer-window-scan-bounded, 21 gitdir-probe-no-rm, 22 no-destructive-checkout.
 #
 # Enforcement note (#54 MANDATORY 2, human decision 2026-08-23): this repo is PRIVATE on a
 # plan where branch protection and rulesets are both unavailable (verified this session:
@@ -862,6 +862,37 @@ if [ -f "$WORKFLOW_FILE" ]; then
   fi
 else
   fail "gitdir-probe-no-rm" "$WORKFLOW_FILE missing"
+fi
+
+# =============================================================================
+# Invariant 22 — no-destructive-checkout
+# =============================================================================
+# #33 (RC-5): Nick's Dev-phase prompt told him to force-reset the expected branch, which
+# silently discarded commits on a canonical branch. The destructive form must never come back
+# in the prompt or the agent definitions. Static grep over tracked files (test-* files excluded:
+# they spell the literal), plus $WORKFLOW_FILE explicitly so a negative test on a throwaway
+# copy can fire.
+NDC_HITS=""
+NDC_FILES="$(git ls-files workflows agents templates .claude 2>/dev/null)"
+for ndc_f in $NDC_FILES; do
+  case "$(basename "$ndc_f")" in test-*) continue ;; esac
+  [ -f "$ndc_f" ] || continue
+  ndc_out="$(grep -n 'checkout -B' "$ndc_f" 2>/dev/null)" || ndc_out=""
+  if [ -n "$ndc_out" ]; then NDC_HITS="${NDC_HITS}${ndc_f}: ${ndc_out}; "; fi
+done
+if [ -f "$WORKFLOW_FILE" ]; then
+  ndc_out="$(grep -n 'checkout -B' "$WORKFLOW_FILE" 2>/dev/null)" || ndc_out=""
+  case "$NDC_HITS" in
+    *"${WORKFLOW_FILE}: "*) ;;
+    *) if [ -n "$ndc_out" ]; then NDC_HITS="${NDC_HITS}${WORKFLOW_FILE}: ${ndc_out}; "; fi ;;
+  esac
+  if [ -n "$NDC_HITS" ]; then
+    fail "no-destructive-checkout" "destructive branch reset found — use switch/switch -c (#33): ${NDC_HITS}"
+  else
+    pass "no-destructive-checkout: no force-reset checkout in workflows/agents/templates/.claude"
+  fi
+else
+  fail "no-destructive-checkout" "$WORKFLOW_FILE missing"
 fi
 
 # =============================================================================

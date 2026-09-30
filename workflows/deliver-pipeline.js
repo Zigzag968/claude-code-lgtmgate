@@ -213,7 +213,7 @@ export const meta = {
 // `version`, checked against plugin.json by templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '0.8.71', cutFrom: '5fa571b' }
+const BUILD = { plugin: 'lgtmgate', version: '0.8.72', cutFrom: '5fa571b' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -2274,7 +2274,7 @@ if (after('dev', entryStage)) {
       `${planBlock}\n\n${planFreshnessNote(planStaleFiles, baseBranch)}${resumeReasonNote(resumeReason, prNumber, baseBranch)}` +
       `FIRST, before ANY commit: the worktree may have been dispatched on a foreign branch. ` +
         `Run \`git -C "${wtPath}" rev-parse --abbrev-ref HEAD\`; if it is not exactly \`${expectedBranchName}\`, ` +
-        `run \`git -C "${wtPath}" checkout -B ${expectedBranchName}\` and re-run \`git -C "${wtPath}" rev-parse --abbrev-ref HEAD\` to confirm. ` +
+        `if the branch already exists locally (\`git -C "${wtPath}" rev-parse --verify --quiet refs/heads/${expectedBranchName}\` succeeds) run \`git -C "${wtPath}" switch ${expectedBranchName}\`, otherwise run \`git -C "${wtPath}" switch -c ${expectedBranchName}\`; never reset or force the branch (no \`-B\`/\`-C\`, no \`reset --hard\`), and if the switch is refused because of a dirty tree, stop and report instead of forcing. Then re-run \`git -C "${wtPath}" rev-parse --abbrev-ref HEAD\` to confirm. ` +
         `Every commit, the push and the PR head MUST be \`${expectedBranchName}\`. ` +
         `Implement the plan on that branch. Write meaningful tests and get the green bar: build via \`${buildCmd}\`, run unit tests via \`${testCmd}\`, and format each modified file via \`${formatCmd}\`. ` +
       `When deleting repo-tracked files, use \`git rm <file>\` instead of bare \`rm\` — bare rm is sandbox-denied and burns permission rounds. ` +
