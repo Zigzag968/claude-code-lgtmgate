@@ -1,0 +1,56 @@
+{
+  "name": "108-delivered-no-pr-push-command",
+  "note": "incident #41/#108: Nick could not push over SSH inside the agent sandbox and the run ended delivered-no-pr; the Lead had to work out the push itself. The escalation must quote the exact sandbox-safe HTTPS push command.",
+  "args": {
+    "issue": 123,
+    "brief": "fix slugify accents",
+    "wtPath": "/wt/root/issue-123",
+    "config": {},
+    "mode": "auto"
+  },
+  "calls": {
+    "provision-123": "PROVISION-SKIPPED-NO-SCRIPT x\nPROVISION-EXIT:0\n",
+    "provision-freshness-123": "0\n",
+    "diagnose-issue-123": {
+      "confirmed": true,
+      "evidence": "reproduced: `node -e` prints the wrong slug",
+      "actualCause": "accent stripping",
+      "laneOk": true,
+      "persistentStateSignal": false,
+      "authSecurityBoundarySignal": false,
+      "deployConfigSignal": false,
+      "immatureVendorApiSignal": false
+    },
+    "scout-issue-123-1": {
+      "decision": "GO",
+      "plan": "## Plan\n1. src/slugify.js: transliterate before stripping\n\n## Acceptance checklist\n- [ ] `npm test` passes",
+      "rationale": "",
+      "targetFiles": [
+        "src/slugify.js"
+      ],
+      "absorbedIssues": [],
+      "acceptanceChecklist": "- [ ] `npm test` passes"
+    },
+    "plan-check-123-1": {
+      "verdict": "CONFORMING",
+      "issues": []
+    },
+    "plan-stale-123": "",
+    "sub-issues-123": "",
+    "worktree-gitdir-writable-123": "WRITABLE|/wt/root/.git/worktrees/issue-123\n",
+    "nick-issue-123": {
+      "prNumber": 0,
+      "branch": "features/issue-123",
+      "testsPass": true,
+      "summary": "Implemented and tested. git push origin features/issue-123 failed: ssh_dispatch_run_fatal: Broken pipe; HTTPS retry not attempted. No PR opened."
+    },
+    "branch-check-123": "features/issue-123\n"
+  },
+  "expect": {
+    "status": "delivered-no-pr",
+    "logsInclude": [
+      "credential.helper='!gh auth git-credential' push https://github.com/",
+      "refs/heads/features/issue-123:refs/heads/features/issue-123"
+    ]
+  }
+}

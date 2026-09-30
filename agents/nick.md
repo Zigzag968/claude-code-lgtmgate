@@ -52,6 +52,11 @@ The exact commands (build/test/format) are provided in your task prompt by the o
    ```bash
    git push origin <branchPrefix><slug>
    ```
+   SSH blocked in the sandbox (`ssh_dispatch_run_fatal`, `Broken pipe`, `Connection refused`) → retry ONCE over HTTPS with the gh credential helper (github.com:443 is reachable; never bypass the sandbox):
+   ```bash
+   git -c credential.helper= -c credential.helper='!gh auth git-credential' push https://github.com/<owner>/<repo>.git refs/heads/<branchPrefix><slug>:refs/heads/<branchPrefix><slug>
+   ```
+   Both pushes failed → no PR: return `prNumber: 0` with a summary quoting the failing command and its error (the Lead pushes).
    ```bash
    gh pr create --draft --title "feat: <title>" --base <baseBranch> --body "<body: artifact-first structure — Closes #N[, Closes #N2, ...] (one entry per issue fully resolved and named by Sam's plan) -> ## What this ships (bullet summary) -> optional ## <Human> — N gestures (ONLY IF a [human-gate] item exists in the checklist, otherwise omit the H2) -> ## Acceptance checklist (markers) -> EMPTY pair `<!-- decision-log:start -->`/`<!-- decision-log:end -->` -> fold <details><summary>Technical detail</summary> (test plan / feature flag / risk)>"
    ```

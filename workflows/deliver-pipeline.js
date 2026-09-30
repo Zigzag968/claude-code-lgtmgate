@@ -223,7 +223,7 @@ export const meta = {
 // `version`, checked against plugin.json by templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '0.8.85', cutFrom: '24bc6d7' }
+const BUILD = { plugin: 'lgtmgate', version: '0.8.87', cutFrom: '956d26f' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -240,7 +240,12 @@ let nickPromptPreview = null
 // flow tests assert the composed provisioning command (notably PROVISION_ENV_SYMLINK) without
 // exposing it outside simulate runs.
 let provisionCmdPreview = null
-const finish = (o) => ({ buildStamp: BUILD_STAMP, ...(simulate ? { nickPromptPreview, provisionCmdPreview } : {}), ...o })
+// #110: set by callAgent when an agent call stayed cut off by a classifier outage past its retry
+// bound; finish() then names the cause on the resulting `*-died` status.
+let classifierOutageDeath = false
+const finish = (o) => ({ buildStamp: BUILD_STAMP, ...(simulate ? { nickPromptPreview, provisionCmdPreview } : {}),
+  ...(classifierOutageDeath && String(o.status).endsWith('-died')
+    ? { reason: 'classifier-outage: resume with resumeFromRunId' } : {}), ...o })
 
 const {
   issue, brief, pmReview = false, issueType = null, wtPath,
@@ -387,6 +392,11 @@ log(`worktreeRoot: ${worktreeRoot ?? '(unresolved)'} (env=${runtimeEnv.LGTMGATE_
 // derives the repo from the worktree).
 const repo = config.repo || null
 const prFlag = repo ? ` -R ${repo}` : ''
+// Sandbox-safe push (#108): SSH (port 22 / agent socket) is blocked in the agent sandbox, HTTPS to
+// github.com:443 through the gh credential helper is not. Exact command, also quoted to the Lead
+// by the delivered-no-pr escalation. `repo` absent -> Nick derives the slug from the origin URL.
+const httpsPushCmdFor = (branch) =>
+  `git -c credential.helper= -c credential.helper='!gh auth git-credential' push https://github.com/${repo || '<owner>/<repo from git remote get-url origin>'}.git refs/heads/${branch}:refs/heads/${branch}`
 let conventionsRule = config.conventionsRule || '.claude/rules/conventions.md'
 // lgtmgate#139: on a crash-resume ('dev'/'review' entry) re-verify baseBranch/conventionsRule
 // against the worktree's OWN pipeline.config.json instead of trusting the possibly-stale
@@ -1443,6 +1453,15 @@ const STRUCTURED_OUTPUT_MANDATE =
   'FACT, not a suggestion: emit the StructuredOutput tool call NOW. Never claim you already ' +
   'called it.'
 
+// #110 transient outage signature: the harness ends the turn when the auto-mode classifier returns
+// no verdict. The exact harness wording was not captured in the incident (only "no safety verdict" /
+// "returned no verdict"), so the match is deliberately loose. Short texts only: a long answer that
+// merely mentions the phrase is not an outage.
+// guards:parser-begin
+const CLASSIFIER_OUTAGE = /no safety verdict|classifier[^.\n]{0,80}(unavailable|no verdict|did not return|outage)/i
+const isClassifierOutage = (t) => typeof t === 'string' && t.length > 0 && t.length < 600 && CLASSIFIER_OUTAGE.test(t)
+// guards:parser-end
+
 async function callAgent(role, prompt, opts, round = 0, attempt = 1) {
   if (simulate) {
     // #54 seam A — replay P1's captured harness signature on the NAMED attempt numbers.
@@ -1467,7 +1486,31 @@ async function callAgent(role, prompt, opts, round = 0, attempt = 1) {
     harnessOpts = rest.agentType ? { ...rest, agentType: normalizeAgentType(rest.agentType) } : rest
   }
   const finalPrompt = opts && opts.schema ? `${prompt}\n\n${STRUCTURED_OUTPUT_MANDATE}` : prompt
-  return await agent(finalPrompt, harnessOpts)
+  // #110: a turn cut off by an auto-mode classifier outage ("no safety verdict") is transient —
+  // retry the same call (bounded, with backoff) before callAgentSafe may call the step dead. The
+  // single agent() call stays here; bounds come from config.classifierOutage.
+  const outageCfg = (config && config.classifierOutage) || {}
+  const maxOutageRetries = Number.isInteger(outageCfg.retries) && outageCfg.retries >= 0 ? outageCfg.retries : 1
+  const outageBackoffMs = Number.isFinite(outageCfg.backoffMs) && outageCfg.backoffMs >= 0 ? outageCfg.backoffMs : 15000
+  for (let n = 0; ; n++) {
+    let out
+    let err = null
+    try { out = await agent(finalPrompt, harnessOpts) } catch (e) { err = e }
+    const text = err ? (err.message || String(err)) : (typeof out === 'string' ? out : '')
+    if (!isClassifierOutage(text)) {
+      if (err) throw err
+      return out
+    }
+    if (n >= maxOutageRetries) {
+      classifierOutageDeath = true
+      throw new Error(`classifier outage — resume with resumeFromRunId (${role} cut off ${n + 1}x: ${text.slice(0, 160)})`)
+    }
+    trace.push(`classifier-outage-retry:${role}:${n + 1}`)
+    log(`callAgent: ${role} cut off by a classifier outage — retry ${n + 1}/${maxOutageRetries} after ${outageBackoffMs * (n + 1)}ms`)
+    if (outageBackoffMs > 0 && typeof setTimeout === 'function') {
+      await new Promise((r) => setTimeout(r, outageBackoffMs * (n + 1)))
+    }
+  }
 }
 
 // Sentinel returned by callAgentSafe on an unrecoverable agent death (thrown error, or a
@@ -2308,6 +2351,7 @@ if (after('dev', entryStage)) {
       `When deleting repo-tracked files, use \`git rm <file>\` instead of bare \`rm\` — bare rm is sandbox-denied and burns permission rounds. ` +
       `${SANDBOX_INSTALL_HINT} ` +
       `Push the branch explicitly before opening the PR: \`git push origin ${expectedBranchName}\` (no upstream flag — the sandbox cannot write the worktree's .git/config, CC bug #51818; see .claude/rules/git-workflow.md). ` +
+      `If that push fails because the SSH remote is unreachable in the sandbox (\`ssh_dispatch_run_fatal\`, \`Broken pipe\`, \`Connection refused\`, \`Could not resolve hostname\`; CC issues #30619, #33300), retry ONCE over HTTPS through the gh credential helper (github.com:443 is reachable, SSH is not): \`${httpsPushCmdFor(expectedBranchName)}\` (explicit refspec, no upstream flag, no sandbox bypass). If the HTTPS push fails too, do not bypass the sandbox and do not open a PR: stop, return prNumber 0 with a summary that quotes the failing command and its error. ` +
       `Open a PR (draft) with EXPLICIT refs — gh resolves HEAD from the invoking cwd, not the worktree branch: \`gh pr create --draft${prFlag} --base ${baseBranch} --head ${expectedBranchName} ...\`. ` +
       `${r2Note}` +
       `Compose the PR body in this order (artifact-first structure): first line \`${closesLine}\` — one \`Closes #N\` per fully-resolved issue (the epic plus every issue Sam's plan explicitly named as fully resolved by this bundle; never for an issue flagged partial/residual in the plan — that one stays open, with a forward-reference comment on the child issue instead, as already practiced); ${subIssuesGateNote(subIssuesUncovered, issue)}then a \`## What this ships\` H2 with a bullet summary of the diff; then, ONLY IF the acceptance checklist below contains a \`[human-gate]\` item, an optional \`## <Human> — N gestures\` H2 listing those manual human actions (omit this H2 entirely when no \`[human-gate]\` item exists — never ship an empty stub section); then a \`## Acceptance checklist\` H2. Copy the acceptance checklist into the PR body between \`<!-- acceptance:start -->\`/\`<!-- acceptance:end -->\`. Leave an EMPTY \`<!-- decision-log:start -->\`/\`<!-- decision-log:end -->\` marker pair right after the acceptance block — workflow-owned, never hand-fill it. Close with a \`<details><summary>Technical detail</summary>\` fold holding the test plan / feature flag / risk notes. Post a comment on issue #${issue} linking the PR, then idle.`
@@ -2346,7 +2390,9 @@ if (after('review', entryStage)) {
     if (noPrDelivery) {
       log('No-PR terminal delivery: nick reported testsPass=true with a summary and no PR — skipping Review')
       trace.push('delivered-no-pr')
-      return finish({ status: 'delivered-no-pr', issue, summary: nick.summary, trace })
+      const leadAction = `Lead: if the branch was not pushed (SSH blocked in the sandbox, #108), push it with \`${httpsPushCmdFor(expectedBranchName)}\`, then open the PR with \`gh pr create --draft${prFlag} --base ${baseBranch} --head ${expectedBranchName}\` and relaunch with entryStage:"review" + prNumber.`
+      log(`delivered-no-pr: ${leadAction}`)
+      return finish({ status: 'delivered-no-pr', issue, summary: nick.summary, leadAction, trace })
     }
     // Dev-stage failure with no evidence and no PR (lgtmgate#262) — whatever the cause
     // (permission gap, agent crash, anything), stay inside the pipeline's normal status
