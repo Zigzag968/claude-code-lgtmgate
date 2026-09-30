@@ -343,19 +343,28 @@ Two marketplaces in this repo therefore serve two channels of the same plugin:
 | Channel | File | Source | Who | Moves when |
 |---|---|---|---|---|
 | stable | `.claude-plugin/marketplace.json` (`zigzag-plugins`) | `github` + pinned `sha` | real consumer repos, user scope | the one-line "move the pin" PR (§4) after a canary run, + tag |
-| beta | `.claude-plugin/marketplace-beta.json` (`zigzag-plugins-beta`) | `github` + `ref: main`, no `sha` | the `lgtmgate-canary` repo and this repo, **local scope** | every merge on `main` (the version bump makes `plugin update` pick it up) |
+| beta | `.claude-plugin/marketplace-beta.json` (`zigzag-plugins-beta`) | declared as a `url` source (raw file on `main`); entries `github` + `ref: main`, no `sha` | the `lgtmgate-canary` repo and this repo, **local scope** | every merge on `main` (the version bump makes `plugin update` pick it up) |
+
+Declare the beta marketplace with a `url` source pointing at the raw `marketplace-beta.json`, never
+with `github` + `path`: observed on 2026-09-30, a `github` source with a custom `path` is registered
+but its catalog is read from the default `marketplace.json`, so `lgtmgate@zigzag-plugins-beta`
+installs the stable, `sha`-pinned version.
 
 Hard rule: **one `lgtmgate` manifest active per repo**. Two enabled plugins with the same manifest
-name shadow each other silently (anthropics/claude-code#45266) and their hooks fire twice.
+name shadow each other silently (anthropics/claude-code#45266) and their hooks fire twice; enabling
+both channels at the same scope prints no warning (checked on the canary).
 
 Switch a repo to beta (per machine, never committed — `.claude/settings.local.json` is gitignored):
 
 ```bash
+claude plugin marketplace add https://raw.githubusercontent.com/Zigzag968/claude-code-lgtmgate/main/.claude-plugin/marketplace-beta.json --scope local
 claude plugin install lgtmgate@zigzag-plugins-beta --scope local
 claude plugin disable lgtmgate@zigzag-plugins --scope local   # only if stable is enabled at user scope
 ```
 then `/reload-plugins`. Back to stable: `enable` stable / `disable` beta at local scope.
 Pick up a new beta: `claude plugin marketplace update zigzag-plugins-beta && claude plugin update lgtmgate@zigzag-plugins-beta`, restart, check the `buildStamp` (§9).
+If `update` answers "already at the latest version" while `main` moved, uninstall then install the beta
+at local scope (anthropics/claude-code#36317).
 
 Migration from the pre-rename plugin name: `marketplace.json` carries `renames: { "agent-pipeline": "lgtmgate" }`;
 on a machine still enabling `agent-pipeline@zigzag-plugins`, run `claude plugin marketplace update zigzag-plugins`
