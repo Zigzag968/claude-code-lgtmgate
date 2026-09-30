@@ -30,6 +30,11 @@
   /* One 10 s master clock: every part is keyed to the same timeline, like
      machines on one line. Percentages below are 100 ms each.              */
   .a { animation-duration: 10s; animation-iteration-count: infinite; animation-fill-mode: both; }
+  /* Cold open: a README header gets a 2–4 s glance, so the loop starts at
+     52 % (the review reading the checklist). The red→green verdict lands
+     ~1.9 s after load; the full story then plays from the hoist. Set to 0s
+     to start on the empty line instead.                                   */
+  .a { animation-delay: -5.2s; }
 
   .sans { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Helvetica, Arial, sans-serif; }
   .mono { font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
@@ -249,11 +254,11 @@
   .lbl-lgtm   { animation-name: lblLgtm; }
   .pip-plan   { animation-name: pipPlan; } .pip-dev { animation-name: pipDev; } .pip-review { animation-name: pipReview; }
   .pip-issue  { animation-name: pipIssue; }
-  @keyframes lblIssue  { 0%, 12% { fill: #111318; } 13%, 96% { fill: #A3A9B4; } 97%, 100% { fill: #111318; } }
-  @keyframes lblPlan   { 0%, 17.5% { fill: #A3A9B4; } 18.5%, 28% { fill: #111318; } 29%, 100% { fill: #A3A9B4; } }
-  @keyframes lblDev    { 0%, 33.5% { fill: #A3A9B4; } 34.5%, 44% { fill: #111318; } 45%, 100% { fill: #A3A9B4; } }
-  @keyframes lblReview { 0%, 49.5% { fill: #A3A9B4; } 50.5%, 61% { fill: #111318; } 62%, 100% { fill: #A3A9B4; } }
-  @keyframes lblLgtm   { 0%, 66.5% { fill: #A3A9B4; } 67.5%, 71% { fill: #D93B41; } 71.5%, 92.5% { fill: #16A34A; } 93.5%, 100% { fill: #A3A9B4; } }
+  @keyframes lblIssue  { 0%, 12% { fill: #111318; } 13%, 96% { fill: #6B7280; } 97%, 100% { fill: #111318; } }
+  @keyframes lblPlan   { 0%, 17.5% { fill: #6B7280; } 18.5%, 28% { fill: #111318; } 29%, 100% { fill: #6B7280; } }
+  @keyframes lblDev    { 0%, 33.5% { fill: #6B7280; } 34.5%, 44% { fill: #111318; } 45%, 100% { fill: #6B7280; } }
+  @keyframes lblReview { 0%, 49.5% { fill: #6B7280; } 50.5%, 61% { fill: #111318; } 62%, 100% { fill: #6B7280; } }
+  @keyframes lblLgtm   { 0%, 66.5% { fill: #6B7280; } 67.5%, 71% { fill: #C53030; } 71.5%, 92.5% { fill: #15803D; } 93.5%, 100% { fill: #6B7280; } }
   @keyframes pipIssue  { 0%, 12% { opacity: 1; } 13%, 96% { opacity: 0; } 97%, 100% { opacity: 1; } }
   @keyframes pipPlan   { 0%, 17.5% { opacity: 0; } 18.5%, 28% { opacity: 1; } 29%, 100% { opacity: 0; } }
   @keyframes pipDev    { 0%, 33.5% { opacity: 0; } 34.5%, 44% { opacity: 1; } 45%, 100% { opacity: 0; } }
@@ -272,7 +277,7 @@
     .lamp-red { opacity: 0; } .lamp-grn, .ok, .ok-text { opacity: 1; } .glow-grn, .ok-glow { opacity: .6; }
     .dots { transform: scaleY(.02); } .ok { transform: none; }
     .dot1, .dot2, .dot3 { opacity: 0; }
-    .lbl-lgtm { fill: #16A34A; } .lbl-issue { fill: #A3A9B4; }
+    .lbl-lgtm { fill: #15803D; } .lbl-issue { fill: #6B7280; }
     .pip-issue, .pip-plan, .pip-dev, .pip-review { opacity: 0; }
   }
 </style>
@@ -516,11 +521,11 @@
   <circle class="a pip-plan"   cx="645"  cy="274" r="2.5" fill="#7C5CFF"/>
   <circle class="a pip-dev"    cx="790"  cy="274" r="2.5" fill="#7C5CFF"/>
   <circle class="a pip-review" cx="935"  cy="274" r="2.5" fill="#7C5CFF"/>
-  <text class="a lbl-issue"  x="500"  y="294" fill="#A3A9B4">ISSUE</text>
-  <text class="a lbl-plan"   x="645"  y="294" fill="#A3A9B4">PLAN</text>
-  <text class="a lbl-dev"    x="790"  y="294" fill="#A3A9B4">DEV</text>
-  <text class="a lbl-review" x="935"  y="294" fill="#A3A9B4">REVIEW</text>
-  <text class="a lbl-lgtm"   x="1080" y="294" fill="#A3A9B4">LGTM</text>
+  <text class="a lbl-issue"  x="500"  y="294" fill="#6B7280">ISSUE</text>
+  <text class="a lbl-plan"   x="645"  y="294" fill="#6B7280">PLAN</text>
+  <text class="a lbl-dev"    x="790"  y="294" fill="#6B7280">DEV</text>
+  <text class="a lbl-review" x="935"  y="294" fill="#6B7280">REVIEW</text>
+  <text class="a lbl-lgtm"   x="1080" y="294" fill="#6B7280">LGTM</text>
 </g>
 
 <!-- soft exit on the right -->
