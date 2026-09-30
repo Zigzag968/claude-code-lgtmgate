@@ -369,3 +369,14 @@ at local scope (anthropics/claude-code#36317).
 Migration from the pre-rename plugin name: `marketplace.json` carries `renames: { "agent-pipeline": "lgtmgate" }`;
 on a machine still enabling `agent-pipeline@zigzag-plugins`, run `claude plugin marketplace update zigzag-plugins`
 then `claude plugin install lgtmgate@zigzag-plugins`.
+
+## 13. Troubleshooting: auto-mode classifier refusing backlog set --apply
+
+- Symptom: `backlog_cli.py set --apply` is refused with a generic "judged this action dangerous" reason, no named category.
+- Cause: the platform auto-mode classifier. External to this repo and to the plugin; NOT a code bug.
+- Behaviour is INTERMITTENT: observed refused once, then accepted on the first human-approved retry with an identical command; a parallel session resolved it in 2-3 attempts.
+- Handling: retry at most 2-3 times, never in a loop; explicit user approval on each attempt beyond the first.
+- Not to be confused with deterministic refusals: the `apply_prompt: ask` rule of the backlog plugin (default `none`) and the namespace-touch guard. Those refuse every time, with a named reason.
+- Not to be confused with sandbox write-scope failures (the audit log lives outside the repo): those name a denied path.
+- `apply_prompt: ask` with no human present is documented as undefined in `plugins/backlog/README.md`.
+- No code change: nothing to fix in the plugin; the refusal is reproduced or dismissed by retrying under approval.
