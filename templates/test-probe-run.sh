@@ -38,7 +38,7 @@ for raw in "$ROOT"/fixtures/probes/*.raw; do
   ' "$PR" "$parser" "$raw" "$exp" 2>/dev/null; then ok=1; fi
   check "parser fixture $base" "$ok"
 done
-[ "$n_raw" -ge 8 ] && ok=1 || ok=0
+[ "$n_raw" -ge 12 ] && ok=1 || ok=0
 check "at least 2 fixtures per parser (found $n_raw .raw files)" "$ok"
 
 # (b) e2e: one PROBE line, exit=0, known sha, record with 8 keys
@@ -88,6 +88,42 @@ check "unsafe label exits 2" "$ok"
 LINE="$(node "$PR" --label u --round 0 --out "$WORK/h" --parser nope --cmd 'true')"
 case "$LINE" in *'json={"error":"unknown-parser"}') ok=1 ;; *) ok=0 ;; esac
 check "unknown parser -> error json" "$ok"
+
+# provision parser: unknown version is an error, not a silent v1 (#82)
+ok=0
+[ "$(node -e 'const {PARSERS}=require(process.argv[1]);console.log(JSON.stringify(PARSERS.provision("PROVISION-VERSION:9\nLINKED a -> /x\n")))' "$PR")" = '{"error":"unknown-version"}' ] && ok=1
+check "provision parser: unknown version -> error" "$ok"
+
+# (h) verify mode (#82): never re-runs the command, compares the recomputed line with the attestation
+VD="$WORK/v"
+VLINE="$(node "$PR" --label vt --round 0 --out "$VD" --parser lines --cmd "printf 'hi\n'")"
+ATT="$WORK/v-attest.jsonl"
+VOUT="$(node "$PR" --verify --label vt --round 0 --out "$VD" --parser lines --attest "$ATT")"
+ok=0; [ "$VOUT" = "VERIFY fail reason=no-attestation" ] && ok=1
+check "verify no-attestation: no attest file" "$ok"
+
+node -e 'console.log(JSON.stringify({agent_id:"a",tool_use_id:"t",line:process.argv[1],ts:"x"}))' "$VLINE" > "$ATT"
+VOUT="$(node "$PR" --verify --label vt --round 0 --out "$VD" --parser lines --attest "$ATT")"
+ok=0; [ "$VOUT" = "VERIFY ok line=$VLINE" ] && ok=1
+check "verify ok: attested line equals the recomputed one" "$ok"
+
+VOUT="$(node "$PR" --verify --label nope --round 0 --out "$VD" --parser lines --attest "$ATT")"
+ok=0; [ "$VOUT" = "VERIFY fail reason=no-record" ] && ok=1
+check "verify no-record: missing record" "$ok"
+
+node -e 'const fs=require("fs");const f=process.argv[1];const r=JSON.parse(fs.readFileSync(f,"utf8"));r.stdout="tampered\n";fs.writeFileSync(f,JSON.stringify(r))' "$VD/vt-r0.json"
+VOUT="$(node "$PR" --verify --label vt --round 0 --out "$VD" --parser lines --attest "$ATT")"
+ok=0; [ "$VOUT" = "VERIFY fail reason=sha-mismatch" ] && ok=1
+check "verify sha-mismatch: tampered record" "$ok"
+
+VOUT="$(node "$PR" --verify --label vt --round 0 --out "$VD" --parser git-rev-list-count --attest "$ATT")"
+ok=0; [ "$VOUT" = "VERIFY fail reason=no-attestation" ] && ok=1
+check "verify no-attestation: entries exist only for another parser name" "$ok"
+
+node "$PR" --verify --label vt --round 0 --out "$VD" --parser lines --attest relative.jsonl >/dev/null 2>&1
+RC=$?
+[ "$RC" -eq 2 ] && ok=1 || ok=0
+check "verify relative --attest exits 2" "$ok"
 
 # (g) agents/probe.md tools: lists exactly Bash
 TOOLS="$(awk '/^---$/{f++; next} f==1 && /^tools:/{t=1; next} f==1 && t && /^  - /{sub(/^  - /,""); print; next} f==1 && t{t=0}' "$ROOT/agents/probe.md" | tr '\n' ',')"
