@@ -8,6 +8,10 @@ mode allows it:
 * `propose`          -> always a dry run, nothing is created;
 * `write-supervised` -> `--apply --confirm <payload-digest>` (the digest printed by the dry run) is required;
 * `free`             -> `--apply` creates.
+
+`--blocked-by N` (repeatable) declares GitHub native dependencies. The dry run prints one planned line per link,
+the links are part of the payload digest, and after a successful create each one is written through `DepGh`
+(REST). A link that fails after the create is reported with the created issue and the missing links.
 """
 
 from __future__ import annotations
@@ -18,7 +22,8 @@ import json
 import re
 from typing import List, Optional, Sequence, Set
 
-from backlog_common import is_open, label_names, load_json_list
+from backlog_gh import MAX_DEP_LINKS, DepGh
+from backlog_common import is_open, label_names, load_json_list, positive_int
 from backlog_lint import lint
 
 MAX_TITLE = 256
@@ -38,12 +43,11 @@ def final_labels(labels: Sequence[str], cfg) -> List[str]:
     return out
 
 
-def payload_digest(title: str, body: str, labels: Sequence[str], repo: Optional[str]) -> str:
-    payload = json.dumps(
-        {"title": title, "body": body, "labels": sorted(labels), "repo": repo or ""},
-        sort_keys=True,
-        separators=(",", ":"),
-    )
+def payload_digest(title: str, body: str, labels: Sequence[str], repo: Optional[str], blocked_by: Sequence[int] = ()) -> str:
+    fields = {"title": title, "body": body, "labels": sorted(labels), "repo": repo or ""}
+    if blocked_by:  # absent when empty: a payload without dependencies keeps its historical digest
+        fields["blocked_by"] = sorted(set(blocked_by))
+    payload = json.dumps(fields, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(payload.encode()).hexdigest()[:16]
 
 
@@ -119,6 +123,8 @@ def build_parser() -> argparse.ArgumentParser:
     body.add_argument("--body", help="issue body (prefer --body-file)")
     body.add_argument("--body-file", help="file holding the issue body")
     parser.add_argument("--label", action="append", default=[], help="label to set (repeatable); the status is forced to the intake one")
+    parser.add_argument("--blocked-by", type=positive_int, action="append", default=[], metavar="N",
+                        help="issue number this one is blocked by (repeatable); written as a native dependency after the create")
     parser.add_argument("--issues-file", help="open issues, `gh issue list --json` shape (offline, dry run only)")
     parser.add_argument("--labels-file", help="repo labels, `gh label list --json name` shape (offline, dry run only)")
     parser.add_argument("--apply", action="store_true", help="create the issue when the mode allows it")
@@ -126,7 +132,10 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: List[str], cfg, gh=None) -> int:
+_URL_NUMBER = re.compile(r"/issues/([1-9][0-9]*)\s*$")
+
+
+def main(argv: List[str], cfg, gh=None, dep_runner=None) -> int:
     args = build_parser().parse_args(argv)
     try:
         if args.body_file:
@@ -157,12 +166,17 @@ def main(argv: List[str], cfg, gh=None) -> int:
         print("[backlog-file] error: %s" % exc)
         return 1
 
+    blockers = sorted(set(args.blocked_by))
     codes = validate_intake(args.title, body, args.label, cfg, issues, repo_labels)
+    if len(blockers) > MAX_DEP_LINKS:
+        codes.append("too-many-blocked-by:%d" % MAX_DEP_LINKS)
     labels = final_labels(args.label, cfg)
-    digest = payload_digest(args.title, body, labels, cfg.repo)
+    digest = payload_digest(args.title, body, labels, cfg.repo, blockers)
     verdict = "ok" if not codes else "refused"
     print("[backlog-file] verdict=%s codes=%s payload-digest=%s" % (verdict, ",".join(codes) or "-", digest))
     print("[backlog-file] labels=%s" % ",".join(sorted(labels)))
+    for number in blockers:
+        print("[backlog-file] planned blocked-by: #%d" % number)
 
     if not args.apply:
         print("[backlog-file] dry-run: nothing created")
@@ -177,10 +191,39 @@ def main(argv: List[str], cfg, gh=None) -> int:
         if args.confirm != digest:
             print("[backlog-file] refusing to create: --confirm must equal the printed payload-digest %s" % digest)
             return 1
+    dep_gh = None
+    if blockers:
+        try:  # built BEFORE the create: a mode/repo refusal must never leave a created issue without its links
+            dep_gh = DepGh(cfg, runner=dep_runner)
+        except RuntimeError as exc:
+            print("[backlog-file] refusing to create: %s" % exc)
+            return 1
     try:
         url = gh.create_issue(args.title, body, labels, confirmed=cfg.mode == "write-supervised")
     except RuntimeError as exc:
         print("[backlog-file] error: %s" % exc)
         return 1
     print("[backlog-file] created %s" % url)
+    if not blockers:
+        return 0
+    match = _URL_NUMBER.search(url)
+    if not match:
+        print("[backlog-file] error: created %s but its number could not be read: missing blocked-by links: %s"
+              % (url, ", ".join("#%d" % n for n in blockers)))
+        return 1
+    created = int(match.group(1))
+    missing: List[int] = []
+    first_error = ""
+    for number in blockers:
+        try:
+            dep_gh.add_blocked_by(created, number)
+        except RuntimeError as exc:
+            missing.append(number)
+            first_error = first_error or str(exc)
+            continue
+        print("[backlog-file] linked #%d blocked-by #%d" % (created, number))
+    if missing:
+        print("[backlog-file] error: created #%d (%s) but these blocked-by links are missing: %s (%s)"
+              % (created, url, ", ".join("#%d" % n for n in missing), first_error))
+        return 1
     return 0

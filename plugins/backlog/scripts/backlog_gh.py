@@ -1,6 +1,6 @@
 """The `gh` chokepoint of the backlog plugin. Stdlib only.
 
-Two classes, and this is the only module of the plugin that spawns a process:
+Three classes, and this is the only module of the plugin that spawns a process:
 
 * `Gh` (reads + ONE write, `issue create`). Its guarantees, all enforced before any process is spawned:
   - mode `off` (which is also what a missing or invalid `.claude/backlog.yml` resolves to) reaches nothing;
@@ -15,6 +15,11 @@ Two classes, and this is the only module of the plugin that spawns a process:
   that only `backlog_apply.py` mints after every apply condition has passed, injects `-R <repo>` itself,
   validates every issue number and label name, and is capped per instance. It has no delete, rename or
   label-edit verb and no read method.
+* `DepGh`, the dependency-write half ("Blocked by", REST only, never GraphQL). A third SIBLING, never a subclass
+  of `Gh` or `ApplyGh`: `Gh.WRITE_ALLOW` and `APPLY_ALLOW` stay unchanged. It refuses to build unless the mode is
+  `write-supervised` or `free` and `repo` is set, builds three `gh api` shapes only (resolve an issue id, POST a
+  blocked_by link, DELETE one) from validated integers and the validated `OWNER/NAME` of the config, and is
+  capped per instance.
 """
 
 from __future__ import annotations
@@ -49,6 +54,11 @@ _NAME_RE = re.compile(r"[A-Za-z0-9][\w.:-]*")
 _COLOR_RE = re.compile(r"[0-9a-fA-F]{6}")
 _CONTROL_RE = re.compile("[\x00-\x1f\x7f-\x9f]")
 MAX_DESCRIPTION = 100
+
+MAX_DEP_CALLS = 20
+MAX_DEP_LINKS = MAX_DEP_CALLS // 2  # each link costs two calls: resolve the blocker id, then the write
+_REPO_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_][A-Za-z0-9._-]*")
+_ID_RE = re.compile(r"[1-9][0-9]*")
 
 ISSUE_FIELDS = "number,title,state,createdAt,labels,blockedBy"
 PR_FIELDS = "number,title,body,isDraft,closingIssuesReferences"
@@ -278,3 +288,61 @@ class ApplyGh:
         if description:
             args.append("--description=" + description)
         self._run(("label", "create"), args)
+
+
+class DepGh:
+    """The dependency-write chokepoint: three REST `gh api` shapes, nothing else."""
+
+    def __init__(self, cfg, runner: Optional[Callable[..., Any]] = None, max_calls: int = MAX_DEP_CALLS):
+        if cfg.mode not in ("write-supervised", "free"):
+            raise ModeError("mode %s never writes" % cfg.mode)
+        if not isinstance(cfg.repo, str) or not _REPO_RE.fullmatch(cfg.repo):
+            raise ModeError("a valid `repo:` (OWNER/NAME) is required to write dependencies")
+        self.cfg = cfg
+        self._runner = runner or subprocess.run
+        self.max_calls = max_calls
+        self.calls = 0
+
+    @staticmethod
+    def _check_number(number: Any) -> int:
+        if isinstance(number, bool) or not isinstance(number, int) or number <= 0:
+            raise ModeError("invalid issue number %r" % (number,))
+        return number
+
+    def _run(self, args: Sequence[str]) -> str:
+        if self.calls >= self.max_calls:
+            raise ModeError("call cap reached (%d)" % self.max_calls)
+        argv: List[str] = ["gh", "api"] + list(args)
+        self.calls += 1
+        try:
+            result = self._runner(argv, capture_output=True, text=True, check=True)
+        except (subprocess.CalledProcessError, FileNotFoundError, OSError) as exc:
+            raise RuntimeError("gh api failed: %s" % exc) from exc
+        return result.stdout
+
+    def issue_id(self, number: int) -> int:
+        """The REST id of an issue (the dependency endpoints take that id, not the number). Fails closed."""
+        self._check_number(number)
+        out = self._run(["repos/%s/issues/%d" % (self.cfg.repo, number), "--jq", ".id"]).strip()
+        if not _ID_RE.fullmatch(out):
+            raise RuntimeError("gh api returned no usable id for issue #%d" % number)
+        return int(out)
+
+    def _pair(self, number: int, blocker: int) -> None:
+        self._check_number(number)
+        self._check_number(blocker)
+        if number == blocker:
+            raise ModeError("an issue cannot block itself (#%d)" % number)
+
+    def add_blocked_by(self, number: int, blocker: int) -> None:
+        self._pair(number, blocker)
+        blocker_id = self.issue_id(blocker)
+        self._run([
+            "-X", "POST", "repos/%s/issues/%d/dependencies/blocked_by" % (self.cfg.repo, number),
+            "-F", "issue_id=%d" % blocker_id,
+        ])
+
+    def remove_blocked_by(self, number: int, blocker: int) -> None:
+        self._pair(number, blocker)
+        blocker_id = self.issue_id(blocker)
+        self._run(["-X", "DELETE", "repos/%s/issues/%d/dependencies/blocked_by/%d" % (self.cfg.repo, number, blocker_id)])

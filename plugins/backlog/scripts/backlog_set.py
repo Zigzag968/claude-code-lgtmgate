@@ -5,6 +5,10 @@ issue (`--status needs-info` removes the live `status:*` label and adds `status:
 validated with the triage rules (`backlog_triage.validate`: protected labels, owned axes, unknown labels, the lint
 of the resulting state, a stale read), then printed. Without `--apply` nothing is written.
 
+`--blocked-by M` / `--unblock M` (repeatable, alone or with axis flags) add or remove GitHub native dependencies of
+the issue, REST only (`backlog_gh.DepGh`, reached through `backlog_apply.execute_deps`). A link already in the live
+`blockedBy` (or an unblock of one that is not there) is a noop. Same apply conditions and same journal.
+
 `--apply` writes only when: the mode is `write-supervised` or `free`, `repo:` is set, the fresh live read
 validates, and the journal line of the intent could be written BEFORE the write (`backlog_apply.execute_set`).
 There is no snapshot and no digest for a single issue.
@@ -24,8 +28,9 @@ import argparse
 import json
 from typing import List, Optional, Tuple
 
-from backlog_apply import Refused, execute_set, stage_one
-from backlog_common import LabelEdit, is_open, label_names, printable, repo_assertion_error
+from backlog_apply import Refused, execute_deps, execute_set, stage_one
+from backlog_common import LabelEdit, is_open, label_names, positive_int, printable, repo_assertion_error
+from backlog_gh import MAX_DEP_LINKS
 from backlog_promote import check_promotion, effective_promotion, reserved_adds, wants_promotion
 from backlog_triage import OPEN_LIMIT, Proposal, validate
 
@@ -34,14 +39,7 @@ AXIS_FLAGS = ("status", "type", "size", "exec", "priority", "area")
 MAX_REASON = 200
 
 
-def _positive_int(text: str) -> int:
-    try:
-        value = int(text)
-    except ValueError:
-        raise argparse.ArgumentTypeError("%r is not an issue number" % text)
-    if value <= 0:
-        raise argparse.ArgumentTypeError("the issue number must be > 0")
-    return value
+_positive_int = positive_int
 
 
 def build_parser(cfg=None) -> argparse.ArgumentParser:
@@ -60,6 +58,10 @@ def build_parser(cfg=None) -> argparse.ArgumentParser:
         else:
             choices = list(cfg.labels.get(axis, ()))
         parser.add_argument("--" + axis, choices=choices, metavar="VALUE", help="set the %s axis to this value" % axis)
+    parser.add_argument("--blocked-by", type=_positive_int, action="append", default=[], metavar="N",
+                        help="add a native 'blocked by' dependency on this issue number (repeatable)")
+    parser.add_argument("--unblock", type=_positive_int, action="append", default=[], metavar="N",
+                        help="remove a native 'blocked by' dependency on this issue number (repeatable)")
     parser.add_argument("--reason", default="", help="why (journal only, cut to %d characters)" % MAX_REASON)
     parser.add_argument("--repo", help="OWNER/NAME: an assertion that must match `repo:` of the config, never a selector")
     parser.add_argument("--apply", action="store_true", help="write to GitHub (otherwise a dry run)")
@@ -85,6 +87,11 @@ def _plan_line(issue: int, requested, before, after, promoting: bool) -> str:
     return "[%s] #%d %s (%s)" % (TAG, issue, "; ".join(parts), changes)
 
 
+def _live_blockers(issue: dict) -> set:
+    nodes = (issue.get("blockedBy") or {}).get("nodes") or []
+    return {int(node["number"]) for node in nodes if isinstance(node, dict) and str(node.get("number", "")).isdigit()}
+
+
 def _refuse(text: str) -> int:
     print("[%s] refused: %s" % (TAG, text))
     return 1
@@ -94,8 +101,17 @@ def main(argv: List[str], cfg, gh=None, apply_runner=None) -> int:
     parser = build_parser(cfg)
     args = parser.parse_args(argv)
     requested = _requested(args)
-    if not requested:
-        parser.error("give at least one of --status, --type, --size, --exec, --priority, --area")
+    dep_add = sorted(set(args.blocked_by))
+    dep_remove = sorted(set(args.unblock))
+    if not requested and not dep_add and not dep_remove:
+        parser.error("give at least one of --status, --type, --size, --exec, --priority, --area, --blocked-by, --unblock")
+    if args.issue in dep_add or args.issue in dep_remove:
+        return _refuse("an issue cannot block itself (#%d)" % args.issue)
+    if set(dep_add) & set(dep_remove):
+        return _refuse("--blocked-by and --unblock name the same issue: %s" % ", ".join(
+            "#%d" % n for n in sorted(set(dep_add) & set(dep_remove))))
+    if len(dep_add) + len(dep_remove) > MAX_DEP_LINKS:
+        return _refuse("too many dependency changes (max %d per call)" % MAX_DEP_LINKS)
     error = repo_assertion_error(cfg, args.repo)
     if error:
         return _refuse(error)
@@ -127,6 +143,17 @@ def main(argv: List[str], cfg, gh=None, apply_runner=None) -> int:
     if not is_open(issue):
         return _refuse("rejected: issue-not-open")
 
+    live_blockers = _live_blockers(issue)
+    add_links = [n for n in dep_add if n not in live_blockers]
+    remove_links = [n for n in dep_remove if n in live_blockers]
+    for number in dep_add:
+        if number in live_blockers:
+            print("[%s] #%d blocked-by #%d noop (already blocked)" % (TAG, args.issue, number))
+    for number in dep_remove:
+        if number not in live_blockers:
+            print("[%s] #%d unblock #%d noop (not blocked by it)" % (TAG, args.issue, number))
+    deps_change = bool(add_links or remove_links)
+
     before = frozenset(label_names(issue))
     after = set(before)
     for axis, label in requested:
@@ -134,49 +161,59 @@ def main(argv: List[str], cfg, gh=None, apply_runner=None) -> int:
         after = {name for name in after if not name.startswith(prefix)}
         after.add(label)
     after = frozenset(after)
-    if after == before:
+    labels_change = after != before
+    if not labels_change and not deps_change:
         print("[%s] #%d noop (already in the target state)" % (TAG, args.issue))
         return 0
 
-    added_capped = sorted((after - before) & set(cfg.caps))
-    open_issues: List[dict] = []
-    if added_capped:
-        try:
-            open_issues = gh.fetch_issues("open", OPEN_LIMIT)
-        except (RuntimeError, ValueError, KeyError, TypeError, OSError, json.JSONDecodeError) as exc:
-            print("[%s] error: %s" % (TAG, printable(exc)))
-            return 1
-
     reason = printable(args.reason).strip()[:MAX_REASON] or "set"
-    results = validate([Proposal(args.issue, before, after, reason, "high")], [issue], live_labels, cfg)
-    codes = list(results[0].codes)
-    for label in added_capped:
-        total = sum(1 for i in open_issues if is_open(i) and label in label_names(i)) + 1
-        if total > cfg.caps[label]:
-            codes.append("cap-exceeded:%s" % label)
-    promoting = effective_promotion(before, after, cfg)
-    print(_plan_line(args.issue, requested, before, after, promoting))
-    if codes:
-        return _refuse("rejected: %s" % ",".join(codes))
     verdict = None
-    if promoting:
-        verdict = check_promotion(issue, after, cfg)
-        facts = verdict.facts
-        print("[%s] promotion: checkboxes=%d size=%s type=%s blockers=%d verdict=%s" % (
-            TAG, facts["checkboxes"], printable(facts["size"]) or "-", printable(facts["type"]) or "-",
-            facts["blockers"], "ok" if verdict.ok else "refused"))
-        if not verdict.ok:
-            return _refuse("promotion: %s" % ",".join(printable(code) for code in verdict.codes))
+    if labels_change:
+        added_capped = sorted((after - before) & set(cfg.caps))
+        open_issues: List[dict] = []
+        if added_capped:
+            try:
+                open_issues = gh.fetch_issues("open", OPEN_LIMIT)
+            except (RuntimeError, ValueError, KeyError, TypeError, OSError, json.JSONDecodeError) as exc:
+                print("[%s] error: %s" % (TAG, printable(exc)))
+                return 1
+
+        results = validate([Proposal(args.issue, before, after, reason, "high")], [issue], live_labels, cfg)
+        codes = list(results[0].codes)
+        for label in added_capped:
+            total = sum(1 for i in open_issues if is_open(i) and label in label_names(i)) + 1
+            if total > cfg.caps[label]:
+                codes.append("cap-exceeded:%s" % label)
+        promoting = effective_promotion(before, after, cfg)
+        print(_plan_line(args.issue, requested, before, after, promoting))
+        if codes:
+            return _refuse("rejected: %s" % ",".join(codes))
+        if promoting:
+            verdict = check_promotion(issue, after, cfg)
+            facts = verdict.facts
+            print("[%s] promotion: checkboxes=%d size=%s type=%s blockers=%d verdict=%s" % (
+                TAG, facts["checkboxes"], printable(facts["size"]) or "-", printable(facts["type"]) or "-",
+                facts["blockers"], "ok" if verdict.ok else "refused"))
+            if not verdict.ok:
+                return _refuse("promotion: %s" % ",".join(printable(code) for code in verdict.codes))
+    for number in add_links:
+        print("[%s] #%d planned blocked-by: +#%d" % (TAG, args.issue, number))
+    for number in remove_links:
+        print("[%s] #%d planned blocked-by: -#%d" % (TAG, args.issue, number))
     if not args.apply:
         print("[%s] dry-run only: nothing was written (add --apply)" % TAG)
         return 0
 
-    edit = LabelEdit(
-        issue=args.issue,
-        before=tuple(sorted(before)),
-        after=tuple(sorted(after)),
-        add=tuple(sorted(after - before)),
-        remove=tuple(sorted(before - after)),
-        reason=reason,
-    )
-    return execute_set(cfg, edit, reason, verdict, apply_runner=apply_runner)
+    if labels_change:
+        edit = LabelEdit(
+            issue=args.issue,
+            before=tuple(sorted(before)),
+            after=tuple(sorted(after)),
+            add=tuple(sorted(after - before)),
+            remove=tuple(sorted(before - after)),
+            reason=reason,
+        )
+        rc = execute_set(cfg, edit, reason, verdict, apply_runner=apply_runner)
+        if rc != 0 or not deps_change:
+            return rc
+    return execute_deps(cfg, args.issue, add_links, remove_links, reason, dep_runner=apply_runner)

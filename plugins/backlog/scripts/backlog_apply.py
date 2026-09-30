@@ -38,7 +38,7 @@ from typing import Callable, Dict, Iterable, List, Optional, Sequence, Set, Tupl
 
 from backlog_catchup import OPEN_LIMIT, catchup_digest, validate_catchup
 from backlog_common import LabelEdit, label_names, load_json_list, printable
-from backlog_gh import MAX_APPLY_ISSUES, ApplyGh, ApplyGrant, Gh, PartialApplyError
+from backlog_gh import MAX_APPLY_ISSUES, ApplyGh, ApplyGrant, DepGh, Gh, PartialApplyError
 from backlog_labelsync import labelsync_digest, plan, spec_from_config
 from backlog_promote import PromotionVerdict, effective_promotion, reserved_adds
 from backlog_snapshot import (
@@ -601,4 +601,48 @@ def execute_set(cfg, edit: LabelEdit, reason: str = "", verdict=None, apply_runn
         return 1
     print("[%s] applied: added=%s removed=%s journal=%s" % (
         tag, ",".join(edit.add) or "-", ",".join(edit.remove) or "-", printable(journal.path)))
+    return 0
+
+
+def execute_deps(cfg, issue: int, add: Sequence[int], remove: Sequence[int], reason: str = "", dep_runner=None) -> int:
+    """Apply the dependency changes ("Blocked by") of ONE issue, REST only, through `DepGh`. Same gate as the label
+    write (`stage_one`) and the same journal: the `intent` line comes first, no journal, no write."""
+    tag = "set"
+    try:
+        stage_one(cfg, True)
+        journal = SetJournal.for_repo(cfg)
+        dep_gh = DepGh(cfg, runner=dep_runner)
+        journal.append({
+            "issue": issue, "status": "intent", "kind": "dependencies",
+            "blocked_by_add": list(add), "blocked_by_remove": list(remove), "reason": reason,
+        })
+    except Refused as exc:
+        return _refuse(tag, exc)
+    except (RuntimeError, OSError) as exc:  # ModeError of the constructor, unwritable journal
+        print("[%s] refused: %s" % (tag, printable(exc)))
+        return 1
+    done_add: List[int] = []
+    done_remove: List[int] = []
+    try:
+        try:
+            for number in add:
+                dep_gh.add_blocked_by(issue, number)
+                done_add.append(number)
+            for number in remove:
+                dep_gh.remove_blocked_by(issue, number)
+                done_remove.append(number)
+        except RuntimeError as exc:
+            status = "partial" if (done_add or done_remove) else "failed"
+            journal.append({"issue": issue, "status": status, "kind": "dependencies",
+                            "blocked_by_add": done_add, "blocked_by_remove": done_remove})
+            print("[%s] error: #%d: %s (%s: added=%s removed=%s)" % (
+                tag, issue, printable(exc), status,
+                ",".join("#%d" % n for n in done_add) or "-", ",".join("#%d" % n for n in done_remove) or "-"))
+            return 1
+        journal.append({"issue": issue, "status": "applied", "kind": "dependencies"})
+    except OSError as exc:
+        print("[%s] error: #%d: the journal could not record the outcome (%s)" % (tag, issue, printable(exc)))
+        return 1
+    print("[%s] applied: blocked-by added=%s removed=%s journal=%s" % (
+        tag, ",".join("#%d" % n for n in add) or "-", ",".join("#%d" % n for n in remove) or "-", printable(journal.path)))
     return 0

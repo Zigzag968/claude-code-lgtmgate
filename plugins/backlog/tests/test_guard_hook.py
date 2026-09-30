@@ -215,6 +215,17 @@ class TestGuardCheck(unittest.TestCase):
     def test_doctrine_is_silent_on_an_unrelated_gh_api_call(self):
         self.assertIsNone(self.check("gh api repos/acme/widgets/issues/5", "free"))
 
+    def test_dependency_endpoints_are_not_label_writes_and_stay_allowed(self):
+        for command in (
+            "gh api -X POST repos/o/r/issues/5/dependencies/blocked_by -F issue_id=1",
+            "gh api -X DELETE repos/o/r/issues/5/dependencies/blocked_by/1",
+            "gh api repos/o/r/issues/5 --jq .id",
+        ):
+            for mode in ("propose", "write-supervised", "free"):
+                with self.subTest(command=command, mode=mode):
+                    self.assertIsNone(self.check(command, mode))
+                    self.assertIsNone(G.check_ask(command, C.default_config(mode)))
+
     def test_bare_issue_create_denied_only_in_write_supervised_and_free(self):
         self.assertIsNone(self.check("gh issue create --title x", "propose"))
         self.assertIsNone(self.check("gh issue create --title x", "off"))

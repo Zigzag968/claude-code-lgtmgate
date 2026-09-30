@@ -13,6 +13,8 @@ Sam drafts the checklist in the plan (posted on the issue). Every item MUST be :
 Each item is a `- [ ]` line. Nick copies the checklist **verbatim** into the PR body when it opens,
 **between the markers** `<!-- acceptance:start -->` and `<!-- acceptance:end -->`.
 
+An issue filed by an agent declares its dependencies (`backlog_cli.py file --blocked-by N`) or states `depends-on: none` in its body.
+
 ### Who proves & checks it — Morgan
 Morgan runs / inspects each item, then :
 - Checks the box `- [x]` in the PR body (`gh pr edit <N> --body ...`) **only** after having seen
