@@ -42,6 +42,14 @@ You are the **Lead**. You deliver a change end-to-end through the **Mia -> Sam -
 - **Alternate base** (feature stacked on a not-yet-merged branch, or dogfood): override `config.baseBranch` to that branch FOR THIS RUN (in the config object passed to the workflow) AND create the worktree from it. Worktree + PR target + regression guard then all point to the right base. Check that it triggers CI (`on.pull_request.branches`); otherwise `ciChecks: []` (Morgan validates on the local green bar). (friction F3)
 
 ## 4. Launch the workflow
+**Launch in a clean turn (anthropics/claude-code#96640).** When `Workflow` is not the first tool call of a
+turn started by a typed message, the harness relays that message to every `agent()` as an overriding user
+request, and small-model agents run it instead of their task. So never call `Workflow` after steps 1-3 in
+the same turn:
+1. End the turn that ran steps 1-3 with one trivial background command (`run_in_background: true`,
+   e.g. `true`) and nothing after it.
+2. In the turn opened by its completion notification, `Workflow` is the first and only tool call.
+
 Same `args` in both cases — only the TARGET changes, per the step 1 resolution:
 ```
 args = {
@@ -81,6 +89,9 @@ The workflow returns an object `{ status, ... }`. Depending on `status`:
 | `preflight-stuck` | 2 preflight failures, run escalated | First check whether the failing requirement is literally what the PR's diff changes (`self-reference-preflight`, issue legacy#83); if so it's a known false-positive — check the branch state by hand and do NOT ask Nick to satisfy the stale check. To relaunch against the branch's current gate logic, launch a **NEW** run via `Workflow({ scriptPath: "<worktree>/workflows/deliver-pipeline.js", ... })` (fresh read from disk), **never** a plain `resumeFromRunId` (it replays the original run's cached inputs). |
 
 Always relaunch the workflow with the **same `config` and `wtPath`**. Never re-spawn a step that already finished without `entryStage`.
+Every relaunch or resume (green light, `resumeFromRunId`) follows the §4 clean-turn rule: `Workflow` is the
+first tool call of its turn. If you need to check anything first (`gh pr view`, `git log`), do it, end the
+turn with a trivial background command, and relaunch from the notification turn.
 
 ### Supervising in-flight runs
 Before considering the turn done (semi checkpoint, resuming after a pause, or before launching a
