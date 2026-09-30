@@ -25,9 +25,8 @@
 //      `run:` step (single-line or `run: |` body) of .github/workflows/guards.yml, YAML comments
 //      excluded, except the documented exemptions below.
 //   Invariant 1 (relaxed) version floor: .claude-plugin/plugin.json version >= origin/main's.
-//      This is ADDITIONAL to the bump-required / stamp-parity checks in
-//      templates/test-canonical-guards.sh, which stay untouched; bump-required is retired later
-//      by #74 (lead-merge.sh bumps at merge), at which point only this floor remains.
+//      Since #74 (scripts/lead-merge.sh bumps at merge; bump-required is retired) this floor is
+//      the only version check besides stamp-parity in templates/test-canonical-guards.sh.
 //
 // Env (test seams, all optional)
 //   GUARDS_ONLY            comma list among r1,wired,version (default: all)

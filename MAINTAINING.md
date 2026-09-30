@@ -117,6 +117,7 @@ human-legible identity key (a 40-char SHA is not), and it gives the installed ca
 
 **An unbumped release delivers nothing at all** — a github-source plugin only updates a
 consumer's cache when the manifest version differs from what they already have.
+The bump is NOT part of a PR (#74): `scripts/lead-merge.sh` bumps the patch (`plugin.json` + `BUILD`) at merge time; the guards only check the floor (branch >= origin/main) and stamp parity.
 
 **No `CHANGELOG.md` file — the version-bump commit subject IS the changelog** (human decision,
 2026-09-15, legacy#86). Every paired bump above ships as its own conventional-commit subject (`fix:`,
@@ -281,13 +282,13 @@ a subdirectory and is delivered through a path-scoped catalog source
 (§2): it adds no workflow, agent or command, and the `lgtmgate` catalog pin is untouched.
 
 **Independent version.** `plugins/backlog/.claude-plugin/plugin.json` carries its own `version`
-(starts at `0.1.0`). Invariant 1 of `templates/test-canonical-guards.sh` excludes `plugins/backlog/`
-by name (a deliberate exemption, like `scripts/`), and invariant 16 (`backlog-bump-required`) applies
+(starts at `0.1.0`). The retired invariant 1 (#74) used to exclude `plugins/backlog/`
+by name; invariant 16 (`backlog-bump-required`) applies
 the same "unbumped release delivers nothing" rule to that manifest, with `tests/` and `README.md`
 exempt. Invariant 17 (`backlog-marketplace-pin`) validates the catalog entry and invariant 18
 (`backlog-suite`) runs the plugin's offline unittest suite. Changing anything under `plugins/backlog/`
 other than tests/README therefore needs a `backlog` version bump; it does NOT need an `lgtmgate`
-bump. (Editing `templates/test-canonical-guards.sh` itself does, as it is watched surface.)
+bump. (An `lgtmgate` bump is done by `scripts/lead-merge.sh` at merge time, never in the PR.)
 
 **The placeholder pin, and why it fails closed.** The `backlog` catalog entry ships with
 `source.sha` set to the `lgtmgate` entry's current pin: a real, resolvable commit that has NO

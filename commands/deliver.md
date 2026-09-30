@@ -111,8 +111,15 @@ resolved `ready`/`no-go`/`escalate`), do a check-in pass rather than silently ab
 - No such fixture in the branch: Nick sets label `no-fixture` on the issue and uses `Refs #<N>` (not `Closes`) on the PR body's first line, so the issue stays open.
 - The Lead treats a `no-fixture` issue as not done.
 
-## 6. On `ready` — worktree cleanup (after user order)
+## 6. On `ready` — merge (on user order) and worktree cleanup
 - The PR is ready (LGTM, acceptance checklist checked). **Do not merge on your own initiative.**
+- **Merge only through `scripts/lead-merge.sh <pr>`**, on an explicit user order, run from the PR worktree:
+  - checks the acceptance checklist (`scripts/lib/acceptance-check.sh`, same lib as the merge hook); any `- [ ]` refuses
+  - bumps the patch version (`.claude-plugin/plugin.json` + `BUILD`), commits, pushes — PRs themselves never bump
+  - `gh pr update-branch` (merge, never a history rewrite), then `gh pr checks --watch --fail-fast`
+  - `gh pr merge --merge --delete-branch` (never the auto-merge flag)
+  - then sync the main checkout: `git fetch origin && git merge --ff-only origin/main`
+- **No resume across a pin move**: never `resumeFromRunId` a run after the plugin version or pin changed (`BUILD` differs from the one the run started on) — relaunch fresh.
 - **Only remove the worktree after an explicit order from the user** (uncommitted work could still live there). The SubagentStop hook only warns, never deletes.
 - On order:
   ```bash
