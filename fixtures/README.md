@@ -31,7 +31,7 @@ before it is committed, and the `no-private-refs` invariant scans the whole trac
   when the engine swallows the error** (fail-open probes, agent-death routing). Nothing is defaulted:
   the harness only proves what the fixture actually feeds.
 
-## Capturing a fixture from a real run (before the probe layer exists)
+## Capture a fixture from a real run (before the probe layer exists)
 
 Until E2.2 lands there is no `.pipeline/probes/` directory and no capture script. A smoke or
 incident fixture is built by hand from the run's own record:
