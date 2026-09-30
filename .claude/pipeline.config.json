@@ -10,7 +10,7 @@
     "test": "bash templates/test-canonical-guards.sh && node scripts/run-flow-suite.cjs",
     "format": "echo 'no formatter configured'"
   },
-  "ciChecks": [],
+  "ciChecks": ["guards", "smoke-install"],
   "provision": {
     "extraLinks": []
   },
