@@ -30,6 +30,12 @@ before it is committed, and the `no-private-refs` invariant scans the whole trac
   `verify` = `VERIFY ok line=<line>`. A string answers a schema-less call
   (the engine's own parser runs on it), an object answers a schema call. An array is consumed
   in call order (one entry per round).
+- Probe fixtures need `args.pluginRoot` (any absolute string, e.g. `/plugin`) or `config.probeRunPath`; without it
+  the run fails closed before any agent call (`probeReason: probe-run-not-found`, see `82-provision-no-probe-run-path`).
+  A `verify` answer of `VERIFY fail reason=no-attestation` reproduces a session whose attest hook is not enabled
+  (`probeReason: no-attestation`, see `82-provision-no-attestation`). The VERIFY line is produced by the probe agent,
+  not attested by the engine (follow-up #83). The persona fallback (agent type not found) has no fixture (the harness
+  cannot throw); the flow suite pins its wiring (T273).
 - A label missing from `calls` throws with the label and the prompt head, **and fails the fixture even
   when the engine swallows the error** (fail-open probes, agent-death routing). Nothing is defaulted:
   the harness only proves what the fixture actually feeds.

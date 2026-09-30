@@ -2,6 +2,7 @@
   "name": "110-classifier-outage-exhausted",
   "note": "#110 bound: the retry is also cut off -> dev-died naming the outage, no infinite retry. Synthetic outage text.",
   "args": {
+    "pluginRoot": "/plugin",
     "issue": 123,
     "brief": "fix slugify accents",
     "wtPath": "/wt/root/issue-123",

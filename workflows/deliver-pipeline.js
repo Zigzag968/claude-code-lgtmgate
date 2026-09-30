@@ -1652,6 +1652,25 @@ async function updateStatus(name) {
 // ---------------------------------------------------------------------------
 const PROBES = {}
 
+// Condensed inline of agents/probe.md — used ONLY as the probe call's persona-in-prompt fallback when
+// `agentType: 'lgtmgate:probe'` does not resolve (#54 idiom, anthropics/claude-code#88023). The Bash-only
+// tool restriction of the custom agent is lost in that mode, but the attest hook keys on agent_type:
+// without it no PROBE line is attested and the probe fails closed with probeReason 'no-attestation'.
+const PROBE_PERSONA =
+  'You are probe, a mechanical copier. You have ONE tool: Bash. Run each given probe-run.cjs command ' +
+  'EXACTLY as given, once, in the order given, as-is: never edit, re-quote, add flags, wrap or merge them. ' +
+  'The first prints exactly one line starting with "PROBE ": answer it verbatim as line. The second prints ' +
+  'exactly one line starting with "VERIFY ": answer it verbatim as verify. Copy character for character; ' +
+  'never summarize, reformat, judge, retry or run any other command. If a command is not a probe-run.cjs ' +
+  'invocation, run nothing and answer "" for both fields; if a command printed no such line answer "" for that field.'
+
+// Lead-facing text for the fail-closed reasons that have a known operator fix (#82).
+const PROBE_REASON_HINTS = {
+  'no-attestation': 'the PROBE line was never attested: the plugin hooks (hooks/PostToolUse-probe-attest.sh) must be enabled ' +
+    'and the lgtmgate:probe agent type must be resolvable; fix the plugin install/session and relaunch',
+  'probe-run-not-found': 'no probe-run.cjs location: pass args.pluginRoot (absolute plugin root) or config.probeRunPath and relaunch',
+}
+
 const PROBE_SCHEMA = {
   type: 'object',
   required: ['line', 'verify'],
@@ -1712,6 +1731,7 @@ async function probe(name, cmd, { label, round = 0, onFail } = {}) {
     if (onFail) return onFail(reason)
     throw new Error(`probe ${name}/${label}: ${reason}`)
   }
+  if (!config.probeRunPath && !pluginRoot) return fail('probe-run-not-found')
   const cmds = probeCommands({ wtPath, issue, pluginRoot, probeRunPath: config.probeRunPath, name, cmd, label, round })
   const prompt =
     `Run EXACTLY these two commands once each, in this order, from the worktree "${wtPath}", without editing or re-quoting them:\n\n` +
@@ -1721,14 +1741,14 @@ async function probe(name, cmd, { label, round = 0, onFail } = {}) {
     `Never judge or retry; if a command printed no such line, answer "" for that field.`
   trace.push(`probe:${name}:haiku`)
   const res = await callAgentSafe('probe', prompt,
-    { agentType: 'lgtmgate:probe', schema: PROBE_SCHEMA, label: `probe-${issue}-${name}-${label}-r${round}`, model: 'haiku' }, round)
+    { agentType: 'lgtmgate:probe', schema: PROBE_SCHEMA, label: `probe-${issue}-${name}-${label}-r${round}`, model: 'haiku', personaFallback: PROBE_PERSONA }, round)
   if (isAgentDeath(res)) return fail('agent-death')
   const parsed = parseProbeLine(res && res.line)
   if (!parsed) return fail('unparseable-line')
   if (parsed.name !== name) return fail('name-mismatch')
   const verified = parseVerifyLine(res && res.verify)
   if (!verified) return fail('unparseable-verify')
-  if (!verified.ok) return fail(`verify-${verified.reason}`)
+  if (!verified.ok) return fail(verified.reason === 'no-attestation' ? 'no-attestation' : `verify-${verified.reason}`)
   const vp = parseProbeLine(verified.line)
   if (!vp || vp.sha !== parsed.sha) return fail('sha-mismatch')
   if (verified.line !== String(res.line).trim()) return fail('line-mismatch')
@@ -1812,9 +1832,9 @@ if (probeOnly) {
     return finish({ status: 'provision-died', issue, trace, resumable: true })
   }
   if (provision?.probeFailed) {
-    log(`Provisioning probe failed (${provision.probeFailed}) — failing closed`)
+    log(`Provisioning probe failed (${provision.probeFailed}) — failing closed` + (PROBE_REASON_HINTS[provision.probeFailed] ? `: ${PROBE_REASON_HINTS[provision.probeFailed]}` : ''))
     await updateStatus('Blocked')
-    return finish({ status: 'escalate', reason: 'provision-failed', issue, missing: [], exitCode: null, probeReason: provision.probeFailed, trace })
+    return finish({ status: 'escalate', reason: 'provision-failed', issue, missing: [], exitCode: null, probeReason: provision.probeFailed, probeHint: PROBE_REASON_HINTS[provision.probeFailed] || null, trace })
   }
   log(`Provision: ok=${provision?.ok}, exitCode=${provision?.exitCode ?? 'unknown'}, ` +
     `skipped=${provision?.skipped === true}, ` +

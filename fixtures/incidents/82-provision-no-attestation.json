@@ -1,0 +1,26 @@
+{
+  "name": "82-provision-no-attestation",
+  "note": "#82: the attest hook is not enabled, so the verify step reports no-attestation; provision fails closed with a reason telling the Lead to enable the plugin hooks",
+  "args": {
+    "pluginRoot": "/plugin",
+    "issue": 82,
+    "brief": "provision fails closed without attestation",
+    "wtPath": "/wt/root/issue-82",
+    "config": {},
+    "mode": "auto"
+  },
+  "calls": {
+    "probe-82-provision-provision-r0": {
+      "line": "PROBE name=provision exit=0 sha=98ea6e4f216f2fb4b69fff9b3a44842c38686ca685f3f55dc48c5d3fb1107be4 json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}",
+      "verify": "VERIFY fail reason=no-attestation"
+    }
+  },
+  "expect": {
+    "status": "escalate",
+    "reason": "provision-failed",
+    "logsInclude": [
+      "no-attestation",
+      "plugin hooks"
+    ]
+  }
+}

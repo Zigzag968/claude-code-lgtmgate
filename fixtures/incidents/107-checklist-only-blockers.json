@@ -2,6 +2,7 @@
   "name": "107-checklist-only-blockers",
   "note": "incident #41/#42 (PRs #102/#103): Morgan found the code correct and only flagged checklist items (structured itemOwner checklist-wording-defect, with proof); the engine dispatched a Nick fix round that pushed nothing and escalated nick-no-op. Expected: verified-untickable, zero Nick calls after the review (no `nick-pr-42` entry exists: the harness fails on any such call). Morgan output shape is synthetic-raw (the raw run data was not retained).",
   "args": {
+    "pluginRoot": "/plugin",
     "issue": 123,
     "brief": "fix slugify accents",
     "wtPath": "/wt/root/issue-123",

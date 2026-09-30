@@ -2,6 +2,7 @@
   "name": "semi-plan-ready",
   "note": "mode semi stops after the plan: only provision, diagnose, scout and plan-check are called",
   "args": {
+    "pluginRoot": "/plugin",
     "issue": 123,
     "brief": "fix slugify accents",
     "wtPath": "/wt/root/issue-123",

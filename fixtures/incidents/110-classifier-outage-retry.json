@@ -2,6 +2,7 @@
   "name": "110-classifier-outage-retry",
   "note": "incident 2026-09-30 (#110): Nick cut off by an auto-mode classifier outage was reported dev-died; one retry completes. The outage turn text is SYNTHETIC (harness wording not captured); the real wording must replace it on the next capture.",
   "args": {
+    "pluginRoot": "/plugin",
     "issue": 123,
     "brief": "fix slugify accents",
     "wtPath": "/wt/root/issue-123",

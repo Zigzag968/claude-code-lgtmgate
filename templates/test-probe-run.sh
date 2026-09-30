@@ -60,13 +60,36 @@ ok=0
 [ "$RC" -eq 0 ] && case "$LINE" in "PROBE name=lines exit=3 "*) ok=1 ;; esac
 check "failing cmd: exit=3 in line, script exit 0" "$ok"
 
-# (d) idempotence: same label/round with another cmd returns the same sha, file unchanged
+# (d) idempotence: identical cmd + successful record -> reused, file unchanged, command NOT re-run
 BEFORE="$(cat "$OUT1/t-r0.json")"
-LINE2="$(node "$PR" --label t --round 0 --out "$OUT1" --parser lines --cmd "printf 'other\n'")"
+LINE2="$(node "$PR" --label t --round 0 --out "$OUT1" --parser lines --cmd "printf 'hi\n'")"
 AFTER="$(cat "$OUT1/t-r0.json")"
 ok=0
 case "$LINE2" in *"sha=$HI_SHA "*) [ "$BEFORE" = "$AFTER" ] && ok=1 ;; esac
-check "idempotent: existing record reused, bytes unchanged" "$ok"
+check "idempotent: identical successful record reused, bytes unchanged" "$ok"
+
+# (d2) same label/round, DIFFERENT cmd -> rebuilt (record bound to its command, #82)
+LINE3="$(node "$PR" --label t --round 0 --out "$OUT1" --parser lines --cmd "printf 'other\n'")"
+ok=0
+case "$LINE3" in *"sha=$HI_SHA "*) ok=0 ;; *'json={"lines":["other"]}') ok=1 ;; esac
+[ "$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).cmd)' "$OUT1/t-r0.json")" = "printf 'other\n'" ] || ok=0
+check "different cmd on same label/round re-executes and rewrites the record" "$ok"
+
+# (d3) failed record -> re-executed on the next run (relaunch after a fix), then reused once it succeeds
+RD="$WORK/relaunch"
+MARK="$WORK/fixed-marker"
+RCMD="test -f '$MARK' && echo ok"
+L1="$(node "$PR" --label prov --round 0 --out "$RD" --parser lines --cmd "$RCMD")"
+ok=0; case "$L1" in "PROBE name=lines exit=1 "*) ok=1 ;; esac
+check "relaunch: first run fails (exit=1, record stored)" "$ok"
+: > "$MARK"
+L2="$(node "$PR" --label prov --round 0 --out "$RD" --parser lines --cmd "$RCMD")"
+ok=0; case "$L2" in "PROBE name=lines exit=0 "*'json={"lines":["ok"]}') ok=1 ;; esac
+check "relaunch: failed record re-executed after the cause is fixed (exit=0)" "$ok"
+rm -f "$MARK"
+L3="$(node "$PR" --label prov --round 0 --out "$RD" --parser lines --cmd "$RCMD")"
+[ "$L3" = "$L2" ] && ok=1 || ok=0
+check "relaunch: successful record is then reused without re-running" "$ok"
 
 # (e) 70000 bytes -> truncated, stored length 65536
 node "$PR" --label big --round 0 --out "$WORK/e" --parser lines --cmd "head -c 70000 /dev/zero | tr '\\0' x" >/dev/null

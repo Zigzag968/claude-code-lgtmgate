@@ -20,7 +20,7 @@ AGENT_TYPE="$(printf '%s' "$INPUT" | jq -r '.agent_type // empty' 2>/dev/null)" 
 
 CMD="$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null)"
 CDRE='^cd[[:space:]]+("([^"]*)"|'"'"'([^'"'"']*)'"'"'|([^[:space:]"'"'"']+))[[:space:]]+&&[[:space:]]+(.*)$'
-RE='^node[[:space:]]+["'"'"']?([^[:space:]"'"'"']*/)?probe-run\.cjs["'"'"']?([[:space:]]|$)'
+RE='^node[[:space:]]+("([^"]*/)?probe-run\.cjs"|'"'"'([^'"'"']*/)?probe-run\.cjs'"'"'|([^[:space:]"'"'"']*/)?probe-run\.cjs)([[:space:]]|$)'
 CDDIR=""
 REST="$CMD"
 if [[ "$CMD" =~ $CDRE ]]; then

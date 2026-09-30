@@ -1,0 +1,20 @@
+{
+  "name": "82-provision-no-probe-run-path",
+  "note": "#82: neither args.pluginRoot nor config.probeRunPath: fail early pointing at pluginRoot, no agent is spawned",
+  "args": {
+    "issue": 82,
+    "brief": "provision fails closed without attestation",
+    "wtPath": "/wt/root/issue-82",
+    "config": {},
+    "mode": "auto"
+  },
+  "calls": {},
+  "expect": {
+    "status": "escalate",
+    "reason": "provision-failed",
+    "logsInclude": [
+      "probe-run-not-found",
+      "pluginRoot"
+    ]
+  }
+}

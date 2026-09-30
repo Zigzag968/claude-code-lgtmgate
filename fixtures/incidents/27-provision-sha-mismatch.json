@@ -2,6 +2,7 @@
   "name": "27-provision-sha-mismatch",
   "note": "#27: the copied PROBE line carries the sha of another stdout than the stored record; the verify step names the true line, the engine must refuse the copy",
   "args": {
+    "pluginRoot": "/plugin",
     "issue": 27,
     "brief": "provision must not trust a contaminated relay",
     "wtPath": "/wt/root/issue-27",

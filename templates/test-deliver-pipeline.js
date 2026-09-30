@@ -1973,6 +1973,24 @@ await testCase('T272 probeCommands() extracted from source markers (#82)', async
   return checks.find(c => c) || { ok: true }
 })
 
+// T273 (#82) — the probe role has the same persona-in-prompt fallback as Theo, and the two fail-closed
+// prerequisites carry a distinct reason: static checks on the source (no simulate seam exists for probe()).
+await testCase('T273 probe(): persona fallback wired, no-attestation and probe-run-not-found reasons (#82)', async () => {
+  const src = SUITE_ARGS.fpSource
+  if (!src) {
+    log('SKIP — T273: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const checks = [
+    eq('probe call carries personaFallback: PROBE_PERSONA', /agentType: 'lgtmgate:probe'[^\n]*personaFallback: PROBE_PERSONA/.test(src), true),
+    eq('PROBE_PERSONA is the probe-run copier persona', /const PROBE_PERSONA =[\s\S]*?probe-run\.cjs/.test(src), true),
+    eq("no-attestation maps to its own probeReason", src.includes("verified.reason === 'no-attestation' ? 'no-attestation'"), true),
+    eq('probe-run-not-found fails early', src.includes("if (!config.probeRunPath && !pluginRoot) return fail('probe-run-not-found')"), true),
+    eq('escalation carries probeHint', src.includes('probeHint: PROBE_REASON_HINTS[provision.probeFailed]'), true),
+  ]
+  return checks.find(c => c) || { ok: true }
+})
+
 await testCase('T214d callAgent( only invoked by callAgentSafe + morgan; callAgentSafe( widely wired', async () => {
   const src = SUITE_ARGS.fpSource
   if (!src) {

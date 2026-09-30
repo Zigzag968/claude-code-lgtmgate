@@ -2,6 +2,7 @@
   "name": "40-provision-ffwd",
   "note": "#40: stale worktree with no own commit is fast-forwarded by the probe and the run continues",
   "args": {
+    "pluginRoot": "/plugin",
     "issue": 123,
     "brief": "fix slugify accents",
     "wtPath": "/wt/root/issue-123",

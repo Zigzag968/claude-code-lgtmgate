@@ -11,7 +11,10 @@
 //   node probe-run.cjs --label L --round N --out /abs/dir --parser NAME [--model M] --cmd '<shell cmd>'
 //
 // Record: <out>/<label>-r<round>.json = { label, cmd, exit, stdout, stderr, ts, model, truncated }.
-// Idempotent: an existing record is reused, the command is NOT re-run.
+// Reuse rule: an existing record is reused (command NOT re-run) ONLY for an identical, successful
+// replay (record.cmd === --cmd AND record.exit === 0). A different --cmd, or a stored failure
+// (exit != 0), is rebuilt and overwritten: a Lead who fixes the cause and relaunches on the same
+// worktree must never get the old failed record back.
 // Output (exactly one line, exit 0 whenever it is printed):
 //   PROBE name=<parser> exit=<cmd exit> sha=<sha256 of record.stdout> json=<compact JSON>
 // Exit 2 + usage on stderr for an invalid invocation. No network, nothing read outside --out.
@@ -150,6 +153,11 @@ function readRecord(file) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')) } catch (_) { return null }
 }
 
+// Pure: may a stored record answer this invocation without re-running? (identical cmd AND success)
+function canReuse(record, cmd) {
+  return !!record && record.cmd === cmd && record.exit === 0
+}
+
 function main() {
   const a = parseArgs(process.argv.slice(2))
   const common = a && a.label && a.parser && a.out && a.round !== undefined &&
@@ -166,7 +174,7 @@ function main() {
     process.exit(0)
   }
   let record = readRecord(file)
-  if (!record) {
+  if (!canReuse(record, a.cmd)) {
     record = buildRecord({ label: a.label, cmd: a.cmd, model: a.model })
     fs.mkdirSync(a.out, { recursive: true })
     const tmp = `${file}.${process.pid}.tmp`
@@ -179,4 +187,4 @@ function main() {
 
 if (require.main === module) main()
 
-module.exports = { PARSERS, buildRecord, probeLine, verifyRecord }
+module.exports = { PARSERS, canReuse, buildRecord, probeLine, verifyRecord }

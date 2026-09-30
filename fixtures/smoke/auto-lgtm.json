@@ -2,6 +2,7 @@
   "name": "auto-lgtm",
   "note": "synthetic-raw nominal path: every agent() answered with the exact shape its prompt requests; replace with a captured transcript at the first canary run",
   "args": {
+    "pluginRoot": "/plugin",
     "issue": 123,
     "brief": "fix slugify accents",
     "wtPath": "/wt/root/issue-123",

@@ -2,6 +2,7 @@
   "name": "132-preflight-failed-check-log",
   "note": "incident from the #131 run: guards failed after the first push; Nick saw only the check name; the run ended preflight-stuck. Preflight probe object is synthetic-raw (raw run data not retained).",
   "args": {
+    "pluginRoot": "/plugin",
     "issue": 132,
     "brief": "fix slugify accents",
     "wtPath": "/wt/root/issue-132",

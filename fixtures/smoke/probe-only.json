@@ -2,6 +2,7 @@
   "name": "probe-only",
   "note": "probe-run foundation (#80): probe() reached through the probeOnly arg; the probe agent answers with the exact PROBE line probe-run.cjs prints for printf 'hi\\n'",
   "args": {
+    "pluginRoot": "/plugin",
     "issue": 80,
     "brief": "probe foundation",
     "wtPath": "/wt/root/issue-80",

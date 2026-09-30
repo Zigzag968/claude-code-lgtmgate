@@ -2,6 +2,7 @@
   "name": "40-provision-stale-own-commits",
   "note": "#40: stale worktree with own commits escalates with the exact merge command",
   "args": {
+    "pluginRoot": "/plugin",
     "issue": 123,
     "brief": "fix slugify accents",
     "wtPath": "/wt/root/issue-123",

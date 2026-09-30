@@ -65,7 +65,7 @@ args = {
   maxAuditRounds: <optional — bound on the auditor <-> scout loop, default 2, HARD CEILING at 2: beyond that, throw unless maxAuditRoundsOverrideReason is provided>,
   maxAuditRoundsOverrideReason: <mandatory if maxAuditRounds > 2 — names the RISK CLASS that justifies the extra round(s), never a silent overrun>,
   architectureDecisionApproved: <optional — attests that the architecture-only pass (design-step trigger) already happened and was approved, exempts this launch from proceedThrough:"plan">,
-  pluginRoot: <absolute ${CLAUDE_PLUGIN_ROOT} for the plugin component, omit for a local copy — the workflow has no filesystem or env, so this is how the probe layer finds templates/probe-run.cjs (config.probeRunPath wins; omitted -> the worktree's own templates/probe-run.cjs)>
+  pluginRoot: <absolute ${CLAUDE_PLUGIN_ROOT} for the plugin component, omit for a local copy — the workflow has no filesystem or env, so this is how the probe layer finds templates/probe-run.cjs (config.probeRunPath wins; with neither, the run fails closed with probeReason 'probe-run-not-found')>
 }
 ```
 - **Resolved plugin component** -> launch by the **namespaced** name `lgtmgate:deliver-pipeline` (never the bare name `deliver-pipeline`, which a `--plugin-dir` or another project can shadow — claude-agent-pipeline#54).
@@ -95,6 +95,14 @@ Always relaunch the workflow with the **same `config` and `wtPath`**. Never re-s
 Every relaunch or resume (green light, `resumeFromRunId`) follows the §4 clean-turn rule: `Workflow` is the
 first tool call of its turn. If you need to check anything first (`gh pr view`, `git log`), do it, end the
 turn with a trivial background command, and relaunch from the notification turn.
+
+### Probe prerequisites (fail-closed, #82)
+Provision, freshness and the behind-count go through `probe()`; a probe that cannot be proven fails closed, never open.
+- **Plugin hooks enabled**: `hooks/PostToolUse-probe-attest.sh` must run (it attests the PROBE line). Signature: `escalate` / `reason: provision-failed` with `probeReason: 'no-attestation'` and a `probeHint`. Fix: enable the plugin hooks in the session, relaunch.
+- **`lgtmgate:probe` agent type resolvable**: if the registry lacks it (anthropics/claude-code#88023), the engine retries once persona-in-prompt (trace `agent-type-unresolved:probe`). The hook keys on `agent_type`, so in that mode attestation is usually missing and the run ends as above; start a fresh session.
+- **`args.pluginRoot` or `config.probeRunPath`**: without either, `probeReason: 'probe-run-not-found'`.
+- **Relaunch after a failed probe**: `probe-run.cjs` reuses `.pipeline/probes/issue-<N>/<label>-r<round>.json` only for the identical command with a successful exit; a changed command or a stored failure is re-executed.
+- **What is verified**: the VERIFY line is produced by the probe agent (it runs `probe-run.cjs --verify`); the engine compares it with the copied PROBE line but does not itself attest VERIFY. Attesting VERIFY is a follow-up (#83).
 
 ### Supervising in-flight runs
 Before considering the turn done (semi checkpoint, resuming after a pause, or before launching a
