@@ -7,17 +7,17 @@
     "wtPath": "/wt/root/issue-80",
     "config": { "branchPrefix": "features/" },
     "mode": "auto",
-    "probeOnly": { "name": "selftest", "cmd": "printf 'hi\\n'", "label": "selftest", "round": 0 }
+    "probeOnly": { "name": "lines", "cmd": "printf 'hi\\n'", "label": "selftest", "round": 0 }
   },
   "calls": {
-    "probe-80-selftest-selftest-r0": {
-      "line": "PROBE name=selftest exit=0 sha=98ea6e4f216f2fb4b69fff9b3a44842c38686ca685f3f55dc48c5d3fb1107be4 json={\"lines\":[\"hi\"]}"
+    "probe-80-lines-selftest-r0": {
+      "line": "PROBE name=lines exit=0 sha=98ea6e4f216f2fb4b69fff9b3a44842c38686ca685f3f55dc48c5d3fb1107be4 json={\"lines\":[\"hi\"]}"
     }
   },
   "expect": {
     "status": "dry-run-ok",
     "reason": "probe-only",
-    "trace": ["probe:selftest:haiku"],
+    "trace": ["probe:lines:haiku"],
     "logsInclude": []
   }
 }
