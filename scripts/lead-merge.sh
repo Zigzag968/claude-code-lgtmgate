@@ -3,6 +3,11 @@
 # Run from a checkout of the PR head branch. Steps, each exit code checked:
 #   1. acceptance checklist via scripts/lib/acceptance-check.sh (same lib as the merge hook):
 #      any `- [ ]` between the acceptance markers, or missing markers, refuses.
+#   1b. declared exceptions (#122): each `exception: <what> — <why> — #N` line between the acceptance markers
+#      (optionally prefixed `- ` or `- [x] `; ` -- ` is accepted as separator too) must parse, name an OPEN issue
+#      #N labelled `tech-debt` (REST), and the PR diff (`git diff origin/main...HEAD`, added lines only) must hold a
+#      `DEBT(#N)` marker. Any failure prints one `FAIL: declared-exception: <reason>` line and exits before any
+#      fetch-merge, bump, push, checks or merge.
 #   2. sync: refuse unless on the PR head branch with a clean tree; fetch the head branch and
 #      fast-forward when the remote is ahead (a previous partial run), refuse when diverged.
 #   3. bring the base in LOCALLY: fetch origin/main, `git merge --no-edit origin/main`. On conflict:
@@ -58,6 +63,41 @@ body="$(gh pr view "$PR" -R "$REPO" --json body -q .body)" || die "cannot read P
 rc=0
 printf '%s\n' "$body" | acceptance_check_body || rc=$?
 [ "$rc" -eq 0 ] || die "PR #$PR acceptance gate failed (rc=$rc); nothing bumped, nothing merged"
+
+# --- 1b. declared exceptions (#122) -------------------------------------------
+# Format: `exception: <what> — <why> — #N` (em dash; ` -- ` also accepted). Only lines inside the acceptance markers.
+exc_fail() { echo "FAIL: declared-exception: $*" >&2; die "PR #$PR declared exception refused; nothing bumped, nothing merged"; }
+exc_lines="$(printf '%s\n' "$body" | python3 -c '
+import re, sys
+inb = False
+for line in sys.stdin.read().splitlines():
+    if re.search(r"<!--\s*acceptance:end\s*-->", line):
+        inb = False
+    if inb:
+        m = re.match(r"\s*(?:-\s*(?:\[[ xX]\]\s*)?)?exception:\s*(.*)$", line, re.I)
+        if m:
+            parts = [p.strip() for p in re.split(r"\s+(?:\u2014|--)\s+", m.group(1))]
+            if len(parts) == 3 and parts[0] and parts[1] and re.fullmatch(r"#\d+", parts[2]):
+                print("OK\t" + parts[2][1:])
+            else:
+                print("BAD\t" + line.strip())
+    if re.search(r"<!--\s*acceptance:start\s*-->", line):
+        inb = True')" || die "cannot parse declared exceptions"
+if [ -n "$exc_lines" ]; then
+  git fetch origin "+refs/heads/main:refs/remotes/origin/main" || die "git fetch origin main failed"
+  exc_diff="$(git diff origin/main...HEAD | grep -E '^\+' | grep -vE '^\+\+\+ ' || true)"
+  while IFS="$(printf '\t')" read -r kind val; do
+    [ -n "$kind" ] || continue
+    [ "$kind" = OK ] || exc_fail "malformed line (want: exception: <what> — <why> — #N): $val"
+    info="$(gh api "repos/$REPO/issues/$val" --jq '.state + " " + ([.labels[].name] | join(","))')" \
+      || exc_fail "cannot read follow-up issue #$val"
+    case "${info%% *}" in open) ;; *) exc_fail "follow-up issue #$val is not open (${info%% *})" ;; esac
+    case ",${info#* }," in *,tech-debt,*) ;; *) exc_fail "follow-up issue #$val lacks the tech-debt label" ;; esac
+    printf '%s\n' "$exc_diff" | grep -qE "DEBT\(#$val\)" || exc_fail "no DEBT(#$val) marker in the PR diff"
+  done <<EOX
+$exc_lines
+EOX
+fi
 
 # --- 2. sync with the remote head branch ---------------------------------------
 head_branch="$(gh pr view "$PR" -R "$REPO" --json headRefName -q .headRefName)" || die "cannot read PR #$PR head branch"
