@@ -13,6 +13,19 @@ from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple, Union
 
 
+def positive_int(text: str) -> int:
+    """argparse `type=` for an issue number: a base-10 integer > 0."""
+    import argparse
+
+    try:
+        value = int(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError("%r is not an issue number" % text)
+    if value <= 0:
+        raise argparse.ArgumentTypeError("the issue number must be > 0")
+    return value
+
+
 def label_names(issue: dict) -> Set[str]:
     """Label names of a `gh` issue payload (`labels: [{"name": ...}]`); plain strings tolerated."""
     names: Set[str] = set()

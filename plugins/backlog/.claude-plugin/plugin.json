@@ -1,6 +1,6 @@
 {
   "name": "backlog",
-  "version": "0.5.6",
+  "version": "0.5.7",
   "description": "Config-driven backlog discipline for GitHub repos: /backlog:file, /backlog:triage (propose-only), /backlog:next. Inert unless the repo has .claude/backlog.yml.",
   "author": {
     "name": "Zigzag968"

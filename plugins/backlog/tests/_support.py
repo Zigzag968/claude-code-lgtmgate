@@ -102,8 +102,9 @@ class FakeRunner:
     WRITE_VERBS = (("issue", "edit"), ("label", "create"))
 
     def __init__(self, issues=None, prs=None, labels=None, create_url="https://github.com/o/r/issues/1\n", fail=None,
-                 fail_write_at=None, before_write=None):
+                 fail_write_at=None, before_write=None, fail_dep_at=None):
         self.calls = []
+        self.fail_dep_at = fail_dep_at  # 1-based number of the dependency write (POST/DELETE) that fails
         self.fail_write_at = fail_write_at  # 1-based number of the write call that fails
         self.before_write = before_write  # called with argv before each write is applied
         self.issues = [] if issues is None else issues
@@ -117,6 +118,8 @@ class FakeRunner:
         if self.fail is not None:
             raise self.fail
         verb = tuple(argv[1:3])
+        if argv[1] == "api":
+            return subprocess.CompletedProcess(argv, 0, stdout=self._api(argv), stderr="")
         if verb == ("issue", "list"):
             out = json.dumps(self.issues)
         elif verb == ("issue", "view"):
@@ -132,6 +135,20 @@ class FakeRunner:
         else:
             out = "[]"
         return subprocess.CompletedProcess(argv, 0, stdout=out, stderr="")
+
+    def _api(self, argv):
+        """`gh api` (REST): `--jq .id` of an issue answers 1000 + its number; a POST/DELETE is a dependency write."""
+        if "-X" in argv:
+            if self.before_write is not None:
+                self.before_write(list(argv))
+            if self.fail_dep_at is not None and len(self.dep_writes()) == self.fail_dep_at:
+                raise subprocess.CalledProcessError(1, argv)
+            return ""
+        number = int(argv[2].rsplit("/", 1)[1])
+        return "%d\n" % (1000 + number)
+
+    def dep_writes(self):
+        return [c for c in self.calls if c[1] == "api" and "-X" in c]
 
     def _view(self, argv):
         """`gh issue view N --json FIELDS`: the issue with that number; the free-text field only when it was asked for."""
