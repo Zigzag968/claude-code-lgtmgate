@@ -53,14 +53,14 @@
       }
     ],
     "branch-check-123": "features/issue-123\n",
-    "worktree-behind-42": "0\n",
-    "preflight-42-0": {
+    "worktree-behind-123-42": "0\n",
+    "preflight-123-42-0": {
       "pass": true,
       "issues": [],
       "testCommandRun": "run the unit tests"
     },
     "review-window-start-42": "2026-01-01T00:00:00Z\n",
-    "morgan-pr-42-r0": {
+    "morgan-pr-123-42-r0": {
       "verdict": "LGTM",
       "items": [],
       "ciGreen": true,
@@ -68,9 +68,9 @@
       "itemOwners": []
     },
     "review-window-end-42-0": "2026-01-01T01:00:00Z\n",
-    "reviewer-window-scan-42-0": "[]\n",
-    "pr-body-sync-42-0": "OK bytes=1234\n",
-    "merge-state-42-0": "{\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\"}\n"
+    "reviewer-window-scan-123-42-0": "[]\n",
+    "pr-body-sync-123-42-0": "OK bytes=1234\n",
+    "merge-state-123-42-0": "{\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\"}\n"
   },
   "expect": {
     "status": "ready",

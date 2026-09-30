@@ -3445,6 +3445,37 @@ await testCase('T9001 Morgan prompts (initial + re-review) require one matchable
   return (e1 || e2 || e3) ? (e1 || e2 || e3) : { ok: true }
 })
 
+// T130 (#130) — run identity: the first log() is `deliver #<issue> — <brief>`, `Setup` is the first
+// declared phase and is entered before any agent call, and every agent label carries the issue number.
+// Source-anchored: the suite-scope log() cannot intercept the pipeline's own log (run-flow-suite.cjs).
+await testCase('T130 run identity: first log is deliver #<issue>, Setup phase first (#130)', async () => {
+  const src = SUITE_ARGS.fpSource
+  if (!src) {
+    log('SKIP — T130: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const idx = (needle) => src.indexOf(needle)
+  const firstTitle = /title: ['"]([^'"]+)['"]/.exec(src)
+  const e1 = eq('first meta phase title', firstTitle && firstTitle[1], 'Setup')
+  if (e1) return e1
+  const iLog = idx('log(`deliver #${issue} — ')
+  const iSetup = idx("phase('Setup')")
+  const iRoot = idx('log(`worktreeRoot: ')
+  const iRecheck = idx('config-project-recheck-')
+  const iProv = idx('provision-${issue}')
+  const iDiag = idx("phase('Diagnose')")
+  const order = [['deliver log', iLog], ['phase(Setup)', iSetup], ['worktreeRoot log', iRoot], ['config-project-recheck-', iRecheck], ['provision-${issue}', iProv], ["phase('Diagnose')", iDiag]]
+  for (const [n, i] of order) if (i < 0) return { ok: false, msg: `${n} not found in pipeline source` }
+  for (let k = 1; k < order.length; k++) {
+    if (!(order[k - 1][1] < order[k][1])) return { ok: false, msg: `expected ${order[k - 1][0]} before ${order[k][0]}` }
+  }
+  const e2 = eq('old status label gone', src.includes('label: `status:'), false)
+  const e3 = eq('status label carries issue', src.includes('status-${issue}:'), true)
+  const bad = src.split('\n').filter(l => l.includes('label:') && !l.includes('${issue}'))
+  const e4 = eq('agent labels without ${issue}', bad.length, 0)
+  return e2 || e3 || e4 || { ok: true }
+})
+
 // T123 (#42) — every test ID is unique across the suite. Must stay the LAST case so `results`
 // holds every other case name. Includes a negative control proving the detector really detects.
 await testCase('T123 test IDs are unique across the suite (no duplicated T<n>)', async () => {

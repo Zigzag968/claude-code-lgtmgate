@@ -18,7 +18,7 @@ before it is committed, and the `no-private-refs` invariant scans the whole trac
   "calls": {
     "provision-1": "PROVISION-EXIT:0\n",
     "scout-issue-1-1": { "decision": "GO", "plan": "..." },
-    "morgan-pr-42-r0": [ { "verdict": "LGTM", "items": [] } ]
+    "morgan-pr-123-42-r0": [ { "verdict": "LGTM", "items": [] } ]
   },
   "expect": { "status": "ready", "trace": ["Provision"], "logsInclude": [] }
 }
