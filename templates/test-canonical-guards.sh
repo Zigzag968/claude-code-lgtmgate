@@ -475,7 +475,7 @@ print(m.group(0) if m else '')
     printf '%s\n' "$WRR_WINDOW" > "$WRR_SRC"
     WRR_OUT="$(REPO_ROOT_CASE="$REPO_ROOT" node -e "
       const fs = require('fs')
-      delete process.env.AGENT_PIPELINE_WORKTREE_ROOT
+      delete process.env.LGTMGATE_WORKTREE_ROOT
       eval(fs.readFileSync(process.argv[1], 'utf8'))
       const repoRoot = process.env.REPO_ROOT_CASE
       const repoRootParent = repoRoot.slice(0, repoRoot.lastIndexOf('/')) || '/'
@@ -496,11 +496,11 @@ print(m.group(0) if m else '')
       ]
       const failures = []
       for (const [name, env, configLocal, config, wtPath, expected] of cases) {
-        if (env === null) delete process.env.AGENT_PIPELINE_WORKTREE_ROOT
-        else process.env.AGENT_PIPELINE_WORKTREE_ROOT = env
+        if (env === null) delete process.env.LGTMGATE_WORKTREE_ROOT
+        else process.env.LGTMGATE_WORKTREE_ROOT = env
         const got = resolveWorktreeRoot({ env: process.env, configLocal, config, wtPath })
         if (got !== expected) failures.push(name + ': expected ' + JSON.stringify(expected) + ', got ' + JSON.stringify(got))
-        delete process.env.AGENT_PIPELINE_WORKTREE_ROOT
+        delete process.env.LGTMGATE_WORKTREE_ROOT
       }
       console.log(failures.length ? ('FAIL:' + failures.join(' ;; ')) : 'OK')
     " "$WRR_SRC" 2>&1)"

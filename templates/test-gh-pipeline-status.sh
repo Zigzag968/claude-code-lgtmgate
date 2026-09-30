@@ -72,7 +72,7 @@ printf '%s' '{"ghProject":{"owner":"SomeOtherOrg","projectNumber":42}}' > "$cfg1
 log1="$f1/gh-calls.log"
 : > "$log1"
 
-out1="$(PATH="$f1/bin:$PATH" FAKE_GH_LOG="$log1" AGENT_PIPELINE_CONFIG_FILE="$cfg1" bash "$RESOLVER" 799 2>"$f1/stderr")"
+out1="$(PATH="$f1/bin:$PATH" FAKE_GH_LOG="$log1" LGTMGATE_CONFIG_FILE="$cfg1" bash "$RESOLVER" 799 2>"$f1/stderr")"
 exit1=$?
 
 if [ "$exit1" -ne 0 ]; then
@@ -100,7 +100,7 @@ printf '%s' '{"ghProject":{}}' > "$cfg2"
 log2="$f2/gh-calls.log"
 # Intentionally do NOT pre-create log2 — the fake gh only creates it if invoked.
 
-bash -c "PATH='$f2/bin:$PATH' FAKE_GH_LOG='$log2' AGENT_PIPELINE_CONFIG_FILE='$cfg2' bash '$RESOLVER' 799" >"$f2/stdout" 2>"$f2/stderr"
+bash -c "PATH='$f2/bin:$PATH' FAKE_GH_LOG='$log2' LGTMGATE_CONFIG_FILE='$cfg2' bash '$RESOLVER' 799" >"$f2/stdout" 2>"$f2/stderr"
 exit2=$?
 
 if [ "$exit2" -eq 0 ]; then

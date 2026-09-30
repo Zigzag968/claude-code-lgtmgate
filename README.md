@@ -165,7 +165,7 @@ Nothing stack-specific lives in the plugin. Everything project-dependent is read
 | `commands.{build,test,format}` | exact commands Nick/Morgan run |
 | `conventionsRule` | the project's code-convention rule Sam/Nick/Morgan align on |
 | `baseBranch`, `branchPrefix` | branching for the shared worktree + PR target |
-| `worktreeRoot` | where the Lead creates the shared worktree (logical/versioned default); precedence `$AGENT_PIPELINE_WORKTREE_ROOT` > `.claude/pipeline.config.local.json` (gitignored) > this value > wtPath's parent dir for the Dev-phase prompt context. `/deliver` itself still needs this key set to CREATE the worktree |
+| `worktreeRoot` | where the Lead creates the shared worktree (logical/versioned default); precedence `$LGTMGATE_WORKTREE_ROOT` > `.claude/pipeline.config.local.json` (gitignored) > this value > wtPath's parent dir for the Dev-phase prompt context. `/deliver` itself still needs this key set to CREATE the worktree |
 | `ciChecks` | checks Morgan must see green before LGTM |
 | `regressionGuard.{testGlob,testFnPattern,baselineCmd}` | Morgan's regression guard: no-checkout test scoping plus the exact baseline-capture command run for the SET-DIFF |
 | `ghProject` | optional GH Project "Pipeline Status" updates |

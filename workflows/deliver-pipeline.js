@@ -15,7 +15,7 @@ export const meta = {
 //   brief       — one-line description of the change (required)
 //   wtPath      — shared worktree absolute path (required)
 //   config      — project-specific configuration (stack-agnostic; see pipeline.config.template.json)
-//                 worktreeRoot resolution order: AGENT_PIPELINE_WORKTREE_ROOT env var -> configLocal.worktreeRoot
+//                 worktreeRoot resolution order: LGTMGATE_WORKTREE_ROOT env var -> configLocal.worktreeRoot
 //                 -> config.worktreeRoot -> wtPath's parent dir (see resolveWorktreeRoot below).
 //                 { ghProject, baseBranch, branchPrefix, worktreeRoot, conventionsRule,
 //                   commands:{build,test,format}, ciChecks:[], regressionGuard:{testGlob,testFnPattern,baselineCmd},
@@ -213,7 +213,7 @@ export const meta = {
 // `version`, checked against plugin.json by templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '0.8.74', cutFrom: '57aa26c' }
+const BUILD = { plugin: 'lgtmgate', version: '0.8.75', cutFrom: 'ef296fb' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -353,14 +353,14 @@ if (branchPrefixArgIgnored) {
 // #61 — env read is guarded: the Workflow sandbox injects only args/agent/log/phase, so
 // `process` may not exist at all. Under `simulate` the ambient node `process` of
 // scripts/run-flow-suite.cjs (new Function wrap) is NEVER read — a real
-// AGENT_PIPELINE_WORKTREE_ROOT in a dev shell must not leak into a flow case.
+// LGTMGATE_WORKTREE_ROOT in a dev shell must not leak into a flow case.
 // resolveWorktreeRoot() itself is defined below (see its :start/:end sentinel block) — hoisted,
 // so this call resolves fine despite the definition appearing later in the file.
 const runtimeEnv = simulate
   ? (simulate.env || {})
   : ((typeof process !== 'undefined' && process && process.env) ? process.env : {})
 const worktreeRoot = resolveWorktreeRoot({ env: runtimeEnv, configLocal, config, wtPath })
-log(`worktreeRoot: ${worktreeRoot ?? '(unresolved)'} (env=${runtimeEnv.AGENT_PIPELINE_WORKTREE_ROOT ? 'set' : 'unset'}, local=${configLocal.worktreeRoot ? 'set' : 'unset'}, config=${config.worktreeRoot ? 'set' : 'unset'})`)
+log(`worktreeRoot: ${worktreeRoot ?? '(unresolved)'} (env=${runtimeEnv.LGTMGATE_WORKTREE_ROOT ? 'set' : 'unset'}, local=${configLocal.worktreeRoot ? 'set' : 'unset'}, config=${config.worktreeRoot ? 'set' : 'unset'})`)
 // Code repo "owner/repo" for cross-repo runs: scopes the gh calls (guard, PR-create,
 // checks, no-op gate) to the code repo instead of relying on the invoking cwd. Absent ->
 // gh resolves from the worktree cwd (backward-compatible; the already-done guard then
@@ -1003,7 +1003,7 @@ function staleArtifactBlockers(proofs, floorIso) {
 
 // --- resolveWorktreeRoot:start --- (pure & self-contained — keep extractable by the consuming project's tests)
 // resolveWorktreeRoot (#61) — layered, machine-free worktree-root resolution.
-// Precedence: $AGENT_PIPELINE_WORKTREE_ROOT > configLocal.worktreeRoot > config.worktreeRoot
+// Precedence: $LGTMGATE_WORKTREE_ROOT > configLocal.worktreeRoot > config.worktreeRoot
 // (the versioned LOGICAL default). A winner is accepted only when ABSOLUTE; a relative
 // or blank value falls back to this run's own worktree parent — wtPath is
 // `<worktreeRoot>/<slug>` by construction (commands/deliver.md:35) — so the brief
@@ -1019,7 +1019,7 @@ function resolveWorktreeRoot({ env = {}, configLocal = {}, config = {}, wtPath =
     const i = p.lastIndexOf('/')
     return i >= 0 ? (p.slice(0, i) || '/') : null
   })()
-  const candidate = pick(env.AGENT_PIPELINE_WORKTREE_ROOT) || pick(configLocal.worktreeRoot) || pick(config.worktreeRoot)
+  const candidate = pick(env.LGTMGATE_WORKTREE_ROOT) || pick(configLocal.worktreeRoot) || pick(config.worktreeRoot)
   return abs(candidate) || parentOfWt
 }
 // --- resolveWorktreeRoot:end ---

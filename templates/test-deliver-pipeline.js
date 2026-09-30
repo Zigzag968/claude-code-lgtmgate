@@ -2144,12 +2144,12 @@ await testCase('T71a resolveWorktreeRoot: relative logical default -> absolute i
   return err ? err : { ok: true }
 })
 
-await testCase('T71b resolveWorktreeRoot: $AGENT_PIPELINE_WORKTREE_ROOT beats local and versioned', async () => {
+await testCase('T71b resolveWorktreeRoot: $LGTMGATE_WORKTREE_ROOT beats local and versioned', async () => {
   const r = await run({
     mode: 'auto',
     config: { ...CONFIG, worktreeRoot: '/tmp/lgtmgate-worktrees' },
     configLocal: { worktreeRoot: '/local/root' },
-    simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }], env: { AGENT_PIPELINE_WORKTREE_ROOT: '/env/root' } },
+    simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }], env: { LGTMGATE_WORKTREE_ROOT: '/env/root' } },
   })
   const p = r.nickPromptPreview
   const e1 = includes('nickPromptPreview', p, 'worktree root: /env/root')
