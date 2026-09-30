@@ -3,6 +3,7 @@ export const meta = {
   description: 'Sam (plan) -> Nick (dev+PR) -> Morgan (review) -> loop until LGTM',
   whenToUse: 'Deliver a change end-to-end through the specialized agent pipeline (bug fix, chore, or feature). The Lead creates the shared worktree before launching and passes its path.',
   phases: [
+    { title: "Setup", detail: "Run identity + early probes (config recheck, provision, freshness) before any agent work" },
     { title: 'Diagnose', detail: 'Theo qualifies EVERY issue before Sam plans — mandatory, no opt-out' },
     { title: 'Plan', detail: 'Mia (optional) + Sam scout/plan, posted on the issue' },
     { title: 'Dev', detail: 'Nick implements in the shared worktree + opens PR' },
@@ -287,6 +288,9 @@ if (config === null || typeof config !== 'object' || Array.isArray(config)) {
 if (!['auto', 'semi', 'manual'].includes(mode)) throw new Error(`Invalid mode: ${mode}`)
 if (!['plan', 'dev', 'review'].includes(entryStage)) throw new Error(`Invalid entryStage: ${entryStage}`)
 if (entryStage === 'review' && !prNumber) throw new Error('entryStage=review requires prNumber argument')
+// Run identity (#130): first log line + Setup phase, before any agent call, so runs can be told apart.
+log(`deliver #${issue} — ${String(brief).slice(0, 80)}${entryStage === 'review' ? ` (PR #${prNumber})` : ''}`)
+phase('Setup')
 // planAudit: arg wins per-run over the project default; an explicit `false` beats a
 // `true` config (`??` only falls through on null/undefined, never on a real `false`).
 const planAuditEnabled = planAudit ?? config.planAudit ?? false
@@ -1610,7 +1614,7 @@ async function updateStatus(name) {
       `--jq '.data.repository.issue.projectItems.nodes[]|select(.project.number==${ghProject.projectNumber})|.id'\n` +
       `2) gh project item-edit --id <ITEM_ID> --field-id ${ghProject.fieldId} --project-id ${ghProject.projectId} --single-select-option-id ${optionId}\n` +
       `If step 1 prints nothing, issue #${issue} is not on project ${ghProject.projectNumber} — log that and STOP; never run step 2 with an empty id.`,
-      { label: `status:${name}`, model: 'haiku' },
+      { label: `status-${issue}:${name}`, model: 'haiku' },
     )
   } catch (e) { log(`updateStatus ${name} failed: ${e.message}, continuing`) }
 }
@@ -2494,7 +2498,7 @@ if (after('review', entryStage)) {
         // this call turns it into a loud, explicit failure instead of a silently partial list.
         const out = await agent(
           `cd "${wtPath}" && gh issue list --state open --search "created:>=${windowStart}"${prFlag} --limit ${REVIEWER_WINDOW_SCAN_SAFETY_LIMIT} --json number,createdAt,url --jq '[.[]|{number,createdAt,url}]'`,
-          { label: `reviewer-window-scan-${pr}-${round}`, model: 'haiku' },
+          { label: `reviewer-window-scan-${issue}-${pr}-${round}`, model: 'haiku' },
         )
         issues = JSON.parse(out)
         if (Array.isArray(issues) && issues.length === REVIEWER_WINDOW_SCAN_SAFETY_LIMIT) {
@@ -2530,7 +2534,7 @@ if (after('review', entryStage)) {
           `This issue was NOT closed.\\n' > .pipeline/reviewer-window-${num}.md\n` +
           `gh issue comment ${num}${prFlag} --body-file .pipeline/reviewer-window-${num}.md\n` +
           `echo OK`,
-          { label: `reviewer-window-flag-${num}`, model: 'haiku' },
+          { label: `reviewer-window-flag-${issue}-${num}`, model: 'haiku' },
         )
       } catch (e) {
         log(`flagReviewerWindowIssues round ${round}: failed to flag issue #${num} (${e.message}), continuing`)
@@ -2544,10 +2548,10 @@ if (after('review', entryStage)) {
           `Reply with ONLY a short OK/FAIL token.\n\n` +
           `cd "${wtPath}" && mkdir -p .pipeline\n` +
           `printf 'Reviewer-window issues flagged — opened during this review round, ` +
-          `NOT closed (see .claude/rules/pr-acceptance.md):\\n\\n${lines}\\n' > .pipeline/reviewer-window-rollup-${pr}-${round}.md\n` +
-          `gh pr comment ${pr}${prFlag} --body-file .pipeline/reviewer-window-rollup-${pr}-${round}.md\n` +
+          `NOT closed (see .claude/rules/pr-acceptance.md):\\n\\n${lines}\\n' > .pipeline/reviewer-window-rollup-${issue}-${pr}-${round}.md\n` +
+          `gh pr comment ${pr}${prFlag} --body-file .pipeline/reviewer-window-rollup-${issue}-${pr}-${round}.md\n` +
           `echo OK`,
-          { label: `reviewer-window-rollup-${pr}-${round}`, model: 'haiku' },
+          { label: `reviewer-window-rollup-${issue}-${pr}-${round}`, model: 'haiku' },
         )
       } catch (e) {
         log(`flagReviewerWindowIssues round ${round}: roll-up comment failed (${e.message}), continuing`)
@@ -2582,7 +2586,7 @@ if (after('review', entryStage)) {
         const out = await agent(
           `Run EXACTLY this command: gh pr view ${pr}${prFlag} --json comments -q '[.comments[]|select(.isMinimized==false)|select(.body|startswith("<!-- pipeline-review-round"))|.id]'. ` +
           `Then reply with its raw stdout verbatim (a JSON array), nothing else — no explanation, no markdown.`,
-          { label: `review-comment-scan-${pr}-${round}`, model: 'haiku' },
+          { label: `review-comment-scan-${issue}-${pr}-${round}`, model: 'haiku' },
         )
         ids = JSON.parse(out)
       } catch (e) {
@@ -2596,7 +2600,7 @@ if (after('review', entryStage)) {
       try {
         await agent(
           `gh api graphql -f query='mutation($id:ID!){minimizeComment(input:{subjectId:$id,classifier:OUTDATED}){minimizedComment{isMinimized}}}' -F id=${id}`,
-          { label: `review-comment-minimize-${id}`, model: 'haiku' },
+          { label: `review-comment-minimize-${issue}-${id}`, model: 'haiku' },
         )
       } catch (e) {
         log(`minimizeSupersededReviewComments round ${round}: failed to minimize comment ${id} (${e.message}), continuing`)
@@ -2612,7 +2616,7 @@ if (after('review', entryStage)) {
     try {
       const out = await agent(
         `gh pr view ${pr}${prFlag} --json commits --jq '.commits[-1].committedDate'`,
-        { label: `artifact-floor-${pr}-${round}`, model: 'haiku' },
+        { label: `artifact-floor-${issue}-${pr}-${round}`, model: 'haiku' },
       )
       const trimmed = String(out ?? '').trim()
       if (trimmed) return trimmed
@@ -2696,7 +2700,7 @@ if (after('review', entryStage)) {
     try {
       const out = await agent(
         `cd "${wtPath}" && git fetch origin ${baseBranch} -q 2>/dev/null; git rev-list --count HEAD..origin/${baseBranch}`,
-        { label: `worktree-behind-${pr}`, model: 'haiku' },
+        { label: `worktree-behind-${issue}-${pr}`, model: 'haiku' },
       )
       const n = Number(String(out ?? '').trim().split(/\s+/).pop())
       return Number.isFinite(n) ? n : null
@@ -2786,7 +2790,7 @@ if (after('review', entryStage)) {
     const pf = await callAgentSafe(
       'preflight',
       preflightPrompt(),
-      { schema: PREFLIGHT, label: `preflight-${pr}-${preflightCallCount}`, model: 'haiku' },
+      { schema: PREFLIGHT, label: `preflight-${issue}-${pr}-${preflightCallCount}`, model: 'haiku' },
       preflightCallCount,
     )
     preflightCallCount++
@@ -2811,7 +2815,7 @@ if (after('review', entryStage)) {
       `DISPATCH-time snapshot, so it enforces pre-PR gate logic), do not mutate the worktree to satisfy ` +
       `it and do not revert the PR's own change; stop and report it as blocked in your return, so the ` +
       `second preflight fails and the workflow escalates for the Lead/human.`,
-      { agentType: 'Nick', label: `nick-preflight-fix-${pr}`, model: 'sonnet' },
+      { agentType: 'Nick', label: `nick-preflight-fix-${issue}-${pr}`, model: 'sonnet' },
       currentRound,
     )
     if (isAgentDeath(nickFix)) {
@@ -2821,7 +2825,7 @@ if (after('review', entryStage)) {
     const pf2 = await callAgentSafe(
       'preflight',
       preflightPrompt(),
-      { schema: PREFLIGHT, label: `preflight-${pr}-${preflightCallCount}`, model: 'haiku' },
+      { schema: PREFLIGHT, label: `preflight-${issue}-${pr}-${preflightCallCount}`, model: 'haiku' },
       preflightCallCount,
     )
     preflightCallCount++
@@ -2902,20 +2906,20 @@ if (after('review', entryStage)) {
         `\`READ_FAIL\`/\`SPLICE_FAIL\`/\`WRITE_FAIL\`/\`GUARD_FAIL ...\`) — never repeat, quote, ` +
         `paraphrase or summarize any part of the PR body content in your reply.\n\n` +
         `cd "${wtPath}" && mkdir -p .pipeline\n` +
-        `cat > .pipeline/pr-body-sync-${pr}.cjs <<'PIPELINE_SYNC_EOF'\n${nodeScript}\nPIPELINE_SYNC_EOF\n` +
+        `cat > .pipeline/pr-body-sync-${issue}-${pr}.cjs <<'PIPELINE_SYNC_EOF'\n${nodeScript}\nPIPELINE_SYNC_EOF\n` +
         `gh pr view ${pr}${prFlag} --json body -q .body > .pipeline/pr-body-${pr}.pre.md\n` +
         `if [ $? -ne 0 ]; then echo "READ_FAIL"; exit 0; fi\n` +
         `PRE_LEN=$(wc -c < .pipeline/pr-body-${pr}.pre.md)\n` +
         `cat > .pipeline/pr-body-${pr}.block.md <<'PIPELINE_BLOCK_EOF'\n${block}\nPIPELINE_BLOCK_EOF\n` +
-        `node .pipeline/pr-body-sync-${pr}.cjs splice .pipeline/pr-body-${pr}.pre.md .pipeline/pr-body-${pr}.block.md .pipeline/pr-body-${pr}.md\n` +
+        `node .pipeline/pr-body-sync-${issue}-${pr}.cjs splice .pipeline/pr-body-${pr}.pre.md .pipeline/pr-body-${pr}.block.md .pipeline/pr-body-${pr}.md\n` +
         `if [ $? -ne 0 ]; then echo "SPLICE_FAIL"; exit 0; fi\n` +
         `gh pr edit ${pr}${prFlag} --body-file .pipeline/pr-body-${pr}.md\n` +
         `if [ $? -ne 0 ]; then echo "WRITE_FAIL"; exit 0; fi\n` +
         `gh pr view ${pr}${prFlag} --json body -q .body > .pipeline/pr-body-${pr}.post.md\n` +
         `POST_LEN=$(wc -c < .pipeline/pr-body-${pr}.post.md)\n` +
-        `node .pipeline/pr-body-sync-${pr}.cjs guard "$PRE_LEN" .pipeline/pr-body-${pr}.post.md\n` +
+        `node .pipeline/pr-body-sync-${issue}-${pr}.cjs guard "$PRE_LEN" .pipeline/pr-body-${pr}.post.md\n` +
         `if [ $? -eq 0 ]; then echo "OK bytes=$POST_LEN"; else gh pr edit ${pr}${prFlag} --body-file .pipeline/pr-body-${pr}.pre.md; echo "GUARD_FAIL restored=true pre=$PRE_LEN post=$POST_LEN"; fi\n`,
-        { label: `pr-body-sync-${pr}-${r}`, model: 'haiku' })
+        { label: `pr-body-sync-${issue}-${pr}-${r}`, model: 'haiku' })
     } catch (e) { log(`recordDecision round ${r}: sync failed (${e.message}), skipping`); return }
     const replyLine = String(syncReply ?? '').trim()
     if (replyLine.startsWith('GUARD_FAIL')) {
@@ -2992,12 +2996,12 @@ if (after('review', entryStage)) {
         `\`READ_FAIL\`/\`NO_MARKERS\`/\`SPLICE_FAIL\`/\`WRITE_FAIL\`/\`GUARD_FAIL ...\`) — never repeat, quote, ` +
         `paraphrase or summarize any part of the PR body content in your reply.\n\n` +
         `cd "${wtPath}" && mkdir -p .pipeline\n` +
-        `cat > .pipeline/pr-acceptance-sync-${pr}.cjs <<'PIPELINE_ACC_EOF'\n${nodeScript}\nPIPELINE_ACC_EOF\n` +
+        `cat > .pipeline/pr-acceptance-sync-${issue}-${pr}.cjs <<'PIPELINE_ACC_EOF'\n${nodeScript}\nPIPELINE_ACC_EOF\n` +
         `gh pr view ${pr}${prFlag} --json body -q .body > .pipeline/pr-body-${pr}.pre.md\n` +
         `if [ $? -ne 0 ]; then echo "READ_FAIL"; exit 0; fi\n` +
         `PRE_LEN=$(wc -c < .pipeline/pr-body-${pr}.pre.md)\n` +
         `cat > .pipeline/pr-acceptance-${pr}.checklist.md <<'PIPELINE_ACC_LIST_EOF'\n${list}\nPIPELINE_ACC_LIST_EOF\n` +
-        `node .pipeline/pr-acceptance-sync-${pr}.cjs splice .pipeline/pr-body-${pr}.pre.md .pipeline/pr-acceptance-${pr}.checklist.md .pipeline/pr-body-${pr}.md\n` +
+        `node .pipeline/pr-acceptance-sync-${issue}-${pr}.cjs splice .pipeline/pr-body-${pr}.pre.md .pipeline/pr-acceptance-${pr}.checklist.md .pipeline/pr-body-${pr}.md\n` +
         `RC=$?\n` +
         `if [ $RC -eq 3 ]; then echo "NO_MARKERS"; exit 0; fi\n` +
         `if [ $RC -ne 0 ]; then echo "SPLICE_FAIL"; exit 0; fi\n` +
@@ -3005,9 +3009,9 @@ if (after('review', entryStage)) {
         `if [ $? -ne 0 ]; then echo "WRITE_FAIL"; exit 0; fi\n` +
         `gh pr view ${pr}${prFlag} --json body -q .body > .pipeline/pr-body-${pr}.post.md\n` +
         `POST_LEN=$(wc -c < .pipeline/pr-body-${pr}.post.md)\n` +
-        `node .pipeline/pr-acceptance-sync-${pr}.cjs guard "$PRE_LEN" .pipeline/pr-body-${pr}.post.md\n` +
+        `node .pipeline/pr-acceptance-sync-${issue}-${pr}.cjs guard "$PRE_LEN" .pipeline/pr-body-${pr}.post.md\n` +
         `if [ $? -eq 0 ]; then echo "OK bytes=$POST_LEN"; else gh pr edit ${pr}${prFlag} --body-file .pipeline/pr-body-${pr}.pre.md; echo "GUARD_FAIL restored=true pre=$PRE_LEN post=$POST_LEN"; fi\n`,
-        { label: `pr-acceptance-sync-${pr}-${r}`, model: 'haiku' })
+        { label: `pr-acceptance-sync-${issue}-${pr}-${r}`, model: 'haiku' })
     } catch (e) { log(`syncAcceptanceBlock round ${r}: sync failed (${e.message})`); return false }
     const replyLine = String(syncReply ?? '').trim()
     if (replyLine.startsWith('OK')) { trace.push(`acceptance-synced:${r}`); return true }
@@ -3056,7 +3060,7 @@ if (after('review', entryStage)) {
         `SHA=$(gh pr view ${pr}${prFlag} --json headRefOid -q .headRefOid)\n` +
         `DIGEST=$(gh pr view ${pr}${prFlag} --json body -q .body | { shasum -a 256 2>/dev/null || sha256sum; } | cut -c1-12)\n` +
         `echo "$SHA $DIGEST"`,
-        { label: `pr-sig-${when}-round-${r}`, model: 'haiku' },
+        { label: `pr-sig-${issue}-${when}-round-${r}`, model: 'haiku' },
       )
     } catch (e) {
       log(`prSignature ${when} round ${r}: probe failed (${e.message}) — failing open`)
@@ -3094,7 +3098,7 @@ if (after('review', entryStage)) {
       `then POST your verdict (LGTM | REQUIRED_CHANGES | REGRESSION_DETECTED) as a comment on PR #${pr}. Prefix that posted comment EXACTLY with the pipeline-review-round marker \`${reviewMarker}\` as its own first line (hidden HTML marker; do NOT let it leak into \`items\`). ` +
       `For each remaining unticked acceptance box, put in \`items\` the **verbatim checklist line** it blocks on (copy the box text exactly — do NOT paraphrase — so a persistent blocker reads identically across rounds). Any box whose line contains the tag \`[human-gate]\` is a **human-only** item: you cannot verify it and MUST NOT tick it or ask Nick to fix it — copy its line verbatim into \`items\` (tag preserved) and treat it as a human gate, not a code defect. Emit \`REQUIRED_CHANGES\` whenever any box is unticked (human-gate or not). ` +
       `For each item in \`items\`, ALSO classify it in \`itemOwners\` ({item, itemOwner, proof}): 'code-defect' is the DEFAULT whenever you are uncertain — a plan owner ('plan-defect'|'checklist-wording-defect') REQUIRES a concrete \`proof\` quoting the exact contradiction between the plan/checklist and reality, and NEVER excuses unfinished code. If a box's verification PASSED but ticking it (\`gh pr edit\`) is denied by permissions, do NOT retry, do NOT work around the denial and do NOT post "Ready to merge": leave the box \`- [ ]\`, copy its verbatim line into \`items\`, and classify it in \`itemOwners\` as 'proven-untickable' with \`proof\` = the command you ran and its verbatim output. ${UNTICKABLE_LINE_RULE}A box whose verification failed or was not run stays 'code-defect'. A [human-gate] box is NEVER 'proven-untickable'.`,
-    { agentType: 'Morgan', phase: 'Review', schema: MORGAN, label: `morgan-pr-${pr}-r${round}`, model: morganModel },
+    { agentType: 'Morgan', phase: 'Review', schema: MORGAN, label: `morgan-pr-${issue}-${pr}-r${round}`, model: morganModel },
     round,
   )
 
@@ -3184,7 +3188,7 @@ if (after('review', entryStage)) {
       const nickFixRound = await callAgentSafe(
         'nick',
         `Work in the shared worktree "${wtPath}". Read Morgan's review on PR #${pr} (gh pr view ${pr}${prFlag} --comments), address every REQUIRED_CHANGES item${planRouted ? ' listed below (the other blockers on this PR are handled by a plan amendment — do NOT touch them)' : ''} while staying faithful to the plan below, re-run the green bar (\`${buildCmd}\` + \`${testCmd}\`, format modified files via \`${formatCmd}\`), and push. When deleting repo-tracked files, use \`git rm <file>\` instead of bare \`rm\` — bare rm is sandbox-denied and burns permission rounds. ${SANDBOX_INSTALL_HINT} After pushing, post a ONE-LINE push-note comment on PR #${pr} (only there, not on the issue) prefixed EXACTLY with the pipeline-review-round marker \`${reviewMarker}\` as its own first line, summarizing the change you just made.${planRouted ? `\n\nItems to address:\n${nickItems.map(i => `- ${i}`).join('\n')}` : ''}\n\n${planBlock}`,
-        { agentType: 'Nick', phase: 'Review', label: `nick-pr-${pr}`, model: 'sonnet' },
+        { agentType: 'Nick', phase: 'Review', label: `nick-pr-${issue}-${pr}`, model: 'sonnet' },
         round,
       )
       if (isAgentDeath(nickFixRound)) {
@@ -3220,7 +3224,7 @@ if (after('review', entryStage)) {
         `Then post the new verdict (LGTM | REQUIRED_CHANGES | REGRESSION_DETECTED) as a comment on the PR. Prefix that posted comment EXACTLY with the pipeline-review-round marker \`${reviewMarker}\` as its own first line (hidden HTML marker; do NOT let it leak into \`items\`). ` +
         `For each remaining unticked acceptance box, put in \`items\` the **verbatim checklist line** it blocks on (copy the box text exactly — do NOT paraphrase — so a persistent blocker reads identically across rounds). Any box whose line contains the tag \`[human-gate]\` is a **human-only** item: you cannot verify it and MUST NOT tick it or ask Nick to fix it — copy its line verbatim into \`items\` (tag preserved) and treat it as a human gate, not a code defect. Emit \`REQUIRED_CHANGES\` whenever any box is unticked (human-gate or not). ` +
         `For each item in \`items\`, ALSO classify it in \`itemOwners\` ({item, itemOwner, proof}): 'code-defect' is the DEFAULT whenever you are uncertain — a plan owner ('plan-defect'|'checklist-wording-defect') REQUIRES a concrete \`proof\` quoting the exact contradiction between the plan/checklist and reality, and NEVER excuses unfinished code. If a box's verification PASSED but ticking it (\`gh pr edit\`) is denied by permissions, do NOT retry, do NOT work around the denial and do NOT post "Ready to merge": leave the box \`- [ ]\`, copy its verbatim line into \`items\`, and classify it in \`itemOwners\` as 'proven-untickable' with \`proof\` = the command you ran and its verbatim output. ${UNTICKABLE_LINE_RULE}A box whose verification failed or was not run stays 'code-defect'. A [human-gate] box is NEVER 'proven-untickable'.\n\n${planBlock}`,
-      { agentType: 'Morgan', phase: 'Review', schema: MORGAN, label: `morgan-pr-${pr}-r${round}`, model: morganModel },
+      { agentType: 'Morgan', phase: 'Review', schema: MORGAN, label: `morgan-pr-${issue}-${pr}-r${round}`, model: morganModel },
       round,
     )
 
@@ -3291,7 +3295,7 @@ if (after('review', entryStage)) {
       try {
         const raw = await agent(
           `cd "${wtPath}" && gh pr view ${pr}${prFlag} --json headRefName,commits`,
-          { label: `squash-scan-${pr}`, model: 'haiku' })
+          { label: `squash-scan-${issue}-${pr}`, model: 'haiku' })
         const j = JSON.parse(raw)
         headRefName = j.headRefName            // REUSE the provided field — never rebuild it
         commitCount = (j.commits || []).length
@@ -3311,7 +3315,7 @@ if (after('review', entryStage)) {
       `6. git push --force-with-lease origin "${headRefName}".\n` +
       `7. Post ONE comment on PR #${pr}, prefixed with \`${reviewMarker}\` as its own first line, stating the old and new head SHAs and that \`git diff <old> <new>\` is empty (the LGTM still holds).\n` +
       `Never use bare --force. Never push to ${baseBranch}/main. Never merge this PR yourself — merging is an external gesture handled outside the pipeline. Never throw — the handoff must complete either way.`,
-      { agentType: 'Nick', label: `nick-squash-${pr}`, model: 'sonnet' },
+      { agentType: 'Nick', label: `nick-squash-${issue}-${pr}`, model: 'sonnet' },
       round,
     )
   }
@@ -3325,7 +3329,7 @@ if (after('review', entryStage)) {
     try {
       const out = await agent(
         `gh pr view ${pr}${prFlag} --json mergeable,mergeStateStatus --jq '{mergeable,mergeStateStatus}'`,
-        { label: `merge-state-${pr}-${round}`, model: 'haiku' },
+        { label: `merge-state-${issue}-${pr}-${round}`, model: 'haiku' },
       )
       const j = JSON.parse(out)
       return (j && typeof j.mergeable === 'string') ? j : null
