@@ -32,9 +32,12 @@ roles:
 executor_flags: [nightly]
 exclusions: [cross-repo]
 protected: [nightly, cross-repo, "auto:*"]
+# Priority ranks developments, it is not a WIP queue (maintainer, 2026-09-30): an epic carries the
+# priority, its children inherit it, the Lead follows the order written in the epic body. Caps are
+# therefore only a sanity ceiling during the v1 milestone.
 caps:
-  "priority:0-now": 2
-  "priority:1-next": 8
+  "priority:0-now": 40
+  "priority:1-next": 40
 legacy_map:
   bug: "type:bug"
   enhancement: "type:feature"
