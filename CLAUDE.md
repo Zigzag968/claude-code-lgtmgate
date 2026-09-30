@@ -2,7 +2,7 @@
 
 Runbook for the Lead (the session that changes this repo or dispatches its pipeline).
 - Launching and supervising a run: `commands/deliver.md`.
-- Design decisions: `DESIGN.md` (to come, #77).
+- Direction: `VISION.md` (target, directives, out of scope); code map and invariants: `ARCHITECTURE.md`.
 
 ## Three rules (they bind the Lead, Sam, Nick and Morgan alike)
 

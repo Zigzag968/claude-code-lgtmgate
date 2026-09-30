@@ -1830,8 +1830,8 @@ if (after('plan', entryStage)) {
 // regardless of which call site invokes this, fresh Plan-phase or Review-phase amendment.
 const SAM_LAYER_RULE = 'LAYER RULE: plan the smallest change that removes the cause class; never a `simulate.*` seam; say in the plan if the diff adds a status, an `agent()`, a hook or a seam; list `patch-avoided:` with the patches you rejected.'
 // #77 — design doc import (Sam + Morgan prompts only; agents/sam.md stays untouched). Harmless when the file is absent.
-const DESIGN_IMPORT_SAM = 'Read `@DESIGN.md` at the repo root if it exists (design decisions and one-way doors); if it is absent, skip this silently. '
-const DESIGN_IMPORT_MORGAN = 'Read `@DESIGN.md` at the repo root if it exists and check the diff against its decisions; if it is absent, skip this silently.\n'
+const VISION_IMPORT_SAM = 'Read `@VISION.md` (target, directives, Never table, decisions, out of scope) and `@ARCHITECTURE.md` (code map, invariants, where new code goes) at the repo root if they exist, and plan in their direction; skip silently any that is absent. '
+const VISION_IMPORT_MORGAN = 'Read `@VISION.md` at the repo root if it exists and check the diff against its directives, its Never table, its decisions and its out-of-scope list; if it is absent, skip this silently.\n'
 // R3 (#77): the announcement line the SCRIPT parses (oneWayDoorSignals) — one line per kind, or `none`.
 const SAM_ONE_WAY_DOOR = 'ONE-WAY-DOOR ANNOUNCEMENT: in the plan text, state on its own line for each kind the diff adds — `one-way-door: status — <what>`, `one-way-door: agent — <what>`, `one-way-door: hook — <what>`, `one-way-door: seam — <what>` — or the single line `one-way-door: none`. The script parses these lines; a kind you announce stops the run at the design step. '
 const samScoutPrompt = ({ fixBlock = '', auditFixBlock = '', reviewFixBlock = '' } = {}) => {
@@ -1854,7 +1854,7 @@ const samScoutPrompt = ({ fixBlock = '', auditFixBlock = '', reviewFixBlock = ''
     `The durable history lives in the issue/PR thread and in git commits, never inside the plan (the artifact itself is gitignored build output). ` +
     `An amended plan is about the size of a fresh plan for the current scope — usually SMALLER than the previous revision, never monotonically larger. ` +
     `${SAM_LAYER_RULE} ` +
-    `${SAM_ONE_WAY_DOOR}${DESIGN_IMPORT_SAM}` +
+    `${SAM_ONE_WAY_DOOR}${VISION_IMPORT_SAM}` +
     `Author the acceptance checklist against ${conventionsRule} — in particular its Format-status and Test-status acceptance-item sections: never assert a whole-repo clean state the base branch cannot satisfy. ` +
     `Then post an INDEX comment on issue #${issue} — never the full plan, whatever its size. The index comment is exactly: ${planMarker} alone on its first line, a condensed summary (~15 lines max), the acceptance checklist VERBATIM, and a pointer to the canonical artifact "${planPath}" in the shared worktree. ` +
     `HARD CAP: keep that comment under ${planCommentMaxChars} characters (GitHub rejects an issue-comment body over 65536 chars); it is an index, so the bound holds by construction — if you approach it, cut summary prose, never the checklist. ` +
@@ -3073,7 +3073,7 @@ if (after('review', entryStage)) {
   let v = await callMorganGuarded(
     `Work in the shared worktree "${wtPath}". Review PR #${pr}.\n\n` +
       `${planBlock}\n\n` +
-      `${DESIGN_IMPORT_MORGAN}` +
+      `${VISION_IMPORT_MORGAN}` +
       `Gate on the acceptance checklist FROM THAT PLAN, review against ${conventionsRule}, ` +
       `${regressionGuardStep}` +
       `For asset/render/human-facing lanes, BEFORE any verdict, execute the real-case live run yourself (the exact command the plan names, deps included) and machine-verify the output contract from the plan (e.g. the exact pixel/asset dimensions and named visual elements the plan calls for, screenshot non-empty, named fields written). Units mock the other side, so seam errors pass with the mock; only a taste judgment then remains for the human-gate. ` +
@@ -3205,7 +3205,7 @@ if (after('review', entryStage)) {
 
     v = await callMorganGuarded(
       `Work in the shared worktree "${wtPath}". Re-review PR #${pr} after Nick's fixes, against the SAME plan and acceptance checklist below. ` +
-        `${DESIGN_IMPORT_MORGAN}` +
+        `${VISION_IMPORT_MORGAN}` +
         `Re-run the regression guard the same way: ${regressionGuardStep}` +
         `For asset/render/human-facing lanes, BEFORE any verdict, execute the real-case live run yourself (the exact command the plan names, deps included) and machine-verify the output contract from the plan (e.g. the exact pixel/asset dimensions and named visual elements the plan calls for, screenshot non-empty, named fields written). Units mock the other side, so seam errors pass with the mock; only a taste judgment then remains for the human-gate. ` +
         `${artifactProofStep}` +
