@@ -221,7 +221,7 @@ export const meta = {
 // `version`, checked against plugin.json by templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '0.8.86', cutFrom: '20122a2' }
+const BUILD = { plugin: 'lgtmgate', version: '0.8.87', cutFrom: '956d26f' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -238,7 +238,12 @@ let nickPromptPreview = null
 // flow tests assert the composed provisioning command (notably PROVISION_ENV_SYMLINK) without
 // exposing it outside simulate runs.
 let provisionCmdPreview = null
-const finish = (o) => ({ buildStamp: BUILD_STAMP, ...(simulate ? { nickPromptPreview, provisionCmdPreview } : {}), ...o })
+// #110: set by callAgent when an agent call stayed cut off by a classifier outage past its retry
+// bound; finish() then names the cause on the resulting `*-died` status.
+let classifierOutageDeath = false
+const finish = (o) => ({ buildStamp: BUILD_STAMP, ...(simulate ? { nickPromptPreview, provisionCmdPreview } : {}),
+  ...(classifierOutageDeath && String(o.status).endsWith('-died')
+    ? { reason: 'classifier-outage: resume with resumeFromRunId' } : {}), ...o })
 
 const {
   issue, brief, pmReview = false, issueType = null, wtPath,
@@ -1436,6 +1441,15 @@ const STRUCTURED_OUTPUT_MANDATE =
   'FACT, not a suggestion: emit the StructuredOutput tool call NOW. Never claim you already ' +
   'called it.'
 
+// #110 transient outage signature: the harness ends the turn when the auto-mode classifier returns
+// no verdict. The exact harness wording was not captured in the incident (only "no safety verdict" /
+// "returned no verdict"), so the match is deliberately loose. Short texts only: a long answer that
+// merely mentions the phrase is not an outage.
+// guards:parser-begin
+const CLASSIFIER_OUTAGE = /no safety verdict|classifier[^.\n]{0,80}(unavailable|no verdict|did not return|outage)/i
+const isClassifierOutage = (t) => typeof t === 'string' && t.length > 0 && t.length < 600 && CLASSIFIER_OUTAGE.test(t)
+// guards:parser-end
+
 async function callAgent(role, prompt, opts, round = 0, attempt = 1) {
   if (simulate) {
     // #54 seam A — replay P1's captured harness signature on the NAMED attempt numbers.
@@ -1460,7 +1474,31 @@ async function callAgent(role, prompt, opts, round = 0, attempt = 1) {
     harnessOpts = rest.agentType ? { ...rest, agentType: normalizeAgentType(rest.agentType) } : rest
   }
   const finalPrompt = opts && opts.schema ? `${prompt}\n\n${STRUCTURED_OUTPUT_MANDATE}` : prompt
-  return await agent(finalPrompt, harnessOpts)
+  // #110: a turn cut off by an auto-mode classifier outage ("no safety verdict") is transient —
+  // retry the same call (bounded, with backoff) before callAgentSafe may call the step dead. The
+  // single agent() call stays here; bounds come from config.classifierOutage.
+  const outageCfg = (config && config.classifierOutage) || {}
+  const maxOutageRetries = Number.isInteger(outageCfg.retries) && outageCfg.retries >= 0 ? outageCfg.retries : 1
+  const outageBackoffMs = Number.isFinite(outageCfg.backoffMs) && outageCfg.backoffMs >= 0 ? outageCfg.backoffMs : 15000
+  for (let n = 0; ; n++) {
+    let out
+    let err = null
+    try { out = await agent(finalPrompt, harnessOpts) } catch (e) { err = e }
+    const text = err ? (err.message || String(err)) : (typeof out === 'string' ? out : '')
+    if (!isClassifierOutage(text)) {
+      if (err) throw err
+      return out
+    }
+    if (n >= maxOutageRetries) {
+      classifierOutageDeath = true
+      throw new Error(`classifier outage — resume with resumeFromRunId (${role} cut off ${n + 1}x: ${text.slice(0, 160)})`)
+    }
+    trace.push(`classifier-outage-retry:${role}:${n + 1}`)
+    log(`callAgent: ${role} cut off by a classifier outage — retry ${n + 1}/${maxOutageRetries} after ${outageBackoffMs * (n + 1)}ms`)
+    if (outageBackoffMs > 0 && typeof setTimeout === 'function') {
+      await new Promise((r) => setTimeout(r, outageBackoffMs * (n + 1)))
+    }
+  }
 }
 
 // Sentinel returned by callAgentSafe on an unrecoverable agent death (thrown error, or a
