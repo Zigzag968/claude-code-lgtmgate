@@ -224,7 +224,7 @@ export const meta = {
 // `version`, checked against plugin.json by templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '0.8.97', cutFrom: '4c16647' }
+const BUILD = { plugin: 'lgtmgate', version: '0.8.98', cutFrom: '19d8aed' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -1750,27 +1750,44 @@ async function updateStatus(name) {
 // discover the staleness itself before opening a doomed diff — this preflight catches the same
 // case for 0 planning tokens.
 // ---------------------------------------------------------------------------
+// guards:parser-begin
+// parseProvisionFreshness (#40) — pure parse of the freshness probe's last marker line
+// `PROVISION-FRESHNESS:<ffwd|fresh|stale>:<behind>[:<own>]`; a legacy bare number (old probe
+// shape) maps to {state:'legacy'}; anything else is null (fail-open).
+const parseProvisionFreshness = (out) => {
+  const text = String(out ?? '').trim()
+  const m = text.split('\n').reverse().map(l => l.trim()).map(l => l.match(/^PROVISION-FRESHNESS:(ffwd|fresh|stale):(\d+)(?::(\d+))?$/)).find(Boolean)
+  if (m) return { state: m[1], behind: Number(m[2]), own: m[3] === undefined ? null : Number(m[3]) }
+  const n = Number(text.split(/\s+/).pop())
+  return text !== '' && Number.isFinite(n) ? { state: 'legacy', behind: n, own: null } : null
+}
+// guards:parser-end
 if (entryStage === 'plan') {
-  const provisionBehind = simulate
-    ? (simulate.provisionBehindCount ?? 0)
+  const provisionFresh = simulate
+    ? { state: 'legacy', behind: simulate.provisionBehindCount ?? 0, own: null }
     : await (async () => {
         try {
           const out = await agent(
-            `cd "${wtPath}" && git fetch origin ${baseBranch} -q 2>/dev/null; git rev-list --count HEAD..origin/${baseBranch}`,
+            `cd "${wtPath}" && git fetch origin ${baseBranch} -q 2>/dev/null; B=$(git rev-list --count HEAD..origin/${baseBranch}); O=$(git rev-list --count origin/${baseBranch}..HEAD); if [ "$B" -gt 0 ] && [ "$O" -eq 0 ] && git merge --ff-only origin/${baseBranch} -q >/dev/null 2>&1; then echo "PROVISION-FRESHNESS:ffwd:$B"; elif [ "$B" -eq 0 ]; then echo "PROVISION-FRESHNESS:fresh:0:$O"; else echo "PROVISION-FRESHNESS:stale:$B:$O"; fi. Print the command's last line verbatim.`,
             { label: `provision-freshness-${issue}`, model: 'haiku' },
           )
-          const n = Number(String(out ?? '').trim().split(/\s+/).pop())
-          return Number.isFinite(n) ? n : null
+          return parseProvisionFreshness(out)
         } catch (e) {
           log(`provisionBehindCount: probe failed (${e.message}), skipping staleness preflight`)
           return null
         }
       })()
-  if (typeof provisionBehind === 'number' && provisionBehind > 0) {
-    log(`Provision-freshness: worktree is ${provisionBehind} commit(s) behind origin/${baseBranch} at dispatch — escalating before any planning spend`)
+  if (provisionFresh?.state === 'ffwd') {
+    log(`Provision-freshness: worktree was ${provisionFresh.behind} commit(s) behind origin/${baseBranch} with no commit of its own — fast-forwarded, continuing`)
+    trace.push(`provision-ffwd:${provisionFresh.behind}`)
+  } else if (provisionFresh && provisionFresh.behind > 0) {
+    const provisionBehind = provisionFresh.behind
+    const ownCommits = provisionFresh.own
+    const mergeCommand = `git -C "${wtPath}" merge origin/${baseBranch}`
+    log(`Provision-freshness: worktree is ${provisionBehind} commit(s) behind origin/${baseBranch} at dispatch (own commits: ${ownCommits ?? 'unknown'}) — escalating before any planning spend; run: ${mergeCommand}`)
     trace.push(`provision-stale:${provisionBehind}`)
     await updateStatus('Blocked')
-    return finish({ status: 'escalate', reason: 'provision-stale', issue, behind: provisionBehind, baseBranch, wtPath, trace })
+    return finish({ status: 'escalate', reason: 'provision-stale', issue, behind: provisionBehind, ownCommits, mergeCommand, baseBranch, wtPath, trace })
   }
 }
 
