@@ -1,52 +1,57 @@
-# Vision — read before planning or reviewing
+# Vision
 
-You are planning or reviewing a change to lgtmgate. Judge every plan and every diff against this file.
-When in doubt, stop and escalate to the maintainer; never work around a rule.
+The doctrine of this repo, for the agents and the humans who develop lgtmgate. Judge every plan and
+every diff against it. Principles, invariants and their checks: `ARCHITECTURE.md`. Map: `docs/codemap.md`.
 
-## Target (the engine in 6 months)
-Code orchestrates, the LLM only judges. Every contact with the world (shell, git, GitHub, files) goes
-through one port; every run state is a typed status; every acceptance item is data with a proof.
-Product goal: a labelled issue becomes a merge-ready PR whose every item is proven by a command and
-its output. Reliability first (nothing merges unproven), then autonomy (`size:S` issues reach `ready`
-with no human step), on any GitHub repo.
+## Thesis
+Humans read proofs, not diffs. LGTM Gate is the trust layer between coding agents and `main`:
+nothing reaches `main` unless every acceptance item is proven by a command and its output.
 
-## Directives
-1. Prove, never assert: a box is checked only with its command and output.
-2. Fix the layer that produced the bug, not the symptom. A new agent, probe `agent()` or `simulate.*`
-   seam is never the answer to a failure.
-3. Humans act only at one-way doors (a new status, `agent()`, hook or seam: announce
-   `one-way-door:` and stop) and at merge. Never merge automatically.
-4. Keep cost bounded: a script over an agent for any mechanical check.
+## Who the product serves
+The Product Engineer who has more ideas than they can code themselves, lets agents build, and must be
+able to trust that those agents stay aligned with the product vision and the technical vision of the
+repo. Installed in a repo, the gate plugs into that repo's own `VISION.md`, `ARCHITECTURE.md` and code
+map when they exist, and holds its agents to the maintainer's intent.
 
-## Never — each rule has its check
-| # | Never | Checked by | State |
-|---|---|---|---|
-| N1 | an `await agent(` outside `callAgent` | `scripts/guards.cjs` R1 ratchet | in place (target: 1 call, E2) |
-| N2 | a new `simulate.*` seam | `scripts/guards.cjs` R1 ratchet | in place (target: `simulate.probes` only, E2) |
-| N3 | a regex on agent output outside parser markers | `scripts/guards.cjs` R1 ratchet | in place |
-| N4 | a merge with an unproven acceptance box | `hooks/block-merge-unchecked.sh`, `scripts/lead-merge.sh` | in place |
-| N5 | an engine bug fixed without a replayed fixture | R2 acceptance item, `run-offline.cjs --all` in CI | in place |
+## Target
+- A labelled issue becomes a merge-ready PR whose every acceptance item is proven, on any GitHub repo.
+- Every real incident becomes a replayed fixture; every closed cause class becomes a CI check; the
+  same failure class never recurs.
+- The merge ladder: today a human merges every PR. Next, the human merges on proofs alone, never on
+  a diff. Target: a change class with a measured clean record merges on its own; humans act at
+  one-way doors. Each step is earned by a measurement, never claimed.
+- Cost per issue stays bounded because a script does every mechanical job and the model only
+  judges; the Lead's progress table carries the tokens per PR that show it.
 
-Also enforced: every test suite runs in CI (`all-tests-wired`); persona and engine prompts share
-byte-identical rules (`sam-parity`); the version never goes below `main` and is bumped at merge.
+## Design decisions (do not re-propose the rejected options)
+1. One gate to the world. Code executes, keeps the raw output, parses it and prints one line; the
+   agent only copies that line; a hook attests the execution. Rejected: one model call per read or
+   write, re-typing stdout.
+2. One state registry. Every run outcome is a typed status; the Lead's table and the hooks are
+   checked against it. Rejected: status strings scattered through the engine.
+3. The checklist is data. Acceptance items carry ids, are rendered by the workflow and proven per
+   id. Rejected: a Markdown checklist read by three parsers.
 
-## Decisions (do not re-propose the rejected options)
-1. One gate to the world: `probe-run` executes, keeps the raw output, parses it with pure parsers and
-   prints one line; the agent only copies that line; a hook attests the execution (E2).
-   Rejected: one haiku probe per read or write, re-typing stdout (22 probes).
-2. One state registry: `STATUS` holds every run outcome; the Lead's table and the Stop hook are
-   checked against it (E3). Rejected: status strings scattered through the engine.
-3. The checklist is data: `acceptanceItems` with ids, rendered by the workflow, proven per id (E3).
-   Rejected: a Markdown checklist read by three parsers.
+## How we work
+- The patch is the default route. It becomes structural when it would cross an invariant.
+- A shortcut is allowed at the margin, never in silence: a `DEBT` marker in the code, an open
+  follow-up issue, an `exception:` line in the PR, and a human who accepts it at merge
+  (format in `ARCHITECTURE.md`). Never for the three ratchet counters, an unproven item, a bug
+  without its fixture, or a critical path.
+- The planner names the proof, the developer makes it pass, the reviewer runs it.
+- The critical paths of the product are declared in `docs/critical-paths.md`; each one has a passing
+  test; an agent never edits that list without a human.
+- Humans act at one-way doors and at merge. A script over a model for any mechanical job.
 
-## Where new code goes
-Side effect or probe → `probe-run` (today `callAgent`) · new outcome → `STATUS` (one-way door) ·
-new check → an acceptance item · engine bug → `fixtures/incidents/<issue>-*.json` first, then the fix.
-Map of the current code: `ARCHITECTURE.md`.
+## Never
+- An agent re-types what a command printed.
+- Anything merges unproven.
+- A rule without its check.
+- A model adopts its own rules: a human adopts every invariant.
+- A new agent role for a mechanical job.
 
-## Out of scope — refuse and say why
-New agent roles · new probe `agent()` calls · automatic merge · forges other than GitHub.
+## Out of scope
+Forges other than GitHub. Multi-human roles and permissions.
 
 ## Evolution
-Add a rule only at its second occurrence, and only with a check. Remove a rule that changed no result.
-Version: 2026-09-30.
+Add a rule at its second occurrence, only with a check. Remove a rule that changed no result.
