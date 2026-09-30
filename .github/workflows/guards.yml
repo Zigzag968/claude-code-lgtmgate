@@ -42,6 +42,12 @@ jobs:
         run: bash scripts/test-run-offline.sh
       - name: Stop-supervise watchdog regression test
         run: bash hooks/test-Stop-supervise-runs.sh
+      - name: deny-destructive-git hook regression test
+        run: bash hooks/test-deny-destructive-git.sh
+      - name: SubagentStop worktree-cleanup hook regression test
+        run: bash hooks/test-SubagentStop-worktree-cleanup.sh
+      - name: cleanup-worktree script regression test
+        run: bash scripts/test-cleanup-worktree.sh
       - name: verify-workflow-launch regression test
         run: bash scripts/test-verify-workflow-launch.sh
       - name: Provision worktree guard

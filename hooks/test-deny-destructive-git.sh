@@ -156,6 +156,36 @@ assert_exit "reset --soft HEAD~1 is allowed" 0 "$(run_hook "git reset --soft HEA
 assert_exit "reset HEAD file is allowed" 0 "$(run_hook "git reset HEAD file.txt")"
 assert_exit "reset --hardware is allowed" 0 "$(run_hook "git reset --hardware")"
 
+# --- cases: sanctioned cleanup script + bare recursive rm of a worktree (#34/#35) --
+# The worktree root is pinned via the env so the rm rule is deterministic.
+
+export LGTMGATE_WORKTREE_ROOT=/tmp/lgtmgate-wt-root
+
+assert_exit "cleanup-worktree script allowed" 0 \
+  "$(run_hook "bash scripts/cleanup-worktree.sh /tmp/lgtmgate-wt-root/issue-9")"
+
+# No name-based early exit: a compound that smuggles a raw removal stays denied.
+assert_exit "cleanup-worktree.sh; git worktree remove compound still denied" 2 \
+  "$(run_hook "bash scripts/cleanup-worktree.sh /tmp/lgtmgate-wt-root/issue-9; git worktree remove --force /tmp/x")"
+
+assert_exit "bare rm -rf of a worktree denied" 2 \
+  "$(run_hook "rm -rf /tmp/lgtmgate-wt-root/issue-9")"
+assert_exit "bare rm -rf -- of a worktree (trailing slash) denied" 2 \
+  "$(run_hook "rm -rf -- /tmp/lgtmgate-wt-root/issue-9/")"
+assert_exit "cd && rm -R of a worktree denied" 2 \
+  "$(run_hook "cd /tmp && rm -R /tmp/lgtmgate-wt-root/issue-9")"
+assert_exit "rm -r of a worktree followed by ; denied" 2 \
+  "$(run_hook "rm -r /tmp/lgtmgate-wt-root/issue-9; ls")"
+
+assert_exit "rm -rf inside a worktree (node_modules) allowed" 0 \
+  "$(run_hook "rm -rf /tmp/lgtmgate-wt-root/issue-9/node_modules")"
+assert_exit "rm -rf of an unrelated dir allowed" 0 \
+  "$(run_hook "rm -rf /tmp/other/dir")"
+assert_exit "rm -rf of a sibling with the root as name prefix allowed" 0 \
+  "$(run_hook "rm -rf /tmp/lgtmgate-wt-root-other/issue-9")"
+assert_exit "non-recursive rm under the root allowed" 0 \
+  "$(run_hook "rm /tmp/lgtmgate-wt-root/issue-9")"
+
 # --- summary -------------------------------------------------------------
 
 echo "${pass_count}/${total} PASS"
