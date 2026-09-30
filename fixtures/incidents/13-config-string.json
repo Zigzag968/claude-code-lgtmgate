@@ -1,0 +1,15 @@
+{
+  "name": "13-config-string",
+  "note": "#12: config passed as a JSON string instead of the parsed object; must be refused before any agent call, not read as defaults.",
+  "args": {
+    "issue": 106,
+    "brief": "Teach Sam the version-bump rule",
+    "wtPath": "/wt/root/issue-106",
+    "mode": "semi",
+    "config": "{\"ghProject\": {\"owner\": \"Zigzag968\", \"projectNumber\": 1}, \"repo\": \"Zigzag968/claude-code-lgtmgate\", \"baseBranch\": \"main\", \"branchPrefix\": \"feat/\", \"worktreeRoot\": \"../worktrees/lgtmgate\", \"conventionsRule\": \".claude/rules/pr-acceptance.md\", \"commands\": {\"build\": \"echo 'no build step (agent/command/hook definitions + JS/shell templates, no compiled artifact)'\", \"test\": \"bash templates/test-canonical-guards.sh && node scripts/run-flow-suite.cjs\", \"format\": \"echo 'no formatter configured'\"}, \"ciChecks\": [\"guards\", \"smoke-install\"], \"provision\": {\"extraLinks\": []}, \"preflight\": {\"canonicalStringBan\": [], \"envSymlink\": \"ignore\"}, \"regressionGuard\": {\"testGlob\": \"\", \"testFnPattern\": \"\", \"baselineCmd\": \"\"}}"
+  },
+  "calls": {},
+  "expect": {
+    "throws": "Missing or invalid arg: config"
+  }
+}

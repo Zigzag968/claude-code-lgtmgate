@@ -14,7 +14,7 @@ You are the **Lead**. You deliver a change end-to-end through the **Mia -> Sam -
 
 ## 1. Read the config
 - Read `.claude/pipeline.config.json` (project root). Missing → stop: `Pipeline not configured. Run /lgtmgate:init first.`
-- Keep the JSON object in memory: pass it as-is to the workflow (`config`).
+- Keep the JSON object in memory: pass it as-is to the workflow (`config`) — ALWAYS, as the parsed object (never the JSON text, never omitted): the workflow has no filesystem and refuses to start without a `config` object (#13). Same for `configLocal` (`{}` if the file is absent).
 - Resolve which pipeline to launch (two branches, never a bare name):
   - The `lgtmgate` plugin (>=0.8.0) provides the **namespaced** workflow component
     `lgtmgate:deliver-pipeline` (plugin's `workflows/` directory, default

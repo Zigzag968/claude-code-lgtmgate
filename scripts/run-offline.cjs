@@ -19,7 +19,9 @@
 //       "<label>": <value> | [<value>, <value>, ...]   // array = consumed in call order
 //     },
 //     "expect": {
-//       "status": "ready",                 // required
+//       "status": "ready",                 // required, unless "throws" is set
+//       "throws": "config",                // optional: the run must THROW an error whose message contains this
+//                                          // (arg-validation refusals; zero agent() call allowed) — replaces status
 //       "reason": "nick-no-op",            // optional, exact match
 //       "trace": ["Provision", "Diagnose"],// optional, PREFIX match on result.trace
 //       "logsInclude": ["..."]             // optional, each substring must appear in a log line
@@ -153,6 +155,16 @@ async function runOne(fixturePath, fpSrcStripped) {
   const log = (m) => { logs.push(String(m)) }
   const agent = buildFixtureAgent(fixture, calls, missing)
   const run = buildPipelineRunner(fpSrcStripped)
+  const expThrows = fixture.expect && fixture.expect.throws
+  if (typeof expThrows === 'string') {
+    let err = null
+    try { await run({ ...(fixture.args || {}) }, agent, log, () => {}) } catch (e) { err = e }
+    const problems = []
+    if (!err) problems.push(`throws: expected an error containing "${expThrows}", but the run did not throw`)
+    else if (!String(err.message).includes(expThrows)) problems.push(`throws: expected message containing "${expThrows}", got "${err.message}"`)
+    if (calls.length) problems.push(`throws: ${calls.length} agent() call(s) happened before the refusal (${calls.map((c) => c.label || c).join(', ')})`)
+    return { fixture, result: { status: 'threw' }, logs, calls, problems }
+  }
   const result = await run({ ...(fixture.args || {}) }, agent, log, () => {})
   const problems = check(fixture, result, logs)
   for (const m of missing) problems.push(`unanswered call (engine swallowed the error): ${m}`)

@@ -2127,6 +2127,26 @@ await testCase('T70d preflight.envSymlink invalid value → throws under dryRun 
   }
 })
 
+// T268-T269 (#13 / #12) — `config` is required and must be an object: a run without it (or with the
+// JSON text instead of the parsed object) is refused by a throw BEFORE any stage runs, never
+// executed on defaults. Non-dryRun with a full simulate: if the guard were missing the run would
+// proceed to a real status instead of throwing.
+for (const [id, tag, cfg] of [['a', 'absent', undefined], ['b', 'null', null], ['c', 'string', JSON.stringify(CONFIG)], ['d', 'array', []]]) {
+  await testCase(`T268${id} config ${tag} -> refused before any stage (#13/#12)`, async () => {
+    try {
+      const r = await run({ mode: 'auto', config: cfg, simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] } })
+      return { ok: false, msg: `expected a throw, got status ${r.status}` }
+    } catch (e) {
+      return e.message.includes('Missing or invalid arg: config')
+        ? { ok: true } : { ok: false, msg: `wrong error message: ${e.message}` }
+    }
+  })
+}
+await testCase('T269 explicit empty config object {} is still accepted (dry-run)', async () => {
+  const r = await run({ mode: 'manual', dryRun: true, config: {} })
+  return eq('status', r.status, 'dry-run-ok') || { ok: true }
+})
+
 // resolveWorktreeRoot (#61) — layered, machine-free worktree-root resolution, asserted via the
 // simulate-only nickPromptPreview seam (mirrors preflightPromptPreview above). Numbered T71a-T71d.
 await testCase('T71a resolveWorktreeRoot: relative logical default -> absolute in the Nick brief', async () => {

@@ -27,6 +27,8 @@ export const meta = {
 //                   provision:{extraLinks:[{src,dst}]}, preflight:{canonicalStringBan:[]},
 //                   commitHygiene:{squashBeforeHandoff,maxCommits}, commentHygiene:bool,
 //                   repo:'owner/repo' }  // repo: code repo for cross-repo runs; absent -> cwd-resolved
+//   config      — REQUIRED object: the parsed `.claude/pipeline.config.json`, supplied by the Lead. Absent or
+//                 not an object (e.g. a JSON string) -> throws before any agent call (#13, #12).
 //   configLocal — parsed `.claude/pipeline.config.local.json`, supplied by the Lead (the workflow
 //                 sandbox has no filesystem — see resolveWorktreeRoot below); only `worktreeRoot` is
 //                 read today (#61). Gitignored, machine-local, never versioned. Absent/garbage -> {}.
@@ -243,7 +245,7 @@ const finish = (o) => ({ buildStamp: BUILD_STAMP, ...(simulate ? { nickPromptPre
 const {
   issue, brief, pmReview = false, issueType = null, wtPath,
   scoutAgent = 'Sam',
-  config = {},
+  config,
   configLocal = {},
   prNumber = null,
   resumeReason = null,
@@ -267,6 +269,16 @@ const {
 } = (typeof args === 'string' ? JSON.parse(args) : args) || {}
 
 if (!issue || !brief || !wtPath) throw new Error('Missing required args: issue, brief, wtPath')
+// #13/#12 — `config` is REQUIRED and must be an object: the workflow sandbox has no filesystem, so
+// an absent config silently ran every default (branchPrefix 'features/', envSymlink 'required',
+// placeholder commands) and surfaced runs later as preflight-stuck / branch-mismatch. Same throw
+// idiom as the arg checks above (zero agent spawns, nothing provisioned). The Lead passes the parsed
+// `.claude/pipeline.config.json` (commands/deliver.md §1). An explicit `{}` is still accepted.
+if (config === null || typeof config !== 'object' || Array.isArray(config)) {
+  throw new Error(
+    `Missing or invalid arg: config (got ${config === undefined ? 'undefined' : config === null ? 'null' : Array.isArray(config) ? 'array' : typeof config}). ` +
+    `Pass the parsed .claude/pipeline.config.json OBJECT (not a string) as args.config — running on defaults is refused (#13).`)
+}
 if (!['auto', 'semi', 'manual'].includes(mode)) throw new Error(`Invalid mode: ${mode}`)
 if (!['plan', 'dev', 'review'].includes(entryStage)) throw new Error(`Invalid entryStage: ${entryStage}`)
 if (entryStage === 'review' && !prNumber) throw new Error('entryStage=review requires prNumber argument')
