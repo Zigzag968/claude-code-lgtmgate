@@ -31,6 +31,9 @@ export const meta = {
 //                 sandbox has no filesystem — see resolveWorktreeRoot below); only `worktreeRoot` is
 //                 read today (#61). Gitignored, machine-local, never versioned. Absent/garbage -> {}.
 //   pmReview    — run Mia before Sam (default false)
+//   issueType   — the issue's type, from its `type:*` label (e.g. 'bug', 'feature', 'chore'); optional,
+//                 absent = not a bug. With 'bug' AND a Sam target under `workflows/`, the R2 fixture
+//                 acceptance item is injected into Nick's prompt (#76). A launch arg, not a simulate key.
 //   scoutAgent  — agent type for the scout/plan stage (default 'Sam'). Lets the consuming
 //                 project route to a different scout than Sam — e.g. a domain-specific
 //                 planner it registers itself — while keeping the same plan contract
@@ -218,7 +221,7 @@ export const meta = {
 // `version`, checked against plugin.json by templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '0.8.79', cutFrom: '9493600' }
+const BUILD = { plugin: 'lgtmgate', version: '0.8.80', cutFrom: 'ea5e3b5' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -238,7 +241,7 @@ let provisionCmdPreview = null
 const finish = (o) => ({ buildStamp: BUILD_STAMP, ...(simulate ? { nickPromptPreview, provisionCmdPreview } : {}), ...o })
 
 const {
-  issue, brief, pmReview = false, wtPath,
+  issue, brief, pmReview = false, issueType = null, wtPath,
   scoutAgent = 'Sam',
   config = {},
   configLocal = {},
@@ -2274,6 +2277,11 @@ if (after('dev', entryStage)) {
 
   const epicRef = subGate.blocked ? `(see #${issue})` : 'Closes #' + issue
   const closesLine = [epicRef, ...samAbsorbedIssues.map(n => 'Closes #' + n)].join(', ')
+  // R2 (#76): deterministic — the fixture acceptance item is decided here, never by Nick's judgment.
+  const r2Applies = issueType === 'bug' && safePlanTargets(samTargetFiles).some(p => p.startsWith('workflows/'))
+  const r2Note = r2Applies
+    ? `R2 fixture rule (issue #${issue}): add this acceptance item to the checklist verbatim — "fixture \`fixtures/incidents/${issue}-*.json\` present, replayed red on base and green on the branch by \`scripts/run-offline.cjs\`". If no such fixture exists in the branch, run \`gh issue edit ${issue} -R ${repo || '<repo>'} --add-label no-fixture\` and use \`Refs #${issue}\` instead of \`Closes #${issue}\` on the first line of the PR body (the issue then stays open). `
+    : ''
   const nickPrompt = (
     `Work in the shared worktree "${wtPath}" (cd into it; it already exists${worktreeRoot ? `; worktree root: ${worktreeRoot}` : ''}). ` +
       `Issue #${issue}. Brief: ${brief}. The plan text below is authoritative — do NOT re-read the issue or the plan from GitHub.\n\n` +
@@ -2287,6 +2295,7 @@ if (after('dev', entryStage)) {
       `${SANDBOX_INSTALL_HINT} ` +
       `Push the branch explicitly before opening the PR: \`git push origin ${expectedBranchName}\` (no upstream flag — the sandbox cannot write the worktree's .git/config, CC bug #51818; see .claude/rules/git-workflow.md). ` +
       `Open a PR (draft) with EXPLICIT refs — gh resolves HEAD from the invoking cwd, not the worktree branch: \`gh pr create --draft${prFlag} --base ${baseBranch} --head ${expectedBranchName} ...\`. ` +
+      `${r2Note}` +
       `Compose the PR body in this order (artifact-first structure): first line \`${closesLine}\` — one \`Closes #N\` per fully-resolved issue (the epic plus every issue Sam's plan explicitly named as fully resolved by this bundle; never for an issue flagged partial/residual in the plan — that one stays open, with a forward-reference comment on the child issue instead, as already practiced); ${subIssuesGateNote(subIssuesUncovered, issue)}then a \`## What this ships\` H2 with a bullet summary of the diff; then, ONLY IF the acceptance checklist below contains a \`[human-gate]\` item, an optional \`## <Human> — N gestures\` H2 listing those manual human actions (omit this H2 entirely when no \`[human-gate]\` item exists — never ship an empty stub section); then a \`## Acceptance checklist\` H2. Copy the acceptance checklist into the PR body between \`<!-- acceptance:start -->\`/\`<!-- acceptance:end -->\`. Leave an EMPTY \`<!-- decision-log:start -->\`/\`<!-- decision-log:end -->\` marker pair right after the acceptance block — workflow-owned, never hand-fill it. Close with a \`<details><summary>Technical detail</summary>\` fold holding the test plan / feature flag / risk notes. Post a comment on issue #${issue} linking the PR, then idle.`
   )
   if (simulate) nickPromptPreview = nickPrompt
