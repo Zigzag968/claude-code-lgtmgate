@@ -120,6 +120,7 @@ resolved `ready`/`no-go`/`escalate`), do a check-in pass rather than silently ab
   - then bumps the patch version from the merged tree (patch+1 over max(branch, main): `.claude-plugin/plugin.json` + `BUILD`), commits, pushes once — PRs themselves never bump
   - waits until the PR reports the pushed sha with at least one check (bounded poll, cli/cli#7401), then `gh pr checks --watch --fail-fast` (`--required` when the installed gh supports it)
   - `gh pr merge --merge --delete-branch` (never the auto-merge flag)
+  - reads the PR back over REST (`merged` true and `merged_at` set); only then closes each still-open `Closes/Fixes/Resolves #N` issue with `Fixed by #<PR> (merged).` (`Refs #N` never closed; a failed or unverified merge exits non-zero and closes nothing)
   - then sync the main checkout: `git fetch origin && git merge --ff-only origin/main`
 - **No resume across a pin move**: never `resumeFromRunId` a run after the plugin version or pin changed (`BUILD` differs from the one the run started on) — relaunch fresh.
 - **Only remove the worktree after an explicit order from the user** (uncommitted work could still live there). The SubagentStop hook only warns, never deletes.
