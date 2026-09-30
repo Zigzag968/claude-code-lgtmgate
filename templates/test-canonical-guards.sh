@@ -846,6 +846,25 @@ else
 fi
 
 # =============================================================================
+# Invariant 21 — gitdir-probe-no-rm
+# =============================================================================
+# #99: the git-dir write probe ran `touch ... && rm -f ...`; a repo whose settings deny
+# `Bash(rm *)` refused the whole command and the haiku agent answered with prose, escalating
+# the run. The probe must use `unlink`, never an `rm` token. Static grep on the probe lines.
+if [ -f "$WORKFLOW_FILE" ]; then
+  GDP_LINES="$(grep -n 'pipeline-write-probe' -A1 "$WORKFLOW_FILE")"
+  if [ -z "$GDP_LINES" ]; then
+    fail "gitdir-probe-no-rm" "no 'pipeline-write-probe' command found in $WORKFLOW_FILE"
+  elif echo "$GDP_LINES" | grep -qE '\brm\b'; then
+    fail "gitdir-probe-no-rm" "git-dir write probe contains an rm token (denied by Bash(rm *) settings, #99) — use unlink: $GDP_LINES"
+  else
+    pass "gitdir-probe-no-rm: git-dir write probe has no rm token (unlink)"
+  fi
+else
+  fail "gitdir-probe-no-rm" "$WORKFLOW_FILE missing"
+fi
+
+# =============================================================================
 # Trailer
 # =============================================================================
 if [ "$FAIL_N" -eq 0 ]; then

@@ -1,0 +1,102 @@
+{
+  "name": "99-gitdir-probe-prose",
+  "note": "incident 2026-09-30 (#99): the probe command was refused by Bash(rm *) deny and the agent answered NOT_WRITABLE|<path> followed by prose; the parser kept the prose as gitDir. Raw outputs captured from the real run journal (issue 33).",
+  "args": {
+    "issue": 33,
+    "brief": "Remove git checkout -B from Nick prompt",
+    "wtPath": "/wt/root/issue-33",
+    "config": {
+      "ghProject": {
+        "owner": "Zigzag968",
+        "projectNumber": 1
+      },
+      "repo": "Zigzag968/claude-code-lgtmgate",
+      "baseBranch": "main",
+      "branchPrefix": "feat/",
+      "worktreeRoot": "../worktrees/lgtmgate",
+      "conventionsRule": ".claude/rules/pr-acceptance.md",
+      "commands": {
+        "build": "echo 'no build step (agent/command/hook definitions + JS/shell templates, no compiled artifact)'",
+        "test": "bash templates/test-canonical-guards.sh && node scripts/run-flow-suite.cjs",
+        "format": "echo 'no formatter configured'"
+      },
+      "ciChecks": [
+        "guards",
+        "smoke-install"
+      ],
+      "provision": {
+        "extraLinks": []
+      },
+      "preflight": {
+        "canonicalStringBan": [],
+        "envSymlink": "ignore"
+      },
+      "regressionGuard": {
+        "testGlob": "",
+        "testFnPattern": "",
+        "baselineCmd": ""
+      }
+    },
+    "mode": "auto"
+  },
+  "calls": {
+    "provision-33": "WARN optional src missing: /repo/.env\nPROVISION-EXIT:0",
+    "provision-freshness-33": "0",
+    "diagnose-issue-33": {
+      "confirmed": true,
+      "evidence": "Chore, no claimed root-cause bug. In worktree issue-33 (branch feat/issue-33, frozen base): grep -rn 'checkout -B' workflows agents templates .claude returns exactly one hit, workflows/deliver-pipeline.js:2277, in the nickPrompt \"FIRST, before ANY commit\" branch-mismatch instruction (\"run git -C wtPath checkout -B expectedBranchName\"). That is the destructive reset described by the issue. agents/nick.md has no 'checkout -B' (grep for checkout/switch -c returned nothing), so that part of the brief is already clean or needs only optional alignment. Currently the guard does not exist: 'bash templates/test-canonical-guards.sh' exits 0 (21 passed, 0 failed), no check on this string. git log -S shows only the initial commit introduced it, so it is not already fixed. Issue is coherent and buildable; the acceptance commands are offline-verifiable. Note: acceptance grep 'grep -v test-' would filter out matches inside test- files, so the guard test may contain the literal string.",
+      "laneOk": true,
+      "persistentStateSignal": false,
+      "authSecurityBoundarySignal": false,
+      "deployConfigSignal": false,
+      "immatureVendorApiSignal": false,
+      "designStepSignalEvidence": "No signals true. The change is a prompt string in workflows/deliver-pipeline.js:2277 plus a guard in templates/test-canonical-guards.sh; there is no persistent data, no access boundary, no infra config, and no vendor primitive.",
+      "issueClassificationMismatch": false
+    },
+    "scout-issue-33-1": {
+      "decision": "GO",
+      "plan": "GROUNDING: verified. Plan #33: (1) workflows/deliver-pipeline.js nickPrompt \"FIRST, before ANY commit\" sentence: replace the checkout -B clause with `git switch <branch>` if the branch exists locally (rev-parse --verify --quiet refs/heads/<branch>), else `git switch -c <branch>`; forbid reset/force; keep the confirming rev-parse; never write the literal even in a prohibition. (2) Bump const BUILD version 0.8.70 -> 0.8.71 in deliver-pipeline.js and .claude-plugin/plugin.json (bump-required + stamp-parity). (3) templates/test-canonical-guards.sh: add invariant 21 no-destructive-checkout after invariant 20 (scan tracked workflows/agents/templates/.claude files excluding test-* plus $WORKFLOW_FILE; one FAIL line per violation set; update header Invariants list). (4) agents/nick.md already clean, no change. Full details and acceptance checklist in .pipeline/plans/issue-33-sam.md. Index comment posted on #33.",
+      "planPath": ".pipeline/plans/issue-33-sam.md",
+      "targetFiles": [
+        "workflows/deliver-pipeline.js",
+        ".claude-plugin/plugin.json",
+        "templates/test-canonical-guards.sh"
+      ],
+      "acceptanceChecklist": "- [ ] `grep -rn 'checkout -B' workflows/ agents/ templates/ | grep -v test-` prints nothing\n- [ ] `bash templates/test-canonical-guards.sh` exits 0 and its last line is `[guards] status=ok passed=22 failed=0`\n- [ ] `bash templates/test-canonical-guards.sh` output contains a `PASS: no-destructive-checkout` line\n- [ ] Negative test: `WORKFLOW_FILE` pointed at a throwaway copy under `.pipeline/` containing `checkout -B` makes the script print `FAIL: no-destructive-checkout` and exit non-zero, tracked files unmodified (`git status --short` shows only intended files)\n- [ ] `grep -n \"switch\" workflows/deliver-pipeline.js` shows the non-destructive `git -C \"${wtPath}\" switch` form inside `nickPrompt`, and `git diff origin/main -- .claude-plugin/plugin.json` shows the version bumped in step with `const BUILD` (stamp-parity PASS line present)",
+      "rationale": "Single hit confirmed at deliver-pipeline.js nickPrompt; nick.md clean; guard pattern modeled on invariant 20; version bump required by invariants 1/2."
+    },
+    "plan-check-33-1": {
+      "verdict": "NOT_CONFORMING",
+      "issues": [
+        "Missing acceptance-checklist section in plan text (only external reference to .pipeline/plans/issue-33-sam.md; per rule, plan must CONTAIN the section)"
+      ]
+    },
+    "scout-issue-33-2": {
+      "decision": "GO",
+      "planPath": ".pipeline/plans/issue-33-sam.md",
+      "targetFiles": [
+        "workflows/deliver-pipeline.js",
+        ".claude-plugin/plugin.json",
+        "templates/test-canonical-guards.sh"
+      ],
+      "rationale": "Chore: single destructive hit in nickPrompt; non-destructive replacement plus a static guard. Offline-verifiable.",
+      "acceptanceChecklist": "- [ ] `grep -rn 'checkout -B' workflows/ agents/ templates/ | grep -v test-` prints nothing\n- [ ] `bash templates/test-canonical-guards.sh` exits 0 and its last line is `[guards] status=ok passed=22 failed=0`\n- [ ] `bash templates/test-canonical-guards.sh` output contains a `PASS: no-destructive-checkout` line\n- [ ] Negative test: `WORKFLOW_FILE` pointed at a throwaway copy under `.pipeline/` containing `checkout -B` makes the script print `FAIL: no-destructive-checkout` and exit non-zero, tracked files unmodified (`git status --short` shows only intended files)\n- [ ] `grep -n \"switch\" workflows/deliver-pipeline.js` shows the non-destructive `git -C \"${wtPath}\" switch` form inside `nickPrompt`, and `git diff origin/main -- .claude-plugin/plugin.json` shows the version bumped in step with `const BUILD` (stamp-parity PASS line present)",
+      "plan": "GROUNDING: verified\n\n# Plan #33 — Remove `git checkout -B` from Nick's prompt\n\nIntent archaeology: the instruction in `nickPrompt` (branch-mismatch preflight: worktree dispatched on a foreign branch) exists so Nick's commits/push/PR head land on `expectedBranchName`. `checkout -B` force-resets that branch to HEAD, silently discarding a canonical branch's commits (RC-5). Intent kept (land on expected branch), destructive means dropped. Alternative considered: `git switch -c` only — fails if the branch already exists; so use a two-way non-destructive form (switch to existing, else create).\n\n## Impact table\n| Zone | Detail |\n|------|--------|\n| Generation / i18n | None. Version bump required: `.claude-plugin/plugin.json` version and `const BUILD` in `workflows/deliver-pipeline.js` (0.8.70 -> 0.8.71; invariants bump-required + stamp-parity). |\n| Tests needed | New invariant 21 `no-destructive-checkout` in `templates/test-canonical-guards.sh` (static grep, offline). Negative test on a throwaway copy via `WORKFLOW_FILE` env. |\n| Userflows impacted | Dev phase branch-mismatch preflight of Nick (`nickPrompt` in `workflows/deliver-pipeline.js`). |\n| Risks | Wording: Nick must not fall back to a reset. New guard must not self-match (exclude `test-*` files; the guard file spells the literal). `agents/nick.md` has no `checkout -B` — no edit required. |\n| scope | Within scope. No feature flag. Preflight/gate-generation surface NOT touched (self-reference-preflight not applicable). |\n\n## Steps\n\n1. **file** `workflows/deliver-pipeline.js` — **anchor** `nickPrompt` template literal, the \"FIRST, before ANY commit\" sentence (contains `checkout -B ${expectedBranchName}`) — **change** replace the `run \\`git -C \"${wtPath}\" checkout -B ${expectedBranchName}\\`` clause with: if the branch exists locally (`git -C \"${wtPath}\" rev-parse --verify --quiet refs/heads/${expectedBranchName}`) run `git -C \"${wtPath}\" switch ${expectedBranchName}`, otherwise `git -C \"${wtPath}\" switch -c ${expectedBranchName}`; add \"never reset or force the branch (no `-B`/`-C`, no `reset --hard`); if the switch is refused because of a dirty tree, stop and report instead of forcing\". Keep the re-run of `rev-parse --abbrev-ref HEAD` confirmation and the following sentences intact. — **do NOT** write the literal `checkout -B` anywhere (also not in a \"never use\" phrase); do not touch other prompt sentences; keep it a single template-literal segment (invariant 10 uses char offsets). — **grounded-in** read of lines 2271-2285.\n2. **file** `workflows/deliver-pipeline.js` — **anchor** `const BUILD = { plugin: 'lgtmgate', version: '0.8.70', ... }` — **change** version -> `0.8.71`. — **do NOT** change `cutFrom`. — **grounded-in** grep + invariant 2 `stamp-parity`.\n3. **file** `.claude-plugin/plugin.json` — **anchor** `\"version\"` — **change** `0.8.71`. — **do NOT** touch `.claude-plugin/marketplace.json` (publish gesture is human). — **grounded-in** invariant 1/2 reads.\n4. **file** `templates/test-canonical-guards.sh` — **anchor** new block inserted after Invariant 20 (`reviewer-window-scan-bounded`) and before `# Trailer`; also update the \"Invariants:\" header list to add `21 no-destructive-checkout`. — **change** follow the Invariant 20 pattern: scan `git ls-files workflows agents templates .claude` (tracked files), excluding basenames matching `test-*`, via `grep -n 'checkout -B'`; also scan `$WORKFLOW_FILE` explicitly (so a negative test on a throwaway copy can fire); if any hit, `fail \"no-destructive-checkout\" \"<file:line list>\"`, else `pass \"no-destructive-checkout: ...\"`. Assert `$WORKFLOW_FILE` exists (else fail, like Invariant 20). — **do NOT** use early exit; exactly one FAIL line per violation set; bash 3.2 only (no mapfile/associative arrays); no pipe chains that hide exit codes; never mutate the tracked workflow file for the negative test. — **grounded-in** Invariant 20 block, `pass()`/`fail()` helpers and Trailer read.\n5. **file** `agents/nick.md` — no change (verified clean).\n\n## Verification for Nick\n- `grep -rn 'checkout -B' workflows/ agents/ templates/ | grep -v test-` prints nothing.\n- `bash templates/test-canonical-guards.sh` exits 0 (bump-required check needs `origin/main` resolvable).\n- Negative test: `cp workflows/deliver-pipeline.js .pipeline/neg.js`, append a comment line containing `checkout -B x`, run `WORKFLOW_FILE=.pipeline/neg.js bash templates/test-canonical-guards.sh` -> `FAIL: no-destructive-checkout`, non-zero exit.\n- Format: no whole-repo format-clean claim; only project `formatCmd` on modified files.\n\n## Acceptance checklist\n- [ ] `grep -rn 'checkout -B' workflows/ agents/ templates/ | grep -v test-` prints nothing\n- [ ] `bash templates/test-canonical-guards.sh` exits 0 and its last line is `[guards] status=ok passed=22 failed=0`\n- [ ] `bash templates/test-canonical-guards.sh` output contains a `PASS: no-destructive-checkout` line\n- [ ] Negative test: `WORKFLOW_FILE` pointed at a throwaway copy under `.pipeline/` containing `checkout -B` makes the script print `FAIL: no-destructive-checkout` and exit non-zero, tracked files unmodified (`git status --short` shows only intended files)\n- [ ] `grep -n \"switch\" workflows/deliver-pipeline.js` shows the non-destructive `git -C \"${wtPath}\" switch` form inside `nickPrompt`, and `git diff origin/main -- .claude-plugin/plugin.json` shows the version bumped in step with `const BUILD` (stamp-parity PASS line present)\n\n## Verdict\nGO. No debt flagged."
+    },
+    "plan-check-33-2": {
+      "verdict": "CONFORMING",
+      "issues": []
+    },
+    "plan-stale-33": "No files changed.",
+    "sub-issues-33": "Issue #33 (\"Remove git checkout -B from Nick's prompt\") has **no subissues** (total: 0), therefore there are **no open subissues to report**.\n\nThe task completed successfully with an empty result set.",
+    "worktree-gitdir-writable-33": "NOT_WRITABLE|/wt/root/issue-33/.git\n\nThe probe command was blocked by sandbox permissions in auto mode. Based on the worktree path and the probe's design, the probe cannot be executed within the current sandbox constraints. The status returned reflects that write access to the git directory could not be verified."
+  },
+  "expect": {
+    "status": "escalate",
+    "reason": "worktree-git-dir-not-writable",
+    "trace": [
+      "plan-stale:1",
+      "worktree-git-dir-not-writable:/wt/root/issue-33/.git"
+    ]
+  }
+}
