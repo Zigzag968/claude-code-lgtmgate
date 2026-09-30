@@ -54,6 +54,28 @@ mk lgtmgate:probe "node \"/abs/plugin/templates/probe-run.cjs\" --label x" | bas
 [ "$(attest_lines)" = "1" ] && ok=1 || ok=0
 check "quoted absolute probe-run path -> attested" "$ok"
 
+# (a3) quoted probe-run path containing spaces (double and single quotes), alone and after a cd prefix (#82)
+for q in dq sq; do
+  fresh
+  D="$(mktemp -d "$WORK/wt dir.XXXXXX")"
+  case "$q" in
+    dq) P="cd \"$D\" && node \"/abs/my plugin/templates/probe-run.cjs\" --label x" ;;
+    sq) P="cd '$D' && node '/abs/my plugin/templates/probe-run.cjs' --label x" ;;
+  esac
+  mk lgtmgate:probe "$P" | bash "$ATTEST"
+  ok=0
+  [ "$(wc -l < "$D/.pipeline/probe-attest.jsonl" 2>/dev/null | tr -d ' ')" = "1" ] && [ "$(attest_lines)" = "1" ] && ok=1
+  check "spaces in quoted plugin root + worktree ($q) -> attested" "$ok"
+done
+fresh
+mk lgtmgate:probe "node \"/abs/my plugin/templates/probe-run.cjs\" --label x" | bash "$ATTEST"
+[ "$(attest_lines)" = "1" ] && ok=1 || ok=0
+check "double-quoted spaced path without cd -> attested" "$ok"
+fresh
+mk lgtmgate:probe "node \"/abs/my plugin/templates/evil-probe-run.cjs\" --label x" | bash "$ATTEST"
+[ "$(attest_lines)" = "0" ] && ok=1 || ok=0
+check "spaced path to a different script -> ignored" "$ok"
+
 # (b) other agent -> ignored
 fresh
 mk lgtmgate:Morgan "node templates/probe-run.cjs --label x" | bash "$ATTEST"; RC=$?
@@ -89,6 +111,44 @@ fresh
 mk lgtmgate:probe "node templates/probe-run.cjs --label x" "no probe here" | bash "$ATTEST"
 [ "$(attest_lines)" = "0" ] && ok=1 || ok=0
 check "no PROBE line in stdout -> ignored" "$ok"
+
+# (cd-prefix, #82) `cd <dir> && node .../probe-run.cjs ...` is attested in <dir> and in cwd
+for q in bare dq sq; do
+  fresh
+  D="$(mktemp -d "$WORK/wt.XXXXXX")"
+  case "$q" in
+    bare) P="cd $D && node /abs/plugin/templates/probe-run.cjs --label x" ;;
+    dq)   P="cd \"$D\" && node \"/abs/plugin/templates/probe-run.cjs\" --label x" ;;
+    sq)   P="cd '$D' && node '/abs/plugin/templates/probe-run.cjs' --label x" ;;
+  esac
+  mk lgtmgate:probe "$P" | bash "$ATTEST"
+  ok=0
+  [ "$(wc -l < "$D/.pipeline/probe-attest.jsonl" 2>/dev/null | tr -d ' ')" = "1" ] &&
+    [ "$(jq -r '.line' "$D/.pipeline/probe-attest.jsonl")" = "$PLINE" ] &&
+    [ "$(attest_lines)" = "1" ] && ok=1
+  check "cd-prefix ($q dir): attested in <dir> and in cwd" "$ok"
+done
+
+fresh
+D="$(mktemp -d "$WORK/wt.XXXXXX")"
+mk lgtmgate:probe "cd $D && ls x" | bash "$ATTEST"
+[ ! -e "$D/.pipeline/probe-attest.jsonl" ] && [ "$(attest_lines)" = "0" ] && ok=1 || ok=0
+check "cd-prefix: cd <dir> && <other command> -> ignored" "$ok"
+
+fresh
+mk lgtmgate:Morgan "cd $D && node /abs/plugin/templates/probe-run.cjs --label x" | bash "$ATTEST"
+[ ! -e "$D/.pipeline/probe-attest.jsonl" ] && [ "$(attest_lines)" = "0" ] && ok=1 || ok=0
+check "cd-prefix: non-probe agent -> ignored" "$ok"
+
+fresh
+mk lgtmgate:probe "cd $CWD && node /abs/plugin/templates/probe-run.cjs --label x" | bash "$ATTEST"
+[ "$(attest_lines)" = "1" ] && ok=1 || ok=0
+check "cd-prefix: dir equal to cwd -> attested once" "$ok"
+
+fresh
+mk lgtmgate:probe "cd $CWD && node /abs/plugin/templates/probe-run.cjs --verify --label x" "VERIFY ok line=$PLINE" | bash "$ATTEST"
+[ "$(attest_lines)" = "0" ] && ok=1 || ok=0
+check "cd-prefix: a VERIFY line is never attested" "$ok"
 
 # (g) garbage stdin -> exit 0
 printf 'not json at all' | bash "$ATTEST"; RC=$?

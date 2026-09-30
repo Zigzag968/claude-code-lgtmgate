@@ -46,7 +46,9 @@
 #       count, or worktree resolves to MAIN itself (never self-link).
 #   2 — at least one HARD source was missing, rejected, or failed to link — see stderr.
 #
-# stdout (one line per successfully created link):
+# stdout (first line on every path, then one line per successfully created link):
+#   PROVISION-VERSION:2                      — output format version (#82); a script without
+#                                              this line is v1 (parsed the same way)
 #   LINKED <dst> -> <src-abs-path>
 # stderr:
 #   WARN optional src missing: <abs path>   — soft miss, never fails the run
@@ -58,6 +60,8 @@
 #                                                       target escapes MAIN
 #   PROVISION-FAILED: <n> link(s)           — summary, only printed on exit 2
 set -uo pipefail
+
+echo "PROVISION-VERSION:2"
 
 if [ "$#" -lt 1 ]; then
   echo "[provision] usage: provision_worktree.sh <worktree-path> [<src> <dst>]..." >&2

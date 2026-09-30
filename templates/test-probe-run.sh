@@ -38,7 +38,7 @@ for raw in "$ROOT"/fixtures/probes/*.raw; do
   ' "$PR" "$parser" "$raw" "$exp" 2>/dev/null; then ok=1; fi
   check "parser fixture $base" "$ok"
 done
-[ "$n_raw" -ge 8 ] && ok=1 || ok=0
+[ "$n_raw" -ge 12 ] && ok=1 || ok=0
 check "at least 2 fixtures per parser (found $n_raw .raw files)" "$ok"
 
 # (b) e2e: one PROBE line, exit=0, known sha, record with 8 keys
@@ -60,13 +60,36 @@ ok=0
 [ "$RC" -eq 0 ] && case "$LINE" in "PROBE name=lines exit=3 "*) ok=1 ;; esac
 check "failing cmd: exit=3 in line, script exit 0" "$ok"
 
-# (d) idempotence: same label/round with another cmd returns the same sha, file unchanged
+# (d) idempotence: identical cmd + successful record -> reused, file unchanged, command NOT re-run
 BEFORE="$(cat "$OUT1/t-r0.json")"
-LINE2="$(node "$PR" --label t --round 0 --out "$OUT1" --parser lines --cmd "printf 'other\n'")"
+LINE2="$(node "$PR" --label t --round 0 --out "$OUT1" --parser lines --cmd "printf 'hi\n'")"
 AFTER="$(cat "$OUT1/t-r0.json")"
 ok=0
 case "$LINE2" in *"sha=$HI_SHA "*) [ "$BEFORE" = "$AFTER" ] && ok=1 ;; esac
-check "idempotent: existing record reused, bytes unchanged" "$ok"
+check "idempotent: identical successful record reused, bytes unchanged" "$ok"
+
+# (d2) same label/round, DIFFERENT cmd -> rebuilt (record bound to its command, #82)
+LINE3="$(node "$PR" --label t --round 0 --out "$OUT1" --parser lines --cmd "printf 'other\n'")"
+ok=0
+case "$LINE3" in *"sha=$HI_SHA "*) ok=0 ;; *'json={"lines":["other"]}') ok=1 ;; esac
+[ "$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).cmd)' "$OUT1/t-r0.json")" = "printf 'other\n'" ] || ok=0
+check "different cmd on same label/round re-executes and rewrites the record" "$ok"
+
+# (d3) failed record -> re-executed on the next run (relaunch after a fix), then reused once it succeeds
+RD="$WORK/relaunch"
+MARK="$WORK/fixed-marker"
+RCMD="test -f '$MARK' && echo ok"
+L1="$(node "$PR" --label prov --round 0 --out "$RD" --parser lines --cmd "$RCMD")"
+ok=0; case "$L1" in "PROBE name=lines exit=1 "*) ok=1 ;; esac
+check "relaunch: first run fails (exit=1, record stored)" "$ok"
+: > "$MARK"
+L2="$(node "$PR" --label prov --round 0 --out "$RD" --parser lines --cmd "$RCMD")"
+ok=0; case "$L2" in "PROBE name=lines exit=0 "*'json={"lines":["ok"]}') ok=1 ;; esac
+check "relaunch: failed record re-executed after the cause is fixed (exit=0)" "$ok"
+rm -f "$MARK"
+L3="$(node "$PR" --label prov --round 0 --out "$RD" --parser lines --cmd "$RCMD")"
+[ "$L3" = "$L2" ] && ok=1 || ok=0
+check "relaunch: successful record is then reused without re-running" "$ok"
 
 # (e) 70000 bytes -> truncated, stored length 65536
 node "$PR" --label big --round 0 --out "$WORK/e" --parser lines --cmd "head -c 70000 /dev/zero | tr '\\0' x" >/dev/null
@@ -88,6 +111,42 @@ check "unsafe label exits 2" "$ok"
 LINE="$(node "$PR" --label u --round 0 --out "$WORK/h" --parser nope --cmd 'true')"
 case "$LINE" in *'json={"error":"unknown-parser"}') ok=1 ;; *) ok=0 ;; esac
 check "unknown parser -> error json" "$ok"
+
+# provision parser: unknown version is an error, not a silent v1 (#82)
+ok=0
+[ "$(node -e 'const {PARSERS}=require(process.argv[1]);console.log(JSON.stringify(PARSERS.provision("PROVISION-VERSION:9\nLINKED a -> /x\n")))' "$PR")" = '{"error":"unknown-version"}' ] && ok=1
+check "provision parser: unknown version -> error" "$ok"
+
+# (h) verify mode (#82): never re-runs the command, compares the recomputed line with the attestation
+VD="$WORK/v"
+VLINE="$(node "$PR" --label vt --round 0 --out "$VD" --parser lines --cmd "printf 'hi\n'")"
+ATT="$WORK/v-attest.jsonl"
+VOUT="$(node "$PR" --verify --label vt --round 0 --out "$VD" --parser lines --attest "$ATT")"
+ok=0; [ "$VOUT" = "VERIFY fail reason=no-attestation" ] && ok=1
+check "verify no-attestation: no attest file" "$ok"
+
+node -e 'console.log(JSON.stringify({agent_id:"a",tool_use_id:"t",line:process.argv[1],ts:"x"}))' "$VLINE" > "$ATT"
+VOUT="$(node "$PR" --verify --label vt --round 0 --out "$VD" --parser lines --attest "$ATT")"
+ok=0; [ "$VOUT" = "VERIFY ok line=$VLINE" ] && ok=1
+check "verify ok: attested line equals the recomputed one" "$ok"
+
+VOUT="$(node "$PR" --verify --label nope --round 0 --out "$VD" --parser lines --attest "$ATT")"
+ok=0; [ "$VOUT" = "VERIFY fail reason=no-record" ] && ok=1
+check "verify no-record: missing record" "$ok"
+
+node -e 'const fs=require("fs");const f=process.argv[1];const r=JSON.parse(fs.readFileSync(f,"utf8"));r.stdout="tampered\n";fs.writeFileSync(f,JSON.stringify(r))' "$VD/vt-r0.json"
+VOUT="$(node "$PR" --verify --label vt --round 0 --out "$VD" --parser lines --attest "$ATT")"
+ok=0; [ "$VOUT" = "VERIFY fail reason=sha-mismatch" ] && ok=1
+check "verify sha-mismatch: tampered record" "$ok"
+
+VOUT="$(node "$PR" --verify --label vt --round 0 --out "$VD" --parser git-rev-list-count --attest "$ATT")"
+ok=0; [ "$VOUT" = "VERIFY fail reason=no-attestation" ] && ok=1
+check "verify no-attestation: entries exist only for another parser name" "$ok"
+
+node "$PR" --verify --label vt --round 0 --out "$VD" --parser lines --attest relative.jsonl >/dev/null 2>&1
+RC=$?
+[ "$RC" -eq 2 ] && ok=1 || ok=0
+check "verify relative --attest exits 2" "$ok"
 
 # (g) agents/probe.md tools: lists exactly Bash
 TOOLS="$(awk '/^---$/{f++; next} f==1 && /^tools:/{t=1; next} f==1 && t && /^  - /{sub(/^  - /,""); print; next} f==1 && t{t=0}' "$ROOT/agents/probe.md" | tr '\n' ',')"

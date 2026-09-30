@@ -70,6 +70,10 @@ export const meta = {
 //   probeOnly   — optional { name, cmd, label, round }: run ONE probe() (probe-run gate, #80) and return
 //                 status 'dry-run-ok' reason 'probe-only'. Lets a run-offline fixture reach probe()
 //                 while no engine call site is migrated yet. Not a simulate key.
+//   pluginRoot  — optional absolute path of the plugin root (#82). The Lead passes
+//                 ${CLAUDE_PLUGIN_ROOT} for the plugin component and omits it for a local copy; the
+//                 probe layer resolves templates/probe-run.cjs from it (the workflow has no
+//                 filesystem or env). config.probeRunPath wins; fallback <wtPath>/templates/probe-run.cjs.
 //   models      — optional per-role model override: { scout?, planAudit?, morgan? }. Resolution
 //                 order per role is `models.<role> ?? config.models?.<role> ?? 'sonnet'` (same `??`
 //                 idiom as planAudit above — arg wins per-run over the project default). Default is
@@ -227,7 +231,7 @@ export const meta = {
 // `version`, checked against plugin.json by templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '0.8.99', cutFrom: '332a9a4' }
+const BUILD = { plugin: 'lgtmgate', version: '0.8.100', cutFrom: '9416e58' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -265,6 +269,7 @@ const {
   planText = null,
   dryRun = false,
   probeOnly = null,
+  pluginRoot = null,
   maxPlanAttempts = 2,
   planAudit = undefined,
   planFreshness = undefined,
@@ -352,7 +357,7 @@ const scoutModel = models.scout ?? modelsCfg.scout ?? 'sonnet'
 const planAuditModel = models.planAudit ?? modelsCfg.planAudit ?? 'sonnet'
 const morganModel = models.morgan ?? modelsCfg.morgan ?? 'sonnet'
 // Probe-run gate (#80): version of the PROBES registry (empty until a call site migrates).
-const PROBES_VERSION = 1
+const PROBES_VERSION = 2
 if (dryRun) return finish({ status: 'dry-run-ok', probesVersion: PROBES_VERSION, issue, mode, entryStage, planAudit: planAuditEnabled, planFreshness: planFreshnessMode, maxAuditRounds, maxAuditRoundsOverrideReason: auditBudgetOverrideReason || null, maxPlanAmendRounds, models: { scout: scoutModel, planAudit: planAuditModel, morgan: morganModel } })
 
 const trace = []
@@ -1395,8 +1400,9 @@ function auditConvergenceNote(auditTrace) {
 // map entry there would mislead the next reader.
 function agentDeathRouting(role, attempt, maxAttempts = 2) {
   const RETRY_SAFE = new Set([
-    'provision', 'theo', 'mia', 'sam', 'planCheck', 'audit', 'alreadyDoneCheck', 'preflight',
+    'provision', 'theo', 'mia', 'sam', 'planCheck', 'audit', 'alreadyDoneCheck', 'preflight', 'probe',
   ])
+  // probe is RETRY_SAFE: side-effect free, probe-run.cjs reuses the stored record on a retry (#82)
   const STATUS = {
     provision: 'provision-died',
     theo: 'diagnose-died',
@@ -1441,10 +1447,6 @@ function simFixture(role, round = 0, prNum = null) {
   }
   if (role === 'alreadyDoneCheck')
     return simulate.alreadyDoneCheck ?? { isAlreadyDone: false, isIssueClosed: false, isMerged: false }
-  if (role === 'provision')
-    return simulate.provisionRaw !== undefined
-      ? simulate.provisionRaw
-      : (simulate.provision ?? { ok: true, exitCode: 0, linked: [], missing: [] })
   if (role === 'preflight') {
     const f = simulate.preflight?.[round]
     return f ?? { pass: true, issues: [] }
@@ -1640,23 +1642,48 @@ async function updateStatus(name) {
 }
 
 // ---------------------------------------------------------------------------
-// Probe-run gate (#80, E2.2) — ONE gate to the world: templates/probe-run.cjs EXECUTES the command
-// and keeps the raw output on disk, the probe agent (haiku, Bash only) copies the ONE `PROBE ` line
-// it prints, hooks/PostToolUse-probe-attest.sh attests it. The engine only parses that line.
-// PROBES is empty and no call site is migrated yet; PROBES_VERSION is declared near `dryRun`.
+// Probe-run gate (#80, E2.2; provision migrated by #82) — ONE gate to the world:
+// templates/probe-run.cjs EXECUTES the command and keeps the raw output on disk; the probe agent
+// (haiku, Bash only) runs TWO commands and copies their single lines: the `PROBE ` line (run) and
+// the `VERIFY ` line (probe-run.cjs --verify: the stored record's recomputed line must equal an entry
+// of hooks/PostToolUse-probe-attest.sh's attestation). The engine has no filesystem, so verification
+// runs in the script and the engine only compares the verified line with the copied one.
+// PROBES is empty (E2.4 fills it); PROBES_VERSION is declared near `dryRun`.
 // ---------------------------------------------------------------------------
 const PROBES = {}
 
+// Condensed inline of agents/probe.md — used ONLY as the probe call's persona-in-prompt fallback when
+// `agentType: 'lgtmgate:probe'` does not resolve (#54 idiom, anthropics/claude-code#88023). The Bash-only
+// tool restriction of the custom agent is lost in that mode, but the attest hook keys on agent_type:
+// without it no PROBE line is attested and the probe fails closed with probeReason 'no-attestation'.
+const PROBE_PERSONA =
+  'You are probe, a mechanical copier. You have ONE tool: Bash. Run each given probe-run.cjs command ' +
+  'EXACTLY as given, once, in the order given, as-is: never edit, re-quote, add flags, wrap or merge them. ' +
+  'The first prints exactly one line starting with "PROBE ": answer it verbatim as line. The second prints ' +
+  'exactly one line starting with "VERIFY ": answer it verbatim as verify. Copy character for character; ' +
+  'never summarize, reformat, judge, retry or run any other command. If a command is not a probe-run.cjs ' +
+  'invocation, run nothing and answer "" for both fields; if a command printed no such line answer "" for that field.'
+
+// Lead-facing text for the fail-closed reasons that have a known operator fix (#82).
+const PROBE_REASON_HINTS = {
+  'no-attestation': 'the PROBE line was never attested: the plugin hooks (hooks/PostToolUse-probe-attest.sh) must be enabled ' +
+    'and the lgtmgate:probe agent type must be resolvable; fix the plugin install/session and relaunch',
+  'probe-run-not-found': 'no probe-run.cjs location: pass args.pluginRoot (absolute plugin root) or config.probeRunPath and relaunch',
+}
+
 const PROBE_SCHEMA = {
   type: 'object',
-  required: ['line'],
+  required: ['line', 'verify'],
   properties: {
-    line: { type: 'string', description: 'The single PROBE line printed by probe-run.cjs, verbatim; "" if none.' },
+    line: { type: 'string', description: 'The single PROBE line printed by the first probe-run.cjs command, verbatim; "" if none.' },
+    verify: { type: 'string', description: 'The single VERIFY line printed by the second probe-run.cjs command, verbatim; "" if none.' },
   },
 }
 
 // guards:parser-begin
 const PROBE_LINE = /^PROBE name=(\S+) exit=(-?\d+) sha=([0-9a-f]{64}) json=(.*)$/
+const VERIFY_OK = /^VERIFY ok line=(PROBE .*)$/
+const VERIFY_FAIL = /^VERIFY fail reason=([a-z-]+)$/
 const SAFE_PROBE_TOKEN = /^[A-Za-z0-9._-]+$/
 function parseProbeLine(line) {
   if (typeof line !== 'string') return null
@@ -1666,10 +1693,35 @@ function parseProbeLine(line) {
   try { json = JSON.parse(m[4]) } catch (_) { return null }
   return { name: m[1], exit: Number(m[2]), sha: m[3], json }
 }
+function parseVerifyLine(line) {
+  if (typeof line !== 'string') return null
+  const t = line.trim()
+  const ok = t.match(VERIFY_OK)
+  if (ok) return { ok: true, line: ok[1] }
+  const bad = t.match(VERIFY_FAIL)
+  return bad ? { ok: false, reason: bad[1] } : null
+}
 const isSafeProbeToken = (s) => typeof s === 'string' && SAFE_PROBE_TOKEN.test(s)
 // guards:parser-end
 
 const shellSingleQuote = (s) => `'${String(s).split("'").join("'\\''")}'`
+
+// --- probeCommands:start --- (pure & self-contained — keep extractable by the consuming project's tests)
+// The two commands the probe agent runs, in order (#82). Both start with `cd '<wtPath>' && node '<script>'`
+// (the attest hook accepts that prefix). The script is config.probeRunPath, else the plugin root's
+// templates/probe-run.cjs (arg pluginRoot), else the worktree's own copy.
+function probeCommands({ wtPath, issue, pluginRoot, probeRunPath, name, cmd, label, round }) {
+  const q = (x) => `'${String(x).split("'").join("'\\''")}'`
+  const script = probeRunPath ?? (pluginRoot ? pluginRoot + '/templates/probe-run.cjs' : wtPath + '/templates/probe-run.cjs')
+  const outDir = `${wtPath}/.pipeline/probes/issue-${issue}`
+  const head = `cd ${q(wtPath)} && node ${q(script)} `
+  const common = `--label ${label} --round ${round} --out ${q(outDir)} --parser ${name}`
+  return {
+    run: `${head}${common} --model haiku --cmd ${q(cmd)}`,
+    verify: `${head}--verify ${common} --attest ${q(wtPath + '/.pipeline/probe-attest.jsonl')}`,
+  }
+}
+// --- probeCommands:end ---
 
 async function probe(name, cmd, { label, round = 0, onFail } = {}) {
   if (!isSafeProbeToken(name) || !isSafeProbeToken(label)) {
@@ -1679,22 +1731,27 @@ async function probe(name, cmd, { label, round = 0, onFail } = {}) {
     if (onFail) return onFail(reason)
     throw new Error(`probe ${name}/${label}: ${reason}`)
   }
-  const probeRunPath = config.probeRunPath ?? 'templates/probe-run.cjs'
-  const outDir = `${wtPath}/.pipeline/probes/issue-${issue}`
-  const runCmd = `node ${probeRunPath} --label ${label} --round ${round} --out ${shellSingleQuote(outDir)} ` +
-    `--parser ${name} --model haiku --cmd ${shellSingleQuote(cmd)}`
+  if (!config.probeRunPath && !pluginRoot) return fail('probe-run-not-found')
+  const cmds = probeCommands({ wtPath, issue, pluginRoot, probeRunPath: config.probeRunPath, name, cmd, label, round })
   const prompt =
-    `Run EXACTLY this command once, from the worktree "${wtPath}", without editing or re-quoting it:\n\n` +
-    `${runCmd}\n\n` +
-    `It prints exactly one line starting with "PROBE ". Answer with that line verbatim as "line". ` +
-    `Never judge or retry; if it printed no PROBE line, answer "line": "".`
+    `Run EXACTLY these two commands once each, in this order, from the worktree "${wtPath}", without editing or re-quoting them:\n\n` +
+    `1. ${cmds.run}\n2. ${cmds.verify}\n\n` +
+    `The first prints exactly one line starting with "PROBE ": answer it verbatim as "line". ` +
+    `The second prints exactly one line starting with "VERIFY ": answer it verbatim as "verify". ` +
+    `Never judge or retry; if a command printed no such line, answer "" for that field.`
   trace.push(`probe:${name}:haiku`)
   const res = await callAgentSafe('probe', prompt,
-    { agentType: 'lgtmgate:probe', schema: PROBE_SCHEMA, label: `probe-${issue}-${name}-${label}-r${round}`, model: 'haiku' }, round)
+    { agentType: 'lgtmgate:probe', schema: PROBE_SCHEMA, label: `probe-${issue}-${name}-${label}-r${round}`, model: 'haiku', personaFallback: PROBE_PERSONA }, round)
   if (isAgentDeath(res)) return fail('agent-death')
   const parsed = parseProbeLine(res && res.line)
   if (!parsed) return fail('unparseable-line')
   if (parsed.name !== name) return fail('name-mismatch')
+  const verified = parseVerifyLine(res && res.verify)
+  if (!verified) return fail('unparseable-verify')
+  if (!verified.ok) return fail(verified.reason === 'no-attestation' ? 'no-attestation' : `verify-${verified.reason}`)
+  const vp = parseProbeLine(verified.line)
+  if (!vp || vp.sha !== parsed.sha) return fail('sha-mismatch')
+  if (verified.line !== String(res.line).trim()) return fail('line-mismatch')
   return parsed
 }
 
@@ -1752,53 +1809,39 @@ if (probeOnly) {
   const provisionCmd =
     `SCRIPT="${provisionScript}"; if [ -f "$SCRIPT" ]; then PROVISION_ENV_SYMLINK="${envSymlink}" bash "$SCRIPT" "${wtPath}"${provisionArgs}; else ${noScriptBranch}; fi`
   if (simulate) provisionCmdPreview = provisionCmd
-  // parseProvisionOutput (#175) — pure, deterministic parse of provision_worktree.sh's own
-  // verbatim markers (templates/provision_worktree.sh:49-59), replacing the removed PROVISION
-  // schema's LLM semantic judgment. `ok` is derived STRICTLY as exitCode===0 — never a
-  // separate LLM-emitted boolean — closing the gap the 2026-08-23 "LOCAL HARDENING" comment
-  // below originally flagged as incomplete (an absent/non-numeric exitCode used to never fail
-  // closed, exactly #114/#120's observed shape). `missing` is populated ONLY from a literal
-  // `MISSING-SRC ` line, never from a soft `WARN` line.
-  const parseProvisionOutput = (raw) => {
-    const text = String(raw ?? '')
-    const exitMatch = text.match(/PROVISION-EXIT:(\d+)/)
-    const exitCode = exitMatch ? Number(exitMatch[1]) : null
-    const linked = [...text.matchAll(/^LINKED\s+(\S+)\s+->/gm)].map((m) => m[1])
-    const missing = [...text.matchAll(/^MISSING-SRC\s+(\S+)/gm)].map((m) => m[1])
-    const skipped = /PROVISION-SKIPPED-NO-SCRIPT/.test(text)
-    return { ok: exitCode === 0, exitCode, linked, missing, skipped }
-  }
-  // Exit code travels as literal appended text (never LLM-judged) so the parser above can
-  // recover it deterministically even when the agent relays nothing else usefully.
-  const provisionCmdWithExit = `(${provisionCmd}); echo "PROVISION-EXIT:$?"`
-  const provisionRaw = await callAgentSafe(
-    'provision',
-    `Run EXACTLY this command once, as a SINGLE bash invocation, verbatim (do not split or reformat it). ` +
-      `Do NOT create, repair or improvise any symlink yourself. Do NOT judge success or failure yourself — ` +
-      `relay the command's ENTIRE raw output (stdout and stderr) byte-for-byte, including every ` +
-      `\`LINKED\` / \`MISSING-SRC\` / \`PROVISION-SKIPPED-NO-SCRIPT\` line and the trailing ` +
-      `\`PROVISION-EXIT:<code>\` line, verbatim and in full — never summarize, judge, or omit any line.\n\n` +
-      provisionCmdWithExit,
-    { label: `provision-${issue}`, model: 'haiku' },
-  )
-  if (isAgentDeath(provisionRaw)) {
+  // #82: the call goes through probe() (probe-run gate): probe-run.cjs executes the command and keeps
+  // the raw output, PARSERS.provision derives linked/missing/skipped in the script, the exit code
+  // travels as `exit=` in the PROBE line and is never LLM-judged. `2>&1` so MISSING-SRC (stderr)
+  // reaches the parser. `ok` is STRICTLY exit === 0 (and no parser error) — never an LLM boolean.
+  // A probe failure (agent death, contaminated copy, failed attestation) is fail-closed.
+  const provision = simulate
+    ? (simulate.provision ?? { ok: true, exitCode: 0, linked: [], missing: [] })
+    : await (async () => {
+        const res = await probe('provision', `(${provisionCmd}) 2>&1`,
+          { label: 'provision', onFail: (reason) => ({ probeFailed: reason }) })
+        if (res.probeFailed) return res
+        return {
+          ok: res.exit === 0 && !res.json.error,
+          exitCode: res.exit,
+          linked: res.json.linked || [],
+          missing: res.json.missing || [],
+          skipped: res.json.skipped === true,
+        }
+      })()
+  if (provision?.probeFailed === 'agent-death') {
     return finish({ status: 'provision-died', issue, trace, resumable: true })
   }
-  // Simulate-mode routing: an existing fixture (`simulate.provision`, already object-shaped)
-  // bypasses the parser untouched so pre-existing tests (T37/T38/F2/T99/T100/T104a-d) keep
-  // exercising the SAME pre-shaped object they always have; only the new `simulate.provisionRaw`
-  // seam (raw text) routes through the real deterministic parser under test.
-  const provision = (simulate && simulate.provisionRaw === undefined) ? provisionRaw : parseProvisionOutput(provisionRaw)
+  if (provision?.probeFailed) {
+    log(`Provisioning probe failed (${provision.probeFailed}) — failing closed` + (PROBE_REASON_HINTS[provision.probeFailed] ? `: ${PROBE_REASON_HINTS[provision.probeFailed]}` : ''))
+    await updateStatus('Blocked')
+    return finish({ status: 'escalate', reason: 'provision-failed', issue, missing: [], exitCode: null, probeReason: provision.probeFailed, probeHint: PROBE_REASON_HINTS[provision.probeFailed] || null, trace })
+  }
   log(`Provision: ok=${provision?.ok}, exitCode=${provision?.exitCode ?? 'unknown'}, ` +
     `skipped=${provision?.skipped === true}, ` +
     `linked=${(provision?.linked || []).join(', ') || 'none'}, missing=${(provision?.missing || []).join(', ') || 'none'}`)
   if (provision?.skipped === true) {
     log(`Provision: nothing to link — ${provisionScript} not found and no provision.extraLinks configured`)
   }
-  // LOCAL HARDENING (2026-08-23), extended by #175: `ok` is now derived strictly
-  // as `exitCode === 0` inside parseProvisionOutput above — no separate LLM-emitted boolean
-  // feeds this gate any more, so the former exitCode/ok cross-check is now redundant by
-  // construction and has been removed.
   if (provision?.ok !== true) {
     log(`Provisioning failed — missing source(s): ${(provision?.missing || []).join(', ') || 'unknown'}`)
     await updateStatus('Blocked')
@@ -1821,32 +1864,18 @@ if (probeOnly) {
 // discover the staleness itself before opening a doomed diff — this preflight catches the same
 // case for 0 planning tokens.
 // ---------------------------------------------------------------------------
-// guards:parser-begin
-// parseProvisionFreshness (#40) — pure parse of the freshness probe's last marker line
-// `PROVISION-FRESHNESS:<ffwd|fresh|stale>:<behind>[:<own>]`; a legacy bare number (old probe
-// shape) maps to {state:'legacy'}; anything else is null (fail-open).
-const parseProvisionFreshness = (out) => {
-  const text = String(out ?? '').trim()
-  const m = text.split('\n').reverse().map(l => l.trim()).map(l => l.match(/^PROVISION-FRESHNESS:(ffwd|fresh|stale):(\d+)(?::(\d+))?$/)).find(Boolean)
-  if (m) return { state: m[1], behind: Number(m[2]), own: m[3] === undefined ? null : Number(m[3]) }
-  const n = Number(text.split(/\s+/).pop())
-  return text !== '' && Number.isFinite(n) ? { state: 'legacy', behind: n, own: null } : null
-}
-// guards:parser-end
+// #82: the freshness check goes through probe() ('provision-freshness' parser in probe-run.cjs parses the
+// last `PROVISION-FRESHNESS:<ffwd|fresh|stale>:<behind>[:<own>]` line, #40); a probe failure is
+// fail-open (log + null) — a git/network error never blocks a legitimate run, only a CONFIRMED
+// positive behind-count does.
 if (entryStage === 'plan') {
   const provisionFresh = simulate
     ? { state: 'legacy', behind: simulate.provisionBehindCount ?? 0, own: null }
     : await (async () => {
-        try {
-          const out = await agent(
-            `cd "${wtPath}" && git fetch origin ${baseBranch} -q 2>/dev/null; B=$(git rev-list --count HEAD..origin/${baseBranch}); O=$(git rev-list --count origin/${baseBranch}..HEAD); if [ "$B" -gt 0 ] && [ "$O" -eq 0 ] && git merge --ff-only origin/${baseBranch} -q >/dev/null 2>&1; then echo "PROVISION-FRESHNESS:ffwd:$B"; elif [ "$B" -eq 0 ]; then echo "PROVISION-FRESHNESS:fresh:0:$O"; else echo "PROVISION-FRESHNESS:stale:$B:$O"; fi. Print the command's last line verbatim.`,
-            { label: `provision-freshness-${issue}`, model: 'haiku' },
-          )
-          return parseProvisionFreshness(out)
-        } catch (e) {
-          log(`provisionBehindCount: probe failed (${e.message}), skipping staleness preflight`)
-          return null
-        }
+        const res = await probe('provision-freshness',
+          `cd "${wtPath}" && git fetch origin ${baseBranch} -q 2>/dev/null; B=$(git rev-list --count HEAD..origin/${baseBranch}); O=$(git rev-list --count origin/${baseBranch}..HEAD); if [ "$B" -gt 0 ] && [ "$O" -eq 0 ] && git merge --ff-only origin/${baseBranch} -q >/dev/null 2>&1; then echo "PROVISION-FRESHNESS:ffwd:$B"; elif [ "$B" -eq 0 ]; then echo "PROVISION-FRESHNESS:fresh:0:$O"; else echo "PROVISION-FRESHNESS:stale:$B:$O"; fi`,
+          { label: 'provision-freshness', onFail: (reason) => { log(`provisionBehindCount: probe failed (${reason}), skipping staleness preflight`); return null } })
+        return res && res.json && !res.json.error ? res.json : null
       })()
   if (provisionFresh?.state === 'ffwd') {
     log(`Provision-freshness: worktree was ${provisionFresh.behind} commit(s) behind origin/${baseBranch} with no commit of its own — fast-forwarded, continuing`)
@@ -2804,12 +2833,10 @@ if (after('review', entryStage)) {
   const worktreeBehindCount = async () => {
     if (simulate) return simulate.behindCount ?? 0
     try {
-      const out = await agent(
+      const res = await probe('git-rev-list-count',
         `cd "${wtPath}" && git fetch origin ${baseBranch} -q 2>/dev/null; git rev-list --count HEAD..origin/${baseBranch}`,
-        { label: `worktree-behind-${issue}-${pr}`, model: 'haiku' },
-      )
-      const n = Number(String(out ?? '').trim().split(/\s+/).pop())
-      return Number.isFinite(n) ? n : null
+        { label: `worktree-behind-${pr}`, onFail: () => null })
+      return res && res.json && Number.isFinite(res.json.count) ? res.json.count : null
     } catch (e) {
       log(`worktreeBehindCount: probe failed (${e.message}), skipping freshness note`)
       return null

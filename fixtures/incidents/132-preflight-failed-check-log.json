@@ -2,6 +2,7 @@
   "name": "132-preflight-failed-check-log",
   "note": "incident from the #131 run: guards failed after the first push; Nick saw only the check name; the run ended preflight-stuck. Preflight probe object is synthetic-raw (raw run data not retained).",
   "args": {
+    "pluginRoot": "/plugin",
     "issue": 132,
     "brief": "fix slugify accents",
     "wtPath": "/wt/root/issue-132",
@@ -9,8 +10,14 @@
     "mode": "auto"
   },
   "calls": {
-    "provision-132": "PROVISION-SKIPPED-NO-SCRIPT x\nPROVISION-EXIT:0\n",
-    "provision-freshness-132": "0\n",
+    "probe-132-provision-provision-r0": {
+      "line": "PROBE name=provision exit=0 sha=30ad404e7bf922808eeb13427c66400303e810a9392f80082fb0abe2fc6fc271 json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}",
+      "verify": "VERIFY ok line=PROBE name=provision exit=0 sha=30ad404e7bf922808eeb13427c66400303e810a9392f80082fb0abe2fc6fc271 json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}"
+    },
+    "probe-132-provision-freshness-provision-freshness-r0": {
+      "line": "PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b json={\"state\":\"fresh\",\"behind\":0,\"own\":0}",
+      "verify": "VERIFY ok line=PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b json={\"state\":\"fresh\",\"behind\":0,\"own\":0}"
+    },
     "diagnose-issue-132": {
       "confirmed": true,
       "evidence": "reproduced: `node -e` prints the wrong slug",
@@ -45,7 +52,10 @@
       "summary": "opened PR #42"
     },
     "branch-check-132": "features/issue-132\n",
-    "worktree-behind-132-42": "0\n",
+    "probe-132-git-rev-list-count-worktree-behind-42-r0": {
+      "line": "PROBE name=git-rev-list-count exit=0 sha=9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa json={\"count\":0}",
+      "verify": "VERIFY ok line=PROBE name=git-rev-list-count exit=0 sha=9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa json={\"count\":0}"
+    },
     "preflight-132-42-0": {
       "pass": false,
       "issues": [

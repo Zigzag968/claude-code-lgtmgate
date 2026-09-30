@@ -137,6 +137,17 @@ ok4="false"
 assert_case "#72 default (unset PROVISION_ENV_SYMLINK) implicit .env link non-regression" "$ok4" \
   "exit=$exit4 (want 0), .env_linked=$env_linked4"
 
+# --- case 5: #82 PROVISION-VERSION:2 is the first stdout line (also on a usage-error path) ----
+
+pair5="$(new_git_pair)"
+main5="${pair5% *}"; wt5="${pair5#* }"
+first5="$(bash "$PROVISION" "$wt5" 2>/dev/null | head -n 1)"
+first5b="$(bash "$PROVISION" 2>/dev/null | head -n 1)"
+ok5="false"
+[ "$first5" = "PROVISION-VERSION:2" ] && [ "$first5b" = "PROVISION-VERSION:2" ] && ok5="true"
+assert_case "#82 PROVISION-VERSION:2 is the first stdout line on every path" "$ok5" \
+  "normal='$first5', usage-error='$first5b'"
+
 # --- summary -------------------------------------------------------------
 
 status="ok"

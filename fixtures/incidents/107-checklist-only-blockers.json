@@ -2,6 +2,7 @@
   "name": "107-checklist-only-blockers",
   "note": "incident #41/#42 (PRs #102/#103): Morgan found the code correct and only flagged checklist items (structured itemOwner checklist-wording-defect, with proof); the engine dispatched a Nick fix round that pushed nothing and escalated nick-no-op. Expected: verified-untickable, zero Nick calls after the review (no `nick-pr-42` entry exists: the harness fails on any such call). Morgan output shape is synthetic-raw (the raw run data was not retained).",
   "args": {
+    "pluginRoot": "/plugin",
     "issue": 123,
     "brief": "fix slugify accents",
     "wtPath": "/wt/root/issue-123",
@@ -9,8 +10,14 @@
     "mode": "auto"
   },
   "calls": {
-    "provision-123": "PROVISION-SKIPPED-NO-SCRIPT x\nPROVISION-EXIT:0\n",
-    "provision-freshness-123": "0\n",
+    "probe-123-provision-provision-r0": {
+      "line": "PROBE name=provision exit=0 sha=30ad404e7bf922808eeb13427c66400303e810a9392f80082fb0abe2fc6fc271 json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}",
+      "verify": "VERIFY ok line=PROBE name=provision exit=0 sha=30ad404e7bf922808eeb13427c66400303e810a9392f80082fb0abe2fc6fc271 json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}"
+    },
+    "probe-123-provision-freshness-provision-freshness-r0": {
+      "line": "PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b json={\"state\":\"fresh\",\"behind\":0,\"own\":0}",
+      "verify": "VERIFY ok line=PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b json={\"state\":\"fresh\",\"behind\":0,\"own\":0}"
+    },
     "diagnose-issue-123": {
       "confirmed": true,
       "evidence": "reproduced: `node -e` prints the wrong slug",
@@ -45,7 +52,10 @@
       "summary": "opened PR #42"
     },
     "branch-check-123": "features/issue-123\n",
-    "worktree-behind-123-42": "0\n",
+    "probe-123-git-rev-list-count-worktree-behind-42-r0": {
+      "line": "PROBE name=git-rev-list-count exit=0 sha=9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa json={\"count\":0}",
+      "verify": "VERIFY ok line=PROBE name=git-rev-list-count exit=0 sha=9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa json={\"count\":0}"
+    },
     "preflight-123-42-0": {
       "pass": true,
       "issues": [],
