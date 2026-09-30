@@ -13,10 +13,10 @@ N="${1:?usage: gh-pipeline-status.sh <issue-number>}"
 # works identically from either mirrored copy (templates/ vs .claude/scripts/, different depths).
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null)"
-CONFIG_FILE="${AGENT_PIPELINE_CONFIG_FILE:-${REPO_ROOT:+$REPO_ROOT/.claude/pipeline.config.json}}"
+CONFIG_FILE="${LGTMGATE_CONFIG_FILE:-${REPO_ROOT:+$REPO_ROOT/.claude/pipeline.config.json}}"
 
 if [ -z "${CONFIG_FILE:-}" ] || [ ! -f "$CONFIG_FILE" ]; then
-  echo "gh-pipeline-status.sh: no pipeline.config.json found (set \$AGENT_PIPELINE_CONFIG_FILE, or run from inside a repo with <repo-root>/.claude/pipeline.config.json)" >&2
+  echo "gh-pipeline-status.sh: no pipeline.config.json found (set \$LGTMGATE_CONFIG_FILE, or run from inside a repo with <repo-root>/.claude/pipeline.config.json)" >&2
   exit 1
 fi
 

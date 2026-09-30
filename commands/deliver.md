@@ -27,7 +27,7 @@ You are the **Lead**. You deliver a change end-to-end through the **Mia -> Sam -
   - Neither one -> stop: `Pipeline not found. Run /lgtmgate:init first.`
 
 ## 2. Check the worktreeRoot
-- Resolve the worktreeRoot BEFORE checking it (legacy#61 — precedence, the workflow sandbox has no filesystem access so YOU are the one reading it): `$AGENT_PIPELINE_WORKTREE_ROOT` (env) > `.claude/pipeline.config.local.json:worktreeRoot` (if this file exists — absent = normal case, don't treat it as an error) > `config.worktreeRoot` (versioned default).
+- Resolve the worktreeRoot BEFORE checking it (legacy#61 — precedence, the workflow sandbox has no filesystem access so YOU are the one reading it): `$LGTMGATE_WORKTREE_ROOT` (env) > `.claude/pipeline.config.local.json:worktreeRoot` (if this file exists — absent = normal case, don't treat it as an error) > `config.worktreeRoot` (versioned default).
 - The RESOLVED worktreeRoot must be mounted/accessible. Check it (e.g. `test -d "<resolved worktreeRoot>"` or that the parent volume is mounted). Inaccessible → stop and report to the user (e.g. external SSD not mounted).
 
 ## 3. Create the shared worktree (frozen from the base branch)
