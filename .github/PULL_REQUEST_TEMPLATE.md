@@ -1,19 +1,23 @@
-## What this changes
-
-<!-- What does this PR do, and why? Link the issue it addresses. -->
-
 Closes #
 
-## How this was tested
+## What this ships
 
-<!-- Which of the offline test suites did you run? Any manual verification? -->
+<!-- Bullet summary of the diff. Link the issue it addresses. -->
 
-- [ ] `bash templates/test-canonical-guards.sh`
-- [ ] `node scripts/run-flow-suite.cjs`
-- [ ] `bash templates/test-provision-worktree.sh` (if relevant to your change)
-- [ ] `python3 -m unittest discover plugins/backlog/tests` (if touching `plugins/backlog/`)
+## Acceptance checklist
 
-## Checklist
+<!-- Copied verbatim from Sam's plan; the merge script refuses any unchecked box between the markers. -->
+<!-- acceptance:start -->
+- [ ] <verifiable criterion>
+<!-- acceptance:end -->
 
-- [ ] Docs updated if behavior or config changed (`README.md`, `MAINTAINING.md`, or the relevant `agents/*.md`)
-- [ ] No new third-party dependency introduced (this repo is stdlib-only, by design)
+<!-- decision-log:start -->
+<!-- decision-log:end -->
+
+<details><summary>Technical detail</summary>
+
+- Test plan: `bash templates/test-canonical-guards.sh`, `node scripts/run-flow-suite.cjs`
+- Docs updated if behavior or config changed (`README.md`, `MAINTAINING.md`, or the relevant `agents/*.md`)
+- No new third-party dependency (this repo is stdlib-only)
+
+</details>

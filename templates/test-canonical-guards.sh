@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Canonical guard net for lgtmgate (#54). Guards what a plugin-workflow-component release
-# depends on: version bump and stamp, marketplace pin, persona-fallback anchors, retired copies,
+# depends on: version stamp parity (the bump itself is done by scripts/lead-merge.sh), marketplace pin, persona-fallback anchors, retired copies,
 # CI wiring, prompt/agent-definition invariants (see the list below), the backlog plugin's
 # bump/pin/suite, the no-private-refs sweep, and (via scripts/guards.cjs) the R1 ratchet
 # against origin/main, all-tests-wired and the version floor.
@@ -26,7 +26,7 @@
 # lets a negative test point at a throwaway copy under .pipeline/ (gitignored) without ever
 # mutating the tracked scripts/run-workflow-headless.sh.
 #
-# Invariants: 1 bump-required, 2 stamp-parity, 3 marketplace-pin, 4 stamp-placement,
+# Invariants: 1 (retired, #74; see scripts/lead-merge.sh), 2 stamp-parity, 3 marketplace-pin, 4 stamp-placement,
 # 5 persona-anchors, 6 retired-copies, 7 ci-wired, 8 self-reference-doctrine,
 # 9 headless-empty-argv, 10 pr-body-structure, 11 worktree-root-resolver,
 # 12 blocked-by-signal, 13 single-export, 14 project-item-lookup, 15 bash-3.2-floor,
@@ -120,75 +120,9 @@ if [ ! -f "$MANIFEST" ]; then
   fail "manifest-missing" "MANIFEST path '$MANIFEST' does not exist"
 fi
 
-# =============================================================================
-# Invariant 1 — bump-required
-# =============================================================================
-# --- bump-required:start ---
-# Release-scoped, NEVER file-scoped — the delivery rule is version-scoped, so an unbumped
-# release delivers NOTHING, whichever component changed (a github-source plugin only
-# updates a user's cache when the manifest version differs from what they already have).
-#
-# Watched = the executable shipped surface. Inverted from an allowlist to an EXCLUSION
-# list (#54 MANDATORY 5): new plugin surface (skills/, .mcp.json, a future
-# component-path key, ...) is watched by DEFAULT from here on; each exemption below is a
-# deliberate, named edit to this block, never a silent gap:
-#   .claude-plugin/marketplace.json — the catalog is the delivery POINTER, not plugin
-#     content; the publish commit moves the pin with no version bump BY DESIGN (D11) —
-#     watching it would block the publish gesture itself.
-#   README.md / MAINTAINING.md       — docs, no execution surface.
-#   .github/ / .githooks/            — CI harness, not shipped plugin content.
-#   .claude/ / .pipeline/            — repo-local, never loaded from a consumer's cache.
-#   fixtures/                        — record/replay test data for scripts/run-offline.cjs (E2.1),
-#                                      never loaded by a consumer; an incident-only PR needs no bump.
-#   scripts/                         — repo-local maintainer tooling, never vendored: the
-#     deployed consumer copy of provision_worktree.sh is templates/provision_worktree.sh;
-#     run-flow-suite.cjs / run-workflow-headless.sh have no templates/ counterpart at all
-#     (#78).
-#   plugins/backlog/                 — a SEPARATE plugin with its own manifest and its own
-#     version: it is not part of THIS plugin's shipped surface, and it is watched by its own
-#     bump guard (invariant 16) instead, so the new surface is never left unwatched (#218).
-if [ -f "$MANIFEST" ]; then
-  if ! git rev-parse --verify origin/main >/dev/null 2>&1; then
-    fail "bump-required" "origin/main not resolvable in this checkout — run 'git fetch origin main' first"
-  else
-    if git diff --quiet origin/main -- . \
-        ':(exclude).claude-plugin/marketplace.json' \
-        ':(exclude)README.md' \
-        ':(exclude)MAINTAINING.md' \
-        ':(exclude).github/' \
-        ':(exclude).githooks/' \
-        ':(exclude).claude/' \
-        ':(exclude).pipeline/' \
-        ':(exclude)scripts/' \
-        ':(exclude)plugins/backlog/' \
-        ':(exclude)fixtures/'; then
-      pass "bump-required: no watched-surface diff against origin/main (inert on this checkout)"
-    else
-      CHANGED_PATH="$(git diff --name-only origin/main -- . \
-        ':(exclude).claude-plugin/marketplace.json' \
-        ':(exclude)README.md' \
-        ':(exclude)MAINTAINING.md' \
-        ':(exclude).github/' \
-        ':(exclude).githooks/' \
-        ':(exclude).claude/' \
-        ':(exclude).pipeline/' \
-        ':(exclude)scripts/' \
-        ':(exclude)plugins/backlog/' \
-        ':(exclude)fixtures/' | head -1)"
-      OLD_VERSION="$(git show origin/main:.claude-plugin/plugin.json 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin).get('version',''))" 2>/dev/null)"
-      NEW_VERSION="$(python3 -c "import json; print(json.load(open('$MANIFEST')).get('version',''))" 2>/dev/null)"
-      if [ -z "$OLD_VERSION" ]; then
-        fail "bump-required" "could not read origin/main's .claude-plugin/plugin.json version"
-      elif [ "$OLD_VERSION" = "$NEW_VERSION" ]; then
-        fail "bump-required" "$CHANGED_PATH changed without a version bump (still $NEW_VERSION)"
-      else
-        pass "bump-required: watched surface changed, version bumped $OLD_VERSION -> $NEW_VERSION"
-      fi
-    fi
-  fi
-fi
-# --- bump-required:end ---
-
+# Invariant 1 (bump-required) is RETIRED (#74): the version bump now happens at merge time in
+# scripts/lead-merge.sh, so PRs no longer bump. The floor (branch >= origin/main) lives in
+# scripts/guards.cjs (invariant 23); stamp-parity below still checks plugin.json vs BUILD.
 # =============================================================================
 # Invariant 2 — stamp-parity
 # =============================================================================
