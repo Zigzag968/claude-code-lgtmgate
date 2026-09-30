@@ -237,6 +237,7 @@ log(BUILD_STAMP)
 // below: lets the flow tests assert the composed Nick brief (notably the resolved worktree root)
 // without exposing prompt text outside simulate runs.
 let nickPromptPreview = null
+let preflightFixPromptPreview = null   // #132 — simulate-only, same idiom as nickPromptPreview
 // provisionCmdPreview (#72) — same simulate-only idiom as nickPromptPreview above: lets the
 // flow tests assert the composed provisioning command (notably PROVISION_ENV_SYMLINK) without
 // exposing it outside simulate runs.
@@ -244,7 +245,7 @@ let provisionCmdPreview = null
 // #110: set by callAgent when an agent call stayed cut off by a classifier outage past its retry
 // bound; finish() then names the cause on the resulting `*-died` status.
 let classifierOutageDeath = false
-const finish = (o) => ({ buildStamp: BUILD_STAMP, ...(simulate ? { nickPromptPreview, provisionCmdPreview } : {}),
+const finish = (o) => ({ buildStamp: BUILD_STAMP, ...(simulate ? { nickPromptPreview, provisionCmdPreview, preflightFixPromptPreview } : {}),
   ...(classifierOutageDeath && String(o.status).endsWith('-died')
     ? { reason: 'classifier-outage: resume with resumeFromRunId' } : {}), ...o })
 
@@ -854,6 +855,18 @@ const PREFLIGHT = {
     pass: { type: 'boolean' },
     issues: { type: 'array', items: { type: 'string' } },
     testCommandRun: { type: 'string', description: 'Check-3 test command as actually executed, verbatim (drift forensics)' },
+    failedChecks: {
+      type: 'array',
+      description: 'Check 5: one entry per required check in FAILURE state (#132); the engine folds it into issues',
+      items: {
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+          step: { type: 'string', description: 'Failing step name as printed by gh run view --log-failed' },
+          logTail: { type: 'string', description: 'last failing lines of the check log, verbatim' },
+        },
+      },
+    },
   },
 }
 
@@ -2771,7 +2784,12 @@ if (after('review', entryStage)) {
       (banPattern
         ? `4. gh pr view ${pr}${prFlag} --json body -q .body | grep -iE "${banPattern}" — no banned strings in PR body (fail if match found)\n`
         : '') +
-      `5. gh pr checks ${pr}${prFlag} --json name,state -q '[.[]|select(.state=="FAILURE")|.name]' — no required-check FAILURES (PENDING is OK)\n` +
+      `5. gh pr checks ${pr}${prFlag} --json name,state,link — no required-check FAILURES (PENDING is OK). ` +
+      `For each check in FAILURE state: list \`check '<name>' is in FAILURE state\` in issues, take the run id ` +
+      `from its link (the number after /actions/runs/), run \`gh run view <id> --log-failed\`, and report in ` +
+      `failedChecks one entry { name, step, logTail } (step = the failing step name as printed by gh; logTail = ` +
+      `the last ~40 lines of that output, verbatim). If the log command ITSELF fails (tls/x509/auth/no run id), ` +
+      `keep the name in issues, leave logTail empty, and do NOT set pass:false for that tool failure.\n` +
       `Checks 4-5 use gh and require live GitHub/TLS access. If the gh command ITSELF fails ` +
       `(e.g. "tls: failed to verify certificate", "x509", "OSStatus", a network error, an auth error, ` +
       `or any non-zero exit that is NOT a check result), that is a TOOL failure, not a check failure: ` +
@@ -2783,7 +2801,7 @@ if (after('review', entryStage)) {
       `issues[] (e.g. "sandbox TLS blocked the dependency install — deps missing") — pass:false is still ` +
       `correct, skipping the install would not install anything.\n` +
       `${SANDBOX_INSTALL_HINT}\n` +
-      `Return { pass: bool, issues: string[] } where pass=true if HARD checks ${hardRange} all pass AND no ADVISORY ` +
+      `Return { pass: bool, issues: string[], failedChecks } where pass=true if HARD checks ${hardRange} all pass AND no ADVISORY ` +
       `check (4-5) that actually ran found a positive result; an advisory check skipped due to a tool ` +
       `failure does NOT set pass:false. ` +
       `Also include testCommandRun as forensics only (see check 3) — it does not affect the check-3 verdict.`
@@ -2791,6 +2809,21 @@ if (after('review', entryStage)) {
     if (simulate) preflightPromptPreview = p
     return p
   }
+  // #132 — fold the probe's failedChecks data into issues (deterministic, string ops only).
+  // guards:parser-begin
+  const FAILED_LOG_TAIL_LINES = 40
+  const foldFailedChecks = (pf) => {
+    const base = Array.isArray(pf?.issues) ? pf.issues : []
+    const fc = Array.isArray(pf?.failedChecks) ? pf.failedChecks : []
+    const extra = []
+    for (const c of fc) {
+      if (!c || typeof c !== 'object') continue
+      const tail = String(c.logTail || '').split('\n').slice(-FAILED_LOG_TAIL_LINES).join('\n')
+      extra.push(`check '${c.name || '?'}' failing step '${c.step || '?'}'` + (tail ? ` — last failing log lines:\n${tail}` : ''))
+    }
+    return [...base, ...extra]
+  }
+  // guards:parser-end
   const runPreflight = async (currentRound) => {
     const pf = await callAgentSafe(
       'preflight',
@@ -2806,11 +2839,11 @@ if (after('review', entryStage)) {
     if (pf?.pass !== false) return true
 
     // Preflight failed — ask Nick to fix mechanical issues, then retry once
-    log(`Preflight failed (attempt ${preflightCallCount - 1}): ${(pf.issues || []).join(', ')}`)
-    const nickFix = await callAgentSafe(
-      'nick',
+    const foldedIssues = foldFailedChecks(pf)
+    log(`Preflight failed (attempt ${preflightCallCount - 1}): ${foldedIssues.join(', ')}`)
+    const nickFixPrompt = (
       `Pre-Morgan preflight failed on worktree "${wtPath}" (PR #${pr}). Fix these mechanical issues and push:\n` +
-      `${(pf.issues || []).map(i => `- ${i}`).join('\n')}\n` +
+      `${foldedIssues.map(i => `- ${i}`).join('\n')}\n` +
       `${SANDBOX_INSTALL_HINT} ` +
       `Do NOT change any product code — fix only the listed mechanical issues; reinstalling deps is NOT ` +
       `product code and is allowed. If the install cannot succeed under the sandbox, stop and report it ` +
@@ -2819,7 +2852,12 @@ if (after('review', entryStage)) {
       `literally what this PR's diff changes (self-reference-preflight — the running pipeline is the ` +
       `DISPATCH-time snapshot, so it enforces pre-PR gate logic), do not mutate the worktree to satisfy ` +
       `it and do not revert the PR's own change; stop and report it as blocked in your return, so the ` +
-      `second preflight fails and the workflow escalates for the Lead/human.`,
+      `second preflight fails and the workflow escalates for the Lead/human.`
+    )
+    if (simulate) preflightFixPromptPreview = nickFixPrompt
+    const nickFix = await callAgentSafe(
+      'nick',
+      nickFixPrompt,
       { agentType: 'Nick', label: `nick-preflight-fix-${issue}-${pr}`, model: 'sonnet' },
       currentRound,
     )
@@ -2841,7 +2879,7 @@ if (after('review', entryStage)) {
     if (pf2?.pass !== false) return true
 
     log(`Preflight still failing after retry — escalating as preflight-stuck`)
-    return finish({ status: 'preflight-stuck', pr, issue, round: currentRound, issues: pf2?.issues || [], trace })
+    return finish({ status: 'preflight-stuck', pr, issue, round: currentRound, issues: foldFailedChecks(pf2), trace })
   }
 
   let prevRoundItems = null
@@ -3372,5 +3410,6 @@ if (after('review', entryStage)) {
     guardProbeResult,
     acceptanceSpliceProbe,
     preflightPromptPreview,
+    preflightFixPromptPreview,
   })
 }
