@@ -26,9 +26,8 @@
     },
     "zigzag-plugins-beta": {
       "source": {
-        "source": "github",
-        "repo": "Zigzag968/claude-code-lgtmgate",
-        "path": ".claude-plugin/marketplace-beta.json"
+        "source": "url",
+        "url": "https://raw.githubusercontent.com/Zigzag968/claude-code-lgtmgate/main/.claude-plugin/marketplace-beta.json"
       }
     }
   }
