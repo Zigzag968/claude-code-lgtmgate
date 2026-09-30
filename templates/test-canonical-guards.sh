@@ -1,11 +1,9 @@
 #!/usr/bin/env bash
-# Canonical guard net for lgtmgate (#54). Replaces test-provision-env-link.sh
-# per that file's own instruction: the A/B scenario it protected exercised the pre-D2
-# inline `.env`-link snippet, which after this slice exists nowhere in the repo (see git
-# history for the retired file) — a green-but-dead test. This script instead guards the
-# invariants a plugin-workflow-component release depends on: the version bump, the build
-# stamp, the marketplace pin, the persona-fallback anchors, the retired dogfood copies, and
-# the CI wiring itself.
+# Canonical guard net for lgtmgate (#54). Guards what a plugin-workflow-component release
+# depends on: version bump and stamp, marketplace pin, persona-fallback anchors, retired copies,
+# CI wiring, prompt/agent-definition invariants (see the list below), the backlog plugin's
+# bump/pin/suite, the no-private-refs sweep, and (via scripts/guards.cjs) the R1 ratchet
+# against origin/main, all-tests-wired and the version floor.
 #
 # Evaluates ALL invariants below (never exits on the first violation), prints exactly one
 # `FAIL: <invariant-name>: <detail>` line per violation, prints `ALL CHECKS PASSED` when the
@@ -33,7 +31,8 @@
 # 9 headless-empty-argv, 10 pr-body-structure, 11 worktree-root-resolver,
 # 12 blocked-by-signal, 13 single-export, 14 project-item-lookup, 15 bash-3.2-floor,
 # 16 backlog-bump-required, 17 backlog-marketplace-pin, 18 backlog-suite, 19 no-private-refs,
-# 20 reviewer-window-scan-bounded, 21 gitdir-probe-no-rm, 22 no-destructive-checkout.
+# 20 reviewer-window-scan-bounded, 21 gitdir-probe-no-rm, 22 no-destructive-checkout,
+# 23 guards-cjs (scripts/guards.cjs: R1 ratchet, 25 all-tests-wired, 1-relaxed version floor).
 #
 # Enforcement note (#54 MANDATORY 2, human decision 2026-08-23): this repo is PRIVATE on a
 # plan where branch protection and rulesets are both unavailable (verified this session:
@@ -893,6 +892,27 @@ if [ -f "$WORKFLOW_FILE" ]; then
   fi
 else
   fail "no-destructive-checkout" "$WORKFLOW_FILE missing"
+fi
+
+# =============================================================================
+# Invariant 23 — guards-cjs
+# =============================================================================
+# scripts/guards.cjs prints its own PASS:/R1 lines; a non-zero exit is one FAIL here.
+# Needs origin/main (CI checks out with fetch-depth: 0 / runs `git fetch origin main`).
+if [ -f scripts/guards.cjs ]; then
+  if command -v node >/dev/null 2>&1; then
+    G_OUT="$(node scripts/guards.cjs 2>&1)"; G_RC=$?
+    echo "$G_OUT"
+    if [ "$G_RC" -eq 0 ]; then
+      pass "guards-cjs: R1 ratchet, all-tests-wired and version floor ok"
+    else
+      fail "guards-cjs" "scripts/guards.cjs exited $G_RC (see lines above; run 'git fetch origin main' if origin/main is missing)"
+    fi
+  else
+    fail "guards-cjs" "node not found"
+  fi
+else
+  fail "guards-cjs" "scripts/guards.cjs missing"
 fi
 
 # =============================================================================

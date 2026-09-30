@@ -1,19 +1,22 @@
 name: guards
 
-# Reports on every PR to main. Historically could not be a required check while this repo was
-# private on a plan without branch protection/rulesets (#54 MANDATORY 2) — enforcement was
-# therefore human: the guards verdict is a mandatory acceptance-checklist line on every PR that
-# touches the shipped surface (see templates/test-canonical-guards.sh's own header), and no PR
-# merges with a red `guards` line — block-merge-unchecked.sh gates on the unticked box. See
-# issue #254 for the runner change below and the open-source-readiness plan for making this a
-# real required status check once branch protection is enabled.
+# Runs on every PR to main and reports (not a required check: this repo is private on a plan
+# without branch protection, so enforcement is the human acceptance gate, see
+# templates/test-canonical-guards.sh). Job `guards` runs, in order:
+#   - templates/test-canonical-guards.sh : canonical guard net (invariants 1-22) plus
+#     scripts/guards.cjs (R1 ratchet vs origin/main, all-tests-wired, version floor)
+#   - scripts/run-flow-suite.cjs         : offline flow suite (templates/test-deliver-pipeline.js)
+#   - scripts/run-offline.cjs --all fixtures : record/replay harness with the real parsers
+#   - scripts/test-guards.sh, test-run-offline.sh, test-cleanup-worktree.sh,
+#     test-verify-workflow-launch.sh, hooks/test-*.sh, templates/test-provision-worktree.sh,
+#     test-blocked-by-check.sh, test-gh-pipeline-status.sh : per-script regression tests
+# Job `smoke-install` loads the plugin through the real `claude` CLI.
+# The all-tests-wired check in guards.cjs fails if a test suite is added without a step here.
 #
-# Trigger MUST stay `pull_request` and never `pull_request_target` (#54 advisory note 1):
-# scripts/run-flow-suite.cjs runs the branch's own workflows/deliver-pipeline.js through
-# `new Function(...)` (buildPipelineRunner) — i.e. this job executes branch-authored code by
-# design. `pull_request_target` would run that same branch-controlled code with the BASE
-# branch's token/secrets, which this workflow must never do. This holds regardless of runner
-# type, which is exactly why switching the runner below does not touch the trigger.
+# Trigger MUST stay `pull_request` and never `pull_request_target`: scripts/run-flow-suite.cjs
+# runs the branch's own workflows/deliver-pipeline.js through `new Function(...)`, i.e. this job
+# executes branch-authored code by design, and `pull_request_target` would give that code the
+# BASE branch's token/secrets. The runner is ubuntu-latest (tests are offline, stdlib only).
 on:
   pull_request:
     branches: [main]
@@ -52,6 +55,12 @@ jobs:
         run: bash scripts/test-verify-workflow-launch.sh
       - name: Provision worktree guard
         run: bash templates/test-provision-worktree.sh
+      - name: Blocked-by check regression test
+        run: bash templates/test-blocked-by-check.sh
+      - name: gh-pipeline-status regression test
+        run: bash templates/test-gh-pipeline-status.sh
+      - name: guards.cjs regression test
+        run: bash scripts/test-guards.sh
 
   smoke-install:
     # First-install regression guard (legacy#60): MAINTAINING.md §3's documented command
