@@ -139,6 +139,8 @@ fi
 #   README.md / MAINTAINING.md       — docs, no execution surface.
 #   .github/ / .githooks/            — CI harness, not shipped plugin content.
 #   .claude/ / .pipeline/            — repo-local, never loaded from a consumer's cache.
+#   fixtures/                        — record/replay test data for scripts/run-offline.cjs (E2.1),
+#                                      never loaded by a consumer; an incident-only PR needs no bump.
 #   scripts/                         — repo-local maintainer tooling, never vendored: the
 #     deployed consumer copy of provision_worktree.sh is templates/provision_worktree.sh;
 #     run-flow-suite.cjs / run-workflow-headless.sh have no templates/ counterpart at all
@@ -159,7 +161,8 @@ if [ -f "$MANIFEST" ]; then
         ':(exclude).claude/' \
         ':(exclude).pipeline/' \
         ':(exclude)scripts/' \
-        ':(exclude)plugins/backlog/'; then
+        ':(exclude)plugins/backlog/' \
+        ':(exclude)fixtures/'; then
       pass "bump-required: no watched-surface diff against origin/main (inert on this checkout)"
     else
       CHANGED_PATH="$(git diff --name-only origin/main -- . \
@@ -171,7 +174,8 @@ if [ -f "$MANIFEST" ]; then
         ':(exclude).claude/' \
         ':(exclude).pipeline/' \
         ':(exclude)scripts/' \
-        ':(exclude)plugins/backlog/' | head -1)"
+        ':(exclude)plugins/backlog/' \
+        ':(exclude)fixtures/' | head -1)"
       OLD_VERSION="$(git show origin/main:.claude-plugin/plugin.json 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin).get('version',''))" 2>/dev/null)"
       NEW_VERSION="$(python3 -c "import json; print(json.load(open('$MANIFEST')).get('version',''))" 2>/dev/null)"
       if [ -z "$OLD_VERSION" ]; then

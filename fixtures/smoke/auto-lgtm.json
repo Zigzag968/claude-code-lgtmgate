@@ -49,7 +49,7 @@
     "preflight-42-0": {
       "pass": true,
       "issues": [],
-      "testCommandRun": true
+      "testCommandRun": "run the unit tests"
     },
     "review-window-start-42": "2026-01-01T00:00:00Z\n",
     "morgan-pr-42-r0": {

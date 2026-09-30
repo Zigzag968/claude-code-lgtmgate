@@ -114,6 +114,9 @@ function buildPipelineRunner(fpSrcStripped) {
 function check(fixture, result, logs) {
   const exp = fixture.expect || {}
   const problems = []
+  if (typeof exp.status !== 'string') {
+    problems.push('expect.status is required (a fixture without an expected status proves nothing)')
+  }
   if (exp.status !== undefined && result.status !== exp.status) {
     problems.push(`status: expected "${exp.status}", got "${result.status}"` +
       (result.reason ? ` (reason "${result.reason}")` : ''))
