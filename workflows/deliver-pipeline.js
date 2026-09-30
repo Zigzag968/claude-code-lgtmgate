@@ -10,6 +10,11 @@ export const meta = {
   ],
 }
 
+// Guards (scripts/guards.cjs, R1 ratchet vs origin/main): the counters of `await agent(` outside
+// callAgent, distinct `simulate.<key>` keys and regex applications on agent output may never go
+// up. A parser wrapped between the comment lines `// guards:parser-begin` and
+// `// guards:parser-end` is not counted by agent-output-regex, so moving one inside markers lowers it.
+//
 // Args:
 //   issue       — GitHub issue number (required)
 //   brief       — one-line description of the change (required)
