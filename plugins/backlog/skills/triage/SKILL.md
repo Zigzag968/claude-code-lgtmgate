@@ -2,7 +2,7 @@
 name: triage
 description: Propose label fixes for inbox and needs-info issues; never applies them
 disable-model-invocation: true
-argument-hint: [optional focus, e.g. an issue number]
+argument-hint: "[optional focus, e.g. an issue number]"
 ---
 
 # /backlog:triage
