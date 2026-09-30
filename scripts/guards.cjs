@@ -14,10 +14,16 @@
 //                            delimited by the comment lines `// guards:parser-begin` and
 //                            `// guards:parser-end`; occurrences inside it do not count, so moving
 //                            a parser inside markers lowers the counter.
-//      Whole-line `//` comments are ignored by all three counters.
+//      Whole-line `//` comments and `/* ... */` block comments are ignored by all three counters.
+//      Parser markers must be balanced: an unclosed or nested `parser-begin`, or a `parser-end`
+//      without `parser-begin`, FAILS. A malformed BRANCH fails the check; a malformed BASE
+//      (origin/main) is only reported as a WARN (the branch cannot be blamed for it).
+//      Known limits (out of scope): string-literal false positives (a "/*" or "await agent(" inside
+//      a string), exotic regex forms (.search, split(re), simulate aliases).
 //   Invariant 25 all-tests-wired: every test suite under hooks/ scripts/ templates/
-//      plugins/backlog/tests (test-*.sh|cjs|js), plus scripts/run-offline.cjs, is named in
-//      .github/workflows/guards.yml, except the documented exemptions below.
+//      plugins/backlog/tests (test-*.sh|cjs|js), plus scripts/run-offline.cjs, appears inside a
+//      `run:` step (single-line or `run: |` body) of .github/workflows/guards.yml, YAML comments
+//      excluded, except the documented exemptions below.
 //   Invariant 1 (relaxed) version floor: .claude-plugin/plugin.json version >= origin/main's.
 //      This is ADDITIONAL to the bump-required / stamp-parity checks in
 //      templates/test-canonical-guards.sh, which stay untouched; bump-required is retired later
@@ -64,6 +70,13 @@ const readOr = (p) => (p && fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : null
 // ---- JS scanning helpers -------------------------------------------------------------------
 // Blank out every character of the given range set, keeping newlines, so line numbers stay stable.
 function isCommentLine(line) { return /^\s*\/\//.test(line) }
+const blankNonNl = (t) => t.replace(/[^\n]/g, ' ')
+// Blank `/* ... */` block comments (an unterminated one runs to EOF); offsets and newlines kept.
+const noBlock = (src) => src.replace(/\/\*[\s\S]*?(?:\*\/|$)/g, blankNonNl)
+// Also blank whole-line `//` comments.
+function stripComments(src) {
+  return noBlock(src).split('\n').map((l) => (isCommentLine(l) ? blankNonNl(l) : l)).join('\n')
+}
 
 // Returns [start, end) offsets of the body `{...}` of `function callAgent`, or null.
 function callAgentBody(src) {
@@ -116,29 +129,21 @@ function skipTemplate(src, i) {
   return i + 1
 }
 
-function countAgentCalls(src) {
+function countAgentCalls(rawSrc) {
+  const src = stripComments(rawSrc)
   const body = callAgentBody(src)
-  const lines = src.split('\n')
-  let off = 0
+  const re = /await\s+agent\s*\(/g
   let n = 0
-  for (const line of lines) {
-    if (!isCommentLine(line)) {
-      const re = /await\s+agent\s*\(/g
-      let m
-      while ((m = re.exec(line))) {
-        const at = off + m.index
-        if (!(body && at >= body[0] && at < body[1])) n++
-      }
-    }
-    off += line.length + 1
+  let m
+  while ((m = re.exec(src))) {
+    if (!(body && m.index >= body[0] && m.index < body[1])) n++
   }
   return n
 }
 
-function countSimulateSeams(src) {
+function countSimulateSeams(rawSrc) {
   const keys = new Set()
-  for (const line of src.split('\n')) {
-    if (isCommentLine(line)) continue
+  for (const line of stripComments(rawSrc).split('\n')) {
     const re = /simulate\??\.([A-Za-z_][A-Za-z0-9_]*)/g
     let m
     while ((m = re.exec(line))) keys.add(m[1])
@@ -147,10 +152,11 @@ function countSimulateSeams(src) {
 }
 
 const REGEX_APPLICATIONS = /\.match\(|\.test\(|\.exec\(|\.matchAll\(|\.replace\(\/|\.split\(\/|new RegExp\(/g
-function countRegexApplications(src) {
+function countRegexApplications(rawSrc) {
   let inParser = false
   let n = 0
-  for (const line of src.split('\n')) {
+  // marker lines are whole-line `//` comments: match them before those are blanked
+  for (const line of noBlock(rawSrc).split('\n')) {
     if (/^\s*\/\/\s*guards:parser-begin\b/.test(line)) { inParser = true; continue }
     if (/^\s*\/\/\s*guards:parser-end\b/.test(line)) { inParser = false; continue }
     if (inParser || isCommentLine(line)) continue
@@ -158,6 +164,24 @@ function countRegexApplications(src) {
     if (m) n += m.length
   }
   return n
+}
+
+// Problems with the parser markers (empty when balanced).
+function parserMarkerErrors(rawSrc) {
+  const errs = []
+  let openAt = 0
+  const lines = noBlock(rawSrc).split('\n')
+  for (let i = 0; i < lines.length; i++) {
+    if (/^\s*\/\/\s*guards:parser-begin\b/.test(lines[i])) {
+      if (openAt) errs.push(`nested guards:parser-begin at line ${i + 1} (already open since line ${openAt})`)
+      else openAt = i + 1
+    } else if (/^\s*\/\/\s*guards:parser-end\b/.test(lines[i])) {
+      if (!openAt) errs.push(`guards:parser-end at line ${i + 1} has no matching guards:parser-begin`)
+      else openAt = 0
+    }
+  }
+  if (openAt) errs.push(`unclosed guards:parser-begin at line ${openAt} (no guards:parser-end)`)
+  return errs
 }
 
 // ---- R1 ---------------------------------------------------------------------------------------
@@ -169,6 +193,10 @@ function checkR1() {
     return
   }
   if (branch === null) { bad(`FAIL: R1 ratchet: cannot read branch ${WORKFLOW}`); return }
+  for (const e of parserMarkerErrors(base)) out(`WARN: R1 parser markers: base (origin/main) ${WORKFLOW}: ${e}`)
+  const branchErrs = parserMarkerErrors(branch)
+  for (const e of branchErrs) bad(`FAIL: R1 parser markers: ${WORKFLOW}: ${e} — balance the markers (each parser-begin needs exactly one parser-end)`)
+  if (branchErrs.length) return
   const counters = [
     ['agent-calls', countAgentCalls],
     ['simulate-seams', countSimulateSeams],
@@ -184,6 +212,26 @@ function checkR1() {
 }
 
 // ---- Invariant 25 -----------------------------------------------------------------------------
+// Concatenated text of every `run:` step (single-line value or `|`/`>` block body), YAML comments
+// removed (whole-line `#` and trailing ` #...`).
+function ymlRunText(yml) {
+  const lines = yml.split('\n').filter((l) => !/^\s*#/.test(l)).map((l) => l.replace(/\s+#.*$/, ''))
+  const parts = []
+  for (let i = 0; i < lines.length; i++) {
+    const m = /^(\s*(?:-\s+)?)run:\s*(.*)$/.exec(lines[i])
+    if (!m) continue
+    const keyIndent = m[1].length
+    if (/^[|>][+-]?\d*$/.test(m[2].trim())) {
+      for (i++; i < lines.length; i++) {
+        const l = lines[i]
+        if (l.trim() !== '' && l.length - l.trimStart().length <= keyIndent) { i--; break }
+        parts.push(l)
+      }
+    } else parts.push(m[2])
+  }
+  return parts.join('\n')
+}
+
 function checkWired() {
   const yml = readOr(path.join(ROOT, GUARDS_YML))
   if (yml === null) { bad(`FAIL: all-tests-wired: ${GUARDS_YML} missing`); return }
@@ -196,8 +244,9 @@ function checkWired() {
       if (/^test-.*\.(sh|cjs|js)$/.test(f)) suites.push(`${d}/${f}`)
     }
   }
-  const missing = suites.filter((s) => !EXEMPT[s] && !yml.includes(s))
-  if (missing.length) bad(`FAIL: all-tests-wired: not referenced in ${GUARDS_YML}: ${missing.join(', ')}`)
+  const runText = ymlRunText(yml)
+  const missing = suites.filter((s) => !EXEMPT[s] && !runText.includes(s))
+  if (missing.length) bad(`FAIL: all-tests-wired: not referenced in a run: step of ${GUARDS_YML} (comments do not count): ${missing.join(', ')}`)
   else out(`PASS: all-tests-wired: ${suites.length} suites checked, ${Object.keys(EXEMPT).length} documented exemption(s)`)
 }
 
