@@ -2620,6 +2620,33 @@ await testCase('T77d R3 + architectureDecisionApproved:true → announced status
   return err ? err : { ok: true }
 })
 
+// T77e (#77) — Nick's prompt carries the one-sentence ARCHITECTURE.md + codemap import; the rules
+// themselves live in the doc, never in the prompt (no DEBT marker syntax in the engine).
+await testCase('T77e Nick prompt imports @ARCHITECTURE.md and docs/codemap.md in one sentence', async () => {
+  const r = await run({
+    entryStage: 'dev',
+    mode: 'auto',
+    simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] },
+  })
+  const p = r.nickPromptPreview
+  const e1 = includes('nickPromptPreview', p, '@ARCHITECTURE.md')
+  const e2 = includes('nickPromptPreview', p, 'docs/codemap.md')
+  const e3 = p.includes('DEBT(#') ? { ok: false, msg: 'nickPromptPreview carries DEBT marker syntax; the rule belongs to ARCHITECTURE.md' } : null
+  const err = e1 || e2 || e3
+  return err ? err : { ok: true }
+})
+
+// T77f (#77) — docs/critical-paths.md is a one-way door: a plan targeting it stops at the design
+// step with kind 'critical-path', detected from targetFiles alone (no announcement needed).
+await testCase('T77f R3: targetFiles touching docs/critical-paths.md → design-step-required (critical-path)', async () => {
+  const r = await run({
+    mode: 'semi',
+    simulate: { theo: T77_THEO, sam: 'GO', samPlan: 'plan\none-way-door: none', samTargetFiles: ['docs/critical-paths.md'] },
+  })
+  const err = eq('status', r.status, 'design-step-required') || eq('kinds', JSON.stringify(r.oneWayDoorKinds), JSON.stringify(['critical-path']))
+  return err ? err : { ok: true }
+})
+
 // T98a (#103, advisory default) — a plan target moved upstream → note+trace+return fields carry
 // it, no routing change (status stays 'ready').
 await testCase('T98a plan-stale advisory → trace + planStaleFiles + planTargetsChecked, status unaffected', async () => {

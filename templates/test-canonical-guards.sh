@@ -850,6 +850,40 @@ else
 fi
 
 # =============================================================================
+# Invariant 24 — critical-paths-proven
+# =============================================================================
+# docs/critical-paths.md (#77): every `- CP-<n>` line names a proof that exists — a flow-suite test
+# id present in templates/test-deliver-pipeline.js, or a fixture/script path present in the repo.
+# A declared critical path without its proof is a FAIL; the file itself is a one-way door (R3).
+CP_FILE="docs/critical-paths.md"
+if [ -f "$CP_FILE" ]; then
+  CP_MISSING=""
+  CP_COUNT=0
+  while IFS= read -r cp_line; do
+    CP_COUNT=$((CP_COUNT + 1))
+    cp_proof="$(printf '%s\n' "$cp_line" | sed -nE 's/.*proof: `([^`]+)`.*/\1/p')"
+    if [ -z "$cp_proof" ]; then
+      CP_MISSING="$CP_MISSING $(printf '%s' "$cp_line" | cut -d' ' -f2)(no-proof)"
+    elif [ -e "$cp_proof" ]; then
+      :
+    elif grep -qF "testCase('$cp_proof " templates/test-deliver-pipeline.js 2>/dev/null; then
+      :
+    else
+      CP_MISSING="$CP_MISSING $(printf '%s' "$cp_line" | cut -d' ' -f2)($cp_proof)"
+    fi
+  done < <(grep -E '^- CP-[0-9]+ ' "$CP_FILE")
+  if [ "$CP_COUNT" -eq 0 ]; then
+    fail "critical-paths-proven" "$CP_FILE declares no '- CP-<n>' line"
+  elif [ -n "$CP_MISSING" ]; then
+    fail "critical-paths-proven" "proof missing for:$CP_MISSING"
+  else
+    pass "critical-paths-proven: $CP_COUNT critical paths, every proof exists"
+  fi
+else
+  fail "critical-paths-proven" "$CP_FILE missing"
+fi
+
+# =============================================================================
 # Trailer
 # =============================================================================
 if [ "$FAIL_N" -eq 0 ]; then

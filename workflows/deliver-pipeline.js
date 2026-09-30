@@ -1082,11 +1082,12 @@ function safePlanTargets(files) {
 // --- safePlanTargets:end ---
 
 // --- oneWayDoor:start --- (pure & self-contained — R3: the 5th design-step signal, computed by the script)
-// R3 one-way-door signal. A diff that adds a status, an `agent()`, a hook or a seam stops at the
-// design step. Two deterministic inputs, never an LLM-filled boolean: (a) Sam's `targetFiles`
-// (hooks/plugin-hooks.json, or a non-test/non-lib script under hooks/ = a hook); (b) the
-// announcement lines Sam's plan carries, `one-way-door: status|agent|hook|seam — <what>`
-// (`one-way-door: none` announces nothing). Returns { kinds: string[], summary: string[<=10] }.
+// R3 one-way-door signal. A diff that adds a status, an `agent()`, a hook or a seam, or that touches
+// the declared critical paths, stops at the design step. Two deterministic inputs, never an
+// LLM-filled boolean: (a) Sam's `targetFiles` (hooks/plugin-hooks.json, or a non-test/non-lib script
+// under hooks/ = a hook; docs/critical-paths.md = a critical path); (b) the announcement lines Sam's
+// plan carries, `one-way-door: status|agent|hook|seam — <what>` (`one-way-door: none` announces
+// nothing). Returns { kinds: string[], summary: string[<=10] }.
 function oneWayDoorSignals(plan, targetFiles, ctx = {}) {
   const found = new Map() // kind -> evidence line
   for (const f of safePlanTargets(targetFiles)) {
@@ -1095,6 +1096,7 @@ function oneWayDoorSignals(plan, targetFiles, ctx = {}) {
       && !f.startsWith('hooks/test-') && !f.startsWith('hooks/lib-')
     // guards:parser-end
     if ((f === 'hooks/plugin-hooks.json' || isHookScript) && !found.has('hook')) found.set('hook', `targetFiles: ${f}`)
+    if (f === 'docs/critical-paths.md' && !found.has('critical-path')) found.set('critical-path', `targetFiles: ${f}`)
   }
   // guards:parser-begin
   const announced = String(plan ?? '').match(/^[ \t>*-]*`?one-way-door:[ \t]*(?:status|agent|hook|seam)\b[^\n]*/gim) || []
@@ -1764,7 +1766,8 @@ if (after('plan', entryStage)) {
       `\`gh api -X PATCH repos/{owner}/{repo}/issues/comments/<id> -F body=@.pipeline/issue-${issue}-design-step.md\`; otherwise create it with \`gh issue comment ${issue} --body-file .pipeline/issue-${issue}-design-step.md\`. The comment body is exactly: ${designStepMarker} on its first line, then the four signals with your evidence, one line each. Never stack a second one.\n` +
       `BLAST-RADIUS: no destructive git (git clean, reset --hard, checkout -- <path>, forced -f/-D deletes) — you diagnose, you never reset the shared worktree's state. ` +
       `Never read/probe a real credential path (~/.ssh/*, ~/.aws/*, .env*, **/*secret*, keychains) — to verify a sandbox deny-rule empirically, create a SYNTHETIC file in $TMPDIR named after the pattern, never the real one. ` +
-      `Stay inside the worktree "${wtPath}" plus $TMPDIR — no traversal to another worktree/repo/home.\n\n` +
+      `Stay inside the worktree "${wtPath}" plus $TMPDIR — no traversal to another worktree/repo/home. ` +
+      `Read \`docs/codemap.md\` at the repo root if it exists to locate code; skip silently if absent.\n\n` +
       `Return { confirmed: bool, evidence: string, actualCause: string|null, laneOk: bool, requiredScout: string|null, persistentStateSignal: bool, authSecurityBoundarySignal: bool, deployConfigSignal: bool, immatureVendorApiSignal: bool, designStepSignalEvidence: string, issueClassificationMismatch: bool }. confirmed=true means "proceed to Sam"; laneOk=false stops for a lane re-dispatch. evidence is what you checked and ` +
       `found (command run + observed output, or the codebase check performed). actualCause is set only when a claimed cause was refuted and you found the real one.`,
     {
@@ -1830,8 +1833,9 @@ if (after('plan', entryStage)) {
 // regardless of which call site invokes this, fresh Plan-phase or Review-phase amendment.
 const SAM_LAYER_RULE = 'LAYER RULE: plan the smallest change that removes the cause class; never a `simulate.*` seam; say in the plan if the diff adds a status, an `agent()`, a hook or a seam; list `patch-avoided:` with the patches you rejected.'
 // #77 — design doc import (Sam + Morgan prompts only; agents/sam.md stays untouched). Harmless when the file is absent.
-const VISION_IMPORT_SAM = 'Read `@VISION.md` (target, directives, Never table, decisions, out of scope) and `@ARCHITECTURE.md` (code map, invariants, where new code goes) at the repo root if they exist, and plan in their direction; skip silently any that is absent. '
-const VISION_IMPORT_MORGAN = 'Read `@VISION.md` at the repo root if it exists and check the diff against its directives, its Never table, its decisions and its out-of-scope list; if it is absent, skip this silently.\n'
+const VISION_IMPORT_SAM = 'Read `@VISION.md` (thesis, target, design decisions, how we work, never, out of scope), `@ARCHITECTURE.md` (principles and their checks, patterns in use, one-way doors, where new code goes, declared exceptions) and `docs/codemap.md` at the repo root if they exist, and plan in their direction; skip silently any that is absent. '
+const VISION_IMPORT_MORGAN = 'Read `@VISION.md` and `@ARCHITECTURE.md` at the repo root if they exist and check the diff against the design decisions, the never list, the out-of-scope list, the invariants table and the patterns in use; an `exception:` line in the PR body must have its DEBT marker in the diff and an open follow-up issue, otherwise it is a FAIL; skip silently any file that is absent.\n'
+const ARCH_IMPORT_NICK = 'Read `@ARCHITECTURE.md` (where new code goes, tests named by the plan, declared exceptions) and `docs/codemap.md` at the repo root if they exist and follow them; skip silently any that is absent. '
 // R3 (#77): the announcement line the SCRIPT parses (oneWayDoorSignals) — one line per kind, or `none`.
 const SAM_ONE_WAY_DOOR = 'ONE-WAY-DOOR ANNOUNCEMENT: in the plan text, state on its own line for each kind the diff adds — `one-way-door: status — <what>`, `one-way-door: agent — <what>`, `one-way-door: hook — <what>`, `one-way-door: seam — <what>` — or the single line `one-way-door: none`. The script parses these lines; a kind you announce stops the run at the design step. '
 const samScoutPrompt = ({ fixBlock = '', auditFixBlock = '', reviewFixBlock = '' } = {}) => {
@@ -2348,7 +2352,7 @@ if (after('dev', entryStage)) {
         `Run \`git -C "${wtPath}" rev-parse --abbrev-ref HEAD\`; if it is not exactly \`${expectedBranchName}\`, ` +
         `if the branch already exists locally (\`git -C "${wtPath}" rev-parse --verify --quiet refs/heads/${expectedBranchName}\` succeeds) run \`git -C "${wtPath}" switch ${expectedBranchName}\`, otherwise run \`git -C "${wtPath}" switch -c ${expectedBranchName}\`; never reset or force the branch (no \`-B\`/\`-C\`, no \`reset --hard\`), and if the switch is refused because of a dirty tree, stop and report instead of forcing. Then re-run \`git -C "${wtPath}" rev-parse --abbrev-ref HEAD\` to confirm. ` +
         `Every commit, the push and the PR head MUST be \`${expectedBranchName}\`. ` +
-        `Implement the plan on that branch. Write meaningful tests and get the green bar: build via \`${buildCmd}\`, run unit tests via \`${testCmd}\`, and format each modified file via \`${formatCmd}\`. ` +
+        `Implement the plan on that branch. ${ARCH_IMPORT_NICK}Write meaningful tests and get the green bar: build via \`${buildCmd}\`, run unit tests via \`${testCmd}\`, and format each modified file via \`${formatCmd}\`. ` +
       `When deleting repo-tracked files, use \`git rm <file>\` instead of bare \`rm\` — bare rm is sandbox-denied and burns permission rounds. ` +
       `${SANDBOX_INSTALL_HINT} ` +
       `Push the branch explicitly before opening the PR: \`git push origin ${expectedBranchName}\` (no upstream flag — the sandbox cannot write the worktree's .git/config, CC bug #51818; see .claude/rules/git-workflow.md). ` +
