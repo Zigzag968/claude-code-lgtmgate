@@ -91,9 +91,12 @@ PreToolUse Bash hooks, a SubagentStop hook, and a Stop hook. Per the docs, a mar
 in a repo's shared settings is registered "once they trust the project folder, with no separate
 prompt" — trusting a folder must never, by itself, cause code to be fetched from GitHub and
 executed on every session start and before every Bash call. Enabling is therefore an explicit,
-per-user gesture, never implied by folder trust:
+per-user gesture, never implied by folder trust. Folder trust registers the declaration only, not
+the catalog: on a fresh machine, pull the catalog once before installing, or `install` fails with
+`Plugin "lgtmgate" not found in marketplace "zigzag-plugins"`:
 
 ```bash
+claude plugin marketplace update zigzag-plugins
 claude plugin install lgtmgate@zigzag-plugins
 ```
 
