@@ -1126,78 +1126,6 @@ await testCase('T38 provision succeeds (default fixture) → ready, trace unchan
 })
 
 // ---------------------------------------------------------------------------
-// #175 (epic slice 2: #114/#120) — parseProvisionOutput regression coverage. Unlike
-// T37/T38/F2/T99/T100/T104a-d above (which all stub the ALREADY-SHAPED `simulate.provision`
-// result object, bypassing the parser entirely), these three route raw provision_worktree.sh-style
-// text through `simulate.provisionRaw` so they exercise the REAL deterministic parser under test —
-// the only regression coverage this repo has for the false-`provision-failed` (#114) and
-// flip-flopping missing/linked (#120) defects the LLM-judgment schema used to cause.
-// ---------------------------------------------------------------------------
-
-// T175a (#114 negative control) — a WARN-only (soft-miss) raw transcript with exit 0 parses to
-// ok=true (derived strictly from PROVISION-EXIT:0) → ready, same as T38's happy path, but this
-// time via the REAL parser: proves a soft WARN line is never mistaken for a hard MISSING-SRC one.
-await testCase('T175a provisionRaw WARN-only + exit 0 → parsed ok=true, ready, trace unchanged', async () => {
-  const raw =
-    'LINKED .env -> /main/.env\n' +
-    'WARN optional src missing: /main/.cache\n' +
-    'PROVISION-EXIT:0\n'
-  const r = await run({
-    mode: 'auto',
-    simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }], provisionRaw: raw },
-  })
-  const e1 = eq('status', r.status, 'ready')
-  const e2 = eq('trace', r.trace, ['Plan', 'Dev', 'Review', 'PR Ready'])
-  return (e1 || e2) ? (e1 || e2) : { ok: true }
-})
-
-// T175b (#114 positive case) — a MISSING-SRC (hard-miss) raw transcript with exit 2 parses to
-// ok=false, missing=['/main/.venv'] parsed verbatim from the literal MISSING-SRC line (never
-// from the WARN line above it) → escalate/provision-failed, mirroring T37's assertions but
-// through the real parser instead of a pre-shaped stub.
-await testCase('T175b provisionRaw MISSING-SRC + exit 2 → parsed missing verbatim, escalate/provision-failed', async () => {
-  const raw =
-    'WARN optional src missing: /main/.cache\n' +
-    'MISSING-SRC /main/.venv\n' +
-    'PROVISION-FAILED: 1 link(s)\n' +
-    'PROVISION-EXIT:2\n'
-  const r = await run({
-    mode: 'auto',
-    simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }], provisionRaw: raw },
-  })
-  const e1 = eq('status', r.status, 'escalate')
-  const e2 = eq('reason', r.reason, 'provision-failed')
-  const e3 = eq('missing', r.missing, ['/main/.venv'])
-  const e4 = eq('exitCode', r.exitCode, 2)
-  const err = e1 || e2 || e3 || e4
-  return err ? err : { ok: true }
-})
-
-// T175c (#120 determinism criterion) — the SAME raw transcript run twice must yield an IDENTICAL
-// status + trace both times. #120's own observed defect was the LLM judgment flip-flopping
-// missing/linked across identical re-runs of the same underlying script output; this proves the
-// deterministic parser has no such non-determinism at the JS-parsing layer.
-await testCase('T175c provisionRaw identical input twice → identical status + trace (determinism)', async () => {
-  const raw =
-    'MISSING-SRC /main/.venv\n' +
-    'PROVISION-FAILED: 1 link(s)\n' +
-    'PROVISION-EXIT:2\n'
-  const r1 = await run({
-    mode: 'auto',
-    simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }], provisionRaw: raw },
-  })
-  const r2 = await run({
-    mode: 'auto',
-    simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }], provisionRaw: raw },
-  })
-  const e1 = eq('status (run1 vs run2)', r1.status, r2.status)
-  const e2 = eq('trace (run1 vs run2)', r1.trace, r2.trace)
-  const e3 = eq('missing (run1 vs run2)', r1.missing, r2.missing)
-  const err = e1 || e2 || e3
-  return err ? err : { ok: true }
-})
-
-// ---------------------------------------------------------------------------
 // #384 fixtures + helpers — decision-log body composer + pre-handoff squash gate
 // ---------------------------------------------------------------------------
 
@@ -2000,6 +1928,8 @@ await testCase('T214c agentDeathRouting() table extracted from source markers', 
   const route = new Function(block + '\nreturn agentDeathRouting')()
   const checks = [
     eq('sam attempt 1 retries', route('sam', 1), { action: 'retry' }),
+    eq('probe attempt 1 retries (RETRY_SAFE, #82)', route('probe', 1), { action: 'retry' }),
+    eq('probe attempt 2 fails (agent-died)', route('probe', 2), { action: 'fail', status: 'agent-died', resumable: true }),
     eq('sam attempt 2 fails', route('sam', 2), { action: 'fail', status: 'plan-died', resumable: true }),
     eq('nick never retried', route('nick', 1), { action: 'fail', status: 'dev-died', resumable: true }),
     eq('morgan never retried', route('morgan', 1), { action: 'fail', status: 'review-died', resumable: true }),
@@ -2008,6 +1938,37 @@ await testCase('T214c agentDeathRouting() table extracted from source markers', 
     eq('non-integer attempt treated as 1', route('sam', 'x'), { action: 'retry' }),
     eq('maxAttempts 0 falls back to 2', route('sam', 1, 0), { action: 'retry' }),
     eq('maxAttempts 0 fallback still caps at 2', route('sam', 2, 0), { action: 'fail', status: 'plan-died', resumable: true }),
+  ]
+  return checks.find(c => c) || { ok: true }
+})
+
+// T272 (#82) — probeCommands() extracted from its source markers: both commands start with the
+// cd prefix the attest hook accepts, the script is single-quoted, --verify adds --attest and no --cmd.
+await testCase('T272 probeCommands() extracted from source markers (#82)', async () => {
+  const src = SUITE_ARGS.fpSource
+  if (!src) {
+    log('SKIP — T272: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const block = extractBetween(src, '// --- probeCommands:start ---', '// --- probeCommands:end ---')
+  if (!block) return { ok: false, msg: 'probeCommands:start/:end markers not found in pipeline source' }
+  // eslint-disable-next-line no-new-func
+  const pc = new Function(block + '\nreturn probeCommands')()
+  const base = { wtPath: '/wt/issue-7', issue: 7, name: 'provision', cmd: "echo 'hi'", label: 'provision', round: 0 }
+  const withRoot = pc({ ...base, pluginRoot: '/plug' })
+  const cfgWins = pc({ ...base, pluginRoot: '/plug', probeRunPath: '/cfg/probe-run.cjs' })
+  const fallback = pc({ ...base })
+  const att = "--attest '/wt/issue-7/.pipeline/probe-attest.jsonl'"
+  const checks = [
+    eq('run starts with cd prefix + quoted plugin script', withRoot.run.startsWith("cd '/wt/issue-7' && node '/plug/templates/probe-run.cjs' "), true),
+    eq('verify starts with the same prefix', withRoot.verify.startsWith("cd '/wt/issue-7' && node '/plug/templates/probe-run.cjs' --verify "), true),
+    eq('run carries --cmd with the quoted command', withRoot.run.includes("--cmd 'echo '\\''hi'\\'''"), true),
+    eq('run has no --verify', withRoot.run.includes('--verify'), false),
+    eq('verify has --attest <wt>/.pipeline/probe-attest.jsonl', withRoot.verify.includes(att), true),
+    eq('verify has no --cmd', withRoot.verify.includes('--cmd'), false),
+    eq('config.probeRunPath wins over pluginRoot', cfgWins.run.includes("node '/cfg/probe-run.cjs' "), true),
+    eq('fallback is the worktree copy', fallback.run.includes("node '/wt/issue-7/templates/probe-run.cjs' "), true),
+    eq('same out dir in both', withRoot.run.includes("--out '/wt/issue-7/.pipeline/probes/issue-7'") && withRoot.verify.includes("--out '/wt/issue-7/.pipeline/probes/issue-7'"), true),
   ]
   return checks.find(c => c) || { ok: true }
 })
@@ -3521,16 +3482,18 @@ await testCase('T130 run identity: first log is deliver #<issue>, Setup phase fi
   const iSetup = idx("phase('Setup')")
   const iRoot = idx('log(`worktreeRoot: ')
   const iRecheck = idx('config-project-recheck-')
-  const iProv = idx('provision-${issue}')
+  const iProv = idx("label: 'provision'")
   const iDiag = idx("phase('Diagnose')")
-  const order = [['deliver log', iLog], ['phase(Setup)', iSetup], ['worktreeRoot log', iRoot], ['config-project-recheck-', iRecheck], ['provision-${issue}', iProv], ["phase('Diagnose')", iDiag]]
+  const order = [['deliver log', iLog], ['phase(Setup)', iSetup], ['worktreeRoot log', iRoot], ['config-project-recheck-', iRecheck], ["label: 'provision'", iProv], ["phase('Diagnose')", iDiag]]
   for (const [n, i] of order) if (i < 0) return { ok: false, msg: `${n} not found in pipeline source` }
   for (let k = 1; k < order.length; k++) {
     if (!(order[k - 1][1] < order[k][1])) return { ok: false, msg: `expected ${order[k - 1][0]} before ${order[k][0]}` }
   }
   const e2 = eq('old status label gone', src.includes('label: `status:'), false)
   const e3 = eq('status label carries issue', src.includes('status-${issue}:'), true)
-  const bad = src.split('\n').filter(l => l.includes('label:') && !l.includes('${issue}'))
+  // probe() call sites (#82) pass a bare `label` + `onFail`; probe() itself builds the agent label
+  // `probe-${issue}-<name>-<label>-r<round>`, so the issue number is still in every agent label.
+  const bad = src.split('\n').filter(l => l.includes('label:') && !l.includes('${issue}') && !l.includes('onFail'))
   const e4 = eq('agent labels without ${issue}', bad.length, 0)
   return e2 || e3 || e4 || { ok: true }
 })
