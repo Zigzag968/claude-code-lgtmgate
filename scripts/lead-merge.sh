@@ -173,11 +173,23 @@ merged="$(gh api "repos/$REPO/pulls/$PR" --jq .merged)" || die "cannot read PR #
 merged_at="$(gh api "repos/$REPO/pulls/$PR" --jq .merged_at)" || die "cannot read PR #$PR merged_at; no issue closed"
 { [ "$merged" = "true" ] && [ -n "$merged_at" ] && [ "$merged_at" != "null" ]; } \
   || die "PR #$PR is not merged (merged=$merged merged_at=$merged_at); no issue closed"
-# Closing keywords only (same-repo #N; owner/repo#N never matches), case-insensitive, deduplicated.
+# Closing keywords in the header block ONLY (#119): the lines before the first `## ` line (the PR body order puts
+# `Closes #N` first); fenced code blocks and inline `code` spans are stripped before matching, so proofs quoting
+# `Closes #N` in the acceptance section never close anything. Same-repo #N only (owner/repo#N never matches),
+# case-insensitive, deduplicated; `Refs #N` never matches.
 closing_issues="$(printf '%s\n' "$body" | python3 -c '
 import re, sys
+head, fenced = [], False
+for line in sys.stdin.read().splitlines():
+    if not fenced and line.startswith("## "):
+        break
+    if re.match(r"\s*(```|~~~)", line):
+        fenced = not fenced
+        continue
+    if not fenced:
+        head.append(re.sub(r"`[^`]*`", " ", line))
 seen = []
-for m in re.finditer(r"(?<![\w/])(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s+#(\d+)\b", sys.stdin.read(), re.I):
+for m in re.finditer(r"(?<![\w/])(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s+#(\d+)\b", "\n".join(head), re.I):
     if m.group(1) not in seen:
         seen.append(m.group(1))
 print("\n".join(seen))')" || die "cannot parse closing references; PR #$PR is merged, close issues by hand"
