@@ -22,6 +22,9 @@ Morgan runs / inspects each item, then :
 - Cites that proof (command + output, or the artifact) in his review comment.
 - Only renders **LGTM once every box is checked.** A single remaining `- [ ]`, or a box that
   contradicts the diff, is **REQUIRED_CHANGES** — never LGTM.
+- An absent or empty acceptance block (no `acceptance:start`/`acceptance:end` marker pair, or no
+  `- [ ]`/`- [x]` line between them) is **REQUIRED_CHANGES**, never LGTM; Morgan's `items` carries the
+  literal line `Acceptance block absent or empty`.
 - If the tick is refused by session permissions while the proof passes: do not check it, never post
   "Ready to merge", cite the proof and classify the box as `proven-untickable`. The workflow renders
   `verified-untickable` (no Nick round) ; the Lead re-verifies the proof and checks it by hand. A

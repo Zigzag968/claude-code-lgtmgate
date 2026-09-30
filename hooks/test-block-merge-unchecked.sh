@@ -29,6 +29,8 @@ t "tick flag on another command does not unblock gh pr merge" 2 open.md "bash sc
 t "missing end marker -> block"           2 noend.md "gh pr merge 5"
 t "no acceptance section -> fail-open"    0 none.md  "gh pr merge 5"
 t "test-lead-merge.sh is not a merge"     0 open.md  "bash scripts/test-lead-merge.sh"
+t "grep naming lead-merge.sh is not a merge" 0 open.md "grep -n permissions scripts/lead-merge.sh"
+t "cd then lead-merge.sh, open box -> block" 2 open.md "cd wt && bash scripts/lead-merge.sh 5"
 t "unrelated command -> allow"            0 open.md  "ls"
 echo "[block-merge-unchecked test] passed=$PASS failed=$FAIL"
 [ "$FAIL" -eq 0 ]

@@ -38,7 +38,7 @@
 #     A box is ticked iff some line of that comment, after stripping the list prefix (`- `, `- [ ] `), `**` and backticks
 #     and collapsing whitespace, equals the box text normalised the same way followed by an optional separator
 #     (em dash, en dash, `-`, `--`, `:`) and `verified, tick pending (permissions): <proof>`, and the raw proof holds a
-#     backtick-quoted command. Only boxes between the acceptance markers are considered; a `[human-gate]` box is never
+#     backtick-quoted command or the template form `<command> -> <output>`. Only boxes between the acceptance markers are considered; a `[human-gate]` box is never
 #     ticked; an unmatched box stays open. The tick turns that line's `- [ ]` into `- [x]` and appends
 #     ` — ticked by lead-merge from Morgan's review`. PATCH via REST (`pulls/<N>`).
 #   - Limitation: index-style proofs ("Box 2: `cmd` -> out") and one line covering several boxes ("Boxes 1-4 verified")
@@ -183,8 +183,9 @@ for line in review:
         continue
     raw = m.group(1)
     k = raw.lower().find("(permissions):")
-    if k < 0 or "`" not in raw[k:]:
-        continue  # the proof must quote a command
+    proof = raw[k + len("(permissions):"):] if k >= 0 else ""
+    if k < 0 or not ("`" in proof or " -> " in proof):
+        continue  # the proof must show a command: backticks, or Morgan's `<command> -> <output>` template
     n = norm(raw)
     proven.append(n)
 suffix = " — ticked by lead-merge from Morgan's review"

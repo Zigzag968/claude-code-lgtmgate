@@ -3445,6 +3445,20 @@ await testCase('T9001 Morgan prompts (initial + re-review) require one matchable
   return (e1 || e2 || e3) ? (e1 || e2 || e3) : { ok: true }
 })
 
+// T9030 (#30) — Morgan's initial AND re-review prompts treat an absent or empty acceptance block as
+// REQUIRED_CHANGES. Source-level: the shared ACCEPTANCE_PRESENCE_RULE literal is present and is
+// interpolated into both Morgan prompts.
+await testCase('T9030 Morgan prompts (initial + re-review) treat an absent or empty acceptance block as REQUIRED_CHANGES', async () => {
+  const src = SUITE_ARGS.fpSource
+  if (!src) {
+    log('SKIP — T9030: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const e1 = includes('literal items line', src, 'Acceptance block absent or empty')
+  const e2 = eq('interpolations in the Morgan prompts', src.split('${ACCEPTANCE_PRESENCE_RULE}').length - 1, 2)
+  return (e1 || e2) ? (e1 || e2) : { ok: true }
+})
+
 // T9036 (#36, #37) — acceptance items are executed commands describing repo states only. Source-level:
 // the shared rule is defined once, interpolated once (Sam prompt), and the blocking check sits in the
 // planCheck prompt and the plan-audit prompt.
