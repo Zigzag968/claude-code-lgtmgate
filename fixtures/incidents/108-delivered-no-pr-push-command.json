@@ -9,8 +9,14 @@
     "mode": "auto"
   },
   "calls": {
-    "provision-123": "PROVISION-SKIPPED-NO-SCRIPT x\nPROVISION-EXIT:0\n",
-    "provision-freshness-123": "0\n",
+    "probe-123-provision-provision-r0": {
+      "line": "PROBE name=provision exit=0 sha=30ad404e7bf922808eeb13427c66400303e810a9392f80082fb0abe2fc6fc271 json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}",
+      "verify": "VERIFY ok line=PROBE name=provision exit=0 sha=30ad404e7bf922808eeb13427c66400303e810a9392f80082fb0abe2fc6fc271 json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}"
+    },
+    "probe-123-provision-freshness-provision-freshness-r0": {
+      "line": "PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b json={\"state\":\"fresh\",\"behind\":0,\"own\":0}",
+      "verify": "VERIFY ok line=PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b json={\"state\":\"fresh\",\"behind\":0,\"own\":0}"
+    },
     "diagnose-issue-123": {
       "confirmed": true,
       "evidence": "reproduced: `node -e` prints the wrong slug",

@@ -40,8 +40,14 @@
     "mode": "auto"
   },
   "calls": {
-    "provision-33": "WARN optional src missing: /repo/.env\nPROVISION-EXIT:0",
-    "provision-freshness-33": "0",
+    "probe-33-provision-provision-r0": {
+      "line": "PROBE name=provision exit=0 sha=48a98479346f55b3c0b21672b638e3e090cec7e98f8c553af04a3ed88720a7ff json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":false}",
+      "verify": "VERIFY ok line=PROBE name=provision exit=0 sha=48a98479346f55b3c0b21672b638e3e090cec7e98f8c553af04a3ed88720a7ff json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":false}"
+    },
+    "probe-33-provision-freshness-provision-freshness-r0": {
+      "line": "PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b json={\"state\":\"fresh\",\"behind\":0,\"own\":0}",
+      "verify": "VERIFY ok line=PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b json={\"state\":\"fresh\",\"behind\":0,\"own\":0}"
+    },
     "diagnose-issue-33": {
       "confirmed": true,
       "evidence": "Chore, no claimed root-cause bug. In worktree issue-33 (branch feat/issue-33, frozen base): grep -rn 'checkout -B' workflows agents templates .claude returns exactly one hit, workflows/deliver-pipeline.js:2277, in the nickPrompt \"FIRST, before ANY commit\" branch-mismatch instruction (\"run git -C wtPath checkout -B expectedBranchName\"). That is the destructive reset described by the issue. agents/nick.md has no 'checkout -B' (grep for checkout/switch -c returned nothing), so that part of the brief is already clean or needs only optional alignment. Currently the guard does not exist: 'bash templates/test-canonical-guards.sh' exits 0 (21 passed, 0 failed), no check on this string. git log -S shows only the initial commit introduced it, so it is not already fixed. Issue is coherent and buildable; the acceptance commands are offline-verifiable. Note: acceptance grep 'grep -v test-' would filter out matches inside test- files, so the guard test may contain the literal string.",
@@ -95,6 +101,8 @@
     "status": "escalate",
     "reason": "worktree-git-dir-not-writable",
     "trace": [
+      "probe:provision:haiku",
+      "probe:provision-freshness:haiku",
       "plan-stale:1",
       "worktree-git-dir-not-writable:/wt/root/issue-33/.git"
     ]
