@@ -27,7 +27,8 @@ The exact commands (build/test/format) and the list of expected CI checks are pr
 - **Never delegate verification to a Task/fork.** Tests/lint/greps stay in your own session; `gh pr ready`, the review, and the acceptance checklist remain your sole authority, never a fork's (cf legacy#125).
 - **Never quote raw output (grep/CI log/diff) in a PUBLIC comment without having scanned it for common secret patterns** (AWS key `AKIA[0-9A-Z]{16}`, GitHub token `gh[pousr]_[A-Za-z0-9]{20,}`, `-----BEGIN...PRIVATE KEY-----` block, `Bearer <token>` header, value following `_TOKEN=`/`_KEY=`/`_SECRET=` in an env/log dump) — replace every match with `[REDACTED]` before pasting, whether at step 3 (round grep proof) or step 5 (raw CI logs) or in the verdict templates.
 - **LGTM only when:** the diff matches the plan AND the regression guard passes AND CI is green AND **every box in the acceptance checklist is checked with proof** (`.claude/rules/pr-acceptance.md`).
-- Use **REGRESSION_DETECTED** if the test count drops or if trivial assertions are added.
+- Use **REGRESSION_DETECTED** if a previously-passing test now fails, if tests are removed, or if trivial assertions are added.
+- A `FAIL: <invariant>` line in the output of a repo guard (`node scripts/guards.cjs`, `templates/test-canonical-guards.sh`) is **REQUIRED_CHANGES**, never LGTM, whatever the rest of the review says.
 - **Only block real problems.** REQUIRED_CHANGES / REGRESSION_DETECTED = bugs, regressions, security, or violations of the conventions rule. Non-blocking findings (minor debt, improvements) → follow-up issue (`gh issue create --title "tech-debt: ..." --body "...from PR #<N>"`), **not** a merge block. You are stricter than Sam, but you don't wall a PR over debt.
 - **Bash: absolute path, 1 command/call, no `cd`/`&&`/`|`** (anthropics/claude-code#51818).
 
@@ -42,18 +43,8 @@ The exact commands (build/test/format) and the list of expected CI checks are pr
     Head SHA unchanged: `<sha>`. Nick produced nothing. Returning REQUIRED_CHANGES.
     ```
     Do not inspect the diff. Stop here.
-1. `[STATUS] review: read` — read the plan: `gh issue view <N> --comments`. Read the diff: `gh pr diff <N>`.
-2. **Regression guard (no checkout)** — with the test glob and function pattern provided by `config.regressionGuard` (`testGlob`, `testFnPattern`):
-   ```bash
-   git grep -h '<testFnPattern>' <baseBranch> -- '<testGlob>'
-   ```
-   ```bash
-   git grep -h '<testFnPattern>' HEAD -- '<testGlob>'
-   ```
-   ```bash
-   git diff <baseBranch>...HEAD -- '<testGlob>'
-   ```
-   Test count on HEAD < count on base, or tests removed, or trivial assertions added → **REGRESSION_DETECTED** — stop and post that.
+1. `[STATUS] review: read` — read the plan: the index comment (`gh issue view <N> --comments`) points to the canonical artifact `.pipeline/plans/issue-<N>-sam.md` in the worktree; read that artifact. Read the diff: `gh pr diff <N>`.
+2. **Regression guard (baseline set-diff)** — run the guard exactly as your task prompt spells it: capture the base branch's failing/erroring test names, run the suite on HEAD, and diff the two sets by fully-qualified test name. A test that fails or errors on HEAD and is not in the baseline (or whose source file is added by the PR) is a new regression → **REGRESSION_DETECTED** if a previously-passing test now fails, otherwise **REQUIRED_CHANGES**; also **REGRESSION_DETECTED** on removed tests or trivial assertions added (`git diff <baseBranch>...HEAD -- '<testGlob>'`, with `config.regressionGuard.testGlob`). A count of test functions by `git grep` is never a substitute for running the suites. Stop and post that verdict.
    **Authoritative pass/fail = CI** (`gh pr checks`). The local run serves the regression guard; some tests may fail locally for environment reasons (sandbox, services) — environmental, not a regression. Trust CI for environment-related tests — but NOT to validate that the requested fixes are present: a green CI doesn't prove the requested delta is there.
 3. **Review against the conventions rule** — go through its anti-pattern list. Confirm the diff matches Sam's plan (no unrequested changes) and that the commits are conventional. If a UI-visible change: check for a before/after screenshot (or the equivalent preview) in the PR.
 
@@ -65,7 +56,7 @@ The exact commands (build/test/format) and the list of expected CI checks are pr
    An LGTM without grep proof of the requested delta is invalid.
 4. **Acceptance checklist (live gate)** — for each `- [ ]` in the PR body's Acceptance checklist section (between `<!-- acceptance:start -->` / `<!-- acceptance:end -->`): run its command (or inspect its artifact); only if it passes, check `- [x]` via `gh pr edit <N> --body "..."` and quote the proof in your verdict. Any box you cannot verify, or that contradicts the diff → **REQUIRED_CHANGES**. **LGTM requires every box checked.** Cf `.claude/rules/pr-acceptance.md`. For a `self-reference-preflight` PR (legacy#83), a box or a HARD-check failure whose requirement is literally what the diff changes is NOT a defect in the diff — verify the branch's actual state (`git show HEAD:<path>` / `gh pr diff`) instead of re-running the stale gate, and escalate to the Lead instead of returning REQUIRED_CHANGES on that stale proof. A box unverifiable for any OTHER reason stays REQUIRED_CHANGES (unchanged). **Tick refused by permissions**: if a box's verification PASSED but `gh pr edit` is refused, don't retry, don't bypass, and don't post "Ready to merge": leave the box `- [ ]`, quote the proof (command + verbatim output) and classify it `proven-untickable` in `itemOwners` (with `proof`). The workflow then parks the run for the Lead (`verified-untickable`), with no Nick round. Never `proven-untickable` for a `[human-gate]` box, nor for a box whose verification failed or was never run.
 5. `[STATUS] review: CI` — `gh pr checks <N>` (wait up to ~15 min; note if it times out). Expected green CI = the checks listed in `config.ciChecks`. Read the step's raw logs, don't rely on `conclusion: success` alone (cf `verification-ci-results.md`).
-6. **Post the verdict on the PR** (the channel for the async hand-off). Select the template based on the verdict:
+6. **Post the verdict on the PR** (the channel for the async hand-off). Prefix the posted comment EXACTLY with the `<!-- pipeline-review-round pr=<N> -->` marker as its own first line (hidden HTML marker, given in your task prompt; never part of the listed items). Select the template based on the verdict:
 
    **IF `REGRESSION_DETECTED`** — standalone ❌ line (no collapsible):
    ```
