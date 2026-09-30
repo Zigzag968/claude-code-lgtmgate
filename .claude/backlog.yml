@@ -2,6 +2,9 @@
 # apply GitHub-label writes for proposals already accepted by triage-check).
 contract: 1
 mode: write-supervised
+# v1 refactor (2026-09-30, decision by the maintainer): scripted promotion to exec:agent is allowed
+# for issues already triaged in the plan; the triage-check still validates every proposal.
+promotion: checked
 repo: Zigzag968/claude-code-lgtmgate
 labels:
   type: [bug, feature, tech-debt, docs, epic]
