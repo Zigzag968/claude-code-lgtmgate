@@ -36,6 +36,10 @@ jobs:
         run: bash templates/test-canonical-guards.sh
       - name: Offline flow suite
         run: FLOW_SUITE_STRICT=1 node scripts/run-flow-suite.cjs
+      - name: Offline record/replay harness (raw fixtures, real parsers)
+        run: OFFLINE_STRICT=1 node scripts/run-offline.cjs --all fixtures
+      - name: run-offline self-test
+        run: bash scripts/test-run-offline.sh
       - name: Stop-supervise watchdog regression test
         run: bash hooks/test-Stop-supervise-runs.sh
       - name: verify-workflow-launch regression test

@@ -1,0 +1,42 @@
+{
+  "name": "semi-plan-ready",
+  "note": "mode semi stops after the plan: only provision, diagnose, scout and plan-check are called",
+  "args": {
+    "issue": 123,
+    "brief": "fix slugify accents",
+    "wtPath": "/wt/root/issue-123",
+    "config": {},
+    "mode": "semi"
+  },
+  "calls": {
+    "provision-123": "PROVISION-SKIPPED-NO-SCRIPT x\nPROVISION-EXIT:0\n",
+    "provision-freshness-123": "0\n",
+    "diagnose-issue-123": {
+      "confirmed": true,
+      "evidence": "reproduced: `node -e` prints the wrong slug",
+      "actualCause": "accent stripping",
+      "laneOk": true,
+      "persistentStateSignal": false,
+      "authSecurityBoundarySignal": false,
+      "deployConfigSignal": false,
+      "immatureVendorApiSignal": false
+    },
+    "scout-issue-123-1": {
+      "decision": "GO",
+      "plan": "## Plan\n1. src/slugify.js: transliterate before stripping\n\n## Acceptance checklist\n- [ ] `npm test` passes",
+      "rationale": "",
+      "targetFiles": [
+        "src/slugify.js"
+      ],
+      "absorbedIssues": [],
+      "acceptanceChecklist": "- [ ] `npm test` passes"
+    },
+    "plan-check-123-1": {
+      "verdict": "CONFORMING",
+      "issues": []
+    }
+  },
+  "expect": {
+    "status": "plan-ready"
+  }
+}
