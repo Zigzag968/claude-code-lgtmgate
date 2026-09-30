@@ -1,7 +1,10 @@
 {
-  "name": "zigzag-plugins",
+  "name": "zigzag-plugins-beta",
   "owner": {
     "name": "Zigzag968"
+  },
+  "metadata": {
+    "description": "Early-access channel of zigzag-plugins: same plugins, tracking main. Never enable both channels in the same scope (duplicate manifest name = silent shadowing, hooks fire twice)."
   },
   "plugins": [
     {
@@ -9,10 +12,9 @@
       "source": {
         "source": "github",
         "repo": "Zigzag968/claude-code-lgtmgate",
-        "ref": "main",
-        "sha": "43c2911e82b32d029172a2ae93dc1d8dbea76a74"
+        "ref": "main"
       },
-      "description": "Stack-agnostic delivery pipeline: Theo (diagnose) -> Mia (PM) -> Sam (plan) -> Nick (dev+PR) -> Morgan (review), orchestrated by a per-project workflow and configured via .claude/pipeline.config.json.",
+      "description": "[beta channel, tracks main] Stack-agnostic delivery pipeline: Theo (diagnose) -> Mia (PM) -> Sam (plan) -> Nick (dev+PR) -> Morgan (review), orchestrated by a per-project workflow and configured via .claude/pipeline.config.json.",
       "author": {
         "name": "Zigzag968"
       },
@@ -32,10 +34,9 @@
         "source": "git-subdir",
         "url": "https://github.com/Zigzag968/claude-code-lgtmgate.git",
         "path": "plugins/backlog",
-        "ref": "main",
-        "sha": "43c2911e82b32d029172a2ae93dc1d8dbea76a74"
+        "ref": "main"
       },
-      "description": "Config-driven backlog discipline for GitHub repos: /backlog:file, /backlog:triage (propose-only), /backlog:next. Inert unless the repo has .claude/backlog.yml.",
+      "description": "[beta channel, tracks main] Config-driven backlog discipline for GitHub repos: /backlog:file, /backlog:triage (propose-only), /backlog:next. Inert unless the repo has .claude/backlog.yml.",
       "author": {
         "name": "Zigzag968"
       },
@@ -49,8 +50,5 @@
       ],
       "category": "productivity"
     }
-  ],
-  "renames": {
-    "agent-pipeline": "lgtmgate"
-  }
+  ]
 }
