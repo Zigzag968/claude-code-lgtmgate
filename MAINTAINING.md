@@ -163,9 +163,10 @@ repo's own `.claude/rules/pr-acceptance.md` "Autonomie en session non supervisee
 distinct, not-yet-decided policy change — tracked separately at issue legacy#140, not documented as
 canonical here.
 
-**This marketplace is PRIVATE — never rely on background auto-update.** The docs state plainly:
-*"private-marketplace auto-updates may fail intermittently."* Every release and every rollback is
-therefore always the same explicit three-step sequence, never a wait-and-see:
+**Never rely on background auto-update — always run the explicit sequence.** Timing of a
+background marketplace refresh isn't guaranteed (it used to be explicitly unreliable while this
+marketplace was private, pre-2026-09-29 — see §5). Every release and every rollback is therefore
+always the same explicit three-step sequence, never a wait-and-see:
 
 ```bash
 claude plugin marketplace update zigzag-plugins
