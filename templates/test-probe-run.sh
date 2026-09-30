@@ -21,14 +21,14 @@ check() {
   else echo "FAIL - $name"; fail_count=$((fail_count + 1)); fi
 }
 
-# (a) every fixtures/probes/<parser>--<case>.raw through PARSERS deep-equals its .expected.json
+# (a) every fixtures/probes/<parser>--<case>.raw through PARSERS deep-equals its .expected
 n_raw=0
 for raw in "$ROOT"/fixtures/probes/*.raw; do
   [ -f "$raw" ] || continue
   n_raw=$((n_raw + 1))
   base="$(basename "$raw" .raw)"
   parser="${base%%--*}"
-  exp="$ROOT/fixtures/probes/$base.expected.json"
+  exp="$ROOT/fixtures/probes/$base.expected"
   ok=0
   if [ -f "$exp" ] && node -e '
     const fs = require("fs"), assert = require("assert")

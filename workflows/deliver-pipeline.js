@@ -67,6 +67,9 @@ export const meta = {
 //                  narrow (one value today): a branch-mismatch or plan-stale escalate doesn't
 //                  resolve by relaunching Nick with this same message.
 //   dryRun      — if true, validate args and return immediately (no agents spawned)
+//   probeOnly   — optional { name, cmd, label, round }: run ONE probe() (probe-run gate, #80) and return
+//                 status 'dry-run-ok' reason 'probe-only'. Lets a run-offline fixture reach probe()
+//                 while no engine call site is migrated yet. Not a simulate key.
 //   models      — optional per-role model override: { scout?, planAudit?, morgan? }. Resolution
 //                 order per role is `models.<role> ?? config.models?.<role> ?? 'sonnet'` (same `??`
 //                 idiom as planAudit above — arg wins per-run over the project default). Default is
@@ -261,6 +264,7 @@ const {
   proceedThrough = null,
   planText = null,
   dryRun = false,
+  probeOnly = null,
   maxPlanAttempts = 2,
   planAudit = undefined,
   planFreshness = undefined,
@@ -347,7 +351,9 @@ const modelsCfg = config.models || {}
 const scoutModel = models.scout ?? modelsCfg.scout ?? 'sonnet'
 const planAuditModel = models.planAudit ?? modelsCfg.planAudit ?? 'sonnet'
 const morganModel = models.morgan ?? modelsCfg.morgan ?? 'sonnet'
-if (dryRun) return finish({ status: 'dry-run-ok', issue, mode, entryStage, planAudit: planAuditEnabled, planFreshness: planFreshnessMode, maxAuditRounds, maxAuditRoundsOverrideReason: auditBudgetOverrideReason || null, maxPlanAmendRounds, models: { scout: scoutModel, planAudit: planAuditModel, morgan: morganModel } })
+// Probe-run gate (#80): version of the PROBES registry (empty until a call site migrates).
+const PROBES_VERSION = 1
+if (dryRun) return finish({ status: 'dry-run-ok', probesVersion: PROBES_VERSION, issue, mode, entryStage, planAudit: planAuditEnabled, planFreshness: planFreshnessMode, maxAuditRounds, maxAuditRoundsOverrideReason: auditBudgetOverrideReason || null, maxPlanAmendRounds, models: { scout: scoutModel, planAudit: planAuditModel, morgan: morganModel } })
 
 const trace = []
 if (auditBudgetOverridden) {
@@ -1631,6 +1637,71 @@ async function updateStatus(name) {
       { label: `status-${issue}:${name}`, model: 'haiku' },
     )
   } catch (e) { log(`updateStatus ${name} failed: ${e.message}, continuing`) }
+}
+
+// ---------------------------------------------------------------------------
+// Probe-run gate (#80, E2.2) — ONE gate to the world: templates/probe-run.cjs EXECUTES the command
+// and keeps the raw output on disk, the probe agent (haiku, Bash only) copies the ONE `PROBE ` line
+// it prints, hooks/PostToolUse-probe-attest.sh attests it. The engine only parses that line.
+// PROBES is empty and no call site is migrated yet; PROBES_VERSION is declared near `dryRun`.
+// ---------------------------------------------------------------------------
+const PROBES = {}
+
+const PROBE_SCHEMA = {
+  type: 'object',
+  required: ['line'],
+  properties: {
+    line: { type: 'string', description: 'The single PROBE line printed by probe-run.cjs, verbatim; "" if none.' },
+  },
+}
+
+// guards:parser-begin
+const PROBE_LINE = /^PROBE name=(\S+) exit=(-?\d+) sha=([0-9a-f]{64}) json=(.*)$/
+const SAFE_PROBE_TOKEN = /^[A-Za-z0-9._-]+$/
+function parseProbeLine(line) {
+  if (typeof line !== 'string') return null
+  const m = line.trim().match(PROBE_LINE)
+  if (!m) return null
+  let json
+  try { json = JSON.parse(m[4]) } catch (_) { return null }
+  return { name: m[1], exit: Number(m[2]), sha: m[3], json }
+}
+const isSafeProbeToken = (s) => typeof s === 'string' && SAFE_PROBE_TOKEN.test(s)
+// guards:parser-end
+
+const shellSingleQuote = (s) => `'${String(s).split("'").join("'\\''")}'`
+
+async function probe(name, cmd, { label, round = 0, onFail } = {}) {
+  if (!isSafeProbeToken(name) || !isSafeProbeToken(label)) {
+    throw new Error(`probe: unsafe name/label (${JSON.stringify(name)} / ${JSON.stringify(label)})`)
+  }
+  const fail = (reason) => {
+    if (onFail) return onFail(reason)
+    throw new Error(`probe ${name}/${label}: ${reason}`)
+  }
+  const probeRunPath = config.probeRunPath ?? 'templates/probe-run.cjs'
+  const outDir = `${wtPath}/.pipeline/probes/issue-${issue}`
+  const runCmd = `node ${probeRunPath} --label ${label} --round ${round} --out ${shellSingleQuote(outDir)} ` +
+    `--parser ${name} --model haiku --cmd ${shellSingleQuote(cmd)}`
+  const prompt =
+    `Run EXACTLY this command once, from the worktree "${wtPath}", without editing or re-quoting it:\n\n` +
+    `${runCmd}\n\n` +
+    `It prints exactly one line starting with "PROBE ". Answer with that line verbatim as "line". ` +
+    `Never judge or retry; if it printed no PROBE line, answer "line": "".`
+  trace.push(`probe:${name}:haiku`)
+  const res = await callAgentSafe('probe', prompt,
+    { agentType: 'lgtmgate:probe', schema: PROBE_SCHEMA, label: `probe-${issue}-${name}-${label}-r${round}`, model: 'haiku' }, round)
+  if (isAgentDeath(res)) return fail('agent-death')
+  const parsed = parseProbeLine(res && res.line)
+  if (!parsed) return fail('unparseable-line')
+  if (parsed.name !== name) return fail('name-mismatch')
+  return parsed
+}
+
+// probeOnly (#80): reach probe() from a run-offline fixture while no call site exists yet.
+if (probeOnly) {
+  const r = await probe(probeOnly.name, probeOnly.cmd, { ...probeOnly })
+  return finish({ status: 'dry-run-ok', reason: 'probe-only', issue, probesVersion: PROBES_VERSION, probe: r, trace })
 }
 
 // ---------------------------------------------------------------------------
