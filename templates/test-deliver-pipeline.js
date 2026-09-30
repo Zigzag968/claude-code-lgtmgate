@@ -35,6 +35,20 @@ function includes(label, actual, value) {
   return null
 }
 
+// Returns the sorted test IDs (T<n>[a-z]* / F<n>[a-z]*) that occur more than once in `names`.
+// Names without a leading ID are ignored; T104 and T104a are distinct IDs.
+function duplicateTestIds(names) {
+  const seen = new Set()
+  const dups = new Set()
+  for (const n of names) {
+    const m = /^(?:T\d+[a-z]*|F\d+[a-z]*)(?=\s)/.exec(String(n))
+    if (!m) continue
+    if (seen.has(m[0])) dups.add(m[0])
+    else seen.add(m[0])
+  }
+  return [...dups].sort()
+}
+
 // Stack-agnostic fake config — structurally complete so generic interpolation works.
 // In simulate mode, callAgent is mocked and updateStatus is best-effort, so none of these
 // commands/IDs are ever executed. Values are deliberately bogus.
@@ -943,8 +957,7 @@ await testCase('T31 no issueWindow fixture → trace has zero reviewer-window-is
 // T32 (#333, reopened) — real-case replay: an issue created INSIDE
 // the reviewer window is flagged, and the trace carries NO token matching /close/i anywhere —
 // the exact production incident (unattributed number-diff auto-close) must now produce a
-// non-destructive flag, never a close. (This suite's numbering is per-feature, not globally
-// sequential — see T33/T34 below for the same note.)
+// non-destructive flag, never a close.
 await testCase('T32 real-case replay (issue created inside reviewer window) → flagged, never closed', async () => {
   const r = await run({
     mode: 'auto',
@@ -966,9 +979,7 @@ await testCase('T32 real-case replay (issue created inside reviewer window) → 
 // T33 (#333, reopened) — a reopen is not a creation: an issue whose createdAt PREDATES the
 // review window (it was created long before, then reopened during the window — reopening never
 // changes createdAt) must yield ZERO flags. The old number-diff mechanism could not see this and
-// wrongly re-closed a human-reopened issue in production. NOTE: this label coincides with the
-// pre-existing, UNRELATED "T33 planCheck orphan criterion" case above (#14) — this suite's
-// numbering is per-feature, not a globally unique sequence; both are legitimate, distinct cases.
+// wrongly re-closed a human-reopened issue in production.
 await testCase('T33 reopened issue (createdAt predates window) → zero flags', async () => {
   const r = await run({
     mode: 'auto',
@@ -988,8 +999,7 @@ await testCase('T33 reopened issue (createdAt predates window) → zero flags', 
 
 // T34 (#333, reopened) — an issue created AFTER the window closed (post-review, unrelated to
 // this round) must yield ZERO flags — the window is bounded on both ends, not just from below.
-// NOTE: coincides with the pre-existing, UNRELATED "T34 Theo laneOk:false" case (same rationale
-// as T33 above). Not gated by its own acceptance-checklist box (§5 only cites T32/T33); kept as
+// Not gated by its own acceptance-checklist box (§5 only cites T32/T33); kept as
 // the plan's step-4 third case for completeness.
 await testCase('T34 issue created after window end → zero flags', async () => {
   const r = await run({
@@ -1008,10 +1018,10 @@ await testCase('T34 issue created after window end → zero flags', async () => 
   return { ok: true }
 })
 
-// 33. T33 (#14) — planCheck item 4: an orphan acceptance criterion (in the checklist, no
+// 33. T119 (#14) — planCheck item 4: an orphan acceptance criterion (in the checklist, no
 //     plan step) yields NOT_CONFORMING; bounded to escalate, and the orphan list surfaces in
 //     planCheckIssues so the Lead sees exactly what is unaddressed.
-await testCase('T33 planCheck orphan criterion → escalate, orphans in planCheckIssues', async () => {
+await testCase('T119 planCheck orphan criterion → escalate, orphans in planCheckIssues', async () => {
   const orphan = 'orphan criterion: "/v/<id> renders" has no plan step'
   const r = await run({
     mode: 'auto',
@@ -1030,9 +1040,9 @@ await testCase('T33 planCheck orphan criterion → escalate, orphans in planChec
   return (e1 || e2 || e3) ? (e1 || e2 || e3) : { ok: true }
 })
 
-// 34. T34 (#14) — Theo lane-check: a user-visible issue on the mechanical ('Sam') lane →
+// 34. T120 (#14) — Theo lane-check: a user-visible issue on the mechanical ('Sam') lane →
 //     laneOk:false → status 'lane-refused', requiredScout surfaced, no Sam/Nick/Morgan spent.
-await testCase('T34 Theo laneOk:false → lane-refused, requiredScout surfaced', async () => {
+await testCase('T120 Theo laneOk:false → lane-refused, requiredScout surfaced', async () => {
   const r = await run({
     simulate: {
       theo: { confirmed: true, laneOk: false, requiredScout: 'ScoutX', evidence: 'issue edits the /v/<id> route template — user-visible', actualCause: '' },
@@ -2175,7 +2185,7 @@ await testCase('T71d resolveWorktreeRoot: absolute versioned default passes thro
 
 // #111: Nick's prompt only ever interpolated the plan (planBlock), never the raw issue brief —
 // unlike Sam/Morgan, which both get brief AND plan. Asserts nickPromptPreview now carries the brief.
-await testCase('T104 nickPrompt includes the raw issue brief alongside the plan (#111)', async () => {
+await testCase('T121 nickPrompt includes the raw issue brief alongside the plan (#111)', async () => {
   const marker = 'UNIQUE-BRIEF-MARKER-T104-xyz987'
   const r = await run({
     mode: 'auto',
@@ -2979,14 +2989,14 @@ await testCase('T118 open sub-issue already covered by samAbsorbedIssues → Clo
   return err ? err : { ok: true }
 })
 
-// T99 — Morgan review fix (PR #121): off-path regression where an empty/absent `items` (MORGAN.items
+// T122 — Morgan review fix (PR #121): off-path regression where an empty/absent `items` (MORGAN.items
 // is optional; REQUIRED_CHANGES has never required items) silently skipped Nick because
 // `dispatchNick` was gated on `nickItems.length > 0` even when nothing was plan-routed
 // (`planRouted === false`). Exact repro fixture from the review comment: no `itemOwners` at all
 // (fully off-path), Morgan round 1 returns REQUIRED_CHANGES with no `items`, headSha frozen across
 // rounds → Nick MUST still be dispatched, run the no-op gate, and escalate nick-no-op — never reach
 // `ready` via a silent `nick-skipped-plan-only` skip.
-await testCase('T99 off-path empty items (no itemOwners) → Nick still dispatched, no-op gate fires, escalate nick-no-op', async () => {
+await testCase('T122 off-path empty items (no itemOwners) → Nick still dispatched, no-op gate fires, escalate nick-no-op', async () => {
   const r = await run({
     mode: 'auto',
     simulate: {
@@ -3345,6 +3355,18 @@ await testCase('T109j worktreeFreshnessNote: behind:100 → plural "commits"', a
   const hasPlural = result.includes('100 commits behind origin/main')
   if (!hasWarning || !hasPlural) {
     return { ok: false, msg: `expected "100 commits" but got: ${result.substring(0, 150)}...` }
+  }
+  return { ok: true }
+})
+
+// T123 (#42) — every test ID is unique across the suite. Must stay the LAST case so `results`
+// holds every other case name. Includes a negative control proving the detector really detects.
+await testCase('T123 test IDs are unique across the suite (no duplicated T<n>)', async () => {
+  const control = eq('negative control', duplicateTestIds(['T1 a', 'T1 b', 'T1a c', 'F2 x']), ['T1'])
+  if (control) return control
+  const dups = duplicateTestIds(results.map(r => r.name))
+  if (dups.length !== 0) {
+    return { ok: false, msg: `duplicated test IDs: ${dups.join(', ')}` }
   }
   return { ok: true }
 })
