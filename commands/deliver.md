@@ -31,13 +31,14 @@ You are the **Lead**. You deliver a change end-to-end through the **Mia -> Sam -
 - The RESOLVED worktreeRoot must be mounted/accessible. Check it (e.g. `test -d "<resolved worktreeRoot>"` or that the parent volume is mounted). Inaccessible → stop and report to the user (e.g. external SSD not mounted).
 
 ## 3. Create the shared worktree (frozen from the base branch)
-- `git fetch origin` then make sure the base branch (`config.baseBranch`) is up to date.
+- `git fetch origin <baseBranch>` first: the worktree is created from the freshly fetched `origin/<baseBranch>`, never from a local branch taken for granted.
 - Slug: **`issue-<N>`** (fixed). Nick commits on the worktree's branch (he no longer recomputes it) — keep a predictable name aligned with GH tracking. (friction F2)
 - `WT="<worktreeRoot>/<slug>"`; branch `<config.branchPrefix><slug>`.
 - Create it (1 command):
   ```bash
-  git worktree add "<WT>" -b <branchPrefix><slug> <baseBranch>
+  git worktree add "<WT>" -b <branchPrefix><slug> origin/<baseBranch>
   ```
+- **Behind the base** (the dispatch preflight reports it): a worktree with no commit of its own is fast-forwarded with `git merge --ff-only origin/<baseBranch>`; with own commits it is refused and the exact command is `git -C "<WT>" merge origin/<baseBranch>`. Never a rebase.
 - Check `git worktree list` < 60s afterward (mitigation for anthropics/claude-code#39886). Failure → fix before launching the workflow.
 - **Alternate base** (feature stacked on a not-yet-merged branch, or dogfood): override `config.baseBranch` to that branch FOR THIS RUN (in the config object passed to the workflow) AND create the worktree from it. Worktree + PR target + regression guard then all point to the right base. Check that it triggers CI (`on.pull_request.branches`); otherwise `ciChecks: []` (Morgan validates on the local green bar). (friction F3)
 
