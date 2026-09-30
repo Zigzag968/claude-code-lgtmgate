@@ -223,7 +223,7 @@ export const meta = {
 // `version`, checked against plugin.json by templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '0.8.88', cutFrom: 'adc506c' }
+const BUILD = { plugin: 'lgtmgate', version: '0.8.89', cutFrom: 'a42d211' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -1290,7 +1290,11 @@ function classifyBlockers(items, itemOwners) {
 // `itemOwners` array. Fail-safe by construction: absent/empty `itemOwners`, an owner other than
 // 'proven-untickable', an empty/missing `proof`, an item matching nothing in `items`, or a
 // `[human-gate]` item all fall through to `rest` (legacy path). Pure: never ticks anything.
-function classifyUntickable(items, itemOwners) {
+// Issue #107 — `opts.checklistKind` (the engine passes it only while plan amendment is off,
+// maxPlanAmendRounds === 0) also parks a 'checklist-wording-defect' item that carries a proof: a
+// checklist/tick blocker is never a Nick fix. Morgan's structured `itemOwner` is the only signal.
+function classifyUntickable(items, itemOwners, opts) {
+  const parkOwners = opts && opts.checklistKind ? ['proven-untickable', 'checklist-wording-defect'] : ['proven-untickable']
   const allItems = Array.isArray(items) ? items : []
   const owners = Array.isArray(itemOwners) ? itemOwners : []
   if (owners.length === 0) return { untickable: [], rest: allItems }
@@ -1299,7 +1303,7 @@ function classifyUntickable(items, itemOwners) {
   const parkedNorm = new Set()
   for (const o of owners) {
     if (!o || typeof o !== 'object') continue
-    if (o.itemOwner !== 'proven-untickable') continue
+    if (!parkOwners.includes(o.itemOwner)) continue
     const proof = typeof o.proof === 'string' ? o.proof.trim() : ''
     if (!proof) continue
     const item = typeof o.item === 'string' ? o.item : ''
@@ -2926,7 +2930,7 @@ if (after('review', entryStage)) {
   // untickable. Never ticks anything itself (D4): the Lead re-verifies each proof and ticks.
   const reviewParkedTerminal = async (v, round) => {
     if (!v || v.verdict !== 'REQUIRED_CHANGES' || v.ciGreen === false) return null
-    const { untickable, rest } = classifyUntickable(v.items, v.itemOwners)
+    const { untickable, rest } = classifyUntickable(v.items, v.itemOwners, { checklistKind: maxPlanAmendRounds === 0 })
     if (untickable.length === 0) return null
     if (rest.some(i => !isHumanGate(i))) return null   // a real blocker remains → Nick loop
     trace.push(`verified-untickable:${round}`)

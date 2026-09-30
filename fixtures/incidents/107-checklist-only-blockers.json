@@ -1,0 +1,80 @@
+{
+  "name": "107-checklist-only-blockers",
+  "note": "incident #41/#42 (PRs #102/#103): Morgan found the code correct and only flagged checklist items (structured itemOwner checklist-wording-defect, with proof); the engine dispatched a Nick fix round that pushed nothing and escalated nick-no-op. Expected: verified-untickable, zero Nick calls after the review (no `nick-pr-42` entry exists: the harness fails on any such call). Morgan output shape is synthetic-raw (the raw run data was not retained).",
+  "args": {
+    "issue": 123,
+    "brief": "fix slugify accents",
+    "wtPath": "/wt/root/issue-123",
+    "config": {},
+    "mode": "auto"
+  },
+  "calls": {
+    "provision-123": "PROVISION-SKIPPED-NO-SCRIPT x\nPROVISION-EXIT:0\n",
+    "provision-freshness-123": "0\n",
+    "diagnose-issue-123": {
+      "confirmed": true,
+      "evidence": "reproduced: `node -e` prints the wrong slug",
+      "actualCause": "accent stripping",
+      "laneOk": true,
+      "persistentStateSignal": false,
+      "authSecurityBoundarySignal": false,
+      "deployConfigSignal": false,
+      "immatureVendorApiSignal": false
+    },
+    "scout-issue-123-1": {
+      "decision": "GO",
+      "plan": "## Plan\n1. src/slugify.js: transliterate before stripping\n\n## Acceptance checklist\n- [ ] `npm test` passes",
+      "rationale": "",
+      "targetFiles": [
+        "src/slugify.js"
+      ],
+      "absorbedIssues": [],
+      "acceptanceChecklist": "- [ ] `npm test` passes"
+    },
+    "plan-check-123-1": {
+      "verdict": "CONFORMING",
+      "issues": []
+    },
+    "plan-stale-123": "",
+    "sub-issues-123": "",
+    "worktree-gitdir-writable-123": "WRITABLE|/wt/root/.git/worktrees/issue-123\n",
+    "nick-issue-123": {
+      "prNumber": 42,
+      "branch": "features/issue-123",
+      "testsPass": true,
+      "summary": "opened PR #42"
+    },
+    "branch-check-123": "features/issue-123\n",
+    "worktree-behind-42": "0\n",
+    "preflight-42-0": {
+      "pass": true,
+      "issues": [],
+      "testCommandRun": "run the unit tests"
+    },
+    "review-window-start-42": "2026-01-01T00:00:00Z\n",
+    "morgan-pr-42-r0": {
+      "verdict": "REQUIRED_CHANGES",
+      "items": [
+        "- [ ] `grep -c FOO file` prints exactly 1"
+      ],
+      "ciGreen": true,
+      "artifactProofs": [],
+      "itemOwners": [
+        {
+          "item": "- [ ] `grep -c FOO file` prints exactly 1",
+          "itemOwner": "checklist-wording-defect",
+          "proof": "$ grep -c FOO file\n2"
+        }
+      ]
+    },
+    "review-window-end-42-0": "2026-01-01T01:00:00Z\n",
+    "reviewer-window-scan-42-0": "[]\n",
+    "pr-body-sync-42-0": "OK bytes=1234\n"
+  },
+  "expect": {
+    "status": "verified-untickable",
+    "logsInclude": [
+      "no Nick round"
+    ]
+  }
+}
