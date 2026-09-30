@@ -43,7 +43,11 @@ case "$1 $2" in
       *merged_at*) [ "${FAKE_MERGED:-true}" = true ] && echo "2026-10-01T00:00:00Z" || echo null ;;
       *) echo "${FAKE_MERGED:-true}" ;;
     esac ;;
-  "api repos/o/r/issues/"*) n="${2##*/}"; cat "$FAKE_ISSUES/$n" 2>/dev/null || echo open ;;
+  "api repos/o/r/issues/"*)
+    case "$*" in
+      *labels*) n="${2##*/}"; cat "$FAKE_ISSUES/$n.labels" 2>/dev/null || echo "closed" ;; # declared-exception lookup (#122)
+      *) n="${2##*/}"; cat "$FAKE_ISSUES/$n" 2>/dev/null || echo open ;;
+    esac ;;
   "api -X") case "$*" in *"issues/"*) ;; *) echo "fake gh: unexpected: $*" >&2; exit 99 ;; esac ;;
   *) echo "fake gh: unexpected: $*" >&2; exit 99 ;;
 esac
@@ -198,6 +202,31 @@ for n in 6 7 10 11 12; do
   ! grep -qE "X (POST|PATCH) repos/o/r/issues/$n( |/)" "$D/log" && ok "keyword outside header or in code ($n): no close call" || bad "issue #$n touched"
 done
 [ "$(mut "$D")" = 2 ] && ok "header-only: 2 mutating calls total" || bad "mutating calls: $(mut "$D")"
+
+# 14. declared exceptions (#122): exception: <what> — <why> — #N
+exc_body() { printf 'Closes #1\n<!-- acceptance:start -->\n- [x] a\n%s\n<!-- acceptance:end -->\n' "$1" > "$2"; }
+exc_run() { # <name> <exception-line> <issue-file-content|""> <debt-marker|""> -> sets D, rc
+  D="$(setup "$1")"; exc_body "$2" "$BASE/$1.md"; mkdir -p "$D/issues"
+  [ -n "$3" ] && printf '%s\n' "$3" > "$D/issues/9.labels"
+  if [ -n "$4" ]; then ( cd "$D/work" && echo "// DEBT(#$4): skipped" >> f.txt && git add -A && git commit -qm debt && git push -q origin feat/x ) >/dev/null 2>&1; fi
+  run "$D" "$BASE/$1.md"; rc=$?
+}
+exc_refused() { # <label> <reason-substring>
+  [ "$rc" -ne 0 ] && grep -q 'FAIL: declared-exception:' "$D/out" && grep -q -- "$2" "$D/out" \
+    && [ ! -s "$D/pushes" ] && ! grep -qE 'pr merge|pr checks' "$D/log" && [ "$(git -C "$D/work" log --format=%s | head -1)" != "chore: bump 0.8.81 (lead-merge)" ] \
+    && ok "$1: refused, FAIL line, no push/checks/merge" || bad "$1 (rc=$rc): $(tail -3 "$D/out")"
+}
+EXC='- [x] exception: skip the lint pass \xe2\x80\x94 needs a config migration \xe2\x80\x94 #9'
+EXC="$(printf -- "$EXC")"
+exc_run exc-ok "$EXC" "open tech-debt,other" 9
+[ "$rc" -eq 0 ] && grep -q 'pr merge' "$D/log" && ok "valid exception: merge proceeds" || bad "valid exception (rc=$rc): $(tail -3 "$D/out")"
+exc_run exc-ascii "exception: skip lint -- migration pending -- #9" "open tech-debt" 9
+[ "$rc" -eq 0 ] && ok "valid exception with ' -- ' separator and no box prefix" || bad "ascii separator (rc=$rc)"
+exc_run exc-bad "- [x] exception: skip the lint pass, no reason" "open tech-debt" 9; exc_refused "malformed line" "malformed"
+exc_run exc-closed "$EXC" "closed tech-debt" 9; exc_refused "follow-up issue closed" "not open"
+exc_run exc-nolabel "$EXC" "open bug,other" 9; exc_refused "issue without tech-debt" "tech-debt label"
+exc_run exc-nomarker "$EXC" "open tech-debt" ""; exc_refused "no DEBT(#N) in the diff" "DEBT(#9)"
+exc_run exc-wrongn "$EXC" "open tech-debt" 5; exc_refused "DEBT marker with another N" "DEBT(#9)"
 
 echo "[lead-merge test] passed=$PASS failed=$FAIL"
 [ "$FAIL" -eq 0 ]

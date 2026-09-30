@@ -115,6 +115,7 @@ resolved `ready`/`no-go`/`escalate`), do a check-in pass rather than silently ab
 - The PR is ready (LGTM, acceptance checklist checked). **Do not merge on your own initiative.**
 - **Merge only through `scripts/lead-merge.sh <pr>`**, on an explicit user order, run from the PR worktree:
   - checks the acceptance checklist (`scripts/lib/acceptance-check.sh`, same lib as the merge hook); any `- [ ]` refuses
+  - refuses a declared exception (`exception: <what> — <why> — #N` in the acceptance block) unless `#N` is open with the `tech-debt` label and the PR diff adds a `DEBT(#N)` marker (`FAIL: declared-exception: <reason>`, before any bump or push)
   - refuses unless on the PR head branch, clean, and in sync with the remote head (fast-forwards if behind, refuses if diverged)
   - brings the base in locally first: `git fetch origin main` + `git merge --no-edit origin/main` (merge only; a conflict aborts the merge and stops before any push; a conflict limited to the version files takes main's copy). No `gh pr update-branch`: the local merge already makes the branch current
   - then bumps the patch version from the merged tree (patch+1 over max(branch, main): `.claude-plugin/plugin.json` + `BUILD`), commits, pushes once — PRs themselves never bump
