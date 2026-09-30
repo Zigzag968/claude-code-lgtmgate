@@ -10,6 +10,11 @@ export const meta = {
   ],
 }
 
+// Guards (scripts/guards.cjs, R1 ratchet vs origin/main): the counters of `await agent(` outside
+// callAgent, distinct `simulate.<key>` keys and regex applications on agent output may never go
+// up. A parser wrapped between the comment lines `// guards:parser-begin` and
+// `// guards:parser-end` is not counted by agent-output-regex, so moving one inside markers lowers it.
+//
 // Args:
 //   issue       — GitHub issue number (required)
 //   brief       — one-line description of the change (required)
@@ -213,7 +218,7 @@ export const meta = {
 // `version`, checked against plugin.json by templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '0.8.76', cutFrom: '6465e14' }
+const BUILD = { plugin: 'lgtmgate', version: '0.8.77', cutFrom: '4ff5108' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
