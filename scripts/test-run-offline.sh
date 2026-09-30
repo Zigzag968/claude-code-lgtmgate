@@ -18,11 +18,11 @@ case "$out" in *"FAIL:"*"status: expected \"escalate\", got \"ready\""*) ok "sta
 
 python3 - "$TMP" <<'PY'
 import json,sys,os
-f=json.load(open('fixtures/smoke/auto-lgtm.json')); del f['calls']['merge-state-42-0']
+f=json.load(open('fixtures/smoke/auto-lgtm.json')); del f['calls']['merge-state-123-42-0']
 json.dump(f,open(os.path.join(sys.argv[1],'missing-label.json'),'w'))
 PY
 out=$(node scripts/run-offline.cjs "$TMP/missing-label.json" 2>&1)
-case "$out" in *"unanswered call"*"merge-state-42-0"*) ok "missing label fails the fixture even on a fail-open path";; *) bad "missing label not reported: $out";; esac
+case "$out" in *"unanswered call"*"merge-state-123-42-0"*) ok "missing label fails the fixture even on a fail-open path";; *) bad "missing label not reported: $out";; esac
 
 out=$(OFFLINE_STRICT=1 node scripts/run-offline.cjs "$TMP/wrong-status.json" >/dev/null 2>&1; echo $?)
 [ "$out" = "1" ] && ok "OFFLINE_STRICT=1 exits 1 on failure" || bad "OFFLINE_STRICT exit code: $out"
