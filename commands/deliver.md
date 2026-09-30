@@ -65,7 +65,7 @@ args = {
   maxAuditRounds: <optional — bound on the auditor <-> scout loop, default 2, HARD CEILING at 2: beyond that, throw unless maxAuditRoundsOverrideReason is provided>,
   maxAuditRoundsOverrideReason: <mandatory if maxAuditRounds > 2 — names the RISK CLASS that justifies the extra round(s), never a silent overrun>,
   architectureDecisionApproved: <optional — attests that the architecture-only pass (design-step trigger) already happened and was approved, exempts this launch from proceedThrough:"plan">,
-  pluginRoot: <absolute ${CLAUDE_PLUGIN_ROOT} for the plugin component, omit for a local copy — the workflow has no filesystem or env, so this is how the probe layer finds templates/probe-run.cjs (config.probeRunPath wins; with neither, the run fails closed with probeReason 'probe-run-not-found')>
+  pluginRoot: <absolute ${CLAUDE_PLUGIN_ROOT} for the plugin component; for a local copy of the workflow, the absolute root of the checkout that holds templates/probe-run.cjs (or set config.probeRunPath) — the workflow has no filesystem or env, so this is how the probe layer finds templates/probe-run.cjs (config.probeRunPath wins; with neither, the run fails closed with probeReason 'probe-run-not-found')>
 }
 ```
 - **Resolved plugin component** -> launch by the **namespaced** name `lgtmgate:deliver-pipeline` (never the bare name `deliver-pipeline`, which a `--plugin-dir` or another project can shadow — claude-agent-pipeline#54).
