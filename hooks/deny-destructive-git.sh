@@ -36,6 +36,34 @@ cmd="$(printf '%s' "$input" | jq -r '.tool_input.command // ""' 2>/dev/null || t
 # regardless of an explicit -C flag.
 normalized="$(printf '%s' "$cmd" | sed -E 's/git([[:space:]]+-C[[:space:]]+[^[:space:]]+)/git/g')"
 
+# Text-only mentions (#111): drop (a) the value of -m/-am/--message/--body/--title/-F (single-quoted,
+# or double-quoted with no $ or backtick) and (b) the body lines of a heredoc fed to a non-shell
+# command (lines carrying $( or a backtick are kept, so command substitution stays inspected).
+# Bare commands, compounds, bash -c "...", shell heredocs and commands after a heredoc terminator
+# are untouched and stay denied. Whole-command matching stays a documented approximation (#41).
+# Fail-closed: without perl, or if it errors, `normalized` is left as is (stricter).
+strip_text_args() {
+  perl -e '
+    local $/ = undef; my $s = <STDIN>;
+    my @lines = split /\n/, $s, -1; my (@out, $term);
+    for my $l (@lines) {
+      if (defined $term) {
+        if ($l =~ /^\s*\Q$term\E\s*$/) { undef $term; push @out, $l; }
+        elsif ($l =~ /\$\(|\x60/) { push @out, $l; }
+        next;
+      }
+      push @out, $l;
+      if ($l =~ /<<-?\s*(["\x27]?)([A-Za-z_]\w*)\1/ && $l !~ /<<</ && $l !~ /\b(?:ba|z|da|k)?sh\b/) { $term = $2; }
+    }
+    $s = join "\n", @out;
+    $s =~ s/(?<![\w-])(-a?m|--message|--body|--title|-F)(\s+|=)(\x27[^\x27]*\x27|"[^"\$\x60]*")/$1$2\x27\x27/g;
+    print $s;
+  ' 2>/dev/null
+}
+if stripped="$(printf '%s' "$normalized" | strip_text_args)"; then
+  normalized="$stripped"
+fi
+
 # git clean (any flags/variant).
 if printf '%s' "$normalized" | grep -qE '(^|[;&|[:space:]])git[[:space:]]+clean([[:space:]]|$)'; then
   deny "git clean is denied for agent sessions, including inside compound commands. Diagnose/repro work never resets the shared worktree's state — leave stray files, or note them in your summary instead. See .claude/rules/pr-acceptance.md (Autonomy in unsupervised sessions)."

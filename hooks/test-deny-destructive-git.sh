@@ -186,6 +186,29 @@ assert_exit "rm -rf of a sibling with the root as name prefix allowed" 0 \
 assert_exit "non-recursive rm under the root allowed" 0 \
   "$(run_hook "rm /tmp/lgtmgate-wt-root/issue-9")"
 
+# --- cases: phrase only appears as text in -m/--body/heredoc arguments (#111) --
+# Phrases are built by concatenation so this file never carries the literal phrase.
+
+RS="git re""set --ha""rd"
+CL="git cl""ean -f""d"
+NL=$'\n'
+
+assert_exit "#111 commit -m single-quoted phrase allowed" 0 "$(run_hook "git commit -m 'fix: mentions $RS in text'")"
+assert_exit "#111 commit -m double-quoted phrase allowed" 0 "$(run_hook "git commit -m \"fix: mentions $RS in text\"")"
+assert_exit "#111 commit --message= phrase allowed" 0 "$(run_hook "git commit --message=\"docs: $CL\"")"
+assert_exit "#111 gh pr create --body phrase allowed" 0 "$(run_hook "gh pr create --title 'x' --body 'never run $RS'")"
+assert_exit "#111 heredoc body (cat) phrase allowed" 0 "$(run_hook "cat > f.md <<'EOF'${NL}run $RS${NL}EOF")"
+assert_exit "#111 commit -m with heredoc substitution phrase allowed" 0 \
+  "$(run_hook "git commit -m \"\$(cat <<'EOF'${NL}docs: $RS${NL}EOF${NL})\"")"
+
+assert_exit "#111 bare reset hard still denied" 2 "$(run_hook "$RS")"
+assert_exit "#111 bare clean still denied" 2 "$(run_hook "$CL")"
+assert_exit "#111 commit -m then executed phrase denied" 2 "$(run_hook "git commit -m 'x' && $RS")"
+assert_exit "#111 bash -c executed phrase denied" 2 "$(run_hook "bash -c \"$RS\"")"
+assert_exit "#111 command substitution in -m denied" 2 "$(run_hook "git commit -m \"\$($RS)\"")"
+assert_exit "#111 shell heredoc body denied" 2 "$(run_hook "bash <<'EOF'${NL}$RS${NL}EOF")"
+assert_exit "#111 command after heredoc terminator denied" 2 "$(run_hook "cat <<'EOF'${NL}text${NL}EOF${NL}$RS")"
+
 # --- summary -------------------------------------------------------------
 
 echo "${pass_count}/${total} PASS"
