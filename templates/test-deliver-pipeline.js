@@ -2830,6 +2830,36 @@ await testCase('T270 all blockers checklist-wording-defect (amend off) → verif
   return e1 || e2 || e3 || { ok: true }
 })
 
+// T271 (#132) — a failed required check reaches Nick's preflight-fix prompt with the failing step name
+// and the last 40 log lines (the 50-line tail is capped, the first lines are dropped).
+await testCase('T271 failed required check → Nick preflight-fix prompt carries failing step name and log lines', async () => {
+  const lines = []
+  for (let i = 1; i <= 49; i++) lines.push(`log-line-${i}`)
+  lines.push("KeyError: 'merge-state-42-0'")
+  const r = await run({
+    mode: 'auto',
+    simulate: {
+      sam: 'GO',
+      preflight: [
+        {
+          pass: false,
+          issues: ["PR #999 required check 'guards' is in FAILURE state on GitHub"],
+          failedChecks: [{ name: 'guards', step: 'Run scripts/test-run-offline.sh', logTail: lines.join('\n') }],
+        },
+        { pass: true, issues: [] },
+      ],
+      morgan: [{ verdict: 'LGTM' }],
+    },
+  })
+  const p = String(r.preflightFixPromptPreview || '')
+  const e1 = eq('status', r.status, 'ready')
+  const e2 = includes('step name', p, 'Run scripts/test-run-offline.sh')
+  const e3 = includes('log line', p, "KeyError: 'merge-state-42-0'")
+  const e4 = p.includes('log-line-1\n') ? { ok: false, msg: 'first line of the 50 must be dropped by the 40-line cap' } : null
+  const e5 = includes('kept tail start', p, 'log-line-11\n')
+  return e1 || e2 || e3 || e4 || e5 || { ok: true }
+})
+
 // T109 — Morgan classifies a REQUIRED_CHANGES item as a checklist-wording-defect with a concrete
 // proof; maxPlanAmendRounds:1 routes it to Sam for ONE amendment round instead of Nick. Every
 // item was plan-routed (codeItems empty) so Nick is skipped entirely that round. Round 1 Morgan
