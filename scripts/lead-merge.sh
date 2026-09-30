@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Lead merge gesture (#74): scripts/lead-merge.sh <pr> [-R owner/repo]
+# Lead merge gesture (#74): scripts/lead-merge.sh <pr> [-R owner/repo] [--tick-from-review]
 # Run from a checkout of the PR head branch. Steps, each exit code checked:
 #   1. acceptance checklist via scripts/lib/acceptance-check.sh (same lib as the merge hook):
 #      any `- [ ]` between the acceptance markers, or missing markers, refuses.
@@ -26,6 +26,24 @@
 #      `Fixed by #<PR> (merged).`, each still-open issue named by a closing keyword (Closes/Fixes/Resolves #N,
 #      same repo, parsed from the body read BEFORE the merge). `Refs #N` is never closed. A failed merge or a
 #      PR not read back as merged exits non-zero and touches no issue (#109).
+# --tick-from-review (#9): Morgan proved boxes but the auto-mode classifier refused his `gh pr edit` tick, so they stay
+#   `- [ ]` (`verified-untickable`). With the flag, after step 1b and before the base merge, the script reads Morgan's
+#   latest verdict comment, ticks the boxes it lists as proven, then RE-FETCHES the body and re-runs the step-1 gate,
+#   which still refuses any box left open. Without the flag nothing changes (step 1 refuses first).
+#   - Comment pick (REST `issues/<pr>/comments --paginate`): the LAST comment whose first line is exactly
+#     `<!-- pipeline-review-round pr=<N> -->` AND that has at least 2 non-empty lines after the marker (Nick's push-note
+#     reuses the marker but is one line, so it is skipped). None found: refused.
+#   - Matching rule (exact, structured; Morgan's template line for a proven-untickable box):
+#       `- [ ] **<box text verbatim>** — verified, tick pending (permissions): <proof with a `command` and its output>`
+#     A box is ticked iff some line of that comment, after stripping the list prefix (`- `, `- [ ] `), `**` and backticks
+#     and collapsing whitespace, equals the box text normalised the same way followed by an optional separator
+#     (em dash, en dash, `-`, `--`, `:`) and `verified, tick pending (permissions): <proof>`, and the raw proof holds a
+#     backtick-quoted command. Only boxes between the acceptance markers are considered; a `[human-gate]` box is never
+#     ticked; an unmatched box stays open. The tick turns that line's `- [ ]` into `- [x]` and appends
+#     ` — ticked by lead-merge from Morgan's review`. PATCH via REST (`pulls/<N>`).
+#   - Limitation: index-style proofs ("Box 2: `cmd` -> out") and one line covering several boxes ("Boxes 1-4 verified")
+#     are NOT matched (too loose to map to a box reliably): those boxes stay open and the merge is refused. A Nick
+#     push-note after Morgan's verdict is not detected: the Lead re-verifies stale proofs before using the flag.
 # Afterwards prints the manual step to sync the local main. The PR itself never bumps: this script does.
 # Env: LEAD_MERGE_POLL_MAX (default 30), LEAD_MERGE_POLL_SLEEP seconds (default 10).
 set -euo pipefail
@@ -39,15 +57,16 @@ WORKFLOW="workflows/deliver-pipeline.js"
 
 die() { echo "lead-merge: $*" >&2; exit 1; }
 
-PR=""; REPO=""
+PR=""; REPO=""; TICK=0
 while [ $# -gt 0 ]; do
   case "$1" in
     -R|--repo) [ $# -ge 2 ] || die "$1 needs a value"; REPO="$2"; shift 2 ;;
+    --tick-from-review) TICK=1; shift ;;
     -*) die "unknown option: $1" ;;
     *) [ -z "$PR" ] || die "unexpected argument: $1"; PR="$1"; shift ;;
   esac
 done
-case "$PR" in ''|*[!0-9]*) die "usage: scripts/lead-merge.sh <pr-number> [-R owner/repo]" ;; esac
+case "$PR" in ''|*[!0-9]*) die "usage: scripts/lead-merge.sh <pr-number> [-R owner/repo] [--tick-from-review]" ;; esac
 
 # Repo resolution: -R flag, else .claude/pipeline.config.json "repo", else gh repo view.
 if [ -z "$REPO" ] && [ -f .claude/pipeline.config.json ]; then
@@ -62,7 +81,14 @@ fi
 body="$(gh pr view "$PR" -R "$REPO" --json body -q .body)" || die "cannot read PR #$PR body"
 rc=0
 printf '%s\n' "$body" | acceptance_check_body || rc=$?
-[ "$rc" -eq 0 ] || die "PR #$PR acceptance gate failed (rc=$rc); nothing bumped, nothing merged"
+if [ "$rc" -ne 0 ]; then
+  # --tick-from-review (#9): open boxes (rc 1) are handled by the tick step below, which re-runs this gate
+  if [ "$TICK" -eq 1 ] && [ "$rc" -eq 1 ]; then
+    echo "lead-merge: open boxes found, trying --tick-from-review"
+  else
+    die "PR #$PR acceptance gate failed (rc=$rc); nothing bumped, nothing merged"
+  fi
+fi
 
 # --- 1b. declared exceptions (#122) -------------------------------------------
 # Format: `exception: <what> — <why> — #N` (em dash; ` -- ` also accepted). Only lines inside the acceptance markers.
@@ -97,6 +123,83 @@ if [ -n "$exc_lines" ]; then
   done <<EOX
 $exc_lines
 EOX
+fi
+
+# --- 1c. --tick-from-review (#9) -----------------------------------------------
+if [ "$TICK" -eq 1 ] && [ "$rc" -eq 1 ]; then
+  tick_tmp="$(mktemp -d "${TMPDIR:-/tmp}/lead-merge-tick.XXXXXX")"
+  gh api "repos/$REPO/issues/$PR/comments" --paginate > "$tick_tmp/comments.json" || die "cannot read the comments of PR #$PR"
+  PR="$PR" python3 - "$tick_tmp/comments.json" > "$tick_tmp/review.txt" <<'PY' || die "PR #$PR has no Morgan review comment (marker '<!-- pipeline-review-round pr=$PR -->' with a multi-line verdict); nothing ticked, nothing merged"
+import json, os, sys
+raw, dec, i, comments = open(sys.argv[1]).read(), json.JSONDecoder(), 0, []
+while i < len(raw):
+    if raw[i].isspace():
+        i += 1; continue
+    obj, i = dec.raw_decode(raw, i)
+    comments.extend(obj if isinstance(obj, list) else [obj])
+marker = "<!-- pipeline-review-round pr=%s -->" % os.environ["PR"]
+best = None
+for c in comments:
+    lines = (c.get("body") or "").replace("\r", "").split("\n")
+    if lines and lines[0].strip() == marker and len([l for l in lines[1:] if l.strip()]) >= 2:
+        best = c["body"]
+if best is None:
+    sys.exit(1)
+print(best)
+PY
+  printf '%s\n' "$body" > "$tick_tmp/body.txt"
+  python3 - "$tick_tmp/body.txt" "$tick_tmp/review.txt" > "$tick_tmp/newbody.txt" <<'PY' || die "tick step failed"
+import re, sys
+body = open(sys.argv[1]).read().rstrip("\n").split("\n")
+review = open(sys.argv[2]).read().replace("\r", "").split("\n")
+def norm(s):
+    return re.sub(r"\s+", " ", s.replace("**", "").replace("`", "")).strip()
+proven = []  # (normalised box text, raw proof)
+pat = re.compile(r"^\s*(?:[—–:]|--?)?\s*verified,?\s+tick pending\s*\(permissions\)\s*:\s*(\S.*)$", re.I)
+for line in review:
+    m = re.match(r"^\s*[-*]\s*(?:\[[ xX]\]\s*)?(.*)$", line)
+    if not m:
+        continue
+    raw = m.group(1)
+    k = raw.lower().find("(permissions):")
+    if k < 0 or "`" not in raw[k:]:
+        continue  # the proof must quote a command
+    n = norm(raw)
+    proven.append(n)
+suffix = " — ticked by lead-merge from Morgan's review"
+out, inblock = [], False
+for line in body:
+    if re.search(r"<!--\s*acceptance:end\s*-->", line):
+        inblock = False
+    m = re.match(r"^(\s*-\s*)\[ \](\s*)(.*)$", line) if inblock else None
+    if m:
+        text = m.group(3)
+        if re.search(r"\[human-gate\]", text, re.I):
+            print("left open (human-gate): " + norm(text), file=sys.stderr)
+        else:
+            bn, hit = norm(text), False
+            for n in proven:
+                if bn and n.lower().startswith(bn.lower()):
+                    rest = n[len(bn):]
+                    if pat.match(rest):
+                        hit = True; break
+            if hit:
+                line = m.group(1) + "[x]" + m.group(2) + text + suffix
+                print("ticked: " + bn, file=sys.stderr)
+            else:
+                print("left open (no proof in the review): " + bn, file=sys.stderr)
+    out.append(line)
+    if re.search(r"<!--\s*acceptance:start\s*-->", line):
+        inblock = True
+print("\n".join(out))
+PY
+  if ! cmp -s "$tick_tmp/body.txt" "$tick_tmp/newbody.txt"; then
+    gh api -X PATCH "repos/$REPO/pulls/$PR" -F "body=@$tick_tmp/newbody.txt" >/dev/null || die "cannot PATCH the PR #$PR body"
+  fi
+  body="$(gh pr view "$PR" -R "$REPO" --json body -q .body)" || die "cannot re-read PR #$PR body"
+  rc=0
+  printf '%s\n' "$body" | acceptance_check_body || rc=$?
+  [ "$rc" -eq 0 ] || die "PR #$PR acceptance gate still failing after --tick-from-review (rc=$rc); nothing bumped, nothing merged"
 fi
 
 # --- 2. sync with the remote head branch ---------------------------------------
