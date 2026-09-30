@@ -1,0 +1,14 @@
+{
+  "name": "13-config-absent",
+  "note": "incident 2026-09-30 (#13): the Lead launched the run with args lacking `config`; the workflow silently ran on defaults (branchPrefix features/, envSymlink required) and ended preflight-stuck after Nick opened a PR. Args shape from the issue-106 run; the run's trace carried branch-prefix-fallback-default. Fix: refuse before any agent call.",
+  "args": {
+    "issue": 106,
+    "brief": "Teach Sam the version-bump rule",
+    "wtPath": "/wt/root/issue-106",
+    "mode": "semi"
+  },
+  "calls": {},
+  "expect": {
+    "throws": "Missing or invalid arg: config"
+  }
+}

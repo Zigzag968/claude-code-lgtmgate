@@ -2127,6 +2127,26 @@ await testCase('T70d preflight.envSymlink invalid value → throws under dryRun 
   }
 })
 
+// T268-T269 (#13 / #12) — `config` is required and must be an object: a run without it (or with the
+// JSON text instead of the parsed object) is refused by a throw BEFORE any stage runs, never
+// executed on defaults. Non-dryRun with a full simulate: if the guard were missing the run would
+// proceed to a real status instead of throwing.
+for (const [id, tag, cfg] of [['a', 'absent', undefined], ['b', 'null', null], ['c', 'string', JSON.stringify(CONFIG)], ['d', 'array', []]]) {
+  await testCase(`T268${id} config ${tag} -> refused before any stage (#13/#12)`, async () => {
+    try {
+      const r = await run({ mode: 'auto', config: cfg, simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] } })
+      return { ok: false, msg: `expected a throw, got status ${r.status}` }
+    } catch (e) {
+      return e.message.includes('Missing or invalid arg: config')
+        ? { ok: true } : { ok: false, msg: `wrong error message: ${e.message}` }
+    }
+  })
+}
+await testCase('T269 explicit empty config object {} is still accepted (dry-run)', async () => {
+  const r = await run({ mode: 'manual', dryRun: true, config: {} })
+  return eq('status', r.status, 'dry-run-ok') || { ok: true }
+})
+
 // resolveWorktreeRoot (#61) — layered, machine-free worktree-root resolution, asserted via the
 // simulate-only nickPromptPreview seam (mirrors preflightPromptPreview above). Numbered T71a-T71d.
 await testCase('T71a resolveWorktreeRoot: relative logical default -> absolute in the Nick brief', async () => {
@@ -2863,6 +2883,23 @@ await testCase('T104d provisionCmdPreview: SCRIPT invocation + extraLinks args p
 // #97 — no-op gate widened to SHA+body; review-loop plan/code blocker routing
 // (T23b lives next to T23 above; T109-T115 below)
 // ---------------------------------------------------------------------------
+
+// T270 (#107) — every Morgan blocker is a checklist item (structured itemOwner 'checklist-wording-defect'
+// with proof) and plan amendment is off (default): park as verified-untickable, never a Nick round.
+await testCase('T270 all blockers checklist-wording-defect (amend off) → verified-untickable, zero Nick round', async () => {
+  const CHK = '- [ ] `grep -c FOO file` prints exactly 1'
+  const r = await run({
+    mode: 'auto',
+    simulate: {
+      sam: 'GO',
+      morgan: [{ verdict: 'REQUIRED_CHANGES', items: [CHK], itemOwners: [{ item: CHK, itemOwner: 'checklist-wording-defect', proof: '$ grep -c FOO file\n2' }] }],
+    },
+  })
+  const e1 = eq('status', r.status, 'verified-untickable')
+  const e2 = eq('untickableItems.length', r.untickableItems?.length, 1)
+  const e3 = (r.trace || []).some(t => /^nick/i.test(String(t))) ? { ok: false, msg: `Nick dispatched: trace=${JSON.stringify(r.trace)}` } : null
+  return e1 || e2 || e3 || { ok: true }
+})
 
 // T109 — Morgan classifies a REQUIRED_CHANGES item as a checklist-wording-defect with a concrete
 // proof; maxPlanAmendRounds:1 routes it to Sam for ONE amendment round instead of Nick. Every

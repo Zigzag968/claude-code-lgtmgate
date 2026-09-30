@@ -27,6 +27,8 @@ export const meta = {
 //                   provision:{extraLinks:[{src,dst}]}, preflight:{canonicalStringBan:[]},
 //                   commitHygiene:{squashBeforeHandoff,maxCommits}, commentHygiene:bool,
 //                   repo:'owner/repo' }  // repo: code repo for cross-repo runs; absent -> cwd-resolved
+//   config      — REQUIRED object: the parsed `.claude/pipeline.config.json`, supplied by the Lead. Absent or
+//                 not an object (e.g. a JSON string) -> throws before any agent call (#13, #12).
 //   configLocal — parsed `.claude/pipeline.config.local.json`, supplied by the Lead (the workflow
 //                 sandbox has no filesystem — see resolveWorktreeRoot below); only `worktreeRoot` is
 //                 read today (#61). Gitignored, machine-local, never versioned. Absent/garbage -> {}.
@@ -221,7 +223,7 @@ export const meta = {
 // `version`, checked against plugin.json by templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '0.8.84', cutFrom: '4d37e11' }
+const BUILD = { plugin: 'lgtmgate', version: '0.8.89', cutFrom: 'a42d211' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -238,12 +240,17 @@ let nickPromptPreview = null
 // flow tests assert the composed provisioning command (notably PROVISION_ENV_SYMLINK) without
 // exposing it outside simulate runs.
 let provisionCmdPreview = null
-const finish = (o) => ({ buildStamp: BUILD_STAMP, ...(simulate ? { nickPromptPreview, provisionCmdPreview } : {}), ...o })
+// #110: set by callAgent when an agent call stayed cut off by a classifier outage past its retry
+// bound; finish() then names the cause on the resulting `*-died` status.
+let classifierOutageDeath = false
+const finish = (o) => ({ buildStamp: BUILD_STAMP, ...(simulate ? { nickPromptPreview, provisionCmdPreview } : {}),
+  ...(classifierOutageDeath && String(o.status).endsWith('-died')
+    ? { reason: 'classifier-outage: resume with resumeFromRunId' } : {}), ...o })
 
 const {
   issue, brief, pmReview = false, issueType = null, wtPath,
   scoutAgent = 'Sam',
-  config = {},
+  config,
   configLocal = {},
   prNumber = null,
   resumeReason = null,
@@ -267,6 +274,16 @@ const {
 } = (typeof args === 'string' ? JSON.parse(args) : args) || {}
 
 if (!issue || !brief || !wtPath) throw new Error('Missing required args: issue, brief, wtPath')
+// #13/#12 — `config` is REQUIRED and must be an object: the workflow sandbox has no filesystem, so
+// an absent config silently ran every default (branchPrefix 'features/', envSymlink 'required',
+// placeholder commands) and surfaced runs later as preflight-stuck / branch-mismatch. Same throw
+// idiom as the arg checks above (zero agent spawns, nothing provisioned). The Lead passes the parsed
+// `.claude/pipeline.config.json` (commands/deliver.md §1). An explicit `{}` is still accepted.
+if (config === null || typeof config !== 'object' || Array.isArray(config)) {
+  throw new Error(
+    `Missing or invalid arg: config (got ${config === undefined ? 'undefined' : config === null ? 'null' : Array.isArray(config) ? 'array' : typeof config}). ` +
+    `Pass the parsed .claude/pipeline.config.json OBJECT (not a string) as args.config — running on defaults is refused (#13).`)
+}
 if (!['auto', 'semi', 'manual'].includes(mode)) throw new Error(`Invalid mode: ${mode}`)
 if (!['plan', 'dev', 'review'].includes(entryStage)) throw new Error(`Invalid entryStage: ${entryStage}`)
 if (entryStage === 'review' && !prNumber) throw new Error('entryStage=review requires prNumber argument')
@@ -375,6 +392,11 @@ log(`worktreeRoot: ${worktreeRoot ?? '(unresolved)'} (env=${runtimeEnv.LGTMGATE_
 // derives the repo from the worktree).
 const repo = config.repo || null
 const prFlag = repo ? ` -R ${repo}` : ''
+// Sandbox-safe push (#108): SSH (port 22 / agent socket) is blocked in the agent sandbox, HTTPS to
+// github.com:443 through the gh credential helper is not. Exact command, also quoted to the Lead
+// by the delivered-no-pr escalation. `repo` absent -> Nick derives the slug from the origin URL.
+const httpsPushCmdFor = (branch) =>
+  `git -c credential.helper= -c credential.helper='!gh auth git-credential' push https://github.com/${repo || '<owner>/<repo from git remote get-url origin>'}.git refs/heads/${branch}:refs/heads/${branch}`
 let conventionsRule = config.conventionsRule || '.claude/rules/conventions.md'
 // lgtmgate#139: on a crash-resume ('dev'/'review' entry) re-verify baseBranch/conventionsRule
 // against the worktree's OWN pipeline.config.json instead of trusting the possibly-stale
@@ -1305,7 +1327,11 @@ function classifyBlockers(items, itemOwners) {
 // `itemOwners` array. Fail-safe by construction: absent/empty `itemOwners`, an owner other than
 // 'proven-untickable', an empty/missing `proof`, an item matching nothing in `items`, or a
 // `[human-gate]` item all fall through to `rest` (legacy path). Pure: never ticks anything.
-function classifyUntickable(items, itemOwners) {
+// Issue #107 — `opts.checklistKind` (the engine passes it only while plan amendment is off,
+// maxPlanAmendRounds === 0) also parks a 'checklist-wording-defect' item that carries a proof: a
+// checklist/tick blocker is never a Nick fix. Morgan's structured `itemOwner` is the only signal.
+function classifyUntickable(items, itemOwners, opts) {
+  const parkOwners = opts && opts.checklistKind ? ['proven-untickable', 'checklist-wording-defect'] : ['proven-untickable']
   const allItems = Array.isArray(items) ? items : []
   const owners = Array.isArray(itemOwners) ? itemOwners : []
   if (owners.length === 0) return { untickable: [], rest: allItems }
@@ -1314,7 +1340,7 @@ function classifyUntickable(items, itemOwners) {
   const parkedNorm = new Set()
   for (const o of owners) {
     if (!o || typeof o !== 'object') continue
-    if (o.itemOwner !== 'proven-untickable') continue
+    if (!parkOwners.includes(o.itemOwner)) continue
     const proof = typeof o.proof === 'string' ? o.proof.trim() : ''
     if (!proof) continue
     const item = typeof o.item === 'string' ? o.item : ''
@@ -1468,6 +1494,15 @@ const STRUCTURED_OUTPUT_MANDATE =
   'FACT, not a suggestion: emit the StructuredOutput tool call NOW. Never claim you already ' +
   'called it.'
 
+// #110 transient outage signature: the harness ends the turn when the auto-mode classifier returns
+// no verdict. The exact harness wording was not captured in the incident (only "no safety verdict" /
+// "returned no verdict"), so the match is deliberately loose. Short texts only: a long answer that
+// merely mentions the phrase is not an outage.
+// guards:parser-begin
+const CLASSIFIER_OUTAGE = /no safety verdict|classifier[^.\n]{0,80}(unavailable|no verdict|did not return|outage)/i
+const isClassifierOutage = (t) => typeof t === 'string' && t.length > 0 && t.length < 600 && CLASSIFIER_OUTAGE.test(t)
+// guards:parser-end
+
 async function callAgent(role, prompt, opts, round = 0, attempt = 1) {
   if (simulate) {
     // #54 seam A — replay P1's captured harness signature on the NAMED attempt numbers.
@@ -1492,7 +1527,31 @@ async function callAgent(role, prompt, opts, round = 0, attempt = 1) {
     harnessOpts = rest.agentType ? { ...rest, agentType: normalizeAgentType(rest.agentType) } : rest
   }
   const finalPrompt = opts && opts.schema ? `${prompt}\n\n${STRUCTURED_OUTPUT_MANDATE}` : prompt
-  return await agent(finalPrompt, harnessOpts)
+  // #110: a turn cut off by an auto-mode classifier outage ("no safety verdict") is transient —
+  // retry the same call (bounded, with backoff) before callAgentSafe may call the step dead. The
+  // single agent() call stays here; bounds come from config.classifierOutage.
+  const outageCfg = (config && config.classifierOutage) || {}
+  const maxOutageRetries = Number.isInteger(outageCfg.retries) && outageCfg.retries >= 0 ? outageCfg.retries : 1
+  const outageBackoffMs = Number.isFinite(outageCfg.backoffMs) && outageCfg.backoffMs >= 0 ? outageCfg.backoffMs : 15000
+  for (let n = 0; ; n++) {
+    let out
+    let err = null
+    try { out = await agent(finalPrompt, harnessOpts) } catch (e) { err = e }
+    const text = err ? (err.message || String(err)) : (typeof out === 'string' ? out : '')
+    if (!isClassifierOutage(text)) {
+      if (err) throw err
+      return out
+    }
+    if (n >= maxOutageRetries) {
+      classifierOutageDeath = true
+      throw new Error(`classifier outage — resume with resumeFromRunId (${role} cut off ${n + 1}x: ${text.slice(0, 160)})`)
+    }
+    trace.push(`classifier-outage-retry:${role}:${n + 1}`)
+    log(`callAgent: ${role} cut off by a classifier outage — retry ${n + 1}/${maxOutageRetries} after ${outageBackoffMs * (n + 1)}ms`)
+    if (outageBackoffMs > 0 && typeof setTimeout === 'function') {
+      await new Promise((r) => setTimeout(r, outageBackoffMs * (n + 1)))
+    }
+  }
 }
 
 // Sentinel returned by callAgentSafe on an unrecoverable agent death (thrown error, or a
@@ -2356,6 +2415,7 @@ if (after('dev', entryStage)) {
       `When deleting repo-tracked files, use \`git rm <file>\` instead of bare \`rm\` — bare rm is sandbox-denied and burns permission rounds. ` +
       `${SANDBOX_INSTALL_HINT} ` +
       `Push the branch explicitly before opening the PR: \`git push origin ${expectedBranchName}\` (no upstream flag — the sandbox cannot write the worktree's .git/config, CC bug #51818; see .claude/rules/git-workflow.md). ` +
+      `If that push fails because the SSH remote is unreachable in the sandbox (\`ssh_dispatch_run_fatal\`, \`Broken pipe\`, \`Connection refused\`, \`Could not resolve hostname\`; CC issues #30619, #33300), retry ONCE over HTTPS through the gh credential helper (github.com:443 is reachable, SSH is not): \`${httpsPushCmdFor(expectedBranchName)}\` (explicit refspec, no upstream flag, no sandbox bypass). If the HTTPS push fails too, do not bypass the sandbox and do not open a PR: stop, return prNumber 0 with a summary that quotes the failing command and its error. ` +
       `Open a PR (draft) with EXPLICIT refs — gh resolves HEAD from the invoking cwd, not the worktree branch: \`gh pr create --draft${prFlag} --base ${baseBranch} --head ${expectedBranchName} ...\`. ` +
       `${r2Note}` +
       `Compose the PR body in this order (artifact-first structure): first line \`${closesLine}\` — one \`Closes #N\` per fully-resolved issue (the epic plus every issue Sam's plan explicitly named as fully resolved by this bundle; never for an issue flagged partial/residual in the plan — that one stays open, with a forward-reference comment on the child issue instead, as already practiced); ${subIssuesGateNote(subIssuesUncovered, issue)}then a \`## What this ships\` H2 with a bullet summary of the diff; then, ONLY IF the acceptance checklist below contains a \`[human-gate]\` item, an optional \`## <Human> — N gestures\` H2 listing those manual human actions (omit this H2 entirely when no \`[human-gate]\` item exists — never ship an empty stub section); then a \`## Acceptance checklist\` H2. Copy the acceptance checklist into the PR body between \`<!-- acceptance:start -->\`/\`<!-- acceptance:end -->\`. Leave an EMPTY \`<!-- decision-log:start -->\`/\`<!-- decision-log:end -->\` marker pair right after the acceptance block — workflow-owned, never hand-fill it. Close with a \`<details><summary>Technical detail</summary>\` fold holding the test plan / feature flag / risk notes. Post a comment on issue #${issue} linking the PR, then idle.`
@@ -2394,7 +2454,9 @@ if (after('review', entryStage)) {
     if (noPrDelivery) {
       log('No-PR terminal delivery: nick reported testsPass=true with a summary and no PR — skipping Review')
       trace.push('delivered-no-pr')
-      return finish({ status: 'delivered-no-pr', issue, summary: nick.summary, trace })
+      const leadAction = `Lead: if the branch was not pushed (SSH blocked in the sandbox, #108), push it with \`${httpsPushCmdFor(expectedBranchName)}\`, then open the PR with \`gh pr create --draft${prFlag} --base ${baseBranch} --head ${expectedBranchName}\` and relaunch with entryStage:"review" + prNumber.`
+      log(`delivered-no-pr: ${leadAction}`)
+      return finish({ status: 'delivered-no-pr', issue, summary: nick.summary, leadAction, trace })
     }
     // Dev-stage failure with no evidence and no PR (lgtmgate#262) — whatever the cause
     // (permission gap, agent crash, anything), stay inside the pipeline's normal status
@@ -2928,7 +2990,7 @@ if (after('review', entryStage)) {
   // untickable. Never ticks anything itself (D4): the Lead re-verifies each proof and ticks.
   const reviewParkedTerminal = async (v, round) => {
     if (!v || v.verdict !== 'REQUIRED_CHANGES' || v.ciGreen === false) return null
-    const { untickable, rest } = classifyUntickable(v.items, v.itemOwners)
+    const { untickable, rest } = classifyUntickable(v.items, v.itemOwners, { checklistKind: maxPlanAmendRounds === 0 })
     if (untickable.length === 0) return null
     if (rest.some(i => !isHumanGate(i))) return null   // a real blocker remains → Nick loop
     trace.push(`verified-untickable:${round}`)
