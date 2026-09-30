@@ -42,3 +42,54 @@ jobs:
         run: bash scripts/test-verify-workflow-launch.sh
       - name: Provision worktree guard
         run: bash templates/test-provision-worktree.sh
+
+  smoke-install:
+    # First-install regression guard (legacy#60): MAINTAINING.md §3's documented command
+    # (`claude plugin install lgtmgate@zigzag-plugins`) turned out to fail on a genuinely fresh
+    # setup without an undocumented `marketplace update` step first. This job re-runs the real
+    # `claude` CLI's plugin-loading path on every PR so that class of regression fails CI instead
+    # of a human hitting it.
+    #
+    # Known scope limit: `marketplace.json`'s own `lgtmgate` entry is a self-referential `github`
+    # source pinned to `ref: main` — installing straight from it would silently validate
+    # already-merged `main`, never this PR's own diff. The step below works around that by
+    # installing from a throwaway copy of `marketplace.json` with the `lgtmgate` entry's `source`
+    # swapped to the local checkout path — never committed, CI-only. This validates "does the
+    # plugin as it exists in this PR load through the real CLI" (manifest, hooks, workflows,
+    # commands all resolve) — it does NOT re-exercise the GitHub-hosted fetch/sha-pin path itself,
+    # which needs a merged commit to test for real.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "20"
+      - name: Install Claude Code CLI
+        run: npm install -g @anthropic-ai/claude-code
+      - name: Validate marketplace and plugin manifests as committed
+        run: |
+          claude plugin validate .
+          claude plugin validate ./plugins/backlog
+      - name: Point the lgtmgate entry at this checkout (CI-only, never committed)
+        run: |
+          python3 - <<'PY'
+          import json
+          path = ".claude-plugin/marketplace.json"
+          with open(path) as f:
+              data = json.load(f)
+          for entry in data["plugins"]:
+              if entry["name"] == "lgtmgate":
+                  entry["source"] = "."
+          with open(path, "w") as f:
+              json.dump(data, f, indent=2)
+          PY
+      - name: Add local marketplace and install lgtmgate as a first-time user would
+        run: |
+          claude plugin marketplace add .
+          claude plugin install lgtmgate@zigzag-plugins
+      - name: Confirm it actually loaded (manifest + hooks + workflows resolved, no errors)
+        run: |
+          claude plugin list | tee /tmp/plugin-list.txt
+          grep -q "lgtmgate@zigzag-plugins" /tmp/plugin-list.txt
+          claude plugin details lgtmgate | tee /tmp/plugin-details.txt
+          ! grep -qi "error" /tmp/plugin-details.txt
