@@ -1,0 +1,89 @@
+{
+  "name": "132-preflight-failed-check-log",
+  "note": "incident from the #131 run: guards failed after the first push; Nick saw only the check name; the run ended preflight-stuck. Preflight probe object is synthetic-raw (raw run data not retained).",
+  "args": {
+    "issue": 132,
+    "brief": "fix slugify accents",
+    "wtPath": "/wt/root/issue-132",
+    "config": {},
+    "mode": "auto"
+  },
+  "calls": {
+    "provision-132": "PROVISION-SKIPPED-NO-SCRIPT x\nPROVISION-EXIT:0\n",
+    "provision-freshness-132": "0\n",
+    "diagnose-issue-132": {
+      "confirmed": true,
+      "evidence": "reproduced: `node -e` prints the wrong slug",
+      "actualCause": "accent stripping",
+      "laneOk": true,
+      "persistentStateSignal": false,
+      "authSecurityBoundarySignal": false,
+      "deployConfigSignal": false,
+      "immatureVendorApiSignal": false
+    },
+    "scout-issue-132-1": {
+      "decision": "GO",
+      "plan": "## Plan\n1. src/slugify.js: transliterate before stripping\n\n## Acceptance checklist\n- [ ] `npm test` passes",
+      "rationale": "",
+      "targetFiles": [
+        "src/slugify.js"
+      ],
+      "absorbedIssues": [],
+      "acceptanceChecklist": "- [ ] `npm test` passes"
+    },
+    "plan-check-132-1": {
+      "verdict": "CONFORMING",
+      "issues": []
+    },
+    "plan-stale-132": "",
+    "sub-issues-132": "",
+    "worktree-gitdir-writable-132": "WRITABLE|/wt/root/.git/worktrees/issue-132\n",
+    "nick-issue-132": {
+      "prNumber": 42,
+      "branch": "features/issue-132",
+      "testsPass": true,
+      "summary": "opened PR #42"
+    },
+    "branch-check-132": "features/issue-132\n",
+    "worktree-behind-132-42": "0\n",
+    "preflight-132-42-0": {
+      "pass": false,
+      "issues": [
+        "PR #42 required check 'guards' is in FAILURE state on GitHub"
+      ],
+      "failedChecks": [
+        {
+          "name": "guards",
+          "step": "Run scripts/test-run-offline.sh",
+          "logTail": "guards\tRun scripts/test-run-offline.sh\tTraceback (most recent call last):\nguards\tRun scripts/test-run-offline.sh\tKeyError: 'merge-state-42-0'"
+        }
+      ]
+    },
+    "preflight-132-42-1": {
+      "pass": false,
+      "issues": [
+        "PR #42 required check 'guards' is in FAILURE state on GitHub"
+      ],
+      "failedChecks": [
+        {
+          "name": "guards",
+          "step": "Run scripts/test-run-offline.sh",
+          "logTail": "guards\tRun scripts/test-run-offline.sh\tTraceback (most recent call last):\nguards\tRun scripts/test-run-offline.sh\tKeyError: 'merge-state-42-0'"
+        }
+      ]
+    },
+    "nick-preflight-fix-132-42": {
+      "prNumber": 42,
+      "branch": "features/issue-132",
+      "testsPass": true,
+      "summary": "opened PR #42"
+    }
+  },
+  "expect": {
+    "status": "preflight-stuck",
+    "logsInclude": [
+      "KeyError: 'merge-state-42-0'",
+      "Run scripts/test-run-offline.sh"
+    ]
+  }
+}
