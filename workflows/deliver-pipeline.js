@@ -3,7 +3,7 @@ export const meta = {
   description: 'Sam (plan) -> Nick (dev+PR) -> Morgan (review) -> loop until LGTM',
   whenToUse: 'Deliver a change end-to-end through the specialized agent pipeline (bug fix, chore, or feature). The Lead creates the shared worktree before launching and passes its path.',
   phases: [
-    { title: "Setup", detail: "Run identity + early probes (config recheck, provision, freshness) before any agent work" },
+    { title: 'Setup', detail: 'Run identity + early probes (config recheck, provision, freshness) before any agent work' },
     { title: 'Diagnose', detail: 'Theo qualifies EVERY issue before Sam plans — mandatory, no opt-out' },
     { title: 'Plan', detail: 'Mia (optional) + Sam scout/plan, posted on the issue' },
     { title: 'Dev', detail: 'Nick implements in the shared worktree + opens PR' },
