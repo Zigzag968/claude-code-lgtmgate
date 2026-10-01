@@ -33,7 +33,7 @@
 //      the only version check besides stamp-parity in templates/test-canonical-guards.sh.
 //   doc-budgets (#77): the agent-read docs stay within the maintainer's budgets — VISION.md
 //      (imported for every agent through `@VISION.md` in CLAUDE.md) <= 20 lines, ARCHITECTURE.md
-//      (read by Sam and Morgan on a prompt instruction) <= 60 lines, and every line of both <= 160
+//      (read by Sam and Morgan on a prompt instruction) <= 20 lines, and every line of both <= 160
 //      characters, so a long line cannot dodge the line budget. A missing file FAILS.
 //
 // Env (test seams, all optional)
@@ -315,7 +315,7 @@ function checkSamParity() {
 }
 
 // ---- doc-budgets (#77) --------------------------------------------------------------------------
-const DOC_BUDGETS = [['VISION.md', 20], ['ARCHITECTURE.md', 60]]
+const DOC_BUDGETS = [['VISION.md', 20], ['ARCHITECTURE.md', 20]]
 // Per-line cap, so a long line cannot dodge the line budget. Counted in characters (code points).
 const DOC_LINE_CAP = 160
 // Same count as `wc -l` for a file ending with a newline; a last line without one still counts.

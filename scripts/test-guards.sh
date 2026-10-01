@@ -213,21 +213,21 @@ mkdocs() {
   return 0
 }
 run_budgets() { OUT="$(GUARDS_ROOT="$1" GUARDS_ONLY=budgets node scripts/guards.cjs 2>&1)"; RC=$?; }
-mkdocs "$T/d1" 20 60; run_budgets "$T/d1"
-if [ "$RC" -eq 0 ] && echo "$OUT" | grep -q '^PASS: doc-budgets: VISION.md 20/20 lines, longest 7/160 chars; ARCHITECTURE.md 60/60 lines, longest 7/160 chars$'; then ok "doc-budgets: exactly at budget (20/60) -> PASS"; else ko "doc-budgets at budget (rc=$RC) $OUT"; fi
-mkdocs "$T/d2" 21 60; run_budgets "$T/d2"
+mkdocs "$T/d1" 20 20; run_budgets "$T/d1"
+if [ "$RC" -eq 0 ] && echo "$OUT" | grep -q '^PASS: doc-budgets: VISION.md 20/20 lines, longest 7/160 chars; ARCHITECTURE.md 20/20 lines, longest 7/160 chars$'; then ok "doc-budgets: exactly at budget (20/20) -> PASS"; else ko "doc-budgets at budget (rc=$RC) $OUT"; fi
+mkdocs "$T/d2" 21 20; run_budgets "$T/d2"
 if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: doc-budgets: VISION.md has 21 lines, budget 20'; then ok "doc-budgets: VISION.md 21 lines -> FAIL"; else ko "doc-budgets vision over (rc=$RC) $OUT"; fi
-mkdocs "$T/d3" 20 61; run_budgets "$T/d3"
-if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: doc-budgets: ARCHITECTURE.md has 61 lines, budget 60'; then ok "doc-budgets: ARCHITECTURE.md 61 lines -> FAIL"; else ko "doc-budgets architecture over (rc=$RC) $OUT"; fi
+mkdocs "$T/d3" 20 21; run_budgets "$T/d3"
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: doc-budgets: ARCHITECTURE.md has 21 lines, budget 20'; then ok "doc-budgets: ARCHITECTURE.md 21 lines -> FAIL"; else ko "doc-budgets architecture over (rc=$RC) $OUT"; fi
 mkdocs "$T/d4" 0 10; run_budgets "$T/d4"
 if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: doc-budgets: VISION.md missing'; then ok "doc-budgets: VISION.md absent -> FAIL"; else ko "doc-budgets missing (rc=$RC) $OUT"; fi
-mkdir -p "$T/d5"; printf 'a\nb' > "$T/d5/VISION.md"; seq 1 60 > "$T/d5/ARCHITECTURE.md"; printf 'x\n' >> "$T/d5/ARCHITECTURE.md"
+mkdir -p "$T/d5"; printf 'a\nb' > "$T/d5/VISION.md"; seq 1 20 > "$T/d5/ARCHITECTURE.md"; printf 'x\n' >> "$T/d5/ARCHITECTURE.md"
 run_budgets "$T/d5"
-if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q 'ARCHITECTURE.md has 61 lines' && ! echo "$OUT" | grep -q 'VISION.md has'; then ok "doc-budgets: last line without newline counted, 61st appended line -> FAIL"; else ko "doc-budgets newline edge (rc=$RC) $OUT"; fi
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q 'ARCHITECTURE.md has 21 lines' && ! echo "$OUT" | grep -q 'VISION.md has'; then ok "doc-budgets: last line without newline counted, 21st appended line -> FAIL"; else ko "doc-budgets newline edge (rc=$RC) $OUT"; fi
 # per-line cap (160 characters): a long line cannot dodge the line budget
 mkdocs "$T/d6" 5 5; printf '%s\n' "$(printf 'x%.0s' $(seq 1 160))" >> "$T/d6/VISION.md"; printf '%s\n' "$(printf '\342\200\224%.0s' $(seq 1 160))" >> "$T/d6/ARCHITECTURE.md"
 run_budgets "$T/d6"
-if [ "$RC" -eq 0 ] && echo "$OUT" | grep -q '^PASS: doc-budgets: VISION.md 6/20 lines, longest 160/160 chars; ARCHITECTURE.md 6/60 lines, longest 160/160 chars$'; then ok "doc-budgets: lines of exactly 160 characters (ASCII, multi-byte) -> PASS"; else ko "doc-budgets line at cap (rc=$RC) $OUT"; fi
+if [ "$RC" -eq 0 ] && echo "$OUT" | grep -q '^PASS: doc-budgets: VISION.md 6/20 lines, longest 160/160 chars; ARCHITECTURE.md 6/20 lines, longest 160/160 chars$'; then ok "doc-budgets: lines of exactly 160 characters (ASCII, multi-byte) -> PASS"; else ko "doc-budgets line at cap (rc=$RC) $OUT"; fi
 mkdocs "$T/d7" 5 5; printf '%s\n' "$(printf 'x%.0s' $(seq 1 161))" >> "$T/d7/VISION.md"
 run_budgets "$T/d7"
 if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: doc-budgets: VISION.md line 6 has 161 characters, cap 160' && ! echo "$OUT" | grep -q 'ARCHITECTURE.md line'; then ok "doc-budgets: VISION.md line of 161 characters -> FAIL naming the line"; else ko "doc-budgets vision long line (rc=$RC) $OUT"; fi
