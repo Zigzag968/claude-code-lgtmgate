@@ -16,7 +16,8 @@
 // (exit != 0), is rebuilt and overwritten: a Lead who fixes the cause and relaunches on the same
 // worktree must never get the old failed record back.
 // --no-reuse (#83): never reuse a stored record, always re-execute and overwrite. For probes of LIVE
-// state (preflight reads: git-dir writable, plan-stale list, open sub-issues, branchPrefix) where a
+// state (preflight reads: git-dir writable, plan-stale list, open sub-issues, branchPrefix; pr-state reads
+// (#84): head sha, body digest, mergeability, commit count, review comments, open issues) where a
 // stored exit-0 record from an earlier launch would be a stale read. Default behaviour is unchanged.
 // Output (exactly one line, exit 0 whenever it is printed):
 //   PROBE name=<parser> exit=<cmd exit> sha=<sha256 of record.stdout> json=<compact JSON>
@@ -116,6 +117,37 @@ const PARSERS = {
       return { mode: 'branch', headRef: str(v.headRef), branchPrefix: typeof v.branchPrefix === 'string' ? v.branchPrefix : null }
     }
     return { error: 'bad-mode' }
+  },
+  // pr-state.sh output (E2.5, #84): ONE JSON object. Fields that could not be read are null; a malformed
+  // field is normalised to null, never trusted (one malformed openIssues entry nulls the whole list). No regex.
+  'pr-state'(stdout) {
+    let v
+    try { v = JSON.parse(String(stdout)) } catch (_) { return { error: 'bad-json' } }
+    if (v === null || typeof v !== 'object' || Array.isArray(v)) return { error: 'bad-json' }
+    const str = (x) => (typeof x === 'string' && x.length > 0 ? x : null)
+    const strArr = (x) => (Array.isArray(x) && x.every((i) => typeof i === 'string') ? x : null)
+    const issues = (x) => {
+      if (!Array.isArray(x)) return null
+      const out = []
+      for (const i of x) {
+        if (i === null || typeof i !== 'object' || !Number.isInteger(i.number) || typeof i.createdAt !== 'string') return null
+        out.push({ number: i.number, createdAt: i.createdAt, url: str(i.url) })
+      }
+      return out
+    }
+    return {
+      now: str(v.now),
+      headRefName: str(v.headRefName),
+      headRefOid: str(v.headRefOid),
+      bodyDigest: str(v.bodyDigest),
+      mergeable: str(v.mergeable),
+      mergeStateStatus: str(v.mergeStateStatus),
+      lastCommitDate: str(v.lastCommitDate),
+      commitCount: Number.isInteger(v.commitCount) && v.commitCount >= 0 ? v.commitCount : null,
+      reviewCommentIds: strArr(v.reviewCommentIds),
+      openIssues: issues(v.openIssues),
+      openIssuesTruncated: typeof v.openIssuesTruncated === 'boolean' ? v.openIssuesTruncated : false,
+    }
   },
 }
 

@@ -65,7 +65,10 @@
       "issues": [],
       "testCommandRun": "run the unit tests"
     },
-    "review-window-start-42": "2026-01-01T00:00:00Z\n",
+    "probe-123-pr-state-window-start-r0": {
+      "line": "PROBE name=pr-state exit=0 sha=3db97813d3f35e5488d7bd0a4df525f2043fbb38bec5e1283d69931d12b70ced json={\"now\":\"2026-01-01T00:00:00Z\",\"headRefName\":\"features/issue-123\",\"headRefOid\":\"abc123def456\",\"bodyDigest\":\"0123456789ab\",\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-01-01T00:30:00Z\",\"commitCount\":1,\"reviewCommentIds\":[],\"openIssues\":null,\"openIssuesTruncated\":false}",
+      "verify": "VERIFY ok line=PROBE name=pr-state exit=0 sha=3db97813d3f35e5488d7bd0a4df525f2043fbb38bec5e1283d69931d12b70ced json={\"now\":\"2026-01-01T00:00:00Z\",\"headRefName\":\"features/issue-123\",\"headRefOid\":\"abc123def456\",\"bodyDigest\":\"0123456789ab\",\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-01-01T00:30:00Z\",\"commitCount\":1,\"reviewCommentIds\":[],\"openIssues\":null,\"openIssuesTruncated\":false}"
+    },
     "morgan-pr-123-42-r0": {
       "verdict": "REQUIRED_CHANGES",
       "items": [
@@ -81,8 +84,10 @@
         }
       ]
     },
-    "review-window-end-42-0": "2026-01-01T01:00:00Z\n",
-    "reviewer-window-scan-123-42-0": "[]\n",
+    "probe-123-pr-state-window-end-r0": {
+      "line": "PROBE name=pr-state exit=0 sha=a2ecf0cc9d123582b92813d2aaafa231fa1201ab8e083ba1ff8d690d08376805 json={\"now\":\"2026-01-01T01:00:00Z\",\"headRefName\":\"features/issue-123\",\"headRefOid\":\"abc123def456\",\"bodyDigest\":\"0123456789ab\",\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-01-01T00:30:00Z\",\"commitCount\":1,\"reviewCommentIds\":[],\"openIssues\":[],\"openIssuesTruncated\":false}",
+      "verify": "VERIFY ok line=PROBE name=pr-state exit=0 sha=a2ecf0cc9d123582b92813d2aaafa231fa1201ab8e083ba1ff8d690d08376805 json={\"now\":\"2026-01-01T01:00:00Z\",\"headRefName\":\"features/issue-123\",\"headRefOid\":\"abc123def456\",\"bodyDigest\":\"0123456789ab\",\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-01-01T00:30:00Z\",\"commitCount\":1,\"reviewCommentIds\":[],\"openIssues\":[],\"openIssuesTruncated\":false}"
+    },
     "pr-body-sync-123-42-0": "OK bytes=1234\n"
   },
   "expect": {

@@ -231,7 +231,7 @@ export const meta = {
 // `version`, checked against plugin.json by templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '0.8.103', cutFrom: '70c12d1' }
+const BUILD = { plugin: 'lgtmgate', version: '0.8.104', cutFrom: 'b904fb1' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -610,12 +610,6 @@ function isSubset(smaller, larger) {
 const reviewerWindowCandidates = (issues, windowStart, windowEnd) =>
   (issues || []).filter(i => i && i.createdAt && i.createdAt >= windowStart && i.createdAt <= windowEnd)
 
-// Belt-and-suspenders ceiling for the reviewer-window `gh issue list` scan (lgtmgate#18) — NOT
-// the primary bound (the `created:>=windowStart` search qualifier at the call site is), see the
-// comment there. A single named constant so the call site's `--limit` and its exact-limit
-// truncation check never drift apart.
-const REVIEWER_WINDOW_SCAN_SAFETY_LIMIT = 1000
-
 // Decision log — durable counterpart to the comment-collapse pass above. Pure body composer.
 const DECISION_LOG_START = '<!-- decision-log:start -->'
 const DECISION_LOG_END = '<!-- decision-log:end -->'
@@ -923,7 +917,7 @@ function normalizeAgentType(agentType) {
 }
 
 // --- acceptAlreadyDone:start --- (pure & self-contained — keep extractable by the consuming project's tests)
-function acceptAlreadyDone(guard, expectedHead, nowIso) {
+function acceptAlreadyDone(guard, expectedHead, asOfIso) {
   const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/
   if (!guard || typeof guard !== 'object') return { accepted: false, reason: 'no-guard-response' }
   if (guard.checkFailed === true) return { accepted: false, reason: 'gh-tool-failure' }
@@ -935,7 +929,7 @@ function acceptAlreadyDone(guard, expectedHead, nowIso) {
   if (!ISO.test(at)) return { accepted: false, reason: 'merged-without-valid-timestamp' }
   if (!Number.isInteger(guard.mergedPr) || guard.mergedPr <= 0) return { accepted: false, reason: 'merged-without-pr-number' }
   const t = Date.parse(at)
-  const now = Date.parse(nowIso)
+  const now = Date.parse(asOfIso)
   if (Number.isFinite(now) && t > now) return { accepted: false, reason: 'merged-in-the-future' }
   const created = typeof guard.issueCreatedAt === 'string' ? Date.parse(guard.issueCreatedAt) : NaN
   if (Number.isFinite(created) && t < created) return { accepted: false, reason: 'merged-before-issue-created' }
@@ -1758,10 +1752,14 @@ async function probe(name, cmd, { label, round = 0, onFail, noReuse = false } = 
 // preflightProbe (#83): the pre-Dev / branch-guard reads as ONE probe (templates/preflight.sh, parser
 // `preflight`). mode 'dev' | 'branch'; returns the parsed object, or null on any failure (fail-open,
 // like the reads it replaces). The script sits next to probe-run.cjs.
+const probeScriptPath = (file) => {
+  const runPath = config.probeRunPath ?? (pluginRoot ? pluginRoot + '/templates/probe-run.cjs' : wtPath + '/templates/probe-run.cjs')
+  return runPath.slice(0, runPath.lastIndexOf('/') + 1) + file
+}
+
 async function preflightProbe(mode, label, argv) {
   try {
-    const runPath = config.probeRunPath ?? (pluginRoot ? pluginRoot + '/templates/probe-run.cjs' : wtPath + '/templates/probe-run.cjs')
-    const script = runPath.slice(0, runPath.lastIndexOf('/') + 1) + 'preflight.sh'
+    const script = probeScriptPath('preflight.sh')
     const cmd = 'bash ' + shellSingleQuote(script) + ' ' + mode + ' ' + argv.map(shellSingleQuote).join(' ')
     const r = await probe('preflight', cmd, {
       label,
@@ -2296,7 +2294,7 @@ if (entryStage === 'dev' || entryStage === 'review') {
     const expectedHead = `${expectedBranchName}`
     // Harness bans argless new Date() (breaks resume) — the run timestamp travels via
     // args.stamp (epoch ms); with no stamp the future-merged check degrades gracefully
-    // (acceptAlreadyDone skips it on a non-finite nowIso parse).
+    // (acceptAlreadyDone skips it on a non-finite as-of parse).
     const verdict = acceptAlreadyDone(guard, expectedHead, stamp ? new Date(Number(stamp)).toISOString() : '')
     if (verdict.accepted) {
       log(`Already-done guard: issue #${issue} is ${verdict.reason} — aborting relaunch`)
@@ -2577,21 +2575,35 @@ if (after('review', entryStage)) {
   // `createdAt`, so it is never a candidate), and the action on a candidate is a single
   // non-destructive comment — no close, no copied title/body — because unattributed issues must
   // never be closed automatically.
-  // Harness bans argless `new Date()`/`Date.now()` anywhere in a workflow script (breaks
-  // resume) — confirmed live on a real (non-simulate) dispatch (claude-agent-pipeline#144):
-  // every real Review-phase Morgan call crashed here with "Date.now() / new Date() are
-  // unavailable in workflow scripts". #135's fix only made the SIMULATE-path windowEnd
-  // computation conditional (fixing the offline flow-suite's nested-workflow invocation);
-  // it left this real-path call — and reviewerWindowStart's own bare new Date() below —
-  // unconditionally reachable on every actual dispatch. Fetch wall-clock time through a
-  // cheap haiku agent call instead (same idiom as the other agent-based probes in this
-  // file) so the read goes through the harness's resumable agent-call cache like everything
-  // else, rather than a direct (banned) Date() read inside the script body.
-  const nowIsoViaAgent = async (label) => String((await agent('date -u +%Y-%m-%dT%H:%M:%SZ', { label, model: 'haiku' })) ?? '').trim()
+  // PR state reads (E2.5, #84): ONE probe (templates/pr-state.sh, parser `pr-state`, run with noReuse:
+  // live state) answers every review-phase read of the PR: the wall clock, the head sha and body
+  // digest, mergeability, the commit count and last commit date, the un-minimized review comments and
+  // (with `since`) the open issues created in the window. The harness bans argless
+  // `new Date()`/`Date.now()` in a workflow script (breaks resume; claude-agent-pipeline#144/#135), so
+  // the clock is `date -u` inside pr-state.sh, run by the probe gate: no LLM interprets it (incident #14).
+  // Returns the parsed object, or null on any failure (fail-open: every caller keeps its own fallback).
+  const prState = async (label, round, { since } = {}) => {
+    try {
+      const argv = ['--pr', String(pr), '--wt', wtPath]
+      if (repo) argv.push('--repo', repo)
+      if (since) argv.push('--since', since)
+      const cmd = 'bash ' + shellSingleQuote(probeScriptPath('pr-state.sh')) + ' ' + argv.map(shellSingleQuote).join(' ')
+      const r = await probe('pr-state', cmd, {
+        label,
+        round,
+        noReuse: true,   // live state: a stored record from an earlier launch must never answer (#83)
+        onFail: (reason) => { log(`pr-state probe (${label}, round ${round}): ${reason} — fail-open`); return null },
+      })
+      return r && r.json && !r.json.error ? r.json : null
+    } catch (e) {
+      log(`pr-state probe (${label}, round ${round}) failed (${e.message}) — fail-open`)
+      return null
+    }
+  }
 
-  const reviewerWindowStart = async () => (simulate ? (simulate.windowStart ?? '1970-01-01T00:00:00Z') : await nowIsoViaAgent(`review-window-start-${pr}`))
+  const reviewerWindowStart = async (round) => (simulate ? (simulate.windowStart ?? '1970-01-01T00:00:00Z') : ((await prState('window-start', round))?.now ?? null))
 
-  const flagReviewerWindowIssues = async (windowStart, round) => {
+  const flagReviewerWindowIssues = async (windowStart, round, endState) => {
     let candidates
     let windowEnd
     if (simulate) {
@@ -2600,44 +2612,16 @@ if (after('review', entryStage)) {
         ? reviewerWindowCandidates(raw.issues, windowStart, raw.windowEnd ?? '9999-12-31T23:59:59Z')
         : (simulate.morganIssues?.[round] ?? [])
     } else {
-      // Harness bans argless `new Date()` in a nested workflow() call (breaks resume) — only
-      // computed on the real path, never under simulate (lgtmgate, 2026-09-13:
-      // this unconditional call made the ENTIRE flow suite unrunnable via the documented
-      // `--plugin-dir` nested-workflow invocation, MAINTAINING.md §1, discovered while testing
-      // the provision-stale preflight in the same commit).
-      windowEnd = await nowIsoViaAgent(`review-window-end-${pr}-${round}`)
-      let issues
-      try {
-        // lgtmgate#18: a flat `--limit 1000` silently truncates on any repo with 1000+ open
-        // issues — `gh issue list` returns the partial page with NO error, and the
-        // reviewerWindowCandidates() filter below then treats that partial list as exhaustive
-        // (silently WRONG, not just slow). Fixed by bounding the query server-side with the
-        // GitHub search `created:` qualifier (ISO 8601, confirmed via `gh issue list --help` +
-        // a live query against this repo and cli/cli: `created:>=<ISO8601>` and `--state
-        // <state>` compose with AND semantics when both are passed to `--search`) to exactly
-        // this review round's window, which is minutes-to-hours wide — never the whole
-        // open-issue backlog a flat `--limit` was trying (and failing) to bound.
-        // REVIEWER_WINDOW_SCAN_SAFETY_LIMIT below is a belt-and-suspenders ceiling, not the
-        // primary bound: `created:` is what makes the result set small. If the search ever
-        // DOES return exactly this many issues, that is itself the truncation signal (the
-        // same silent-truncation shape as the original bug) — the count check right after
-        // this call turns it into a loud, explicit failure instead of a silently partial list.
-        const out = await agent(
-          `cd "${wtPath}" && gh issue list --state open --search "created:>=${windowStart}"${prFlag} --limit ${REVIEWER_WINDOW_SCAN_SAFETY_LIMIT} --json number,createdAt,url --jq '[.[]|{number,createdAt,url}]'`,
-          { label: `reviewer-window-scan-${issue}-${pr}-${round}`, model: 'haiku' },
-        )
-        issues = JSON.parse(out)
-        if (Array.isArray(issues) && issues.length === REVIEWER_WINDOW_SCAN_SAFETY_LIMIT) {
-          throw new Error(
-            `reviewer-window-scan returned exactly the safety limit (${REVIEWER_WINDOW_SCAN_SAFETY_LIMIT}) issues — ` +
-            'likely truncated; refusing to treat a partial list as exhaustive (lgtmgate#18)',
-          )
-        }
-      } catch (e) {
-        log(`flagReviewerWindowIssues round ${round}: issue scan failed (${e.message}), skipping`)
+      // lgtmgate#18: the scan is bounded server-side by the `created:>=` qualifier and by the
+      // script's safety limit (templates/pr-state.sh); a result of exactly that limit comes back as
+      // openIssues:null + openIssuesTruncated:true, and a partial list is never treated as exhaustive.
+      // A failed probe, a missing window start or a truncated scan skip the pass (fail-open).
+      if (!windowStart || !endState || !Array.isArray(endState.openIssues)) {
+        log(`flagReviewerWindowIssues round ${round}: issue scan unavailable or truncated, skipping`)
         return
       }
-      candidates = reviewerWindowCandidates(issues, windowStart, windowEnd)
+      windowEnd = endState.now
+      candidates = reviewerWindowCandidates(endState.openIssues, windowStart, windowEnd)
     }
     const flagged = []
     for (const it of candidates) {
@@ -2705,18 +2689,10 @@ if (after('review', entryStage)) {
     if (simulate) {
       ids = simulate.minimizedComments?.[round] ?? []
     } else {
-      try {
-        // issue #87 (sweep finding #3) — bounded/already-fail-safe payload (short id list), so
-        // prompt-hardening only (same verbatim-reply pattern already used by rawHeadRef above);
-        // no restructuring, nothing here is republished.
-        const out = await agent(
-          `Run EXACTLY this command: gh pr view ${pr}${prFlag} --json comments -q '[.comments[]|select(.isMinimized==false)|select(.body|startswith("<!-- pipeline-review-round"))|.id]'. ` +
-          `Then reply with its raw stdout verbatim (a JSON array), nothing else — no explanation, no markdown.`,
-          { label: `review-comment-scan-${issue}-${pr}-${round}`, model: 'haiku' },
-        )
-        ids = JSON.parse(out)
-      } catch (e) {
-        log(`minimizeSupersededReviewComments round ${round}: scan failed (${e.message}), skipping`)
+      const st = await prState('comments', round)
+      ids = st && st.reviewCommentIds
+      if (!Array.isArray(ids)) {
+        log(`minimizeSupersededReviewComments round ${round}: scan failed, skipping`)
         return
       }
     }
@@ -2737,18 +2713,11 @@ if (after('review', entryStage)) {
   // Artifact-proof freshness floor — lazy: only resolved when Morgan actually declares
   // artifactProofs, so a run with no declared proof spends zero extra agent calls. Never throws
   // on a `gh` hiccup (mirrors reconcileMorganIssues): logs and falls through to the run stamp.
-  const artifactFloorIso = async (round) => {
+  const artifactFloorIso = async (round, endState) => {
     if (simulate) return simulate.artifactFloor ?? null
-    try {
-      const out = await agent(
-        `gh pr view ${pr}${prFlag} --json commits --jq '.commits[-1].committedDate'`,
-        { label: `artifact-floor-${issue}-${pr}-${round}`, model: 'haiku' },
-      )
-      const trimmed = String(out ?? '').trim()
-      if (trimmed) return trimmed
-    } catch (e) {
-      log(`artifactFloorIso round ${round}: gh lookup failed (${e.message}), falling back to run stamp`)
-    }
+    const t = endState && endState.lastCommitDate
+    if (t) return t
+    log(`artifactFloorIso round ${round}: no last commit date from the pr-state probe, falling back to run stamp`)
     return stamp ? new Date(Number(stamp)).toISOString() : null
   }
 
@@ -2756,7 +2725,7 @@ if (after('review', entryStage)) {
   // proofs, never trusting her LGTM alone. No-op when artifactProofs is absent/empty — every
   // pre-existing flow is unchanged.
   const callMorganGuarded = async (prompt, opts, round) => {
-    const windowStart = await reviewerWindowStart()
+    const windowStart = await reviewerWindowStart(round)
     let v
     try {
       v = await callAgent('morgan', prompt, opts, round)
@@ -2769,11 +2738,13 @@ if (after('review', entryStage)) {
       log(`callMorganGuarded round ${round}: Morgan threw (${e && e.message ? e.message : e}) — treating as death (null)`)
       v = null
     }
-    await flagReviewerWindowIssues(windowStart, round)
+    // ONE pr-state probe per Morgan round serves the window end, the issue scan and the artifact floor.
+    const endState = simulate || !windowStart ? null : await prState('window-end', round, { since: windowStart })
+    await flagReviewerWindowIssues(windowStart, round, endState)
     if (v === null) return v
     const proofs = Array.isArray(v.artifactProofs) ? v.artifactProofs : []
     if (proofs.length === 0) return v
-    const floorIso = await artifactFloorIso(round)
+    const floorIso = await artifactFloorIso(round, endState)
     const blockers = staleArtifactBlockers(proofs, floorIso)
     if (blockers.length === 0) return v
     const merged = [...(v.items || [])]
@@ -3201,26 +3172,12 @@ if (after('review', entryStage)) {
         : (simulate.prBodySig?.[r + 1] ?? simulate.prBodySig?.[r] ?? `body-round-${r}`)
       return { sha, body }
     }
-    let out
-    try {
-      out = await agent(
-        `Run EXACTLY this as ONE Bash tool call and reply with ONLY one line "<sha> <digest>" ` +
-        `(space-separated, nothing else — no quoting, no paraphrasing, no summary of the PR body):\n` +
-        `SHA=$(gh pr view ${pr}${prFlag} --json headRefOid -q .headRefOid)\n` +
-        `DIGEST=$(gh pr view ${pr}${prFlag} --json body -q .body | { shasum -a 256 2>/dev/null || sha256sum; } | cut -c1-12)\n` +
-        `echo "$SHA $DIGEST"`,
-        { label: `pr-sig-${issue}-${when}-round-${r}`, model: 'haiku' },
-      )
-    } catch (e) {
-      log(`prSignature ${when} round ${r}: probe failed (${e.message}) — failing open`)
+    const st = await prState(`sig-${when}`, r)
+    if (!st || !st.headRefOid || !st.bodyDigest) {
+      log(`prSignature ${when} round ${r}: pr-state probe unavailable — failing open`)
       return { sha: `probe-fail-${when}-${r}`, body: `probe-fail-${when}-${r}` }
     }
-    const parts = String(out ?? '').trim().split(/\s+/)
-    if (parts.length !== 2 || !parts[0] || !parts[1]) {
-      log(`prSignature ${when} round ${r}: unparseable reply "${String(out ?? '').slice(0, 200)}" — failing open`)
-      return { sha: `probe-fail-${when}-${r}`, body: `probe-fail-${when}-${r}` }
-    }
-    return { sha: parts[0], body: parts[1] }
+    return { sha: st.headRefOid, body: st.bodyDigest }
   }
 
   // Preflight before initial Morgan call
@@ -3441,14 +3398,10 @@ if (after('review', entryStage)) {
       commitCount = simulate.squashCommits
       headRefName = simulate.headRefName ?? `${expectedBranchName}`
     } else {
-      try {
-        const raw = await agent(
-          `cd "${wtPath}" && gh pr view ${pr}${prFlag} --json headRefName,commits`,
-          { label: `squash-scan-${issue}-${pr}`, model: 'haiku' })
-        const j = JSON.parse(raw)
-        headRefName = j.headRefName            // REUSE the provided field — never rebuild it
-        commitCount = (j.commits || []).length
-      } catch (e) { log(`squashBeforeHandoff: scan failed (${e.message}), skipping`); return }
+      const st = await prState('squash', round)
+      if (!st || typeof st.commitCount !== 'number') { log('squashBeforeHandoff: scan failed, skipping'); return }
+      headRefName = st.headRefName            // REUSE the provided field — never rebuild it
+      commitCount = st.commitCount
     }
     if (!headRefName || commitCount <= squashMaxCommits) return
     trace.push(`commit-squashed:${pr}`)
@@ -3475,17 +3428,8 @@ if (after('review', entryStage)) {
   // still computing, not a conflict), and a `null` (tool-failure) result all fall through unchanged.
   const checkMergeState = async () => {
     if (simulate) return simulate.mergeState ?? null
-    try {
-      const out = await agent(
-        `gh pr view ${pr}${prFlag} --json mergeable,mergeStateStatus --jq '{mergeable,mergeStateStatus}'`,
-        { label: `merge-state-${issue}-${pr}-${round}`, model: 'haiku' },
-      )
-      const j = JSON.parse(out)
-      return (j && typeof j.mergeable === 'string') ? j : null
-    } catch (e) {
-      log(`checkMergeState: probe failed (${e.message}), skipping mergeability recheck`)
-      return null
-    }
+    const st = await prState('merge', round)
+    return (st && typeof st.mergeable === 'string') ? { mergeable: st.mergeable, mergeStateStatus: st.mergeStateStatus } : null
   }
   if (v.verdict === 'LGTM') {
     const mergeState = await checkMergeState()

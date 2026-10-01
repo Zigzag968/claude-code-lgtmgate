@@ -755,27 +755,25 @@ fi
 # silently truncates (no error, no warning) and the downstream reviewerWindowCandidates()
 # filter treated that partial page as exhaustive. Fixed by bounding the query with the GitHub
 # search `created:>=<windowStart>` qualifier, so the result set is scoped to the review round's
-# (minutes-to-hours-wide) window instead of the whole open-issue backlog. This is a STATIC guard
-# (grep against source, not a live `gh` call): the offline flow-suite's `simulate` harness
-# deliberately makes the real (non-simulate) branch of flagReviewerWindowIssues — where this `gh
-# issue list` command is built — unreachable (every agent() call site must be intercepted by a
-# simulate fixture or the harness itself throws, scripts/run-flow-suite.cjs), so a live-request
-# regression test isn't feasible through that harness; this grep-based check is the durable
-# regression guard instead. The runtime belt-and-suspenders assertion (exact-limit truncation
-# check right after the call, workflows/deliver-pipeline.js) is the second, complementary guard.
-if [ -f "$WORKFLOW_FILE" ]; then
-  SCAN_LINE="$(grep -n 'gh issue list --state open' "$WORKFLOW_FILE" | head -1)"
+# (minutes-to-hours-wide) window instead of the whole open-issue backlog. E2.5 (#84) moved the scan
+# out of the workflow into templates/pr-state.sh (the workflow no longer builds any `gh` command for
+# it); this is a STATIC guard (grep against that script, not a live `gh` call) and stays the durable
+# regression guard. The runtime belt-and-suspenders assertion is the script's own exact-limit check
+# (`openIssuesTruncated`, pr-state.sh), replayed in templates/test-probe-run.sh.
+RWS_FILE="${RWS_FILE:-templates/pr-state.sh}"
+if [ -f "$RWS_FILE" ]; then
+  SCAN_LINE="$(grep -n 'gh issue list --state open' "$RWS_FILE" | head -1)"
   if [ -z "$SCAN_LINE" ]; then
-    fail "reviewer-window-scan-bounded" "no 'gh issue list --state open' call found in $WORKFLOW_FILE"
+    fail "reviewer-window-scan-bounded" "no 'gh issue list --state open' call found in $RWS_FILE"
   elif ! echo "$SCAN_LINE" | grep -q -- '--search "created:>='; then
     fail "reviewer-window-scan-bounded" "reviewer-window issue scan is missing a '--search \"created:>=\"' bound — a flat --limit alone silently truncates past the limit (lgtmgate#18): $SCAN_LINE"
-  elif ! grep -q 'REVIEWER_WINDOW_SCAN_SAFETY_LIMIT' "$WORKFLOW_FILE"; then
-    fail "reviewer-window-scan-bounded" "REVIEWER_WINDOW_SCAN_SAFETY_LIMIT (exact-limit truncation guard) not found in $WORKFLOW_FILE"
+  elif ! grep -q 'REVIEWER_WINDOW_SCAN_SAFETY_LIMIT' "$RWS_FILE"; then
+    fail "reviewer-window-scan-bounded" "REVIEWER_WINDOW_SCAN_SAFETY_LIMIT (exact-limit truncation guard) not found in $RWS_FILE"
   else
-    pass "reviewer-window-scan-bounded: reviewer-window issue scan is date-bounded via --search \"created:>=\"; safety-limit truncation guard present"
+    pass "reviewer-window-scan-bounded: reviewer-window issue scan ($RWS_FILE) is date-bounded via --search \"created:>=\"; safety-limit truncation guard present"
   fi
 else
-  fail "reviewer-window-scan-bounded" "$WORKFLOW_FILE missing"
+  fail "reviewer-window-scan-bounded" "$RWS_FILE missing"
 fi
 
 # =============================================================================
