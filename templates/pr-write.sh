@@ -106,12 +106,12 @@ status_op() {
     owner="$(gh repo view --json owner -q .owner.login 2>/dev/null)" || { emit failed read-failed; return; }
     name="$(gh repo view --json name -q .name 2>/dev/null)" || { emit failed read-failed; return; }
   fi
-  # The ISSUE's own project items, never a board scan (gh project item-list defaults to 30 items).
+  # The ISSUE's own project items, never a board scan (a scan of the board stops at its first 30 items).
   res="$(gh api graphql -f query='query($owner:String!,$repo:String!,$number:Int!){repository(owner:$owner,name:$repo){issue(number:$number){projectItems(first:20){nodes{id project{number} fieldValues(first:20){nodes{... on ProjectV2ItemFieldSingleSelectValue{optionId field{... on ProjectV2FieldCommon{id}}}}}}}}}}' \
     -f owner="$owner" -f repo="$name" -F number="$ISSUE" 2>/dev/null)" || { emit failed read-failed; return; }
-  item="$(printf '%s' "$res" | jq -r --argjson p "$PNUM" '[.data.repository.issue.projectItems.nodes[]? | select(.project.number == $p)] | first | .id // ""' 2>/dev/null)" || { emit failed read-failed; return; }
+  item="$(printf '%s' "$res" | jq -r --argjson p "$PNUM" '[.data.repository.issue.projectItems.nodes[]? | select(.project.number==$p)] | first | .id // ""' 2>/dev/null)" || { emit failed read-failed; return; }
   if [ -z "$item" ]; then emit skipped not-on-project; return; fi
-  cur="$(printf '%s' "$res" | jq -r --argjson p "$PNUM" --arg f "$FID" '[.data.repository.issue.projectItems.nodes[]? | select(.project.number == $p) | .fieldValues.nodes[]? | select((.field.id // "") == $f) | .optionId] | first // ""' 2>/dev/null)"
+  cur="$(printf '%s' "$res" | jq -r --argjson p "$PNUM" --arg f "$FID" '[.data.repository.issue.projectItems.nodes[]? | select(.project.number==$p) | .fieldValues.nodes[]? | select((.field.id // "") == $f) | .optionId] | first // ""' 2>/dev/null)"
   if [ "$cur" = "$OID" ]; then emit skipped already-set; return; fi
   if gh project item-edit --id "$item" --field-id "$FID" --project-id "$PID" --single-select-option-id "$OID" >/dev/null 2>&1; then
     emit written
