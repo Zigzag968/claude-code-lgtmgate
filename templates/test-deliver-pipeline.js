@@ -2654,7 +2654,7 @@ await testCase('T77d R3 + architectureDecisionApproved:true → announced status
 // T77e (#77, doc budgets) — ARCHITECTURE.md is imported into Sam's and Morgan's prompts only: Nick's
 // prompt carries no architecture or codemap import, and no prompt of the engine names docs/codemap.md.
 // The rules themselves live in the doc, never in the prompt (no DEBT marker syntax in the engine).
-await testCase('T77e Nick prompt imports neither ARCHITECTURE.md nor docs/codemap.md; Sam and Morgan import @ARCHITECTURE.md', async () => {
+await testCase('T77e Nick prompt imports neither ARCHITECTURE.md nor docs/codemap.md; Sam and Morgan import ARCHITECTURE.md', async () => {
   const r = await run({
     entryStage: 'dev',
     mode: 'auto',
@@ -2687,6 +2687,43 @@ await testCase('T77f R3: targetFiles touching docs/critical-paths.md → design-
   })
   const err = eq('status', r.status, 'design-step-required') || eq('kinds', JSON.stringify(r.oneWayDoorKinds), JSON.stringify(['critical-path']))
   return err ? err : { ok: true }
+})
+
+// T77g (#77, consumer neutrality) — VISION.md and ARCHITECTURE.md are the documents of the TARGET repo,
+// each consumer free to have its own or none. A run on a worktree without them behaves as it did
+// before these docs existed: the two engine imports are conditional ("if it exists", skip silently),
+// carry no rule text of this repo, and no other line of the engine names either file (no gate, no
+// preflight, no required read). Source-anchored: the engine reads no file in simulate mode.
+await testCase('T77g consumer neutrality: no VISION.md/ARCHITECTURE.md in the target repo → same run; the imports are conditional and name no rule of this repo', async () => {
+  const r = await run({
+    mode: 'auto',
+    simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] },
+  })
+  const e1 = eq('status', r.status, 'ready')
+  if (e1) return e1
+  const out = JSON.stringify(r)
+  if (out.includes('ARCHITECTURE.md') || out.includes('VISION.md')) return { ok: false, msg: 'run result names VISION.md/ARCHITECTURE.md although the target repo has neither' }
+  const src = SUITE_ARGS.fpSource
+  if (!src) {
+    log('SKIP — T77g source checks: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const lines = src.split('\n')
+  const importLines = { ARCH_IMPORT_SAM: '', ARCH_IMPORT_MORGAN: '' }
+  for (const name of Object.keys(importLines)) {
+    importLines[name] = lines.find(l => l.startsWith(`const ${name} = `)) || ''
+    if (!importLines[name]) return { ok: false, msg: `workflow source lacks const ${name}` }
+    if (!importLines[name].includes('only if it exists')) return { ok: false, msg: `${name} does not read the file only "if it exists"` }
+    if (!importLines[name].includes('skip silently any')) return { ok: false, msg: `${name} does not skip silently when a file is absent` }
+    for (const banned of ['callAgent', 'simulate', 'DEBT', 'R1', 'R2', 'R3', 'ratchet', 'lgtmgate', 'critical-paths', 'codemap', 'one-way', 'Never list', 'exception:']) {
+      if (importLines[name].includes(banned)) return { ok: false, msg: `${name} injects rule text of this repo (${banned}) into a consumer prompt` }
+    }
+  }
+  if (!importLines.ARCH_IMPORT_MORGAN.includes("per that repo's `ARCHITECTURE.md`")) return { ok: false, msg: "ARCH_IMPORT_MORGAN must phrase the declared-exception rule as \"per that repo's `ARCHITECTURE.md`\"" }
+  const stray = lines.filter(l => (l.includes('ARCHITECTURE.md') || l.includes('VISION.md'))
+    && !l.trimStart().startsWith('//') && !l.startsWith('const ARCH_IMPORT_SAM = ') && !l.startsWith('const ARCH_IMPORT_MORGAN = '))
+  if (stray.length) return { ok: false, msg: `engine names VISION.md/ARCHITECTURE.md outside the two conditional imports: ${stray[0].slice(0, 120)}` }
+  return { ok: true }
 })
 
 // T98a (#103, advisory default) — a plan target moved upstream → note+trace+return fields carry

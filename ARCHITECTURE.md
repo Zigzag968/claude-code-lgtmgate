@@ -23,6 +23,11 @@ The other invariants of the canonical guard net (stamp parity, PR body structure
 ## One-way doors
 A plan that adds a status, an `agent()` call, a hook or a seam, or that touches `docs/critical-paths.md`, stops at the design step (`design-step-required`). The maintainer approves explicitly (`architectureDecisionApproved`) or edits the file themself; otherwise the run stays stopped. Adding a rule or a guard is a one-way door too: announce it, then stop.
 
+## Where new code goes
+- A probe or a shell side effect: `templates/probe-run.cjs` (executes, keeps the raw output, prints one line).
+- A new run outcome: `finish({ status })` plus its row in the status table of `commands/deliver.md` (one-way door).
+- A new check on a PR: an acceptance item in the plan's checklist (`acceptanceChecklist`; target: `acceptanceItems` with ids).
+
 ## Declared exception
 A shortcut is allowed at the margin and never in silence.
 - In the code: `// DEBT(#N): <what is skipped and why>` (`# DEBT(#N)` in shell).

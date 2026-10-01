@@ -96,7 +96,7 @@ check does not belong here.
 - Not used, on purpose: ADR files, dependency-injection frameworks, a plugin system inside the
   engine, retries hidden in helpers.
 
-### Where new code goes (the full table; the three agent-read rows are in VISION.md)
+### Where new code goes (the full table; the three agent-read rows are in ARCHITECTURE.md)
 | You need | Put it in |
 |---|---|
 | a shell side effect or a probe | behind `callAgent` (single boundary; target: the single `probe-run` port) |
