@@ -125,7 +125,7 @@ VOUT="$(node "$PR" --verify --label vt --round 0 --out "$VD" --parser lines --at
 ok=0; [ "$VOUT" = "VERIFY fail reason=no-attestation" ] && ok=1
 check "verify no-attestation: no attest file" "$ok"
 
-node -e 'console.log(JSON.stringify({agent_id:"a",tool_use_id:"t",kind:"probe",label:"vt",round:0,line:process.argv[1],ts:"x"}))' "$VLINE" > "$ATT"
+node -e 'console.log(JSON.stringify({agent_id:"a",tool_use_id:"t",kind:"probe",label:"vt",round:0,line:process.argv[1],ts:new Date().toISOString()}))' "$VLINE" > "$ATT"
 VOUT="$(node "$PR" --verify --label vt --round 0 --out "$VD" --parser lines --attest "$ATT")"
 ok=0; [ "$VOUT" = "VERIFY ok line=$VLINE" ] && ok=1
 check "verify ok: attested line equals the recomputed one (entry bound to label and round)" "$ok"
@@ -156,6 +156,38 @@ node "$PR" --verify --label vt --round 0 --out "$VD" --parser lines --attest rel
 RC=$?
 [ "$RC" -eq 2 ] && ok=1 || ok=0
 check "verify relative --attest exits 2" "$ok"
+
+# --no-reuse (#83): a live-state probe re-executes even with an identical cmd and a stored exit-0 record
+NR="$WORK/nr"
+NRC="printf '%s\\n' \"\$(cat $WORK/nr-prefix)\""
+printf 'a/' > "$WORK/nr-prefix"
+node "$PR" --label nr --round 0 --out "$NR" --parser lines --cmd "$NRC" >/dev/null
+printf 'b/' > "$WORK/nr-prefix"
+O1="$(node "$PR" --label nr --round 0 --out "$NR" --parser lines --cmd "$NRC")"
+case "$O1" in *'"a/"'*) ok=1 ;; *) ok=0 ;; esac
+check "default: identical cmd + exit 0 is reused (still a/)" "$ok"
+O2="$(node "$PR" --label nr --round 0 --out "$NR" --parser lines --no-reuse --cmd "$NRC")"
+case "$O2" in *'"b/"'*) ok=1 ;; *) ok=0 ;; esac
+check "--no-reuse: same cmd re-executes (b/)" "$ok"
+node "$PR" --verify --label nr --round 0 --out "$NR" --parser lines --no-reuse --attest "$WORK/nr-a.jsonl" >/dev/null 2>&1
+[ "$?" -eq 2 ] && ok=1 || ok=0
+check "--no-reuse with --verify exits 2" "$ok"
+
+# VERIFY needs an attestation newer than the record, and the latest one for the call (#83)
+SD="$WORK/sv"; SA="$WORK/sv-attest.jsonl"
+SL="$(node "$PR" --label sv --round 0 --out "$SD" --parser lines --cmd "printf 'x\\n'")"
+node -e 'const l=process.argv[1];const e=(ts,line)=>JSON.stringify({agent_id:"a",tool_use_id:"t",kind:"probe",label:"sv",round:0,line,ts});console.log(e("2000-01-01T00:00:00Z",l))' "$SL" > "$SA"
+SOUT="$(node "$PR" --verify --label sv --round 0 --out "$SD" --parser lines --attest "$SA")"
+ok=0; [ "$SOUT" = "VERIFY fail reason=stale-attestation" ] && ok=1
+check "verify: an attestation older than the record does not satisfy VERIFY" "$ok"
+node -e 'const l=process.argv[1];const e=(ts,line)=>JSON.stringify({agent_id:"a",tool_use_id:"t",kind:"probe",label:"sv",round:0,line,ts});console.log(e("2000-01-01T00:00:00Z",l));console.log(e(new Date().toISOString(),l))' "$SL" > "$SA"
+SOUT="$(node "$PR" --verify --label sv --round 0 --out "$SD" --parser lines --attest "$SA")"
+ok=0; [ "$SOUT" = "VERIFY ok line=$SL" ] && ok=1
+check "verify: a fresh latest attestation after an old one passes" "$ok"
+node -e 'const l=process.argv[1];const e=(ts,line)=>JSON.stringify({agent_id:"a",tool_use_id:"t",kind:"probe",label:"sv",round:0,line,ts});console.log(e(new Date().toISOString(),l));console.log(e(new Date().toISOString(),"PROBE name=lines exit=0 sha=0 json={}"))' "$SL" > "$SA"
+SOUT="$(node "$PR" --verify --label sv --round 0 --out "$SD" --parser lines --attest "$SA")"
+ok=0; [ "$SOUT" = "VERIFY fail reason=sha-mismatch" ] && ok=1
+check "verify: the latest entry for the call must match (older matching entry is not enough)" "$ok"
 
 # (i) preflight.sh end to end (#83): stub gh first on PATH, temp git repo with a local bare origin. No network.
 PF="$SCRIPT_DIR/preflight.sh"

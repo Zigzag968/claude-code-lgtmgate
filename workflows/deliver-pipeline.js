@@ -1710,20 +1710,20 @@ const shellSingleQuote = (s) => `'${String(s).split("'").join("'\\''")}'`
 // The two commands the probe agent runs, in order (#82). Both start with `cd '<wtPath>' && node '<script>'`
 // (the attest hook accepts that prefix). The script is config.probeRunPath, else the plugin root's
 // templates/probe-run.cjs (arg pluginRoot), else the worktree's own copy.
-function probeCommands({ wtPath, issue, pluginRoot, probeRunPath, name, cmd, label, round }) {
+function probeCommands({ wtPath, issue, pluginRoot, probeRunPath, name, cmd, label, round, noReuse }) {
   const q = (x) => `'${String(x).split("'").join("'\\''")}'`
   const script = probeRunPath ?? (pluginRoot ? pluginRoot + '/templates/probe-run.cjs' : wtPath + '/templates/probe-run.cjs')
   const outDir = `${wtPath}/.pipeline/probes/issue-${issue}`
   const head = `cd ${q(wtPath)} && node ${q(script)} `
   const common = `--label ${label} --round ${round} --out ${q(outDir)} --parser ${name}`
   return {
-    run: `${head}${common} --model haiku --cmd ${q(cmd)}`,
+    run: `${head}${common} --model haiku${noReuse ? ' --no-reuse' : ''} --cmd ${q(cmd)}`,
     verify: `${head}--verify ${common} --attest ${q(wtPath + '/.pipeline/probe-attest.jsonl')}`,
   }
 }
 // --- probeCommands:end ---
 
-async function probe(name, cmd, { label, round = 0, onFail } = {}) {
+async function probe(name, cmd, { label, round = 0, onFail, noReuse = false } = {}) {
   if (!isSafeProbeToken(name) || !isSafeProbeToken(label)) {
     throw new Error(`probe: unsafe name/label (${JSON.stringify(name)} / ${JSON.stringify(label)})`)
   }
@@ -1732,7 +1732,7 @@ async function probe(name, cmd, { label, round = 0, onFail } = {}) {
     throw new Error(`probe ${name}/${label}: ${reason}`)
   }
   if (!config.probeRunPath && !pluginRoot) return fail('probe-run-not-found')
-  const cmds = probeCommands({ wtPath, issue, pluginRoot, probeRunPath: config.probeRunPath, name, cmd, label, round })
+  const cmds = probeCommands({ wtPath, issue, pluginRoot, probeRunPath: config.probeRunPath, name, cmd, label, round, noReuse })
   const prompt =
     `Run EXACTLY these two commands once each, in this order, from the worktree "${wtPath}", without editing or re-quoting them:\n\n` +
     `1. ${cmds.run}\n2. ${cmds.verify}\n\n` +
@@ -1765,6 +1765,7 @@ async function preflightProbe(mode, label, argv) {
     const cmd = 'bash ' + shellSingleQuote(script) + ' ' + mode + ' ' + argv.map(shellSingleQuote).join(' ')
     const r = await probe('preflight', cmd, {
       label,
+      noReuse: true,   // live state: a stored record from an earlier launch must never answer (#83)
       onFail: (reason) => { log(`preflight probe (${mode}): ${reason} — fail-open`); return null },
     })
     return r && r.json && !r.json.error && r.json.mode === mode ? r.json : null

@@ -15,6 +15,9 @@
 // replay (record.cmd === --cmd AND record.exit === 0). A different --cmd, or a stored failure
 // (exit != 0), is rebuilt and overwritten: a Lead who fixes the cause and relaunches on the same
 // worktree must never get the old failed record back.
+// --no-reuse (#83): never reuse a stored record, always re-execute and overwrite. For probes of LIVE
+// state (preflight reads: git-dir writable, plan-stale list, open sub-issues, branchPrefix) where a
+// stored exit-0 record from an earlier launch would be a stale read. Default behaviour is unchanged.
 // Output (exactly one line, exit 0 whenever it is printed):
 //   PROBE name=<parser> exit=<cmd exit> sha=<sha256 of record.stdout> json=<compact JSON>
 // Exit 2 + usage on stderr for an invalid invocation. No network, nothing read outside --out.
@@ -25,6 +28,13 @@
 //   VERIFY ok line=<PROBE line>                      the record exists and the attestation file
 //                                                    holds an entry equal to that recomputed line,
 //                                                    attested for the SAME label and round (#83)
+//   Binding to the agent (#83): when the matching entries carry an agent_id, the MOST RECENT entry
+//   (file order) for this label/round must equal the recomputed line AND have ts >= the record's ts
+//   (floored to the second: the hook stamps whole seconds), i.e. it was written after this call's own
+//   execution. Bound: this call's attestation is the latest one and postdates the record, so an
+//   attestation left by an earlier run/agent cannot satisfy it. NOT bound: WHICH agent wrote it (any
+//   lgtmgate:probe agent_id passes; ids are not given to the engine), nor entries without agent_id
+//   (legacy files: any equal entry counts). Failure reason: stale-attestation.
 //   VERIFY fail reason=no-record|no-attestation|sha-mismatch
 // The engine has no filesystem, so this is how it learns the copied PROBE line is the one the
 // script printed (hooks/PostToolUse-probe-attest.sh wrote the attestation).
@@ -37,7 +47,7 @@ const { spawnSync } = require('child_process')
 const MAX_BYTES = 65536
 const TOKEN = /^[A-Za-z0-9._-]+$/
 const USAGE =
-  "usage: node probe-run.cjs --label L --round N --out /abs/dir --parser NAME [--model M] --cmd '<shell cmd>'\n" +
+  "usage: node probe-run.cjs --label L --round N --out /abs/dir --parser NAME [--model M] [--no-reuse] --cmd '<shell cmd>'\n" +
   '       node probe-run.cjs --verify --label L --round N --out /abs/dir --parser NAME --attest /abs/file.jsonl\n'
 
 // ---- pure PARSERS: (stdout, stderr, exit) -> JSON-able value ----------------------------------
@@ -148,7 +158,15 @@ function verifyRecord(parser, record, entries, bind) {
     (!bind || (e.label === bind.label && e.round === bind.round)))
   if (mine.length === 0) return { ok: false, reason: 'no-attestation' }
   const line = probeLine(parser, record)
-  return mine.some((e) => e.line === line) ? { ok: true, line } : { ok: false, reason: 'sha-mismatch' }
+  const withAgent = mine.filter((e) => typeof e.agent_id === 'string' && e.agent_id !== '')
+  if (withAgent.length === 0) return mine.some((e) => e.line === line) ? { ok: true, line } : { ok: false, reason: 'sha-mismatch' }
+  // #83: bind to the call — the latest entry must match and postdate the record (second resolution).
+  const last = withAgent[withAgent.length - 1]
+  if (last.line !== line) return { ok: false, reason: 'sha-mismatch' }
+  const floor = Math.floor(Date.parse(record.ts) / 1000) * 1000
+  const at = Date.parse(last.ts)
+  if (!Number.isFinite(floor) || !Number.isFinite(at) || at < floor) return { ok: false, reason: 'stale-attestation' }
+  return { ok: true, line }
 }
 
 function readJsonl(file) {
@@ -167,6 +185,7 @@ function parseArgs(argv) {
   for (let i = 0; i < argv.length; i++) {
     const k = argv[i]
     if (k === '--verify') out.verify = true
+    else if (k === '--no-reuse') out.noReuse = true
     else if (['--label', '--round', '--out', '--parser', '--model', '--cmd', '--attest'].includes(k) && i + 1 < argv.length) {
       out[k.slice(2)] = argv[++i]
     } else return null
@@ -188,7 +207,7 @@ function main() {
   const a = parseArgs(process.argv.slice(2))
   const common = a && a.label && a.parser && a.out && a.round !== undefined &&
     TOKEN.test(a.label) && TOKEN.test(a.parser) && /^\d+$/.test(a.round) && path.isAbsolute(a.out)
-  const bad = !common || (a.verify ? (!a.attest || !path.isAbsolute(a.attest) || a.cmd !== undefined) : a.cmd === undefined)
+  const bad = !common || (a.verify ? (!a.attest || !path.isAbsolute(a.attest) || a.cmd !== undefined || a.noReuse) : a.cmd === undefined)
   if (bad) {
     process.stderr.write(USAGE)
     process.exit(2)
@@ -200,7 +219,7 @@ function main() {
     process.exit(0)
   }
   let record = readRecord(file)
-  if (!canReuse(record, a.cmd)) {
+  if (a.noReuse || !canReuse(record, a.cmd)) {
     record = buildRecord({ label: a.label, cmd: a.cmd, model: a.model })
     fs.mkdirSync(a.out, { recursive: true })
     const tmp = `${file}.${process.pid}.tmp`
