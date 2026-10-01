@@ -3572,7 +3572,7 @@ await testCase('T86a every probe(x) name used by the engine is registered in PRO
   return eq('probe names missing from PROBES', probesMissing(src), []) || { ok: true }
 })
 
-await testCase('T86b no seam read carries a ?? default in the engine (#86)', async () => {
+await testCase('T86b no `??` on a `simulate.probes` read line in the engine (#86)', async () => {
   const src = SUITE_ARGS.fpSource
   if (!src) {
     log('SKIP — T86b: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
@@ -3580,7 +3580,7 @@ await testCase('T86b no seam read carries a ?? default in the engine (#86)', asy
   }
   const control = eq('negative control', seamDefaultLines('const x = simulate.probes.a ?? 1\nconst y = simulate.probes.b\n').length, 1)
   if (control) return control
-  return eq('seam lines with a ?? default', seamDefaultLines(src), []) || { ok: true }
+  return eq('simulate.probes read lines with a ?? default', seamDefaultLines(src), []) || { ok: true }
 })
 
 await testCase('T86c the engine reads only simulate.probes (#86)', async () => {

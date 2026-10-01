@@ -383,7 +383,7 @@ if (branchPrefixArgIgnored) {
 // resolveWorktreeRoot() itself is defined below (see its :start/:end sentinel block) — hoisted,
 // so this call resolves fine despite the definition appearing later in the file.
 const runtimeEnv = simulate
-  ? (simulate.probes.env || {})
+  ? (simulate.probes?.env || {})
   : ((typeof process !== 'undefined' && process && process.env) ? process.env : {})
 const worktreeRoot = resolveWorktreeRoot({ env: runtimeEnv, configLocal, config, wtPath })
 log(`worktreeRoot: ${worktreeRoot ?? '(unresolved)'} (env=${runtimeEnv.LGTMGATE_WORKTREE_ROOT ? 'set' : 'unset'}, local=${configLocal.worktreeRoot ? 'set' : 'unset'}, config=${config.worktreeRoot ? 'set' : 'unset'})`)
@@ -408,7 +408,7 @@ let conventionsRule = config.conventionsRule || '.claude/rules/conventions.md'
 if (entryStage !== 'plan') {
   let configProjectRecheckRaw = null
   if (simulate) {
-    if (simulate.probes.configProjectRecheckRaw !== undefined) configProjectRecheckRaw = simulate.probes.configProjectRecheckRaw
+    if (simulate.probes?.configProjectRecheckRaw !== undefined) configProjectRecheckRaw = simulate.probes?.configProjectRecheckRaw
   } else {
     try {
       configProjectRecheckRaw = await agent(
@@ -1407,21 +1407,21 @@ function agentDeathRouting(role, attempt, maxAttempts = 2) {
 
 function simFixture(role, round = 0, prNum = null) {
   if (!simulate) return null
-  if (role === 'mia') return simulate.probes.mia || { framing: '(simulated PM)' }
+  if (role === 'mia') return simulate.probes?.mia || { framing: '(simulated PM)' }
   if (role === 'sam') return {
-    decision: simulate.probes.sam === 'NO-GO' ? 'NO-GO' : 'GO',
-    plan: simulate.probes.samPlan || '(simulated plan)',
-    planPath: simulate.probes.samPlanPath || planPath,
-    rationale: simulate.probes.samRationale || '',
-    debtIssue: simulate.probes.debtIssue || '',
-    targetFiles: simulate.probes.samTargetFiles || [],
-    absorbedIssues: simulate.probes.samAbsorbedIssues || [],
+    decision: simulate.probes?.sam === 'NO-GO' ? 'NO-GO' : 'GO',
+    plan: simulate.probes?.samPlan || '(simulated plan)',
+    planPath: simulate.probes?.samPlanPath || planPath,
+    rationale: simulate.probes?.samRationale || '',
+    debtIssue: simulate.probes?.debtIssue || '',
+    targetFiles: simulate.probes?.samTargetFiles || [],
+    absorbedIssues: simulate.probes?.samAbsorbedIssues || [],
     // #97 — without this, a simulated plan-amendment round would return an empty checklist,
     // fail syncAcceptanceBlock's empty-checklist guard, and escalate as acceptance-sync-failed.
-    acceptanceChecklist: simulate.probes.samAcceptanceChecklist,
+    acceptanceChecklist: simulate.probes?.samAcceptanceChecklist,
   }
   if (role === 'nick') {
-    const nickFx = simulate.probes.nick || {}
+    const nickFx = simulate.probes?.nick || {}
     return {
       prNumber: nickFx.prNumber ?? prNum ?? 999,
       branch: nickFx.branch ?? `${expectedBranchName}`,
@@ -1430,13 +1430,13 @@ function simFixture(role, round = 0, prNum = null) {
     }
   }
   if (role === 'alreadyDoneCheck')
-    return simulate.probes.alreadyDoneCheck
+    return simulate.probes?.alreadyDoneCheck
   if (role === 'preflight') {
-    const f = simulate.probes.preflight?.[round]
+    const f = simulate.probes?.preflight?.[round]
     return f ?? { pass: true, issues: [] }
   }
   if (role === 'morgan') {
-    const m = simulate.probes.morgan?.[round]
+    const m = simulate.probes?.morgan?.[round]
     if (m === null) return null
     return {
       verdict: m ? m.verdict : 'LGTM',
@@ -1447,13 +1447,13 @@ function simFixture(role, round = 0, prNum = null) {
     }
   }
   if (role === 'planCheck') {
-    const c = simulate.probes.planCheck?.[round]
+    const c = simulate.probes?.planCheck?.[round]
     return c ? { verdict: c.verdict || 'CONFORMING', issues: c.issues || [] } : { verdict: 'CONFORMING', issues: [] }
   }
   if (role === 'theo')
-    return simulate.probes.theo
+    return simulate.probes?.theo
   if (role === 'audit') {
-    const a = simulate.probes.audit?.[round]
+    const a = simulate.probes?.audit?.[round]
     return a ?? { verdict: 'SOUND', findings: [] }
   }
   throw new Error(`Unknown role: ${role}`)
@@ -1484,7 +1484,7 @@ async function callAgent(role, prompt, opts, round = 0, attempt = 1) {
     // #54 seam A — replay P1's captured harness signature on the NAMED attempt numbers.
     // Per-attempt (never a module-scope fire-once Set): correctness must not depend on the
     // runner re-evaluating the body per case, which the Workflow-tool path does not do.
-    const spec = simulate.probes.agentTypeUnresolved && simulate.probes.agentTypeUnresolved[role]
+    const spec = simulate.probes?.agentTypeUnresolved && simulate.probes?.agentTypeUnresolved[role]
     if (Array.isArray(spec) && spec.includes(attempt) && opts && opts.agentType) {
       throw new Error(`agent({agentType}): agent type '${normalizeAgentType(opts.agentType)}' ` +
         `not found. Available agents: (simulated)`)
@@ -1846,7 +1846,7 @@ if (probeOnly) {
   // reaches the parser. `ok` is STRICTLY exit === 0 (and no parser error) — never an LLM boolean.
   // A probe failure (agent death, contaminated copy, failed attestation) is fail-closed.
   const provision = simulate
-    ? simulate.probes.provision
+    ? simulate.probes?.provision
     : await (async () => {
         const res = await probe('provision', `(${provisionCmd}) 2>&1`,
           { label: 'provision', onFail: (reason) => ({ probeFailed: reason }) })
@@ -1901,7 +1901,7 @@ if (probeOnly) {
 // positive behind-count does.
 if (entryStage === 'plan') {
   const provisionFresh = simulate
-    ? { state: 'legacy', behind: simulate.probes.provisionBehindCount, own: null }
+    ? { state: 'legacy', behind: simulate.probes?.provisionBehindCount, own: null }
     : await (async () => {
         const res = await probe('provision-freshness',
           `cd "${wtPath}" && git fetch origin ${baseBranch} -q 2>/dev/null; B=$(git rev-list --count HEAD..origin/${baseBranch}); O=$(git rev-list --count origin/${baseBranch}..HEAD); if [ "$B" -gt 0 ] && [ "$O" -eq 0 ] && git merge --ff-only origin/${baseBranch} -q >/dev/null 2>&1; then echo "PROVISION-FRESHNESS:ffwd:$B"; elif [ "$B" -eq 0 ]; then echo "PROVISION-FRESHNESS:fresh:0:$O"; else echo "PROVISION-FRESHNESS:stale:$B:$O"; fi`,
@@ -2352,7 +2352,7 @@ const assertBranchConformance = async (prNum, nickBranchFallback) => {
     return branchPf
   }
   if (simulate) {
-    if (simulate.probes.branchCheckRaw !== undefined) rawHeadRef = simulate.probes.branchCheckRaw
+    if (simulate.probes?.branchCheckRaw !== undefined) rawHeadRef = simulate.probes?.branchCheckRaw
   } else if (prNum) {
     const pf = await branchProbe()
     if (pf) rawHeadRef = pf.headRef ?? ''
@@ -2376,7 +2376,7 @@ const assertBranchConformance = async (prNum, nickBranchFallback) => {
     if (branchOverrideName !== null) {
       // #232: an explicit override is authoritative — never accept a config-prefix branch.
     } else if (simulate) {
-      if (simulate.probes.configBranchPrefixRaw !== undefined) realBranchPrefixRaw = simulate.probes.configBranchPrefixRaw
+      if (simulate.probes?.configBranchPrefixRaw !== undefined) realBranchPrefixRaw = simulate.probes?.configBranchPrefixRaw
     } else {
       const pf = await branchProbe()
       if (pf) realBranchPrefixRaw = pf.branchPrefix
@@ -2422,7 +2422,7 @@ if (after('dev', entryStage)) {
   ])
   if (planFreshnessMode !== 'off' && planTargets.length > 0) {
     const planStaleFilesProbe = async () => {
-      if (simulate) return simulate.probes.planStaleFiles
+      if (simulate) return simulate.probes?.planStaleFiles
       if (!preflightDev || !Array.isArray(preflightDev.planStale)) {
         log(`planStaleFilesProbe: no preflight result, skipping plan-freshness check`)
         return null
@@ -2441,7 +2441,7 @@ if (after('dev', entryStage)) {
   }
 
   const openSubIssuesProbe = async () => {
-    if (simulate) return simulate.probes.openSubIssues
+    if (simulate) return simulate.probes?.openSubIssues
     if (!preflightDev || !Array.isArray(preflightDev.openSubIssues)) {
       log(`openSubIssuesProbe: no preflight result, skipping sub-issues gate (fail-open, mirrors planStaleFilesProbe)`)
       return null
@@ -2465,7 +2465,7 @@ if (after('dev', entryStage)) {
   // tracked file. Ungated by entryStage (unlike the fresh-dispatch provision-stale preflight
   // above): a resumed run can hit the same external sandbox-grant gap as a fresh one.
   const gitDirWritableProbe = async () => {
-    if (simulate) return simulate.probes.gitDirWritable
+    if (simulate) return simulate.probes?.gitDirWritable
     if (!preflightDev || typeof preflightDev.writable !== 'boolean') {
       log(`gitDirWritableProbe: no preflight result, skipping worktree write-access preflight (fail-open)`)
       return null
@@ -2615,7 +2615,7 @@ if (after('review', entryStage)) {
   }
 
   const reviewerWindowStart = async (round) => {
-    if (simulate) return simulate.probes.windowStart
+    if (simulate) return simulate.probes?.windowStart
     return (await prState('window-start', round))?.now ?? null
   }
 
@@ -2623,8 +2623,8 @@ if (after('review', entryStage)) {
     let candidates
     let windowEnd
     if (simulate) {
-      const raw = simulate.probes.issueWindow?.[round]
-      const morganIssuesFx = simulate.probes.morganIssues
+      const raw = simulate.probes?.issueWindow?.[round]
+      const morganIssuesFx = simulate.probes?.morganIssues
       candidates = raw
         ? reviewerWindowCandidates(raw.issues, windowStart, raw.windowEnd ?? '9999-12-31T23:59:59Z')
         : (morganIssuesFx?.[round] ?? [])
@@ -2693,7 +2693,7 @@ if (after('review', entryStage)) {
     if (!simulate && config.commentHygiene !== true) return
     let ids
     if (simulate) {
-      const mcFx = simulate.probes.minimizedComments
+      const mcFx = simulate.probes?.minimizedComments
       ids = mcFx?.[round] ?? []
     } else {
       const st = await prState('comments', round)
@@ -2718,7 +2718,7 @@ if (after('review', entryStage)) {
   // artifactProofs, so a run with no declared proof spends zero extra agent calls. Never throws
   // on a `gh` hiccup (mirrors reconcileMorganIssues): logs and falls through to the run stamp.
   const artifactFloorIso = async (round, endState) => {
-    if (simulate) return simulate.probes.artifactFloor
+    if (simulate) return simulate.probes?.artifactFloor
     const t = endState && endState.lastCommitDate
     if (t) return t
     log(`artifactFloorIso round ${round}: no last commit date from the pr-state probe, falling back to run stamp`)
@@ -2799,7 +2799,7 @@ if (after('review', entryStage)) {
   // so a local-vs-CI test-count mismatch reads as expected, not a regression. Degrades to null on
   // any failure (mirrors artifactFloorIso) — a `git`/agent hiccup can never crash the review.
   const worktreeBehindCount = async () => {
-    if (simulate) return simulate.probes.behindCount
+    if (simulate) return simulate.probes?.behindCount
     try {
       const res = await probe('git-rev-list-count',
         `cd "${wtPath}" && git fetch origin ${baseBranch} -q 2>/dev/null; git rev-list --count HEAD..origin/${baseBranch}`,
@@ -2971,7 +2971,7 @@ if (after('review', entryStage)) {
   const decisionLog = []
   let prBodyPreview = null   // simulate-only: lets the flow tests assert the composed body
   let guardProbeResult = null   // simulate-only: T87b probes the REAL bodyWriteGuardOk (issue #87)
-  let acceptanceSpliceProbe = null   // simulate.probes.acceptanceSpliceProbe-only: T113 probes the REAL spliceAcceptanceBlock (issue #97)
+  let acceptanceSpliceProbe = null   // simulate.probes?.acceptanceSpliceProbe-only: T113 probes the REAL spliceAcceptanceBlock (issue #97)
   let planAmendRounds = 0   // #97 — budget counter for the plan-defect-persists escalation (S13)
 
   // Decision log — durable counterpart to the comment-collapse pass above. Best-effort, never
@@ -2985,14 +2985,14 @@ if (after('review', entryStage)) {
       : `- round ${r} — ${verdict} (${n} blocker${n === 1 ? '' : 's'})`)
     if (simulate) {
       // T87b (issue #87) — additive lever, zero behavior change when absent (mirrors
-      // simulate.probes.artifactFloor/simulate.probes.behindCount). Exercises the REAL production
+      // simulate.probes?.artifactFloor/simulate.probes?.behindCount). Exercises the REAL production
       // bodyWriteGuardOk, never a hand-duplicated copy in the test file.
-      if (simulate.probes.recordDecisionGuardProbe) {
-        const { preLen, newBody } = simulate.probes.recordDecisionGuardProbe
+      if (simulate.probes?.recordDecisionGuardProbe) {
+        const { preLen, newBody } = simulate.probes?.recordDecisionGuardProbe
         guardProbeResult = bodyWriteGuardOk(preLen, newBody)
       }
-      if (simulate.probes.prBody === undefined) return
-      prBodyPreview = upsertDecisionLog(simulate.probes.prBody, decisionLog)
+      if (simulate.probes?.prBody === undefined) return
+      prBodyPreview = upsertDecisionLog(simulate.probes?.prBody, decisionLog)
       return
     }
     // issue #87 — the PR body content (routinely 5-30 KB) must NEVER transit through the model's own
@@ -3035,8 +3035,8 @@ if (after('review', entryStage)) {
     const list = String(checklist ?? '').trim()
     if (!list) { log(`syncAcceptanceBlock round ${r}: empty checklist — refusing to sync`); return false }
     if (simulate) {
-      if (simulate.probes.prBody === undefined) return simulate.probes.acceptanceSync !== false
-      const out = spliceAcceptanceBlock(simulate.probes.prBody, list)
+      if (simulate.probes?.prBody === undefined) return simulate.probes?.acceptanceSync !== false
+      const out = spliceAcceptanceBlock(simulate.probes?.prBody, list)
       if (out !== null) prBodyPreview = out
       return out !== null
     }
@@ -3049,12 +3049,12 @@ if (after('review', entryStage)) {
     return false
   }
 
-  // Offline probe lever (issue #97, T87b precedent) — when simulate.probes.acceptanceSpliceProbe is set,
+  // Offline probe lever (issue #97, T87b precedent) — when simulate.probes?.acceptanceSpliceProbe is set,
   // evaluate the REAL spliceAcceptanceBlock once against that fixture and expose the result on
   // the terminal payload, so the offline suite can prove the pure splice function's marker
   // selection/fail-closed behavior without hand-duplicating it in the test file.
   if (simulate?.probes?.acceptanceSpliceProbe) {
-    const { body: probeBody, checklist: probeChecklist } = simulate.probes.acceptanceSpliceProbe
+    const { body: probeBody, checklist: probeChecklist } = simulate.probes?.acceptanceSpliceProbe
     acceptanceSpliceProbe = spliceAcceptanceBlock(probeBody, probeChecklist)
   }
 
@@ -3071,12 +3071,12 @@ if (after('review', entryStage)) {
       // sha: unchanged expressions (same idiom the pre-#97 no-op gate used) — before is a plain
       // index, after looks ahead to r+1 with a round-scoped fallback so two absent defaults
       // still differ (a normal round must never fabricate a no-op).
-      const shaFx = simulate.probes.headSha
-      const bodyFx = simulate.probes.prBodySig
+      const shaFx = simulate.probes?.headSha
+      const bodyFx = simulate.probes?.prBodySig
       const sha = when === 'before'
         ? (shaFx?.[r] ?? `sha-round-${r}`)
         : (shaFx?.[r + 1] ?? (shaFx?.[r] !== undefined ? shaFx[r] : `sha-round-${r}-post`))
-      // body: SAME polarity, keyed off simulate.probes.prBodySig — identical by default (no lever set)
+      // body: SAME polarity, keyed off simulate.probes?.prBodySig — identical by default (no lever set)
       // so a plain SHA-only fixture (T23) still escalates exactly as before #97; a fixture that
       // sets prBodySig[r] and prBodySig[r+1] to different strings models a body-only fix.
       const body = when === 'before'
@@ -3306,9 +3306,9 @@ if (after('review', entryStage)) {
     if (!squashEnabled) return
     let headRefName, commitCount
     if (simulate) {
-      if (simulate.probes.squashCommits === undefined) return
-      commitCount = simulate.probes.squashCommits
-      const hrFx = simulate.probes.headRefName
+      if (simulate.probes?.squashCommits === undefined) return
+      commitCount = simulate.probes?.squashCommits
+      const hrFx = simulate.probes?.headRefName
       headRefName = hrFx ?? `${expectedBranchName}`
     } else {
       const st = await prState('squash', round)
@@ -3340,7 +3340,7 @@ if (after('review', entryStage)) {
   // ambiguity: only an exact `mergeable === 'CONFLICTING'` escalates — `MERGEABLE`, `UNKNOWN` (GitHub
   // still computing, not a conflict), and a `null` (tool-failure) result all fall through unchanged.
   const checkMergeState = async () => {
-    if (simulate) return simulate.probes.mergeState
+    if (simulate) return simulate.probes?.mergeState
     const st = await prState('merge', round)
     return (st && typeof st.mergeable === 'string') ? { mergeable: st.mergeable, mergeStateStatus: st.mergeStateStatus } : null
   }
