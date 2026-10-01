@@ -13,8 +13,9 @@ ENV DEVCONTAINER=true
 ENV NPM_CONFIG_PREFIX=/usr/local/share/npm-global
 ENV PATH=$PATH:/usr/local/share/npm-global/bin
 
-RUN mkdir -p /usr/local/share/npm-global /workspace /home/node/.claude \
-  && chown -R node:node /usr/local/share /workspace /home/node/.claude
+RUN NODE_HOME="$(getent passwd node | cut -d: -f6)" \
+  && mkdir -p /usr/local/share/npm-global /workspace "$NODE_HOME/.claude" \
+  && chown -R node:node /usr/local/share /workspace "$NODE_HOME/.claude"
 
 USER node
 RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}

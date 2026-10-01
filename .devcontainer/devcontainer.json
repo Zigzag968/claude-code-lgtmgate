@@ -4,11 +4,8 @@
     "dockerfile": "Dockerfile",
     "args": { "CLAUDE_CODE_VERSION": "latest" }
   },
-  "runArgs": ["--security-opt", "seccomp=unconfined"],
+  "runArgs": ["--security-opt", "seccomp=unconfined", "--security-opt", "systempaths=unconfined"],
   "remoteUser": "node",
-  "containerEnv": {
-    "CLAUDE_CONFIG_DIR": "/home/node/.claude"
-  },
   "remoteEnv": {
     "CLAUDE_CODE_OAUTH_TOKEN": "${localEnv:CLAUDE_CODE_OAUTH_TOKEN}"
   },

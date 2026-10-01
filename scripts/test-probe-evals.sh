@@ -51,13 +51,13 @@ for d in "$ROOT"/evals/probe-*/; do
   # `last_message` is the main session's final message: the prompt must make it a pure relay
   ok=0
   grep -q 'ONLY the PROBE line' "$d/prompt.md" && grep -q 'verbatim: no prose' "$d/prompt.md" \
-    && grep -q 'no code fences' "$d/prompt.md" && grep -q 'Do not rerun the command yourself' "$d/prompt.md" && ok=1
+    && grep -q 'no code fences' "$d/prompt.md" && grep -q 'Do not rerun the commands yourself' "$d/prompt.md" && ok=1
   check "$name: prompt requires a verbatim-only relay (no prose, no fences)" "$ok"
   ok=0
   grep -q '^target: last_message$' "$d/graders/probe-line.md" \
-    && grep -q 'exit=0 sha=\[0-9a-f\]{64} json=' "$d/graders/probe-line.md" \
+    && grep -q 'exit=0 sha=\[0-9a-f\]{64} cmd=\[0-9a-f\]{64} json=' "$d/graders/probe-line.md" \
     && grep -q "^pattern: '\^PROBE name=" "$d/graders/probe-line.md" && ok=1
-  check "$name: probe-line grader keeps a strict regex (name, exit, 64-hex sha, json)" "$ok"
+  check "$name: probe-line grader keeps a strict regex (name, exit, 64-hex sha, 64-hex cmd, json)" "$ok"
 
   # (b) run the case command for real and match the regex grader against the PROBE line
   run="$WORK/$name"
@@ -66,8 +66,13 @@ for d in "$ROOT"/evals/probe-*/; do
     const fs = require("fs")
     const m = fs.readFileSync(process.argv[1], "utf8").match(/```bash\n([\s\S]*?)\n```/)
     process.stdout.write(m ? m[1] : "")
-  ' "$d/prompt.md" > "$run/cmd.sh"
-  LINE="$(cd "$run" && CLAUDE_PLUGIN_ROOT="$ROOT" bash "$run/cmd.sh" 2>/dev/null)"
+  ' "$d/prompt.md" > "$run/cmd2.sh"
+  # the block holds two commands: the PROBE run, then its --verify (the SubagentStop hook needs the pair)
+  head -1 "$run/cmd2.sh" > "$run/cmd.sh"
+  ok=0
+  [ "$(grep -c '' "$run/cmd2.sh")" = "2" ] && sed -n 2p "$run/cmd2.sh" | grep -q -- '--verify .*--attest ' && ok=1
+  check "$name: bash block holds the run command then its --verify command" "$ok"
+  LINE="$(cd "$run" && EVAL_PLUGIN_ROOT="$ROOT" bash "$run/cmd.sh" 2>/dev/null)"
   rc=$?
   ok=0
   [ "$rc" -eq 0 ] && [ "$(printf '%s\n' "$LINE" | wc -l | tr -d ' ')" = "1" ] && ok=1
