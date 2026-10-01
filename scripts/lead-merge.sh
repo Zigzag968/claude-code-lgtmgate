@@ -3,6 +3,10 @@
 # Run from a checkout of the PR head branch. Steps, each exit code checked:
 #   1. acceptance checklist via scripts/lib/acceptance-check.sh (same lib as the merge hook):
 #      any `- [ ]` between the acceptance markers, or missing markers, refuses.
+#   1a. review freshness (#157, scripts/lib/review-check.sh, same lib as the merge hook): the latest
+#      `<!-- pipeline-review-round pr=<N> sha=<40hex> -->` comment (Morgan's verdict; the squash note re-attests the
+#      squashed head) must name the PR head as the API reports it before any script commit; refuses `FAIL: review-stale`.
+#      A head holding only this script's own bump/merge commits after the reviewed sha (a re-run) is accepted.
 #   1b. declared exceptions (#122): each `exception: <what> — <why> — #N` line between the acceptance markers
 #      (optionally prefixed `- ` or `- [x] `; ` -- ` is accepted as separator too) must parse, name an OPEN issue
 #      #N labelled `tech-debt` (REST), and the PR diff (`git diff origin/main...HEAD`, added lines only) must hold a
@@ -35,8 +39,8 @@
 #   latest verdict comment, ticks the boxes it lists as proven, then RE-FETCHES the body and re-runs the step-1 gate,
 #   which still refuses any box left open. Without the flag nothing changes (step 1 refuses first).
 #   - Comment pick (REST `issues/<pr>/comments --paginate`): the LAST comment whose first line is exactly
-#     `<!-- pipeline-review-round pr=<N> -->` AND that has at least 2 non-empty lines after the marker (Nick's push-note
-#     reuses the marker but is one line, so it is skipped). None found: refused.
+#     `<!-- pipeline-review-round pr=<N> -->` (with or without ` sha=<40hex>`) AND that has at least 2 non-empty lines
+#     after the marker (Nick's push-note reuses the marker but is one line, so it is skipped). None found: refused.
 #   - Matching rule (exact, structured; Morgan's template line for a proven-untickable box):
 #       `- [ ] **<box text verbatim>** — verified, tick pending (permissions): <proof with a `command` and its output>`
 #     A box is ticked iff some line of that comment, after stripping the list prefix (`- `, `- [ ] `), `**` and backticks
@@ -57,6 +61,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib/acceptance-check.sh
 . "$SCRIPT_DIR/lib/acceptance-check.sh"
+# shellcheck source=lib/review-check.sh
+. "$SCRIPT_DIR/lib/review-check.sh"
 
 MANIFEST=".claude-plugin/plugin.json"
 WORKFLOW="workflows/deliver-pipeline.js"
@@ -96,6 +102,26 @@ if [ "$rc" -ne 0 ]; then
   fi
 fi
 
+# --- 1a. review freshness (#157) -------------------------------------------------
+# The latest review verdict must have been made on the PR head as it is NOW, i.e. before this script adds its own
+# merge-from-base and bump commits. Runs before the exceptions, the tick, and every fetch/merge/push. The comments read
+# here are the snapshot the tick step below picks its verdict from.
+lm_tmp="$(mktemp -d "${TMPDIR:-/tmp}/lead-merge.XXXXXX")"
+gh api "repos/$REPO/issues/$PR/comments" --paginate > "$lm_tmp/comments.json" || die "cannot read the comments of PR #$PR"
+pr_head="$(gh api "repos/$REPO/pulls/$PR" --jq .head.sha)" || die "cannot read the head sha of PR #$PR"
+rf="$(review_fresh_state "$PR" "$pr_head" < "$lm_tmp/comments.json")" || die "cannot parse the comments of PR #$PR"
+case "$rf" in
+  ok*) ;;
+  none) die "FAIL: review-stale: PR #$PR has no review marker carrying a head sha (first line '<!-- pipeline-review-round pr=$PR sha=<40hex> -->'); re-run the review; nothing bumped, nothing merged" ;;
+  *) reviewed="${rf#stale }"
+     # a re-run after a partial run: the head may hold this script's own bump/merge commits on top of the reviewed sha
+     hb="$(gh pr view "$PR" -R "$REPO" --json headRefName -q .headRefName)" || die "cannot read PR #$PR head branch"
+     git fetch origin "+refs/heads/$hb:refs/remotes/origin/$hb" "+refs/heads/main:refs/remotes/origin/main" >/dev/null 2>&1 || true
+     review_own_commits_only "$reviewed" "$pr_head" origin/main \
+       || die "FAIL: review-stale: the latest review was made on $reviewed but the PR head is $pr_head; re-review first; nothing bumped, nothing merged"
+     echo "lead-merge: head $pr_head only adds lead-merge's own commits to the reviewed $reviewed (a re-run)" ;;
+esac
+
 # --- 1b. declared exceptions (#122) -------------------------------------------
 # Format: `exception: <what> — <why> — #N` (em dash; ` -- ` also accepted). Only lines inside the acceptance markers.
 exc_fail() { echo "FAIL: declared-exception: $*" >&2; die "PR #$PR declared exception refused; nothing bumped, nothing merged"; }
@@ -133,21 +159,20 @@ fi
 
 # --- 1c. --tick-from-review (#9) -----------------------------------------------
 if [ "$TICK" -eq 1 ] && [ "$rc" -eq 1 ]; then
-  tick_tmp="$(mktemp -d "${TMPDIR:-/tmp}/lead-merge-tick.XXXXXX")"
-  gh api "repos/$REPO/issues/$PR/comments" --paginate > "$tick_tmp/comments.json" || die "cannot read the comments of PR #$PR"
+  tick_tmp="$lm_tmp"   # comments.json was read in step 1a: same snapshot as the freshness check
   pick_rc=0
   PR="$PR" python3 - "$tick_tmp/comments.json" "$tick_tmp/verdict_at.txt" > "$tick_tmp/review.txt" <<'PY' || pick_rc=$?
-import json, os, sys
+import json, os, re, sys
 raw, dec, i, comments = open(sys.argv[1]).read(), json.JSONDecoder(), 0, []
 while i < len(raw):
     if raw[i].isspace():
         i += 1; continue
     obj, i = dec.raw_decode(raw, i)
     comments.extend(obj if isinstance(obj, list) else [obj])
-marker = "<!-- pipeline-review-round pr=%s -->" % os.environ["PR"]
+marker = re.compile(r"<!-- pipeline-review-round pr=%s( sha=[0-9a-fA-F]{40})? -->" % os.environ["PR"])
 def marked(c):
     lines = (c.get("body") or "").replace("\r", "").split("\n")
-    return lines, bool(lines) and lines[0].strip() == marker
+    return lines, bool(lines) and bool(marker.fullmatch(lines[0].strip()))
 best = None
 for n, c in enumerate(comments):
     lines, is_marked = marked(c)
@@ -166,7 +191,7 @@ PY
     *) die "PR #$PR has no Morgan review comment (marker '<!-- pipeline-review-round pr=$PR -->' with a multi-line verdict); nothing ticked, nothing merged" ;;
   esac
   # the PR head must not be newer than the verdict (REST: pulls/<N> head sha -> commits/<sha> committer date)
-  head_sha="$(gh api "repos/$REPO/pulls/$PR" --jq .head.sha)" || die "cannot read the head sha of PR #$PR"
+  head_sha="$pr_head"
   head_date="$(gh api "repos/$REPO/commits/$head_sha" --jq .commit.committer.date)" || die "cannot read the commit date of $head_sha"
   verdict_at="$(cat "$tick_tmp/verdict_at.txt")"
   [ -n "$head_date" ] && [ -n "$verdict_at" ] || die "tick-from-review: cannot compare the head commit date with the verdict date; nothing ticked"
@@ -236,6 +261,8 @@ cur_branch="$(git rev-parse --abbrev-ref HEAD)"
 [ -z "$(git status --porcelain)" ] || die "working tree not clean"
 git fetch origin "+refs/heads/$head_branch:refs/remotes/origin/$head_branch" || die "git fetch origin $head_branch failed"
 local_sha="$(git rev-parse HEAD)"; remote_sha="$(git rev-parse "refs/remotes/origin/$head_branch")"
+# the head the review check (step 1a) read must be the head this script goes on with (a push in between = re-run)
+[ "$remote_sha" = "$pr_head" ] || die "FAIL: review-stale: the PR head moved to $remote_sha after the review check read $pr_head; re-run"
 if [ "$local_sha" != "$remote_sha" ]; then
   if git merge-base --is-ancestor "$local_sha" "$remote_sha"; then
     git merge --ff-only "origin/$head_branch" || die "fast-forward to origin/$head_branch failed"

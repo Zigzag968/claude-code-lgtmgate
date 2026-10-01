@@ -216,7 +216,7 @@ export const meta = {
 // `version`, checked against plugin.json by templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '0.8.111', cutFrom: 'd1cc699' }
+const BUILD = { plugin: 'lgtmgate', version: '0.8.112', cutFrom: 'ce8f720' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -2646,6 +2646,12 @@ if (after('review', entryStage)) {
   // author filtering is useless/dangerous — targeting is marker-only. Unmarked (human)
   // comments are never touched.
   const reviewMarker = `<!-- pipeline-review-round pr=${pr} -->`
+  // Review-freshness marker (#157): Morgan's verdict, and the commit-hygiene squash note (which re-attests the squashed
+  // head), carry the head SHA the review was made on. scripts/lead-merge.sh and hooks/block-merge-unchecked.sh refuse a
+  // merge unless the latest such marker names the PR head (scripts/lib/review-check.sh). Nick's push-notes keep the bare
+  // `reviewMarker`: a push-note is not a review. Prompt text only: the SHA is read by the agent, verified by the merge gate.
+  const reviewVerdictMarker = `<!-- pipeline-review-round pr=${pr} sha=<HEAD_SHA> -->`
+  const reviewShaRule = `, replacing \`<HEAD_SHA>\` with the full 40-hex head of PR #${pr} that you reviewed: run \`gh pr view ${pr}${prFlag} --json headRefOid -q .headRefOid\` FIRST, before reading the diff, and paste that value verbatim (never shortened, never re-read when posting)`
 
   // Reviewer-window issue flag (reopened) — settings.json/plugin PreToolUse hooks
   // do NOT fire for spawned Task/Workflow-DSL subagents (CC anthropics/claude-code#27661 /
@@ -3188,7 +3194,7 @@ if (after('review', entryStage)) {
         ? `Note (lgtmgate#193): this run's dev phase found ${subIssuesUncovered.length} open sub-issue(s) of #${issue} not covered by this bundle — the PR's first line intentionally does NOT close #${issue}; do not treat #${issue}/the epic as fully resolved in your verdict. `
         : ''}` +
       `Confirm CI is green via the GitHub checks ${ciChecks.join(' + ')} (gh pr checks ${pr}${prFlag}), ` +
-      `then POST your verdict (LGTM | REQUIRED_CHANGES | REGRESSION_DETECTED) as a comment on PR #${pr}. Prefix that posted comment EXACTLY with the pipeline-review-round marker \`${reviewMarker}\` as its own first line (hidden HTML marker; do NOT let it leak into \`items\`). ` +
+      `then POST your verdict (LGTM | REQUIRED_CHANGES | REGRESSION_DETECTED) as a comment on PR #${pr}. Prefix that posted comment EXACTLY with the pipeline-review-round marker \`${reviewVerdictMarker}\` as its own first line${reviewShaRule} (hidden HTML marker; do NOT let it leak into \`items\`). ` +
       `For each remaining unticked acceptance box, put in \`items\` the **verbatim checklist line** it blocks on (copy the box text exactly — do NOT paraphrase — so a persistent blocker reads identically across rounds). Any box whose line contains the tag \`[human-gate]\` is a **human-only** item: you cannot verify it and MUST NOT tick it or ask Nick to fix it — copy its line verbatim into \`items\` (tag preserved) and treat it as a human gate, not a code defect. Emit \`REQUIRED_CHANGES\` whenever any box is unticked (human-gate or not). ` +
       `For each item in \`items\`, ALSO classify it in \`itemOwners\` ({item, itemOwner, proof}): 'code-defect' is the DEFAULT whenever you are uncertain — a plan owner ('plan-defect'|'checklist-wording-defect') REQUIRES a concrete \`proof\` quoting the exact contradiction between the plan/checklist and reality, and NEVER excuses unfinished code. If a box's verification PASSED but ticking it (\`gh pr edit\`) is denied by permissions, do NOT retry, do NOT work around the denial and do NOT post "Ready to merge": leave the box \`- [ ]\`, copy its verbatim line into \`items\`, and classify it in \`itemOwners\` as 'proven-untickable' with \`proof\` = the command you ran and its verbatim output. ${UNTICKABLE_LINE_RULE}${ACCEPTANCE_PRESENCE_RULE}A box whose verification failed or was not run stays 'code-defect'. A [human-gate] box is NEVER 'proven-untickable'.`,
     { agentType: 'Morgan', phase: 'Review', schema: MORGAN, label: `morgan-pr-${issue}-${pr}-r${round}`, model: morganModel },
@@ -3314,7 +3320,7 @@ if (after('review', entryStage)) {
         `For asset/render/human-facing lanes, BEFORE any verdict, execute the real-case live run yourself (the exact command the plan names, deps included) and machine-verify the output contract from the plan (e.g. the exact pixel/asset dimensions and named visual elements the plan calls for, screenshot non-empty, named fields written). Units mock the other side, so seam errors pass with the mock; only a taste judgment then remains for the human-gate. ` +
         `${artifactProofStep}` +
         `${freshnessStep}` +
-        `Then post the new verdict (LGTM | REQUIRED_CHANGES | REGRESSION_DETECTED) as a comment on the PR. Prefix that posted comment EXACTLY with the pipeline-review-round marker \`${reviewMarker}\` as its own first line (hidden HTML marker; do NOT let it leak into \`items\`). ` +
+        `Then post the new verdict (LGTM | REQUIRED_CHANGES | REGRESSION_DETECTED) as a comment on the PR. Prefix that posted comment EXACTLY with the pipeline-review-round marker \`${reviewVerdictMarker}\` as its own first line${reviewShaRule} (hidden HTML marker; do NOT let it leak into \`items\`). ` +
         `For each remaining unticked acceptance box, put in \`items\` the **verbatim checklist line** it blocks on (copy the box text exactly — do NOT paraphrase — so a persistent blocker reads identically across rounds). Any box whose line contains the tag \`[human-gate]\` is a **human-only** item: you cannot verify it and MUST NOT tick it or ask Nick to fix it — copy its line verbatim into \`items\` (tag preserved) and treat it as a human gate, not a code defect. Emit \`REQUIRED_CHANGES\` whenever any box is unticked (human-gate or not). ` +
         `For each item in \`items\`, ALSO classify it in \`itemOwners\` ({item, itemOwner, proof}): 'code-defect' is the DEFAULT whenever you are uncertain — a plan owner ('plan-defect'|'checklist-wording-defect') REQUIRES a concrete \`proof\` quoting the exact contradiction between the plan/checklist and reality, and NEVER excuses unfinished code. If a box's verification PASSED but ticking it (\`gh pr edit\`) is denied by permissions, do NOT retry, do NOT work around the denial and do NOT post "Ready to merge": leave the box \`- [ ]\`, copy its verbatim line into \`items\`, and classify it in \`itemOwners\` as 'proven-untickable' with \`proof\` = the command you ran and its verbatim output. ${UNTICKABLE_LINE_RULE}${ACCEPTANCE_PRESENCE_RULE}A box whose verification failed or was not run stays 'code-defect'. A [human-gate] box is NEVER 'proven-untickable'.\n\n${planBlock}`,
       { agentType: 'Morgan', phase: 'Review', schema: MORGAN, label: `morgan-pr-${issue}-${pr}-r${round}`, model: morganModel },
@@ -3403,7 +3409,7 @@ if (after('review', entryStage)) {
       `4. git reset --soft "$MB", then create 2-3 Conventional-Commits commits (${conventionsRule}) splitting the work LOGICALLY — never one commit per review round.\n` +
       `5. Tree-identity proof (mandatory): \`git diff "$OLD" HEAD --stat\` must print NOTHING. If it prints anything: \`git reset --hard "$OLD"\`, push nothing, report squashed:false with the diff.\n` +
       `6. git push --force-with-lease origin "${headRefName}".\n` +
-      `7. Post ONE comment on PR #${pr}, prefixed with \`${reviewMarker}\` as its own first line, stating the old and new head SHAs and that \`git diff <old> <new>\` is empty (the LGTM still holds).\n` +
+      `7. Post ONE comment on PR #${pr}, prefixed with \`${reviewVerdictMarker}\` as its own first line, replacing \`<HEAD_SHA>\` with the NEW head (\`git rev-parse HEAD\` after the push, full 40-hex): it re-attests the review onto the squashed head. State the old and new head SHAs and that \`git diff <old> <new>\` is empty (the LGTM still holds).\n` +
       `Never use bare --force. Never push to ${baseBranch}/main. Never merge this PR yourself — merging is an external gesture handled outside the pipeline. Never throw — the handoff must complete either way.`,
       { agentType: 'Nick', label: `nick-squash-${issue}-${pr}`, model: 'sonnet' },
       round,

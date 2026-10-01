@@ -4,7 +4,8 @@
 # never touched). Cases: open box, missing markers, happy path order, no auto-merge flag,
 # --merge used, CI failure, idempotent re-run, main moved (own bump + unrelated commit) after the
 # branch was cut, conflicting main, remote head ahead of local, stale/no-checks polling, base without
-# required checks (#156).
+# required checks (#156), review freshness (#157: review on the head, commit after the review, no marker, bare marker,
+# own commits on a re-run, head moved between the check and the sync, --tick-from-review on a stale review).
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -79,7 +80,7 @@ case "$1 $2" in
   "api repos/o/r/commits/"*) echo "${FAKE_HEAD_DATE:-2025-12-31T00:00:00Z}" ;; # --tick-from-review head date (#9)
   "api repos/o/r/pulls/7")
     case "$*" in
-      *head.sha*) echo "abc1234" ;;
+      *head.sha*) echo "${FAKE_HEAD_SHA:-$(git --git-dir="$FAKE_REMOTE" rev-parse "$FAKE_BRANCH")}" ;; # the real remote head; FAKE_HEAD_SHA = a lagging REST read (#157)
       *merged_at*) [ "${FAKE_MERGED:-true}" = true ] && echo "2026-10-01T00:00:00Z" || echo null ;;
       *) echo "${FAKE_MERGED:-true}" ;;
     esac ;;
@@ -115,8 +116,13 @@ setup() {
   echo "$d"
 }
 
-run() { # <dir> <body-file> [checks-rc]
+review_at() { # <dir> <sha>: $d/comments.json = one multi-line verdict whose marker carries <sha> (pages concatenated like gh --paginate)
+  printf '[{"id":1,"created_at":"2026-01-01T00:00:00Z","body":"<!-- pipeline-review-round pr=7 sha=%s -->\\nLGTM\\nevery box proven"}]\n' "$2" > "$1/comments.json"
+}
+head_of() { git --git-dir="$1/origin.git" rev-parse feat/x; }
+run() { # <dir> <body-file> [checks-rc]; serves a review on the CURRENT head unless $d/comments.keep pins the fixture (#157)
   local d="$1"
+  [ -e "$d/comments.keep" ] || review_at "$d" "$(head_of "$d")"
   : > "$d/log"; : > "$d/pushes"; rm -f "$d/log.stale" "$d/log.patch" "$d/log.noreq" "$d/log.pending"; mkdir -p "$d/issues"
   [ -n "${FAKE_STALE:-}" ] && echo "$FAKE_STALE" > "$d/log.stale"
   printf '#!/bin/sh\necho "$1" >> "%s/pushes"\n' "$d" > "$d/origin.git/hooks/update"; chmod +x "$d/origin.git/hooks/update"
@@ -166,8 +172,8 @@ grep -q '"version": "0.8.81"' "$D/work/.claude-plugin/plugin.json" \
 
 # 4. idempotent re-run: no second bump
 : > "$D/log"
-( cd "$D/work" && PATH="$BASE/bin:$PATH" FAKE_LOG="$D/log" FAKE_BODY="$BASE/good.md" FAKE_BRANCH=feat/x FAKE_REMOTE="$D/origin.git" bash "$SCRIPT" 7 -R o/r ) > "$D/out" 2>&1
-[ "$(git -C "$D/work" log --format=%s | grep -c 'chore: bump')" -eq 1 ] && ok "re-run does not bump twice" || bad "second bump created"
+( cd "$D/work" && PATH="$BASE/bin:$PATH" FAKE_LOG="$D/log" FAKE_BODY="$BASE/good.md" FAKE_BRANCH=feat/x FAKE_REMOTE="$D/origin.git" FAKE_COMMENTS="$D/comments.json" bash "$SCRIPT" 7 -R o/r ) > "$D/out" 2>&1; rc=$?
+[ "$rc" -eq 0 ] && [ "$(git -C "$D/work" log --format=%s | grep -c 'chore: bump')" -eq 1 ] && ok "re-run does not bump twice" || bad "second bump created (rc=$rc)"
 
 # 5. CI failure -> no merge
 D="$(setup ci)"; run "$D" "$BASE/good.md" 1; rc=$?
@@ -270,9 +276,9 @@ D="$(setup req-mode-msg)"; FAKE_NOREQ=99 LEAD_MERGE_POLL_MAX=3 run "$D" "$BASE/g
 printf 'Closes #5\nfixes: #6, Resolved #8 and closes #5 again; Refs #9; Fixes o/other#77\n<!-- acceptance:start -->\n- [x] a\n<!-- acceptance:end -->\n' > "$BASE/close.md"
 mut() { grep -cE 'gh api -X (POST|PATCH) repos/o/r/issues/' "$1/log" | tr -d ' '; }
 D="$(setup cl-fail)"; FAKE_MERGE_RC=1 run "$D" "$BASE/close.md"; rc=$?
-[ "$rc" -ne 0 ] && [ "$(mut "$D")" = 0 ] && ! grep -q 'repos/o/r/issues' "$D/log" && ok "merge failure: non-zero, no issue call" || bad "merge failure (rc=$rc)"
+[ "$rc" -ne 0 ] && [ "$(mut "$D")" = 0 ] && ! grep -qE 'repos/o/r/issues/[0-9]+( |$)' "$D/log" && ok "merge failure: non-zero, no issue call" || bad "merge failure (rc=$rc)"
 D="$(setup cl-unmerged)"; FAKE_MERGED=false run "$D" "$BASE/close.md"; rc=$?
-[ "$rc" -ne 0 ] && [ "$(mut "$D")" = 0 ] && ! grep -q 'repos/o/r/issues' "$D/log" && ok "not read back as merged: non-zero, no issue call" || bad "unmerged (rc=$rc)"
+[ "$rc" -ne 0 ] && [ "$(mut "$D")" = 0 ] && ! grep -qE 'repos/o/r/issues/[0-9]+( |$)' "$D/log" && ok "not read back as merged: non-zero, no issue call" || bad "unmerged (rc=$rc)"
 D="$(setup cl-ok)"; mkdir -p "$D/issues"; echo closed > "$D/issues/8"; run "$D" "$BASE/close.md"; rc=$?
 [ "$rc" -eq 0 ] && ok "merged with closing refs: rc=0" || bad "closing rc=$rc: $(tail -3 "$D/out")"
 for n in 5 6; do
@@ -320,11 +326,12 @@ exc_run exc-nomarker "$EXC" "open tech-debt" ""; exc_refused "no DEBT(#N) in the
 exc_run exc-wrongn "$EXC" "open tech-debt" 5; exc_refused "DEBT marker with another N" "DEBT(#9)"
 
 # 15. --tick-from-review (#9)
-MK='<!-- pipeline-review-round pr=7 -->'
-mkc() { # <dir> <review-file> [push-note] -> $D/comments.json (review, then optional Nick push-note)
-  python3 - "$1/comments.json" "$2" "${3:-}" <<'PY'
+MK='<!-- pipeline-review-round pr=7 sha=@HEAD@ -->' # @HEAD@ = the head sha at fixture time (mkc)
+mkc() { # <dir> <review-file> [push-note] -> $D/comments.json (review, then optional Nick push-note); pinned: run() keeps it
+  : > "$1/comments.keep"
+  python3 - "$1/comments.json" "$2" "${3:-}" "$(head_of "$1")" <<'PY'
 import json, sys
-c = [{"id": 1, "created_at": "2026-01-01T00:00:00Z", "body": open(sys.argv[2]).read()}]
+c = [{"id": 1, "created_at": "2026-01-01T00:00:00Z", "body": open(sys.argv[2]).read().replace("@HEAD@", sys.argv[4])}]
 if sys.argv[3]:
     c.append({"id": 2, "created_at": "2026-01-02T00:00:00Z", "body": "<!-- pipeline-review-round pr=7 -->\n" + sys.argv[3]})
 with open(sys.argv[1], "w") as f:  # concatenated pages, like gh --paginate
@@ -365,8 +372,8 @@ D="$(setup tk-hg)"; mkc "$D" "$BASE/rv3.md"; tick_run "$D" "$BASE/tk3.md"; rc=$?
 [ "$rc" -ne 0 ] && [ ! -e "$D/log.patch" ] && ! grep -q 'pr merge' "$D/log" && ok "human-gate box never ticked: no PATCH, refused" || bad "human-gate (rc=$rc)"
 
 # 15d. no review comment -> refused (also when only a one-line push-note exists)
-D="$(setup tk-none)"; tick_run "$D" "$BASE/tk1.md"; rc=$?
-[ "$rc" -ne 0 ] && [ ! -e "$D/log.patch" ] && ! grep -qE 'pr merge|pr checks' "$D/log" && grep -q 'no Morgan review comment' "$D/out" && ok "no review comment: refused" || bad "no review (rc=$rc): $(tail -3 "$D/out")"
+D="$(setup tk-none)"; echo '[]' > "$D/comments.json"; : > "$D/comments.keep"; tick_run "$D" "$BASE/tk1.md"; rc=$?
+[ "$rc" -ne 0 ] && [ ! -e "$D/log.patch" ] && ! grep -qE 'pr merge|pr checks' "$D/log" && grep -q 'FAIL: review-stale' "$D/out" && ok "no review comment: refused" || bad "no review (rc=$rc): $(tail -3 "$D/out")"
 D="$(setup tk-note)"; printf '%s\n%s\n' "$MK" 'only a push-note' > "$BASE/note.md"; mkc "$D" "$BASE/note.md"; tick_run "$D" "$BASE/tk1.md"; rc=$?
 [ "$rc" -ne 0 ] && [ ! -e "$D/log.patch" ] && ok "one-line marker comment is not a verdict: refused" || bad "push-note only (rc=$rc)"
 
@@ -404,6 +411,45 @@ rm_files "$D" other main workflows/deliver-pipeline.js
 run "$D" "$BASE/close.md"; rc=$?
 [ "$rc" -eq 0 ] && grep -q '"version": "0.8.81"' "$D/work/.claude-plugin/plugin.json" \
   && ok "consumer with manifest but no BUILD line: plugin.json bumped, rc=0" || bad "consumer nobuild (rc=$rc): $(tail -3 "$D/out")"
+
+# 17. review freshness (#157): the latest sha-bearing review marker must name the PR head as read BEFORE the script's own commits
+pin_review() { review_at "$1" "$2"; : > "$1/comments.keep"; } # <dir> <sha>: pin the fixture (run() would regenerate it on the head)
+late_commit() { # <dir> [subject] [file]: push a commit to feat/x after the review
+  ( cd "$1/work" && echo late > "${3:-late.txt}" && git add -A && git commit -qm "${2:-late}" && git push -q origin feat/x ) >/dev/null 2>&1
+}
+stale_refused() { # <reviewed-sha> <head-sha>: refused with the review-stale line naming both, before any push/checks/merge
+  [ "$rc" -ne 0 ] && grep -qF 'FAIL: review-stale' "$D/out" && grep -qF "$1" "$D/out" && grep -qF "$2" "$D/out" \
+    && [ ! -s "$D/pushes" ] && ! grep -qE 'pr merge|pr checks' "$D/log"
+}
+D="$(setup rs-head)"; run "$D" "$BASE/good.md"; rc=$?
+[ "$rc" -eq 0 ] && grep -q 'pr merge 7 -R o/r --merge' "$D/log" && grep -q 'issues/7/comments' "$D/log" \
+  && ok "review-stale: review on the head sha: merge proceeds" || bad "review-stale: review on the head sha (rc=$rc): $(tail -3 "$D/out")"
+D="$(setup rs-late)"; R="$(head_of "$D")"; pin_review "$D" "$R"; late_commit "$D"; H="$(head_of "$D")"; run "$D" "$BASE/good.md"; rc=$?
+stale_refused "$R" "$H" && [ "$(git -C "$D/work" log --format=%s | head -1)" = late ] \
+  && ok "review-stale: commit after the review: refused naming both shas, no bump" || bad "review-stale: commit after the review (rc=$rc): $(tail -3 "$D/out")"
+D="$(setup rs-none)"; echo '[]' > "$D/comments.json"; : > "$D/comments.keep"; run "$D" "$BASE/good.md"; rc=$?
+[ "$rc" -ne 0 ] && grep -qF 'FAIL: review-stale' "$D/out" && grep -qF 'no review marker' "$D/out" && [ ! -s "$D/pushes" ] && ! grep -qE 'pr merge|pr checks' "$D/log" \
+  && ok "review-stale: no review marker: refused" || bad "review-stale: no review marker (rc=$rc): $(tail -3 "$D/out")"
+D="$(setup rs-bare)"; printf '[{"id":1,"created_at":"2026-01-01T00:00:00Z","body":"<!-- pipeline-review-round pr=7 -->\\nLGTM\\nno sha in the marker"}]\n' > "$D/comments.json"; : > "$D/comments.keep"
+run "$D" "$BASE/good.md"; rc=$?
+[ "$rc" -ne 0 ] && grep -qF 'no review marker' "$D/out" && ! grep -qE 'pr merge|pr checks' "$D/log" \
+  && ok "review-stale: a bare marker (no sha) is not a review: refused" || bad "review-stale: bare marker (rc=$rc): $(tail -3 "$D/out")"
+D="$(setup rs-latest)"; H="$(head_of "$D")"
+printf '[{"id":1,"created_at":"2026-01-01T00:00:00Z","body":"<!-- pipeline-review-round pr=7 sha=%s -->\\nold\\nverdict"}][{"id":2,"created_at":"2026-01-02T00:00:00Z","body":"<!-- pipeline-review-round pr=7 sha=%s -->\\nnew\\nverdict"},{"id":3,"created_at":"2026-01-03T00:00:00Z","body":"<!-- pipeline-review-round pr=7 -->\\nNick push-note"}]\n' \
+  "1111111111111111111111111111111111111111" "$H" > "$D/comments.json"; : > "$D/comments.keep"
+run "$D" "$BASE/good.md"; rc=$?
+[ "$rc" -eq 0 ] && grep -q 'pr merge' "$D/log" && ok "review-stale: the latest verdict wins over an older one; a bare push-note after it is ignored" || bad "review-stale: latest verdict (rc=$rc): $(tail -3 "$D/out")"
+D="$(setup rs-own)"; main_commit "$D" 1 g.txt other; run "$D" "$BASE/good.md" 1; : > "$D/comments.keep"; run "$D" "$BASE/good.md"; rc=$?
+[ "$rc" -eq 0 ] && grep -q 'pr merge' "$D/log" && grep -qF "only adds lead-merge's own commits" "$D/out" && [ ! -s "$D/pushes" ] \
+  && ok "review-stale: re-run after a partial run (own merge + bump commits after the review): tolerated" || bad "review-stale: own commits (rc=$rc): $(tail -3 "$D/out")"
+D="$(setup rs-foreign)"; R="$(head_of "$D")"; run "$D" "$BASE/good.md" 1; : > "$D/comments.keep"; late_commit "$D"; H="$(head_of "$D")"; run "$D" "$BASE/good.md"; rc=$?
+stale_refused "$R" "$H" && ok "review-stale: a foreign commit on top of the script's own commits: refused naming both shas" || bad "review-stale: foreign commit (rc=$rc): $(tail -3 "$D/out")"
+D="$(setup rs-forged)"; R="$(head_of "$D")"; pin_review "$D" "$R"; late_commit "$D" "chore: bump 9.9.9 (lead-merge)" evil.txt; H="$(head_of "$D")"; run "$D" "$BASE/good.md"; rc=$?
+stale_refused "$R" "$H" && ok "review-stale: a bump-looking commit touching another file: refused" || bad "review-stale: forged bump (rc=$rc): $(tail -3 "$D/out")"
+D="$(setup rs-moved)"; R="$(head_of "$D")"; late_commit "$D"; H="$(head_of "$D")"; pin_review "$D" "$R"; FAKE_HEAD_SHA="$R" run "$D" "$BASE/good.md"; rc=$?
+stale_refused "$R" "$H" && grep -qF 'head moved' "$D/out" && ok "review-stale: head moved after the check read it: refused" || bad "review-stale: head moved (rc=$rc): $(tail -3 "$D/out")"
+D="$(setup rs-tick)"; tick_body "$B1" "$BASE/tk1.md"; R="$(head_of "$D")"; mkc "$D" "$BASE/rv1.md"; late_commit "$D"; H="$(head_of "$D")"; tick_run "$D" "$BASE/tk1.md"; rc=$?
+stale_refused "$R" "$H" && [ ! -e "$D/log.patch" ] && ok "review-stale: --tick-from-review on a stale review: refused before anything is ticked" || bad "review-stale: tick on stale (rc=$rc): $(tail -3 "$D/out")"
 
 echo "[lead-merge test] passed=$PASS failed=$FAIL"
 [ "$FAIL" -eq 0 ]
