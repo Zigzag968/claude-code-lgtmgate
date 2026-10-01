@@ -2706,7 +2706,8 @@ if (after('review', entryStage)) {
     for (const id of ids) {
       trace.push(`review-comment-minimized:${id}`)
       if (simulate) continue
-      // Index label: GraphQL node ids are not guaranteed label-safe. pr-write.sh reads isMinimized first.
+      // The probe name carries the index, not the id (GraphQL node ids are not guaranteed label-safe);
+      // pr-write.sh reads isMinimized first.
       await prWrite('minimize', 'minimize-' + index, round, ['--id', id])
       index += 1
     }
