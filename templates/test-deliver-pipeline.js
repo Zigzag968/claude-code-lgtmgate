@@ -2906,7 +2906,7 @@ await testCase('T77n product direction is advisory for Morgan (signalled, never 
   const sam = lines.find(l => l.startsWith('const SAM_PRODUCT_DIRECTION = ')) || ''
   if (!morgan || !sam) return { ok: false, msg: 'MORGAN_PRODUCT_DIRECTION or SAM_PRODUCT_DIRECTION missing' }
   for (const must of ["signal a conflict with the repo's stated product direction, never block on it",
-    'block only on what the acceptance checklist and the CI check', 'never in `items`']) {
+    "block on the acceptance checklist, the CI, the repo's conventions rule and the regression guard", 'never in `items`']) {
     if (!morgan.includes(must)) return { ok: false, msg: `MORGAN_PRODUCT_DIRECTION lacks: ${must}` }
   }
   // No sentence ties the product direction to a blocking verdict.

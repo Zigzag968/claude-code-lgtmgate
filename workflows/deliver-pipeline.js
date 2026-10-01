@@ -2168,7 +2168,7 @@ const SAM_LAYER_RULE = 'LAYER RULE: plan the smallest change that removes the ca
 // file and imposes no doc on a consumer; a repo that states no direction gets the same run.
 // Pinned by flow tests T77g, T77n and T77p.
 const SAM_PRODUCT_DIRECTION = 'PRODUCT DIRECTION: if your project instructions state a product direction or principles, name the one your plan trades off. '
-const MORGAN_PRODUCT_DIRECTION = "PRODUCT DIRECTION: signal a conflict with the repo's stated product direction, never block on it; block only on what the acceptance checklist and the CI check. Signal it in your posted comment, never in `items`.\n"
+const MORGAN_PRODUCT_DIRECTION = "PRODUCT DIRECTION: signal a conflict with the repo's stated product direction, never block on it; block on the acceptance checklist, the CI, the repo's conventions rule and the regression guard. Signal it in your posted comment, never in `items`.\n"
 // R3 (#77): Sam's announcement instruction for the kinds this repo declares (config.oneWayDoorKinds);
 // '' when it declares none, so a consumer Sam is never asked about engine kinds. Pinned by T77g, T77l.
 const SAM_ONE_WAY_DOOR = samOneWayDoorText(config.oneWayDoorKinds)

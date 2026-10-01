@@ -12,6 +12,7 @@
 2. Proof over trust: every claim is a command output or an artifact; an engine bug ships with a replayed fixture.
 3. Ratchet over thresholds: model calls outside `callAgent`, `simulate.*` seams and regex parsers never increase.
 4. Root cause over patch: the smallest change that removes the cause class; a shortcut is a declared `DEBT(#N)` exception.
+5. Fit over foresight: build what the issue needs, for every valid input, clean and tested; nothing speculative, never a shortcut that only passes the example.
 ## One-way doors (the run stops for the maintainer)
 - A new status, agent call, hook or seam (`oneWayDoorKinds`), or a change to a path listed in `oneWayDoorPaths`.
 ## How agents use this
