@@ -21,10 +21,10 @@ description: Run or debug the probe evals of issue #81 (`claude plugin eval` on 
 ## Debug one case
 - Same `docker run` as the script, plus `--runs 1 --keep-temp`, and a mount on `/tmp` to keep the trace:
   - `mkdir -p /tmp/claude/evaltmp-x /tmp/claude/evalres-x`
-  - `CLAUDE_CODE_OAUTH_TOKEN="$(security find-generic-password -s lgtmgate-eval-token -w)" docker run --rm --security-opt seccomp=unconfined --security-opt systempaths=unconfined -e CLAUDE_CODE_OAUTH_TOKEN -e EVAL_PLUGIN_ROOT=/workspace -v "$PWD:/workspace" -v /tmp/claude/evaltmp-x:/tmp -v /tmp/claude/evalres-x:/evalres -w /workspace lgtmgate-probe-evals claude plugin eval . --case probe-provision --runs 1 --keep-temp --max-cost-usd 3 --no-publish --allow-tools Bash --ablation none --threshold 0.95 --trust-plugin --output-dir /evalres`
+  - `CLAUDE_CODE_OAUTH_TOKEN="$(security find-generic-password -s lgtmgate-eval-token -w)" docker run --rm --init --security-opt seccomp=unconfined --security-opt systempaths=unconfined -e CLAUDE_CODE_OAUTH_TOKEN -e EVAL_PLUGIN_ROOT=/workspace -v "$PWD:/workspace" -v /tmp/claude/evaltmp-x:/tmp -v /tmp/claude/evalres-x:/evalres -w /workspace lgtmgate-probe-evals claude plugin eval . --case probe-provision --runs 1 --keep-temp --max-cost-usd 3 --no-publish --allow-tools Bash --ablation none --threshold 0.95 --trust-plugin --output-dir /evalres`
 - Trace: `/tmp/claude/evaltmp-x/claude-eval-*/out/trace.jsonl` (one JSON event per line).
   - First `chmod 700` the `claude-eval-*` dir and its `sealed/` subdir.
-  - Read the Bash `tool_result` of the probe agent and the last assistant message.
+  - Read the Bash `tool_result` of the probe agent (the trace carries the subagent's tool calls and results, tagged `parent_tool_use_id`) and the last assistant message.
 - HTML report: `/tmp/claude/evalres-x/report.html`.
 
 ## How a case finds the plugin
@@ -39,7 +39,14 @@ description: Run or debug the probe evals of issue #81 (`claude plugin eval` on 
 - Eval refused on the macOS host (#94308): use the Docker wrapper, never the bare script.
 - `Cannot find module '/templates/probe-run.cjs'`: a prompt still uses `$CLAUDE_PLUGIN_ROOT`; use `$EVAL_PLUGIN_ROOT`.
 - The probe agent answers "I need two commands": the prompt gives only the run command; add the `--verify` command.
-- Score meaning: 3 graders weighted 1 each (agent-dispatched, bash-called, probe-line).
-  - 0.67 = the PROBE line is missing or mangled in the final message (the regex grader failed).
-  - 0.33 = the agent was never dispatched or never ran Bash, plus the regex miss.
+- Score meaning: 4 graders weighted 1 each, so 0.25 per grader (agent-dispatched, bash-called, probe-line, verify-ok).
+  - `probe-line` pins the WHOLE expected PROBE line (sha, cmd, json) and must match the whole final message: one flipped hex char, a paraphrase, an invented line, prose or a code fence around it fails.
+  - `verify-ok` looks in the trace for `VERIFY ok line=PROBE name=<name> exit=0 sha=<pinned sha>` inside a Bash `tool_result`: it proves the commands really ran and exited 0.
+  - 0.75 = one regex grader failed:
+    - `probe-line` only: the final message is not exactly the PROBE line (the relay added prose or altered a char).
+    - `verify-ok` only: the VERIFY line is absent from the Bash results (verify failed, or the trace shape changed).
+  - 0.50 = both regex graders failed: the command did not run or failed (e.g. `Cannot find module`) and the model answered anyway.
+  - 0.00 = the agent was never dispatched, so nothing ran.
   - Threshold is 0.95 per case over 10 runs.
+- The pinned lines are constants: the case commands are fixed, so `sha`, `cmd` and `json` never vary (checked twice offline).
+  - If a case command or `templates/probe-run.cjs` output changes, regenerate its two graders; `scripts/test-probe-evals.sh` fails until the pinned line equals the real one.

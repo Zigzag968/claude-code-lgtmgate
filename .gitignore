@@ -3,6 +3,7 @@ node_modules/
 *.log
 .pipeline/
 evals/results/
+.probes/
 .claude/pipeline.config.local.json
 .claude/.backlog-snapshots/
 __pycache__/

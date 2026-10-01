@@ -1,5 +1,5 @@
 ---
-description: The probe agent runs a PR-state read through probe-run.cjs and returns the PROBE line intact
+description: The probe agent runs a fixed gh-pr-view-json stub command through probe-run.cjs; the exact PROBE line comes back verbatim and the trace holds the VERIFY ok line
 tags: [probe]
 runs: 10
 max_turns: 8

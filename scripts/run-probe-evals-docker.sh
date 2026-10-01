@@ -4,6 +4,7 @@
 # Why seccomp=unconfined: Docker's default profile blocks the user namespaces bubblewrap needs.
 # Why systempaths=unconfined: Docker masks parts of /proc, and bubblewrap needs a full /proc to mount a
 # fresh one in its sandbox ("Can't mount proc on /newroot/proc", containers/bubblewrap#284).
+# Why --init: a tini PID 1 forwards SIGINT/SIGTERM, so Ctrl-C stops a run instead of leaving the container up.
 # Needs: Docker, and CLAUDE_CODE_OAUTH_TOKEN (`claude setup-token`) or ANTHROPIC_API_KEY exported on the host.
 # Extra args are forwarded to run-probe-evals.sh (optional case names). bash 3.2 safe.
 set -u
@@ -25,7 +26,7 @@ fi
 docker build -t "$IMAGE" "$ROOT/.devcontainer" || exit 1
 
 # Keep in sync with runArgs in .devcontainer/devcontainer.json.
-docker run --rm \
+docker run --rm --init \
   --security-opt seccomp=unconfined \
   --security-opt systempaths=unconfined \
   -e CLAUDE_CODE_OAUTH_TOKEN -e ANTHROPIC_API_KEY \
