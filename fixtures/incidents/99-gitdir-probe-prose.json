@@ -42,12 +42,12 @@
   },
   "calls": {
     "probe-33-provision-provision-r0": {
-      "line": "PROBE name=provision exit=0 sha=48a98479346f55b3c0b21672b638e3e090cec7e98f8c553af04a3ed88720a7ff json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":false}",
-      "verify": "VERIFY ok line=PROBE name=provision exit=0 sha=48a98479346f55b3c0b21672b638e3e090cec7e98f8c553af04a3ed88720a7ff json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":false}"
+      "line": "PROBE name=provision exit=0 sha=48a98479346f55b3c0b21672b638e3e090cec7e98f8c553af04a3ed88720a7ff cmd=0e7a6a743a89147907b2ae656f3f9ed19f72b521898824db1a1fd0fbf9d8d7ff json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":false}",
+      "verify": "VERIFY ok line=PROBE name=provision exit=0 sha=48a98479346f55b3c0b21672b638e3e090cec7e98f8c553af04a3ed88720a7ff cmd=0e7a6a743a89147907b2ae656f3f9ed19f72b521898824db1a1fd0fbf9d8d7ff json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":false}"
     },
     "probe-33-provision-freshness-provision-freshness-r0": {
-      "line": "PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b json={\"state\":\"fresh\",\"behind\":0,\"own\":0}",
-      "verify": "VERIFY ok line=PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b json={\"state\":\"fresh\",\"behind\":0,\"own\":0}"
+      "line": "PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b cmd=ae4cb91f300f9eae7e5d1846964cf752fcebbb40a927844170316d46d8db2654 json={\"state\":\"fresh\",\"behind\":0,\"own\":0}",
+      "verify": "VERIFY ok line=PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b cmd=ae4cb91f300f9eae7e5d1846964cf752fcebbb40a927844170316d46d8db2654 json={\"state\":\"fresh\",\"behind\":0,\"own\":0}"
     },
     "diagnose-issue-33": {
       "confirmed": true,
@@ -95,8 +95,8 @@
       "issues": []
     },
     "probe-33-preflight-dev-r0": {
-      "line": "PROBE name=preflight exit=0 sha=2da8cc840849e3cd7a8c497d4661929df2e8be5972b07b6dc5877a9c6f66eea9 json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/wt/root/issue-33/.git\",\"writable\":false}",
-      "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=2da8cc840849e3cd7a8c497d4661929df2e8be5972b07b6dc5877a9c6f66eea9 json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/wt/root/issue-33/.git\",\"writable\":false}"
+      "line": "PROBE name=preflight exit=0 sha=2da8cc840849e3cd7a8c497d4661929df2e8be5972b07b6dc5877a9c6f66eea9 cmd=462c2f9139b641c6206a479e2581012aca3096aa2ed8508b8dc009ac72981402 json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/wt/root/issue-33/.git\",\"writable\":false}",
+      "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=2da8cc840849e3cd7a8c497d4661929df2e8be5972b07b6dc5877a9c6f66eea9 cmd=462c2f9139b641c6206a479e2581012aca3096aa2ed8508b8dc009ac72981402 json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/wt/root/issue-33/.git\",\"writable\":false}"
     }
   },
   "expect": {

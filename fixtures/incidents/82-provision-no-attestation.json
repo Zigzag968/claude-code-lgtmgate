@@ -11,7 +11,7 @@
   },
   "calls": {
     "probe-82-provision-provision-r0": {
-      "line": "PROBE name=provision exit=0 sha=98ea6e4f216f2fb4b69fff9b3a44842c38686ca685f3f55dc48c5d3fb1107be4 json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}",
+      "line": "PROBE name=provision exit=0 sha=98ea6e4f216f2fb4b69fff9b3a44842c38686ca685f3f55dc48c5d3fb1107be4 cmd=ce3197ee7068f250744193f75cd5008d6a1490e2703770759118416a1607b780 json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}",
       "verify": "VERIFY fail reason=no-attestation"
     }
   },

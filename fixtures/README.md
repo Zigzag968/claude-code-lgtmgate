@@ -16,7 +16,7 @@ before it is committed, and the `no-private-refs` invariant scans the whole trac
   "name": "auto-lgtm",
   "args": { "issue": 1, "mode": "auto", "...": "never `simulate`" },
   "calls": {
-    "probe-1-provision-provision-r0": { "line": "PROBE name=provision exit=0 sha=... json={...}", "verify": "VERIFY ok line=PROBE name=provision ..." },
+    "probe-1-provision-provision-r0": { "line": "PROBE name=provision exit=0 sha=... cmd=... json={...}", "verify": "VERIFY ok line=PROBE name=provision ..." },
     "scout-issue-1-1": { "decision": "GO", "plan": "..." },
     "morgan-pr-123-42-r0": [ { "verdict": "LGTM", "items": [] } ]
   },
