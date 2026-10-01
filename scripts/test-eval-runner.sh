@@ -195,7 +195,7 @@ unset LGTMGATE_EVAL_SPOOL LGTMGATE_EVAL_POLL
 # install.sh --dry-run
 PL="$(bash "$INSTALL" --dry-run "$WORK/sp" "$WORK/root" 2>&1)"
 ok=1
-for needle in 'dev.lgtmgate.eval-runner' '<key>WatchPaths</key>' "$WORK/sp/inbox" '<key>SPOOL</key>' '<key>ALLOWED_ROOT</key>' 'launchd.log' 'Application Support/lgtmgate/eval-runner.sh'; do
+for needle in 'dev.lgtmgate.eval-runner' '<key>WatchPaths</key>' "$WORK/sp/inbox" '<key>SPOOL</key>' '<key>ALLOWED_ROOT</key>' 'Library/Logs/lgtmgate-eval-runner.log' 'Application Support/lgtmgate/eval-runner.sh'; do
   case "$PL" in *"$needle"*) ;; *) ok=0 ;; esac
 done
 check "install.sh --dry-run prints the plist" "$ok"

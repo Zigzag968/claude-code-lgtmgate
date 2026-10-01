@@ -59,10 +59,11 @@ plist() {
     <key>PATH</key>
     <string>$(xml "/usr/local/bin:/opt/homebrew/bin:$HOME/.docker/bin:/Applications/Docker.app/Contents/Resources/bin:/usr/bin:/bin:/usr/sbin:/sbin")</string>
   </dict>
+  <!-- launchd exits 78 (EX_CONFIG) without starting a job whose log path is on an external volume: keep it on the boot disk. -->
   <key>StandardOutPath</key>
-  <string>$(xml "$spool/launchd.log")</string>
+  <string>$(xml "$HOME/Library/Logs/lgtmgate-eval-runner.log")</string>
   <key>StandardErrorPath</key>
-  <string>$(xml "$spool/launchd.log")</string>
+  <string>$(xml "$HOME/Library/Logs/lgtmgate-eval-runner.log")</string>
 </dict>
 </plist>
 PLIST

@@ -23,7 +23,7 @@
 #     - launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/dev.lgtmgate.eval-runner.plist
 #   - Trigger (session): LGTMGATE_EVAL_SPOOL=<spool-dir> bash scripts/eval-runner/trigger.sh [--wait <s>] <worktree> [cases...]
 #     - prints the id; --wait polls every 10 s, prints the summary, exits with the eval rc (124 on timeout)
-#   - Results: <spool-dir>/done/<id>.{log,rc,summary,trigger}; launchd output in <spool-dir>/launchd.log
+#   - Results: <spool-dir>/done/<id>.{log,rc,summary,trigger}; launchd output in ~/Library/Logs/lgtmgate-eval-runner.log (boot disk: launchd refuses a log path on an external volume, exit 78)
 #     - rc: 0 ok, 64 trigger refused (path outside <allowed-root>, not a git worktree, bad case name),
 #       65 Keychain item missing or locked, 66 docker missing
 #   - Uninstall: bash scripts/eval-runner/install.sh --uninstall
