@@ -18,7 +18,8 @@
 #      abort the merge and die. Exception: when only the version files (plugin.json, BUILD line)
 #      conflict (main bumped too), take main's copy; step 4 recomputes them. No `gh pr update-branch`:
 #      the local merge already makes the branch current, and bumping before it always conflicted.
-#   4. bump from the merged tree: patch+1 over max(branch, origin/main) in .claude-plugin/plugin.json
+#   4. bump from the merged tree: next version over max(branch, origin/main) (semver 2.0.0 precedence: X.Y.Z -> patch+1,
+#      X.Y.Z-beta.N -> X.Y.Z-beta.(N+1)) in .claude-plugin/plugin.json
 #      + BUILD line of workflows/deliver-pipeline.js (cutFrom = origin/main short sha), commit
 #      `chore: bump X (lead-merge)`. Idempotent: skipped when the branch is already above origin/main
 #      via such a bump commit. Consumer repos (#145): no .claude-plugin/plugin.json in the merged tree ->
@@ -289,13 +290,33 @@ if ! git merge --no-edit origin/main; then
 fi
 
 ver_of() { python3 -c "import json,sys; print(json.load(sys.stdin).get('version',''))"; }
-# semver_gt A B -> rc 0 iff A > B (numeric x.y.z)
-semver_gt() {
-  local IFS=.; set -- $1 $2
-  local a1=${1:-0} a2=${2:-0} a3=${3:-0} b1=${4:-0} b2=${5:-0} b3=${6:-0}
-  [ "$a1" -ne "$b1" ] && { [ "$a1" -gt "$b1" ]; return; }
-  [ "$a2" -ne "$b2" ] && { [ "$a2" -gt "$b2" ]; return; }
-  [ "$a3" -gt "$b3" ]
+# semver valid V | semver gt A B (rc 0 iff A > B) | semver next V (prints the next version); rc 2 = not a semver.
+# Semver 2.0.0 precedence (section 11): a prerelease sorts below its release, numeric identifiers compare as numbers,
+# build metadata is ignored. next: X.Y.Z -> X.Y.(Z+1); X.Y.Z-id.N -> X.Y.Z-id.(N+1); X.Y.Z-id (no numeric tail) -> X.Y.Z-id.1.
+semver() {
+  python3 - "$@" <<'PYSEMVER'
+import re, sys
+def parse(v):
+    m = re.match(r"^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z.-]+)?$", v)
+    if not m:
+        sys.exit(2)
+    return [int(m.group(1)), int(m.group(2)), int(m.group(3))], m.group(4).split(".") if m.group(4) else []
+def key(v):
+    core, pre = parse(v)
+    return (core, 0 if pre else 1, [(0, int(i), "") if i.isdigit() else (1, 0, i) for i in pre])
+op = sys.argv[1]
+if op == "valid":
+    parse(sys.argv[2])
+elif op == "gt":
+    sys.exit(0 if key(sys.argv[2]) > key(sys.argv[3]) else 1)
+elif op == "next":
+    core, pre = parse(sys.argv[2])
+    if not pre:
+        print("%d.%d.%d" % (core[0], core[1], core[2] + 1))
+    else:
+        pre = pre[:-1] + [str(int(pre[-1]) + 1)] if pre[-1].isdigit() else pre + ["1"]
+        print("%d.%d.%d-%s" % (core[0], core[1], core[2], ".".join(pre)))
+PYSEMVER
 }
 
 # --- 4. bump from the merged tree (idempotent; plugin repo only, #145) ----------
@@ -305,18 +326,16 @@ else
 main_ver="$(git show "origin/main:$MANIFEST" | ver_of)"
 branch_ver="$(ver_of < "$MANIFEST")"
 [ -n "$main_ver" ] && [ -n "$branch_ver" ] || die "cannot read versions (main='$main_ver' branch='$branch_ver')"
+{ semver valid "$main_ver" && semver valid "$branch_ver"; } || die "version is not semver (main='$main_ver' branch='$branch_ver')"
 have_build=0
 if [ -f "$WORKFLOW" ] && grep -q '^const BUILD' "$WORKFLOW"; then have_build=1; fi
 
-if semver_gt "$branch_ver" "$main_ver" && git log -n 50 --format=%s origin/main..HEAD | grep -qxF "chore: bump $branch_ver (lead-merge)"; then
+if semver gt "$branch_ver" "$main_ver" && git log -n 50 --format=%s origin/main..HEAD | grep -qxF "chore: bump $branch_ver (lead-merge)"; then
   echo "lead-merge: bump commit for $branch_ver already on the branch, skipping bump"
 else
   base_ver="$main_ver"
-  if semver_gt "$branch_ver" "$main_ver"; then base_ver="$branch_ver"; fi
-  IFS=. read -r v1 v2 v3 <<EOV
-$base_ver
-EOV
-  new_ver="$v1.$v2.$((v3 + 1))"
+  if semver gt "$branch_ver" "$main_ver"; then base_ver="$branch_ver"; fi
+  new_ver="$(semver next "$base_ver")" || die "cannot compute the next version of '$base_ver'"
   cut_from="$(git rev-parse --short origin/main)"
   NEW_VER="$new_ver" CUT_FROM="$cut_from" MANIFEST="$MANIFEST" WORKFLOW="$WORKFLOW" HAVE_BUILD="$have_build" python3 - <<'PY' || die "bump edit failed"
 import os, re, sys

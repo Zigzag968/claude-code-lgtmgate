@@ -27,7 +27,8 @@
 //   sam-parity (#75): agents/sam.md and samScoutPrompt (workflows/deliver-pipeline.js) both carry
 //      the token `patch-avoided:` and the byte-identical LAYER_RULE sentence (defined once below),
 //      and neither carries a `root-cause:` field (doctrine v3 has no LLM-filled field).
-//   Invariant 1 (relaxed) version floor: .claude-plugin/plugin.json version >= origin/main's.
+//   Invariant 1 (relaxed) version floor: .claude-plugin/plugin.json version >= origin/main's (semver 2.0.0
+//      precedence, prerelease included: 1.0.0-beta.2 > 1.0.0-beta.1, 1.0.0-beta.9 < 1.0.0).
 //      Since #74 (scripts/lead-merge.sh bumps at merge; bump-required is retired) this floor is
 //      the only version check besides stamp-parity in templates/test-canonical-guards.sh.
 //
@@ -263,11 +264,23 @@ function checkWired() {
 }
 
 // ---- Invariant 1 (relaxed) --------------------------------------------------------------------
+// semver 2.0.0 precedence (section 11): build metadata ignored, a prerelease sorts below its release,
+// numeric identifiers compare as numbers and sort below alphanumeric ones, more identifiers win a tie.
+const SEMVER = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/
 function parseSemver(v) {
-  const m = /^(\d+)\.(\d+)\.(\d+)/.exec(String(v).trim())
-  return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null
+  const m = SEMVER.exec(String(v).trim())
+  return m ? { str: String(v).trim(), core: [Number(m[1]), Number(m[2]), Number(m[3])], pre: m[4] ? m[4].split('.') : [] } : null
 }
-function cmp(a, b) { for (let i = 0; i < 3; i++) if (a[i] !== b[i]) return a[i] - b[i]; return 0 }
+function cmp(a, b) {
+  for (let i = 0; i < 3; i++) if (a.core[i] !== b.core[i]) return a.core[i] - b.core[i]
+  if (!a.pre.length || !b.pre.length) return b.pre.length - a.pre.length
+  for (let i = 0; i < Math.min(a.pre.length, b.pre.length); i++) {
+    const x = a.pre[i], y = b.pre[i], xn = /^\d+$/.test(x), yn = /^\d+$/.test(y)
+    if (xn && yn) { if (Number(x) !== Number(y)) return Number(x) - Number(y) } else if (xn !== yn) return xn ? -1 : 1
+    else if (x !== y) return x < y ? -1 : 1
+  }
+  return a.pre.length - b.pre.length
+}
 function checkVersion() {
   const baseTxt = process.env.GUARDS_BASE_MANIFEST ? readOr(process.env.GUARDS_BASE_MANIFEST) : gitShow(MANIFEST)
   const branchTxt = readOr(process.env.GUARDS_BRANCH_MANIFEST || path.join(ROOT, MANIFEST))
@@ -276,8 +289,8 @@ function checkVersion() {
   let bv, nv
   try { bv = parseSemver(JSON.parse(baseTxt).version); nv = parseSemver(JSON.parse(branchTxt).version) } catch (e) { bad(`FAIL: version-floor: invalid JSON (${e.message})`); return }
   if (!bv || !nv) { bad('FAIL: version-floor: version is not semver'); return }
-  if (cmp(nv, bv) < 0) bad(`FAIL: version-floor: branch version ${nv.join('.')} < origin/main ${bv.join('.')}`)
-  else out(`PASS: version-floor: branch ${nv.join('.')} >= origin/main ${bv.join('.')}`)
+  if (cmp(nv, bv) < 0) bad(`FAIL: version-floor: branch version ${nv.str} < origin/main ${bv.str}`)
+  else out(`PASS: version-floor: branch ${nv.str} >= origin/main ${bv.str}`)
 }
 
 // ---- sam-parity (#75) ---------------------------------------------------------------------------

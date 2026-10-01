@@ -117,7 +117,7 @@ human-legible identity key (a 40-char SHA is not), and it gives the installed ca
 
 **An unbumped release delivers nothing at all** — a github-source plugin only updates a
 consumer's cache when the manifest version differs from what they already have.
-The bump is NOT part of a PR (#74): `scripts/lead-merge.sh` bumps the patch (`plugin.json` + `BUILD`) at merge time; the guards only check the floor (branch >= origin/main) and stamp parity.
+The bump is NOT part of a PR (#74): `scripts/lead-merge.sh` bumps the version (`plugin.json` + `BUILD`) at merge time: patch+1, or the prerelease counter+1 for `X.Y.Z-beta.N` (a branch already above main through a `chore: bump X (lead-merge)` commit is merged as is); the guards only check the floor (branch >= origin/main, semver precedence, prerelease included) and stamp parity.
 
 **No `CHANGELOG.md` file — the version-bump commit subject IS the changelog** (human decision,
 2026-09-15, legacy#86). Every paired bump above ships as its own conventional-commit subject (`fix:`,

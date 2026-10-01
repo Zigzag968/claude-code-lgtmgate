@@ -5,7 +5,8 @@
 # --merge used, CI failure, idempotent re-run, main moved (own bump + unrelated commit) after the
 # branch was cut, conflicting main, remote head ahead of local, stale/no-checks polling, base without
 # required checks (#156), review freshness (#157: review on the head, commit after the review, no marker, bare marker,
-# own commits on a re-run, head moved between the check and the sync, --tick-from-review on a stale review).
+# own commits on a re-run, head moved between the check and the sync, --tick-from-review on a stale review),
+# prerelease versions (1.0.0-beta.N: next merge bumps the counter, a hand bump above main is kept, non-semver refused).
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -450,6 +451,34 @@ D="$(setup rs-moved)"; R="$(head_of "$D")"; late_commit "$D"; H="$(head_of "$D")
 stale_refused "$R" "$H" && grep -qF 'head moved' "$D/out" && ok "review-stale: head moved after the check read it: refused" || bad "review-stale: head moved (rc=$rc): $(tail -3 "$D/out")"
 D="$(setup rs-tick)"; tick_body "$B1" "$BASE/tk1.md"; R="$(head_of "$D")"; mkc "$D" "$BASE/rv1.md"; late_commit "$D"; H="$(head_of "$D")"; tick_run "$D" "$BASE/tk1.md"; rc=$?
 stale_refused "$R" "$H" && [ ! -e "$D/log.patch" ] && ok "review-stale: --tick-from-review on a stale review: refused before anything is ticked" || bad "review-stale: tick on stale (rc=$rc): $(tail -3 "$D/out")"
+
+# 18. prerelease versions (the 1.0.0-beta.N channel): the bump follows semver 2.0.0 precedence, never a broken string or a patch
+set_version() { # <dir> <clone> <branch> <ver> [subject]: set the version in plugin.json + BUILD of a clone, commit and push <branch>
+  local d="$1" clone="$2" br="$3" v="$4"
+  [ -d "$d/$clone" ] || git clone -q "$d/origin.git" "$d/$clone" 2>/dev/null
+  ( cd "$d/$clone" && git config user.email t@t && git config user.name t && git checkout -q "$br" \
+    && sed -i.bak -E "s/\"version\": \"[^\"]*\"/\"version\": \"$v\"/" .claude-plugin/plugin.json \
+    && sed -i.bak -E "s/version: '[^']*'/version: '$v'/" workflows/deliver-pipeline.js && rm -f .claude-plugin/*.bak workflows/*.bak \
+    && git add -A && git commit -qm "${5:-main: version $v}" && git push -q origin "$br" ) >/dev/null 2>&1
+}
+bumped_to() { # <dir> <ver>: plugin.json + BUILD read <ver>, the pushed head is `chore: bump <ver> (lead-merge)`, one bump commit, merged
+  grep -q "\"version\": \"$2\"" "$1/work/.claude-plugin/plugin.json" && grep -q "version: '$2', cutFrom: " "$1/work/workflows/deliver-pipeline.js" \
+    && [ "$(git -C "$1/origin.git" log -1 --format=%s feat/x)" = "chore: bump $2 (lead-merge)" ] \
+    && [ "$(git -C "$1/work" log --format=%s | grep -c 'chore: bump')" = 1 ] && grep -q 'pr merge 7 -R o/r --merge' "$1/log"
+}
+D="$(setup pre-next)"; set_version "$D" other main 1.0.0-beta.1; run "$D" "$BASE/good.md"; rc=$?
+[ "$rc" -eq 0 ] && bumped_to "$D" 1.0.0-beta.2 && ok "prerelease: main at 1.0.0-beta.1 -> the next merge bumps to 1.0.0-beta.2" || bad "prerelease next (rc=$rc): $(tail -3 "$D/out")"
+D="$(setup pre-num)"; set_version "$D" other main 1.0.0-beta.9; run "$D" "$BASE/good.md"; rc=$?
+[ "$rc" -eq 0 ] && bumped_to "$D" 1.0.0-beta.10 && ok "prerelease: the counter is numeric (beta.9 -> beta.10)" || bad "prerelease numeric (rc=$rc): $(tail -3 "$D/out")"
+D="$(setup pre-bare)"; set_version "$D" other main 1.0.0-rc; run "$D" "$BASE/good.md"; rc=$?
+[ "$rc" -eq 0 ] && bumped_to "$D" 1.0.0-rc.1 && ok "prerelease without a numeric tail: 1.0.0-rc -> 1.0.0-rc.1 (a greater version)" || bad "prerelease bare (rc=$rc): $(tail -3 "$D/out")"
+# the release gesture: the Lead bumps by hand with lead-merge's own subject; the merge gesture must recognise a prerelease above main and not bump again
+D="$(setup pre-hand)"; set_version "$D" work feat/x 1.0.0-beta.1 'chore: bump 1.0.0-beta.1 (lead-merge)'; run "$D" "$BASE/good.md"; rc=$?
+[ "$rc" -eq 0 ] && bumped_to "$D" 1.0.0-beta.1 && grep -qF 'bump commit for 1.0.0-beta.1 already on the branch, skipping bump' "$D/out" && [ ! -s "$D/pushes" ] \
+  && ok "hand bump 0.8.80 -> 1.0.0-beta.1 on the branch: recognised as above main, merged as is, no second bump" || bad "prerelease hand bump (rc=$rc): $(tail -3 "$D/out")"
+D="$(setup pre-junk)"; set_version "$D" other main banana; run "$D" "$BASE/good.md"; rc=$?
+[ "$rc" -ne 0 ] && grep -qF 'not semver' "$D/out" && [ ! -s "$D/pushes" ] && ! grep -qE 'pr merge|pr checks' "$D/log" \
+  && ok "non-semver version on main: refused before any bump, push or merge" || bad "non-semver version (rc=$rc): $(tail -3 "$D/out")"
 
 echo "[lead-merge test] passed=$PASS failed=$FAIL"
 [ "$FAIL" -eq 0 ]
