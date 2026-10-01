@@ -1,6 +1,6 @@
 ---
 name: run-probe-evals
-description: Run or debug the probe evals of issue #81 (`claude plugin eval` on evals/probe-*, in Docker, score must be >= 0.95). Use when the probe layer changed, at the E2 gate, or when a probe eval case scores below 1.00.
+description: Run or debug the probe evals of issue #81 (`claude plugin eval` on evals/probe-*, in Docker; the gate is at least 29 of 30 runs fully passed, a 0.95 mean is not enough). Use when the probe layer changed, at the E2 gate, or when a probe eval case scores below 1.00.
 ---
 
 # Run the probe evals (#81)
@@ -15,8 +15,20 @@ description: Run or debug the probe evals of issue #81 (`claude plugin eval` on 
 ## Run everything (3 cases, 10 runs each, capped at $3 per case)
 - `CLAUDE_CODE_OAUTH_TOKEN="$(security find-generic-password -s lgtmgate-eval-token -w)" bash scripts/run-probe-evals-docker.sh`
 - Optional case names after the script restrict the run, e.g. `... run-probe-evals-docker.sh probe-provision`.
+  - A restricted run is gated on its own runs (95 % of 10 per case); only the full 3-case run is the E2 gate.
 - Needs the Bash sandbox disabled when launched from a Claude session (Docker and Keychain).
 - The cost shown is an estimate: it draws on the subscription quota, nothing is billed.
+
+## The gate
+- Gate: at least 29 of the 30 runs (3 cases x 10) FULLY passed, i.e. score 1.00 on all 4 graders; every case must have its 10 runs.
+- `scripts/run-probe-evals.sh` ends with `scripts/probe-eval-gate.sh`, which prints `<case>: <k>/<n> runs fully passed` per case, then `gate: <K>/<N> fully passed runs (need >= 29/30) -> PASS|FAIL`, and exits non-zero on FAIL or on a missing or unreadable `evals/results/<case>/aggregate-result.json`.
+- A case mean of 0.95 is NOT enough: two runs at 0.75 (a corrupted PROBE line each) average 0.95 and pass `claude plugin eval --threshold 0.95`, yet only 28/30 runs fully passed. The `claude exit=` line the runner prints comes from that mean threshold and is informational.
+- Re-check a past run without paying: `bash scripts/probe-eval-gate.sh evals/results` (results are local, git-ignored).
+- The runner deletes each case's previous `aggregate-result.json` first, so an aborted run cannot be gated on an older pass.
+
+## Pinned CLI version
+- `.devcontainer/Dockerfile` pins `CLAUDE_CODE_VERSION` to `2.1.286` (`.devcontainer/devcontainer.json` passes the same value): the `verify-ok` grader depends on that version's trace format, and the gate on its `aggregate-result.json` shape.
+- Bumping it: change both files and this note, rerun the whole suite (30 runs) and re-check the pinned graders against the new trace. `scripts/test-probe-evals.sh` fails if the three disagree.
 
 ## Debug one case
 - Same `docker run` as the script, plus `--runs 1 --keep-temp`, and a mount on `/tmp` to keep the trace:
@@ -47,6 +59,6 @@ description: Run or debug the probe evals of issue #81 (`claude plugin eval` on 
     - `verify-ok` only: the VERIFY line is absent from the Bash results (verify failed, or the trace shape changed).
   - 0.50 = both regex graders failed: the command did not run or failed (e.g. `Cannot find module`) and the model answered anyway.
   - 0.00 = the agent was never dispatched, so nothing ran.
-  - Threshold is 0.95 per case over 10 runs.
+  - The gate is not a score threshold: it counts fully passed runs (1.00 each), at least 29 of 30 (see The gate).
 - The pinned lines are constants: the case commands are fixed, so `sha`, `cmd` and `json` never vary (checked twice offline).
   - If a case command or `templates/probe-run.cjs` output changes, regenerate its two graders; `scripts/test-probe-evals.sh` fails until the pinned line equals the real one.

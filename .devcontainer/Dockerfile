@@ -3,7 +3,9 @@
 # minus the firewall and shell niceties; adds bubblewrap + socat for the eval Bash sandbox.
 FROM node:20
 
-ARG CLAUDE_CODE_VERSION=latest
+# Pinned: the verify-ok grader reads the 2.1.286 trace format. A bump needs a full rerun of the suite
+# (scripts/run-probe-evals-docker.sh) and a re-check of the pinned graders; keep devcontainer.json in step.
+ARG CLAUDE_CODE_VERSION=2.1.286
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git gh jq procps ca-certificates bubblewrap socat \

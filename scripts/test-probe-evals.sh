@@ -4,7 +4,9 @@
 # templates/probe-run.cjs: the pinned probe-line grader equals the real PROBE line and rejects
 # corrupted / invented / wrapped variants, the verify-ok grader matches the real --verify output as a
 # tool_result and nothing weaker, (c) the local runner, (d) workflows hold no secret, schedule or eval
-# step. bash 3.2 safe.
+# step, (e) the gate (>= 29/30 FULLY passed runs, counted per run, never the case mean) on fake
+# aggregate-result.json files, the runner wired to it through a fake `claude`, and the pinned CLI
+# version. bash 3.2 safe.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -158,6 +160,143 @@ check "no schedule trigger in workflows" "$ok"
 ok=1
 grep -rq 'claude plugin eval' "$ROOT/.github/workflows/" && ok=0
 check "no claude plugin eval step in workflows" "$ok"
+
+# (e) the gate: at least 29 of 30 runs FULLY passed (score 1). Fake aggregate-result.json files, same
+# field names as `claude plugin eval` 2.1.286: cases[].name, cases[].arms.with[].score / .error.
+G="$ROOT/scripts/probe-eval-gate.sh"
+ok=0; bash -n "$G" 2>/dev/null && ok=1
+check "probe-eval-gate.sh parses" "$ok"
+ok=0; grep -q 'probe-eval-gate.sh' "$R" && ok=1
+check "run-probe-evals.sh calls the gate" "$ok"
+
+# mkres.cjs <file> <case> <spec>: spec = comma list of <count>x<score>, a trailing ! sets an error on
+# those runs ("8x1,2x0.75" = 8 clean runs, 2 runs at 0.75). Also writes the case mean like the real file.
+cat > "$WORK/mkres.cjs" <<'JS'
+const fs = require('fs')
+const path = require('path')
+const [file, name, spec] = process.argv.slice(2)
+const runs = []
+for (const part of spec.split(',')) {
+  const m = part.match(/^(\d+)x([0-9.]+)(!?)$/)
+  if (!m) throw new Error('bad spec ' + part)
+  for (let i = 0; i < Number(m[1]); i++) runs.push({ score: Number(m[2]), passed: Number(m[2]) >= 1, error: m[3] ? 'boom' : null })
+}
+const mean = runs.reduce((a, r) => a + r.score, 0) / runs.length
+fs.mkdirSync(path.dirname(file), { recursive: true })
+fs.writeFileSync(file, JSON.stringify({
+  schemaVersion: 1, claudeVersion: '2.1.286', partial: false,
+  cases: [{ name, runsPerCase: runs.length, arms: { with: runs }, aggregates: { score: mean, passRate: 0 } }],
+}, null, 2))
+JS
+
+# mkgate <dir> <spec provision> <spec pr-state> <spec pr-write>; a spec of "-" writes no file
+mkgate() {
+  local dir="$1" c spec
+  shift
+  for c in probe-provision probe-pr-state probe-pr-write; do
+    spec="$1"; shift
+    [ "$spec" = "-" ] && continue
+    node "$WORK/mkres.cjs" "$dir/$c/aggregate-result.json" "$c" "$spec"
+  done
+}
+# gate_run <dir> sets GOUT (stdout+stderr) and GRC (exit code); has <text> looks in GOUT
+gate_run() { GOUT="$(bash "$G" "$1" 2>&1)"; GRC=$?; }
+has() { case "$GOUT" in *"$1"*) return 0 ;; *) return 1 ;; esac; }
+
+mkgate "$WORK/g30" 10x1 10x1 10x1
+gate_run "$WORK/g30"
+ok=0; [ "$GRC" -eq 0 ] && has 'gate: 30/30 fully passed runs (need >= 29/30) -> PASS' && has 'probe-pr-state: 10/10 runs fully passed' && ok=1
+check "gate: 30/30 fully passed runs -> PASS, exit 0" "$ok"
+
+mkgate "$WORK/g29" 9x1,1x0.75 10x1 10x1
+gate_run "$WORK/g29"
+ok=0; [ "$GRC" -eq 0 ] && has 'probe-provision: 9/10 runs fully passed' && has 'gate: 29/30 fully passed runs (need >= 29/30) -> PASS' && ok=1
+check "gate: 29/30 fully passed runs -> PASS, exit 0" "$ok"
+
+# the case that a mean threshold lets through: 2 runs at 0.75 = case mean 0.95, but only 28/30 runs fully pass
+mkgate "$WORK/g28" 8x1,2x0.75 10x1 10x1
+gate_run "$WORK/g28"
+ok=0
+node -e '
+  const j = require(process.argv[1])
+  process.exit(Math.abs(j.cases[0].aggregates.score - 0.95) < 1e-9 ? 0 : 1)
+' "$WORK/g28/probe-provision/aggregate-result.json" \
+  && [ "$GRC" -eq 1 ] && has 'probe-provision: 8/10 runs fully passed' && has 'gate: 28/30 fully passed runs (need >= 29/30) -> FAIL' && ok=1
+check "gate: 28/30 fully passed runs, case mean 0.95 -> FAIL, exit 1" "$ok"
+
+mkgate "$WORK/gerr" 8x1,2x1! 10x1 10x1
+gate_run "$WORK/gerr"
+ok=0; [ "$GRC" -eq 1 ] && has 'probe-provision: 8/10 runs fully passed' && has '-> FAIL' && ok=1
+check "gate: a run with an error is not a fully passed run" "$ok"
+
+mkgate "$WORK/gmiss" 10x1 - 10x1
+gate_run "$WORK/gmiss"
+ok=0; [ "$GRC" -ne 0 ] && has 'probe-pr-state: results unusable (file missing)' && has '-> FAIL' && ok=1
+check "gate: a missing results file -> FAIL, non-zero exit" "$ok"
+
+mkgate "$WORK/gbad" 10x1 10x1 10x1
+echo 'not json' > "$WORK/gbad/probe-pr-write/aggregate-result.json"
+gate_run "$WORK/gbad"
+ok=0; [ "$GRC" -ne 0 ] && has 'probe-pr-write: results unusable (file unreadable)' && has '-> FAIL' && ok=1
+check "gate: an unreadable results file -> FAIL, non-zero exit" "$ok"
+
+# 9 runs, all passed: 29 of 29 would clear 95 %, but every case must have its 10 runs
+mkgate "$WORK/g9" 10x1 9x1 10x1
+gate_run "$WORK/g9"
+ok=0; [ "$GRC" -eq 1 ] && has 'probe-pr-state: 9/9 runs fully passed (fewer than 10 runs)' && has '-> FAIL' && ok=1
+check "gate: a case with 9 runs -> FAIL, exit 1" "$ok"
+
+# the runner calls the gate and takes its exit code, through a fake `claude` that writes the case's spec
+FAKEBIN="$WORK/fakebin"; FAKE="$WORK/fake"
+mkdir -p "$FAKEBIN" "$FAKE"
+cat > "$FAKEBIN/claude" <<'SH'
+#!/usr/bin/env bash
+c=""; out=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in --case) c="$2"; shift ;; --output-dir) out="$2"; shift ;; esac
+  shift
+done
+[ -f "$FAKE_DIR/$c.spec" ] && node "$FAKE_MKRES" "$out/aggregate-result.json" "$c" "$(cat "$FAKE_DIR/$c.spec")"
+exit "$(cat "$FAKE_DIR/rc" 2>/dev/null || echo 0)"
+SH
+chmod +x "$FAKEBIN/claude"
+# runner_run <results-dir> sets GOUT and GRC; the spec files and rc come from $FAKE
+runner_run() {
+  GOUT="$(PATH="$FAKEBIN:$PATH" FAKE_DIR="$FAKE" FAKE_MKRES="$WORK/mkres.cjs" PROBE_EVALS_RESULTS_DIR="$1" bash "$R" 2>&1)"
+  GRC=$?
+}
+set_fake() { echo 10x1 > "$FAKE/probe-provision.spec"; echo "$1" > "$FAKE/probe-pr-state.spec"; echo 10x1 > "$FAKE/probe-pr-write.spec"; echo "$2" > "$FAKE/rc"; }
+
+set_fake 10x1 0
+runner_run "$WORK/rr-pass"
+ok=0; [ "$GRC" -eq 0 ] && has '== probe-pr-state: claude exit=0' && has 'gate: 30/30 fully passed runs (need >= 29/30) -> PASS' && ok=1
+check "run-probe-evals.sh: 30/30 fully passed runs -> exit 0" "$ok"
+
+set_fake 8x1,2x0.75 0
+runner_run "$WORK/rr-fail"
+ok=0; [ "$GRC" -ne 0 ] && has 'probe-pr-state: 8/10 runs fully passed' && has '-> FAIL' && ok=1
+check "run-probe-evals.sh: 28/30 fully passed runs, claude exit 0 -> non-zero exit" "$ok"
+
+# claude's own exit code (its --threshold is a case-mean check) is informational: the run count decides
+set_fake 9x1,1x0.5 1
+runner_run "$WORK/rr-mean"
+ok=0; [ "$GRC" -eq 0 ] && has '== probe-pr-state: claude exit=1' && has '-> PASS' && ok=1
+check "run-probe-evals.sh: claude exit 1 with 29/30 fully passed runs -> gate PASS, exit 0" "$ok"
+
+# a stale pass left by an earlier run must not gate a run that produced nothing
+mkgate "$WORK/rr-stale" 10x1 10x1 10x1
+rm -f "$FAKE/probe-pr-state.spec"
+echo 1 > "$FAKE/rc"
+runner_run "$WORK/rr-stale"
+ok=0; [ "$GRC" -ne 0 ] && has 'probe-pr-state: results unusable (file missing)' && has '-> FAIL' && ok=1
+check "run-probe-evals.sh: results of an earlier run are cleared, a run that wrote none -> FAIL" "$ok"
+
+# the CLI the eval runs on is pinned: the verify-ok grader reads the 2.1.286 trace format
+pin="$(sed -n 's/^ARG CLAUDE_CODE_VERSION=\([0-9][0-9.]*\)$/\1/p' "$ROOT/.devcontainer/Dockerfile")"
+ok=0
+[ -n "$pin" ] && grep -q "\"CLAUDE_CODE_VERSION\": \"$pin\"" "$ROOT/.devcontainer/devcontainer.json" \
+  && grep -q "$pin" "$ROOT/.claude/skills/run-probe-evals/SKILL.md" && ok=1
+check "Dockerfile pins CLAUDE_CODE_VERSION to an exact version (${pin:-none}), devcontainer.json and the skill cite the same" "$ok"
 
 echo "status=$([ "$fail_count" -eq 0 ] && echo pass || echo fail) pass=$pass_count fail=$fail_count"
 [ "$fail_count" -eq 0 ]

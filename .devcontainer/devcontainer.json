@@ -2,7 +2,7 @@
   "name": "lgtmgate probe evals",
   "build": {
     "dockerfile": "Dockerfile",
-    "args": { "CLAUDE_CODE_VERSION": "latest" }
+    "args": { "CLAUDE_CODE_VERSION": "2.1.286" }
   },
   "runArgs": ["--init", "--security-opt", "seccomp=unconfined", "--security-opt", "systempaths=unconfined"],
   "remoteUser": "node",

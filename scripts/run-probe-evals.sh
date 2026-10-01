@@ -13,6 +13,12 @@
 #
 # Usage: run-probe-evals.sh [case...]   (default: probe-provision probe-pr-state probe-pr-write)
 #
+# The gate (#81): at least 29 of the 30 runs (3 cases x 10) FULLY passed, i.e. score 1 on all 4 graders.
+# scripts/probe-eval-gate.sh counts the runs from each case's aggregate-result.json and decides the exit
+# code. `claude plugin eval --threshold` compares the case MEAN (two runs at 0.75 still give 0.95), so it
+# is NOT the gate: its exit code is only printed. A stale results file is deleted before each case, so a
+# run that dies early cannot be gated on an older pass.
+#
 # Running it on macOS
 #   - Keychain item `lgtmgate-eval-token`, holding a token created with `claude setup-token`.
 #   - One line: CLAUDE_CODE_OAUTH_TOKEN="$(security find-generic-password -s lgtmgate-eval-token -w)" bash scripts/run-probe-evals-docker.sh
@@ -31,15 +37,17 @@ fi
 # Eval runs get an allowlisted env only (EVAL_* passes); the prompts locate the plugin through it.
 export EVAL_PLUGIN_ROOT="$ROOT"
 MAX_COST="${PROBE_EVALS_MAX_COST_USD:-3}"
+RESULTS_DIR="${PROBE_EVALS_RESULTS_DIR:-$ROOT/evals/results}"
 
-fail=0
 [ "$#" -gt 0 ] || set -- probe-provision probe-pr-state probe-pr-write
 for c in "$@"; do
+  rm -f "$RESULTS_DIR/$c/aggregate-result.json" || { echo "run-probe-evals: cannot clear the previous results of $c" >&2; exit 1; }
+  # --threshold 0.95 is a per-case MEAN check, kept only as a quick signal: the gate below decides.
   claude plugin eval . --case "$c" --runs 10 --max-cost-usd "$MAX_COST" --no-publish \
-    --allow-tools Bash --ablation none --threshold 0.95 --trust-plugin --output-dir "$ROOT/evals/results/$c"
+    --allow-tools Bash --ablation none --threshold 0.95 --trust-plugin --output-dir "$RESULTS_DIR/$c"
   rc=$?
-  echo "== $c: exit=$rc"
-  [ "$rc" -eq 0 ] || fail=1
+  echo "== $c: claude exit=$rc (informational, the gate below decides)"
 done
 
-exit "$fail"
+bash "$SCRIPT_DIR/probe-eval-gate.sh" "$RESULTS_DIR" "$@"
+exit $?
