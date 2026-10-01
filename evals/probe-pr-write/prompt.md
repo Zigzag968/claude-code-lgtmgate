@@ -12,4 +12,4 @@ Dispatch the `lgtmgate:probe` agent. Its task is to run this command exactly as 
 cd "$PWD" && node "$CLAUDE_PLUGIN_ROOT/templates/probe-run.cjs" --label eval-pr-write --round 0 --out "$PWD/.probes" --parser lines --cmd 'printf "edited pr 7\n"'
 ```
 
-Reply with the PROBE line it returned, verbatim, and nothing else.
+Your final message is graded as the probe agent's own output. Make it ONLY the PROBE line the `lgtmgate:probe` agent returned, copied verbatim: no prose before or after, no code fences, no quotes, no summary, no paraphrase. Do not rerun the command yourself.

@@ -48,6 +48,17 @@ for d in "$ROOT"/evals/probe-*/; do
   [ "$n_gr" -ge 3 ] && [ "$bad" -eq 0 ] && [ "$n_tool" -ge 1 ] && [ "$n_regex" -ge 1 ] && ok=1
   check "$name: >= 3 graders, typed tool_used/regex, both kinds present ($n_gr/$n_tool/$n_regex)" "$ok"
 
+  # `last_message` is the main session's final message: the prompt must make it a pure relay
+  ok=0
+  grep -q 'ONLY the PROBE line' "$d/prompt.md" && grep -q 'verbatim: no prose' "$d/prompt.md" \
+    && grep -q 'no code fences' "$d/prompt.md" && grep -q 'Do not rerun the command yourself' "$d/prompt.md" && ok=1
+  check "$name: prompt requires a verbatim-only relay (no prose, no fences)" "$ok"
+  ok=0
+  grep -q '^target: last_message$' "$d/graders/probe-line.md" \
+    && grep -q 'exit=0 sha=\[0-9a-f\]{64} json=' "$d/graders/probe-line.md" \
+    && grep -q "^pattern: '\^PROBE name=" "$d/graders/probe-line.md" && ok=1
+  check "$name: probe-line grader keeps a strict regex (name, exit, 64-hex sha, json)" "$ok"
+
   # (b) run the case command for real and match the regex grader against the PROBE line
   run="$WORK/$name"
   mkdir -p "$run"
