@@ -6,7 +6,8 @@
 - Repo-neutral: the engine knows no stack, path or rule of its own; each repo's config and docs say what matters there.
 ## Today
 - The Lead runs `/lgtmgate:deliver`; the workflow drives Theo, Sam, Nick and Morgan in the issue's worktree and returns one status.
-- The human merges through `scripts/lead-merge.sh`. Consumers receive the engine, `agents/`, `commands/`, `hooks/` and the init templates.
+- Merge: the Lead runs `scripts/lead-merge.sh` on the maintainer's authorization; no agent of the run ever merges.
+- Consumers receive the engine, `agents/`, `commands/`, `hooks/` and the init templates.
 ## Technical doctrine, ranked (the higher one wins a conflict)
 1. Determinism over judgment: a script does the mechanical work; a model only judges.
 2. Proof over trust: every claim is a command output or an artifact; an engine bug ships with a replayed fixture.
