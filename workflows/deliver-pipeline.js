@@ -1118,11 +1118,12 @@ function safePlanTargets(files) {
 // --- safePlanTargets:end ---
 
 // --- oneWayDoor:start --- (pure & self-contained — R3: the 5th design-step signal, computed by the script)
-// R3 one-way-door signal. A change the TARGET repo declares a one-way door stops at the design step.
-// Two deterministic inputs, never an LLM-filled boolean: (a) Sam's `targetFiles` matched against
-// `config.oneWayDoorPaths` (ctx.paths; absent or empty = no path-based stop, so a repo that declares
-// nothing is never stopped); (b) the announcement lines Sam's plan carries, `one-way-door: <kind> — <what>`
-// (`one-way-door: none` announces nothing; the kinds are the repo's own, see its ARCHITECTURE.md).
+// R3 one-way-door signal. A plan stops at the design step on exactly two things, nothing else:
+// (a) the announcement lines Sam's plan carries, `one-way-door: status|agent|hook|seam — <what>`
+// (a new status, a new `agent()` call, a new hook, a new seam; `one-way-door: none`, or any other word,
+// announces nothing); (b) Sam's `targetFiles` matched against `config.oneWayDoorPaths` (ctx.paths;
+// absent or empty = no path-based stop, so a repo that declares nothing is never stopped).
+// Both deterministic inputs, never an LLM-filled boolean.
 // A path entry is, in order: `!<entry>` = exclusion (wins over any match); `<dir>/` = prefix;
 // a pattern with `*` (within a segment), `**` (across segments) or `?` = glob; else the exact path.
 // Returns { kinds: string[], summary: string[<=10] }.
@@ -1162,17 +1163,17 @@ function oneWayDoorSignals(plan, targetFiles, ctx = {}) {
     if (hit !== undefined && !found.has('path')) found.set('path', `targetFiles: ${f} (oneWayDoorPaths: ${hit})`)
   }
   // guards:parser-begin
-  const announced = String(plan ?? '').match(/^[ \t>*-]*`?one-way-door:[ \t]*(?!none\b)[a-z][a-z0-9_-]{0,31}\b[^\n]*/gim) || []
+  const announced = String(plan ?? '').match(/^[ \t>*-]*`?one-way-door:[ \t]*(?:status|agent|hook|seam)\b[^\n]*/gim) || []
   for (const line of announced) {
-    const m = /one-way-door:[ \t]*([a-z][a-z0-9_-]{0,31})\b/i.exec(line)
+    const m = /one-way-door:[ \t]*(status|agent|hook|seam)\b/i.exec(line)
     const kind = m[1].toLowerCase()
     if (!found.has(kind)) found.set(kind, `plan: ${line.replace(/^[ \t>*-]*`?/, '').slice(0, 160)}`)
   }
   // guards:parser-end
   const kinds = [...found.keys()]
   const summary = kinds.length === 0 ? [] : [
-    `R3 one-way-door: the plan for issue #${ctx.issue ?? '?'} hits a one-way door (${kinds.slice(0, 5).join(' + ')}${kinds.length > 5 ? ` + ${kinds.length - 5} more` : ''}).`,
-    ...kinds.slice(0, 5).map(k => `- ${k}: ${found.get(k)}`),
+    `R3 one-way-door: the plan for issue #${ctx.issue ?? '?'} hits a one-way door (${kinds.join(' + ')}).`,
+    ...kinds.map(k => `- ${k}: ${found.get(k)}`),
     `Plan artifact: ${ctx.planPath || '(none)'}`,
     'Stopped at the design step (design-step-required): the maintainer decides before dev.',
     `Relaunch with architectureDecisionApproved:true once the decision is recorded.`,
@@ -2151,10 +2152,9 @@ const SAM_LAYER_RULE = 'LAYER RULE: plan the smallest change that removes the ca
 // Pinned by flow test T77g.
 const ARCH_IMPORT_SAM = 'Read `ARCHITECTURE.md` and `VISION.md` at the repo root, each only if it exists, and plan within the constraints and decisions they state; skip silently any that does not exist. '
 const ARCH_IMPORT_MORGAN = "Read `ARCHITECTURE.md` and `VISION.md` at the repo root, each only if it exists, and check the diff against the constraints and decisions they state; per that repo's `ARCHITECTURE.md`, if it defines a declared-exception rule, apply it exactly as that file words it (an exception it does not allow, or that lacks what it requires, is a FAIL); skip silently any file that does not exist.\n"
-// R3 (#77): the announcement line the SCRIPT parses (oneWayDoorSignals) — one line per kind, or `none`.
-// Conditional on the target repo's own ARCHITECTURE.md listing one-way doors: names no kind of this repo,
-// so a consumer's Sam announces nothing unless that file asks for it. Pinned by flow test T77g.
-const SAM_ONE_WAY_DOOR = 'ONE-WAY-DOOR ANNOUNCEMENT: only if `ARCHITECTURE.md` at the repo root lists one-way doors (changes that need a design decision before dev), state in the plan text, on its own line for each such change the diff makes, `one-way-door: <kind> — <what>` (<kind> is one word, the name that file gives it), or the single line `one-way-door: none`; skip silently if the file does not exist or lists none. The script parses these lines; a kind you announce stops the run at the design step. '
+// R3 (#77): the announcement line the SCRIPT parses (oneWayDoorSignals): one line per kind, or `none`.
+// Four kinds only; any other word has no effect. Pinned by flow tests T77k and T77g.
+const SAM_ONE_WAY_DOOR = 'ONE-WAY-DOOR ANNOUNCEMENT: in the plan text, state on its own line for each kind the diff adds — `one-way-door: status — <what>`, `one-way-door: agent — <what>`, `one-way-door: hook — <what>`, `one-way-door: seam — <what>` — or the single line `one-way-door: none`. The script parses these lines; a kind you announce stops the run at the design step. '
 const ACCEPTANCE_PROOF_RULE = 'ACCEPTANCE PROOF RULE: (1) every acceptance item is a command you RAN in the provisioned worktree during planning; the plan carries a "Proof log" listing, per item, the command and its real output pasted verbatim (output on the base branch: green for state-preservation checks, red for the stated reason for a check the change must turn green); (2) a command you saw fail for any other reason, or could not run (missing gitignored directory, no network), is rewritten to run in the worktree or dropped, never inscribed as-is and never excused in Risks; (3) an item describes a verifiable state of the repo or branch only: never an external-world state (e.g. "no known advisory for pinned dependency X", a network service, a file present only outside the worktree) and never a negative universal claim ("no known X", "absence of Y") about anything outside the diff; write commands that run as-is from a plain bash script.'
 // #153: checklist lines (`- [ ]`) Sam returned in acceptanceChecklist that are absent from the
 // returned plan text. Pure string ops, no regex. Empty checklist => [] (nothing to compare).

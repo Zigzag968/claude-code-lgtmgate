@@ -2758,25 +2758,27 @@ await testCase('T77j R3 path entries: prefix, *, **, ?, ! exclusion and exact pa
   return { ok: true }
 })
 
-// T77k — the announcement kind is the target repo's own word (its ARCHITECTURE.md lists them): any single
-// word stops the run; `none` (with or without a trailing note) and a placeholder do not.
-await testCase('T77k R3 announcement: any one-word kind stops the run; none and a placeholder do not', async () => {
-  const runPlan = async (planLine) => {
-    const r = await run({
-      mode: 'semi',
-      simulate: { theo: T77_THEO, sam: 'GO', samPlan: `plan\n${planLine}` + T77_CK },
-    })
-    return r
-  }
-  const a = await runPlan('one-way-door: migration — add the users table')
-  const e1 = eq('status', a.status, 'design-step-required') || eq('kinds', JSON.stringify(a.oneWayDoorKinds), JSON.stringify(['migration']))
-  if (e1) return e1
-  for (const line of ['one-way-door: none', 'one-way-door: none — nothing here', 'announce with `one-way-door: <kind> — <what>`']) {
-    const r = await runPlan(line)
-    const err = eq(`status for ${JSON.stringify(line)}`, r.status, 'plan-ready')
+// T77k — R3 is one raw signal with four announced kinds (status, agent, hook, seam): each stops the run;
+// `none`, a placeholder and any other word (`guard`, `rule`, `migration`) have no effect, alone or next to a
+// real kind.
+await testCase('T77k R3 announcement: only status|agent|hook|seam stop the run; none, a placeholder and any other word do not', async () => {
+  const runPlan = async (planText) => run({
+    mode: 'semi',
+    simulate: { theo: T77_THEO, sam: 'GO', samPlan: `plan\n${planText}` + T77_CK },
+  })
+  for (const kind of ['status', 'agent', 'hook', 'seam']) {
+    const r = await runPlan(`one-way-door: ${kind} — new ${kind}`)
+    const err = eq(`status for kind ${kind}`, r.status, 'design-step-required') || eq(`kinds for ${kind}`, JSON.stringify(r.oneWayDoorKinds), JSON.stringify([kind]))
     if (err) return err
   }
-  return { ok: true }
+  for (const line of ['one-way-door: none', 'one-way-door: none — nothing here', 'announce with `one-way-door: <kind> — <what>`',
+    'one-way-door: guard — new guard', 'one-way-door: rule — new rule', 'one-way-door: migration — add the users table']) {
+    const r = await runPlan(line)
+    const err = eq(`status for ${JSON.stringify(line)}`, r.status, 'plan-ready') || eq(`kinds for ${JSON.stringify(line)}`, r.oneWayDoorKinds, undefined)
+    if (err) return err
+  }
+  const mixed = await runPlan('one-way-door: guard — new guard\none-way-door: hook — new hook')
+  return eq('status for guard + hook', mixed.status, 'design-step-required') || eq('kinds for guard + hook', JSON.stringify(mixed.oneWayDoorKinds), JSON.stringify(['hook'])) || { ok: true }
 })
 
 // T77g (#77, consumer neutrality) — VISION.md and ARCHITECTURE.md are the documents of the TARGET repo,
@@ -2810,19 +2812,20 @@ await testCase('T77g consumer neutrality: no VISION.md/ARCHITECTURE.md in the ta
     }
   }
   if (!importLines.ARCH_IMPORT_MORGAN.includes("per that repo's `ARCHITECTURE.md`")) return { ok: false, msg: "ARCH_IMPORT_MORGAN must phrase the declared-exception rule as \"per that repo's `ARCHITECTURE.md`\"" }
-  // The one-way-door announcement Sam is given is conditional on the target repo's own ARCHITECTURE.md and
-  // names no kind of this repo (kinds are that repo's words), so a consumer's Sam announces nothing unless
-  // its repo asks for it.
+  // The one-way-door announcement Sam is given names exactly the four kinds the script parses and `none`:
+  // no other kind, no rule text of this repo, no reference to either document.
   const owdLine = lines.find(l => l.startsWith('const SAM_ONE_WAY_DOOR = ')) || ''
   if (!owdLine) return { ok: false, msg: 'workflow source lacks const SAM_ONE_WAY_DOOR' }
-  if (!owdLine.includes('only if `ARCHITECTURE.md`')) return { ok: false, msg: 'SAM_ONE_WAY_DOOR does not announce "only if `ARCHITECTURE.md`" lists one-way doors' }
-  if (!owdLine.includes('skip silently')) return { ok: false, msg: 'SAM_ONE_WAY_DOOR does not skip silently when the file is absent or lists none' }
-  for (const banned of ['callAgent', 'simulate', 'DEBT', 'R1', 'R2', 'R3', 'ratchet', 'lgtmgate', 'critical-paths', 'codemap', 'seam', '`agent()`', 'hook', 'status —', 'agent —']) {
-    if (owdLine.includes(banned)) return { ok: false, msg: `SAM_ONE_WAY_DOOR injects a concept of this repo (${banned}) into a consumer prompt` }
+  for (const kind of ['status', 'agent', 'hook', 'seam', 'none']) {
+    if (!owdLine.includes(`\`one-way-door: ${kind}`)) return { ok: false, msg: `SAM_ONE_WAY_DOOR does not announce \`one-way-door: ${kind}\`` }
+  }
+  if (owdLine.includes('<kind>')) return { ok: false, msg: 'SAM_ONE_WAY_DOOR names an arbitrary <kind>: only the four kinds and none are parsed' }
+  for (const banned of ['callAgent', 'simulate', 'DEBT', 'R1', 'R2', 'R3', 'ratchet', 'lgtmgate', 'critical-paths', 'codemap', 'ARCHITECTURE.md', 'VISION.md']) {
+    if (owdLine.includes(banned)) return { ok: false, msg: `SAM_ONE_WAY_DOOR injects rule text of this repo (${banned}) into a consumer prompt` }
   }
   const stray = lines.filter(l => (l.includes('ARCHITECTURE.md') || l.includes('VISION.md'))
-    && !l.trimStart().startsWith('//') && !l.startsWith('const ARCH_IMPORT_SAM = ') && !l.startsWith('const ARCH_IMPORT_MORGAN = ') && !l.startsWith('const SAM_ONE_WAY_DOOR = '))
-  if (stray.length) return { ok: false, msg: `engine names VISION.md/ARCHITECTURE.md outside the three conditional constants: ${stray[0].slice(0, 120)}` }
+    && !l.trimStart().startsWith('//') && !l.startsWith('const ARCH_IMPORT_SAM = ') && !l.startsWith('const ARCH_IMPORT_MORGAN = '))
+  if (stray.length) return { ok: false, msg: `engine names VISION.md/ARCHITECTURE.md outside the two conditional imports: ${stray[0].slice(0, 120)}` }
   return { ok: true }
 })
 

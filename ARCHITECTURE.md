@@ -22,7 +22,7 @@ Vocabulary: **R1** is the ratchet (counters compared to `origin/main`, never to 
 The other invariants of the canonical guard net (stamp parity, PR body structure, no private refs, ...) are listed in the header of `templates/test-canonical-guards.sh`.
 
 ## One-way doors
-A plan that adds a status, an `agent()` call, a hook or a seam stops at the design step (`design-step-required`): Sam announces it on a line `one-way-door: <kind> — <what>` (kind: `status`, `agent`, `hook` or `seam`), or `one-way-door: none`. So does a plan whose target files match `oneWayDoorPaths` in `.claude/pipeline.config.json` (here: the hook scripts, `hooks/plugin-hooks.json`, `docs/critical-paths.md`); the engine knows no path, a repo that declares none is never stopped. The maintainer approves explicitly (`architectureDecisionApproved`) or edits the file themself; otherwise the run stays stopped. Adding a rule or a guard is a one-way door too: announce it, then stop.
+The script stops the run at the design step (`design-step-required`) on the four kinds Sam announces on a line `one-way-door: <kind> — <what>` (kind: `status`, `agent`, `hook` or `seam`; `one-way-door: none` otherwise), or on a plan whose target files match a path listed in `oneWayDoorPaths` in `.claude/pipeline.config.json` (here: the hook scripts, `hooks/plugin-hooks.json`, `docs/critical-paths.md`). Nothing else stops it: the engine knows no path, and a repo that lists none is never stopped by one. The maintainer approves explicitly (`architectureDecisionApproved`) or edits the file themself; otherwise the run stays stopped.
 
 ## Where new code goes
 - A probe or a shell side effect: `templates/probe-run.cjs` (executes, keeps the raw output, prints one line).
@@ -40,7 +40,7 @@ A shortcut is allowed at the margin and never in silence.
 ## Conventions without a check yet
 - A new file gets its line in `docs/codemap.md` (check to come: a generator from one header per file, verified in CI).
 - An `exception:` line in a PR has an open follow-up issue and a `DEBT` marker in the diff (check to come in `scripts/lead-merge.sh`, #122; Morgan flags it meanwhile).
-- No new probe kind (a parser in `templates/probe-run.cjs`) without a design decision: it is a one-way door (no check yet; announce it, then stop).
+- No new probe kind (a parser in `templates/probe-run.cjs`) without a design decision (no check yet).
 - Stage functions return `finish({ status, ... })`; never a bare `return { status }`.
 - `callAgent` / `callAgentSafe` validate a schema with bounded retries; agent output is structured (`verdict` is an enum), never free text parsed by a regex.
 - Blocks between `// --- name:start ---` and `// --- name:end ---` are pure and self-contained (extracted by `extractBetween` for tests): no I/O, no closure state.
