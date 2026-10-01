@@ -30,9 +30,12 @@
 //   Invariant 1 (relaxed) version floor: .claude-plugin/plugin.json version >= origin/main's.
 //      Since #74 (scripts/lead-merge.sh bumps at merge; bump-required is retired) this floor is
 //      the only version check besides stamp-parity in templates/test-canonical-guards.sh.
+//   doc-budgets (#77): the agent-read docs stay within the maintainer's budgets — VISION.md
+//      (imported for every agent through CLAUDE.md) <= 20 lines, ARCHITECTURE.md (imported into
+//      Sam's and Morgan's prompts) <= 60 lines. A missing file FAILS.
 //
 // Env (test seams, all optional)
-//   GUARDS_ONLY            comma list among r1,wired,version,parity (default: all)
+//   GUARDS_ONLY            comma list among r1,wired,version,parity,budgets (default: all)
 //   GUARDS_BASE_FILE       workflow file used as the base for R1 (default: git show origin/main:<file>)
 //   GUARDS_BRANCH_FILE     workflow file used as the branch for R1 (default: workflows/deliver-pipeline.js)
 //   GUARDS_BASE_MANIFEST   base plugin.json path for the version floor (default: git show origin/main:...)
@@ -49,7 +52,7 @@ const ROOT = process.env.GUARDS_ROOT || path.resolve(__dirname, '..')
 const WORKFLOW = 'workflows/deliver-pipeline.js'
 const MANIFEST = '.claude-plugin/plugin.json'
 const GUARDS_YML = '.github/workflows/guards.yml'
-const ONLY = process.env.GUARDS_ONLY ? process.env.GUARDS_ONLY.split(',') : ['r1', 'wired', 'version', 'parity']
+const ONLY = process.env.GUARDS_ONLY ? process.env.GUARDS_ONLY.split(',') : ['r1', 'wired', 'version', 'parity', 'budgets']
 
 // Suites that are NOT named in guards.yml, each with its reason. Add a suite here only if it is
 // red on main (report it, do not wire it) or is run through another runner.
@@ -297,8 +300,27 @@ function checkSamParity() {
   else out('PASS: sam-parity: patch-avoided: and the LAYER RULE sentence on both sides, no root-cause: field')
 }
 
+// ---- doc-budgets (#77) --------------------------------------------------------------------------
+const DOC_BUDGETS = [['VISION.md', 20], ['ARCHITECTURE.md', 60]]
+// Same count as `wc -l` for a file ending with a newline; a last line without one still counts.
+const lineCount = (t) => (t === '' ? 0 : t.split('\n').length - (t.endsWith('\n') ? 1 : 0))
+function checkDocBudgets() {
+  const problems = []
+  const sizes = []
+  for (const [rel, max] of DOC_BUDGETS) {
+    const txt = readOr(path.join(ROOT, rel))
+    if (txt === null) { problems.push(`${rel} missing`); continue }
+    const n = lineCount(txt)
+    sizes.push(`${rel} ${n}/${max}`)
+    if (n > max) problems.push(`${rel} has ${n} lines, budget ${max}`)
+  }
+  if (problems.length) bad(`FAIL: doc-budgets: ${problems.join('; ')} — move detail to docs/ (never imported), never raise the budget`)
+  else out(`PASS: doc-budgets: ${sizes.join(', ')}`)
+}
+
 if (ONLY.includes('r1')) checkR1()
 if (ONLY.includes('wired')) checkWired()
 if (ONLY.includes('version')) checkVersion()
 if (ONLY.includes('parity')) checkSamParity()
+if (ONLY.includes('budgets')) checkDocBudgets()
 process.exit(failed ? 1 : 0)

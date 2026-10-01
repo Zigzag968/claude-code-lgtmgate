@@ -2051,8 +2051,7 @@ if (after('plan', entryStage)) {
       `\`gh api -X PATCH repos/{owner}/{repo}/issues/comments/<id> -F body=@.pipeline/issue-${issue}-design-step.md\`; otherwise create it with \`gh issue comment ${issue} --body-file .pipeline/issue-${issue}-design-step.md\`. The comment body is exactly: ${designStepMarker} on its first line, then the four signals with your evidence, one line each. Never stack a second one.\n` +
       `BLAST-RADIUS: no destructive git (git clean, reset --hard, checkout -- <path>, forced -f/-D deletes) — you diagnose, you never reset the shared worktree's state. ` +
       `Never read/probe a real credential path (~/.ssh/*, ~/.aws/*, .env*, **/*secret*, keychains) — to verify a sandbox deny-rule empirically, create a SYNTHETIC file in $TMPDIR named after the pattern, never the real one. ` +
-      `Stay inside the worktree "${wtPath}" plus $TMPDIR — no traversal to another worktree/repo/home. ` +
-      `Read \`docs/codemap.md\` at the repo root if it exists to locate code; skip silently if absent.\n\n` +
+      `Stay inside the worktree "${wtPath}" plus $TMPDIR — no traversal to another worktree/repo/home.\n\n` +
       `Return { confirmed: bool, evidence: string, actualCause: string|null, laneOk: bool, requiredScout: string|null, persistentStateSignal: bool, authSecurityBoundarySignal: bool, deployConfigSignal: bool, immatureVendorApiSignal: bool, designStepSignalEvidence: string, issueClassificationMismatch: bool }. confirmed=true means "proceed to Sam"; laneOk=false stops for a lane re-dispatch. evidence is what you checked and ` +
       `found (command run + observed output, or the codebase check performed). actualCause is set only when a claimed cause was refuted and you found the real one.`,
     {
@@ -2117,10 +2116,10 @@ if (after('plan', entryStage)) {
 // Reads `pm`/`diag` (top-level, see above) by closure — both are still null/populated correctly
 // regardless of which call site invokes this, fresh Plan-phase or Review-phase amendment.
 const SAM_LAYER_RULE = 'LAYER RULE: plan the smallest change that removes the cause class; never a `simulate.*` seam; say in the plan if the diff adds a status, an `agent()`, a hook or a seam; list `patch-avoided:` with the patches you rejected.'
-// #77 — design doc import (Sam + Morgan prompts only; agents/sam.md stays untouched). Harmless when the file is absent.
-const VISION_IMPORT_SAM = 'Read `@VISION.md` (thesis, target, design decisions, how we work, never, out of scope), `@ARCHITECTURE.md` (principles and their checks, patterns in use, one-way doors, where new code goes, declared exceptions) and `docs/codemap.md` at the repo root if they exist, and plan in their direction; skip silently any that is absent. '
-const VISION_IMPORT_MORGAN = 'Read `@VISION.md` and `@ARCHITECTURE.md` at the repo root if they exist and check the diff against the design decisions, the never list, the out-of-scope list, the invariants table and the patterns in use; an `exception:` line in the PR body must have its DEBT marker in the diff and an open follow-up issue, otherwise it is a FAIL; skip silently any file that is absent.\n'
-const ARCH_IMPORT_NICK = 'Read `@ARCHITECTURE.md` (where new code goes, tests named by the plan, declared exceptions) and `docs/codemap.md` at the repo root if they exist and follow them; skip silently any that is absent. '
+// #77 — architecture doc import, Sam + Morgan prompts only (agents/sam.md stays untouched). VISION.md
+// reaches every agent through the @VISION.md import of CLAUDE.md. Harmless when the file is absent.
+const ARCH_IMPORT_SAM = 'Read `@ARCHITECTURE.md` at the repo root if it exists (numbered constraints and their checks, one-way doors, declared exception) and plan within it and the design decisions of VISION.md; skip silently if absent. '
+const ARCH_IMPORT_MORGAN = 'Read `@ARCHITECTURE.md` at the repo root if it exists and check the diff against its numbered constraints and the design decisions and Never list of VISION.md; an `exception:` line in the PR body must have its DEBT marker in the diff and an open follow-up issue, otherwise it is a FAIL; skip silently if absent.\n'
 // R3 (#77): the announcement line the SCRIPT parses (oneWayDoorSignals) — one line per kind, or `none`.
 const SAM_ONE_WAY_DOOR = 'ONE-WAY-DOOR ANNOUNCEMENT: in the plan text, state on its own line for each kind the diff adds — `one-way-door: status — <what>`, `one-way-door: agent — <what>`, `one-way-door: hook — <what>`, `one-way-door: seam — <what>` — or the single line `one-way-door: none`. The script parses these lines; a kind you announce stops the run at the design step. '
 const ACCEPTANCE_PROOF_RULE = 'ACCEPTANCE PROOF RULE: (1) every acceptance item is a command you RAN in the provisioned worktree during planning; the plan carries a "Proof log" listing, per item, the command and its real output pasted verbatim (output on the base branch: green for state-preservation checks, red for the stated reason for a check the change must turn green); (2) a command you saw fail for any other reason, or could not run (missing gitignored directory, no network), is rewritten to run in the worktree or dropped, never inscribed as-is and never excused in Risks; (3) an item describes a verifiable state of the repo or branch only: never an external-world state (e.g. "no known advisory for pinned dependency X", a network service, a file present only outside the worktree) and never a negative universal claim ("no known X", "absence of Y") about anything outside the diff; write commands that run as-is from a plain bash script.'
@@ -2151,7 +2150,7 @@ const samScoutPrompt = ({ fixBlock = '', auditFixBlock = '', reviewFixBlock = ''
     `The durable history lives in the issue/PR thread and in git commits, never inside the plan (the artifact itself is gitignored build output). ` +
     `An amended plan is about the size of a fresh plan for the current scope — usually SMALLER than the previous revision, never monotonically larger. ` +
     `${SAM_LAYER_RULE} ` +
-    `${SAM_ONE_WAY_DOOR}${VISION_IMPORT_SAM}` +
+    `${SAM_ONE_WAY_DOOR}${ARCH_IMPORT_SAM}` +
     `Author the acceptance checklist against ${conventionsRule} — in particular its Format-status and Test-status acceptance-item sections: never assert a whole-repo clean state the base branch cannot satisfy. ` +
     `${ACCEPTANCE_PROOF_RULE} ` +
     `Then post an INDEX comment on issue #${issue} — never the full plan, whatever its size. The index comment is exactly: ${planMarker} alone on its first line, a condensed summary (~15 lines max), the acceptance checklist VERBATIM, and a pointer to the canonical artifact "${planPath}" in the shared worktree. ` +
@@ -2630,7 +2629,7 @@ if (after('dev', entryStage)) {
         `Run \`git -C "${wtPath}" rev-parse --abbrev-ref HEAD\`; if it is not exactly \`${expectedBranchName}\`, ` +
         `if the branch already exists locally (\`git -C "${wtPath}" rev-parse --verify --quiet refs/heads/${expectedBranchName}\` succeeds) run \`git -C "${wtPath}" switch ${expectedBranchName}\`, otherwise run \`git -C "${wtPath}" switch -c ${expectedBranchName}\`; never reset or force the branch (no \`-B\`/\`-C\`, no \`reset --hard\`), and if the switch is refused because of a dirty tree, stop and report instead of forcing. Then re-run \`git -C "${wtPath}" rev-parse --abbrev-ref HEAD\` to confirm. ` +
         `Every commit, the push and the PR head MUST be \`${expectedBranchName}\`. ` +
-        `Implement the plan on that branch. ${ARCH_IMPORT_NICK}Write meaningful tests and get the green bar: build via \`${buildCmd}\`, run unit tests via \`${testCmd}\`, and format each modified file via \`${formatCmd}\`. ` +
+        `Implement the plan on that branch. Write meaningful tests and get the green bar: build via \`${buildCmd}\`, run unit tests via \`${testCmd}\`, and format each modified file via \`${formatCmd}\`. ` +
       `When deleting repo-tracked files, use \`git rm <file>\` instead of bare \`rm\` — bare rm is sandbox-denied and burns permission rounds. ` +
       `${SANDBOX_INSTALL_HINT} ` +
       `Push the branch explicitly before opening the PR: \`git push origin ${expectedBranchName}\` (no upstream flag — the sandbox cannot write the worktree's .git/config, CC bug #51818; see .claude/rules/git-workflow.md). ` +
@@ -3239,7 +3238,7 @@ if (after('review', entryStage)) {
   let v = await callMorganGuarded(
     `Work in the shared worktree "${wtPath}". Review PR #${pr}.\n\n` +
       `${planBlock}\n\n` +
-      `${VISION_IMPORT_MORGAN}` +
+      `${ARCH_IMPORT_MORGAN}` +
       `Gate on the acceptance checklist FROM THAT PLAN, review against ${conventionsRule}, ` +
       `${regressionGuardStep}` +
       `For asset/render/human-facing lanes, BEFORE any verdict, execute the real-case live run yourself (the exact command the plan names, deps included) and machine-verify the output contract from the plan (e.g. the exact pixel/asset dimensions and named visual elements the plan calls for, screenshot non-empty, named fields written). Units mock the other side, so seam errors pass with the mock; only a taste judgment then remains for the human-gate. ` +
@@ -3371,7 +3370,7 @@ if (after('review', entryStage)) {
 
     v = await callMorganGuarded(
       `Work in the shared worktree "${wtPath}". Re-review PR #${pr} after Nick's fixes, against the SAME plan and acceptance checklist below. ` +
-        `${VISION_IMPORT_MORGAN}` +
+        `${ARCH_IMPORT_MORGAN}` +
         `Re-run the regression guard the same way: ${regressionGuardStep}` +
         `For asset/render/human-facing lanes, BEFORE any verdict, execute the real-case live run yourself (the exact command the plan names, deps included) and machine-verify the output contract from the plan (e.g. the exact pixel/asset dimensions and named visual elements the plan calls for, screenshot non-empty, named fields written). Units mock the other side, so seam errors pass with the mock; only a taste judgment then remains for the human-gate. ` +
         `${artifactProofStep}` +

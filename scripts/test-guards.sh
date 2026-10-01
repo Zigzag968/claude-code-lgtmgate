@@ -4,7 +4,8 @@
 # GUARDS_ONLY) with throwaway files under $TMPDIR — never mutates tracked files.
 # Cases: positive (same counts), 3 negative R1 counters, parser markers not counted/balanced,
 # block comments, multi-line agent calls, missing base, all-tests-wired (wired/unwired/comment-only),
-# version floor. Ends with `[test-guards] status=<ok|fail> passed=<n> failed=<n>`.
+# version floor, sam-parity, doc-budgets (at budget / over / missing, through GUARDS_ROOT).
+# Ends with `[test-guards] status=<ok|fail> passed=<n> failed=<n>`.
 set -u
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT" || exit 1
@@ -172,6 +173,27 @@ if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: sam-parity:.*LAYER RULE sent
 printf '%s\nlist patch-avoided: x\nroot-cause: y\n' "$LR" > "$T/sam-rc.md"
 run_parity "$T/sam-rc.md" "$T/sam-ok.md"
 if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: sam-parity:.*root-cause:'; then ok "sam-parity: root-cause: present -> FAIL"; else ko "sam-parity root-cause (rc=$RC) $OUT"; fi
+
+# ---- doc-budgets (#77) ----
+# mkdocs <dir> <vision lines> <architecture lines>: fake repo root holding the two docs (0 = absent)
+mkdocs() {
+  mkdir -p "$1"
+  [ "$2" -gt 0 ] && seq 1 "$2" | sed 's/^/line /' > "$1/VISION.md"
+  [ "$3" -gt 0 ] && seq 1 "$3" | sed 's/^/line /' > "$1/ARCHITECTURE.md"
+  return 0
+}
+run_budgets() { OUT="$(GUARDS_ROOT="$1" GUARDS_ONLY=budgets node scripts/guards.cjs 2>&1)"; RC=$?; }
+mkdocs "$T/d1" 20 60; run_budgets "$T/d1"
+if [ "$RC" -eq 0 ] && echo "$OUT" | grep -q '^PASS: doc-budgets: VISION.md 20/20, ARCHITECTURE.md 60/60$'; then ok "doc-budgets: exactly at budget (20/60) -> PASS"; else ko "doc-budgets at budget (rc=$RC) $OUT"; fi
+mkdocs "$T/d2" 21 60; run_budgets "$T/d2"
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: doc-budgets: VISION.md has 21 lines, budget 20'; then ok "doc-budgets: VISION.md 21 lines -> FAIL"; else ko "doc-budgets vision over (rc=$RC) $OUT"; fi
+mkdocs "$T/d3" 20 61; run_budgets "$T/d3"
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: doc-budgets: ARCHITECTURE.md has 61 lines, budget 60'; then ok "doc-budgets: ARCHITECTURE.md 61 lines -> FAIL"; else ko "doc-budgets architecture over (rc=$RC) $OUT"; fi
+mkdocs "$T/d4" 0 10; run_budgets "$T/d4"
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: doc-budgets: VISION.md missing'; then ok "doc-budgets: VISION.md absent -> FAIL"; else ko "doc-budgets missing (rc=$RC) $OUT"; fi
+mkdir -p "$T/d5"; printf 'a\nb' > "$T/d5/VISION.md"; seq 1 60 > "$T/d5/ARCHITECTURE.md"; printf 'x\n' >> "$T/d5/ARCHITECTURE.md"
+run_budgets "$T/d5"
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q 'ARCHITECTURE.md has 61 lines' && ! echo "$OUT" | grep -q 'VISION.md has'; then ok "doc-budgets: last line without newline counted, 61st appended line -> FAIL"; else ko "doc-budgets newline edge (rc=$RC) $OUT"; fi
 
 STATUS=ok; [ "$FAIL_N" -eq 0 ] || STATUS=fail
 echo "[test-guards] status=${STATUS} passed=${PASS_N} failed=${FAIL_N}"

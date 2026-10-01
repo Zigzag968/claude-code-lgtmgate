@@ -2651,20 +2651,31 @@ await testCase('T77d R3 + architectureDecisionApproved:true → announced status
   return err ? err : { ok: true }
 })
 
-// T77e (#77) — Nick's prompt carries the one-sentence ARCHITECTURE.md + codemap import; the rules
-// themselves live in the doc, never in the prompt (no DEBT marker syntax in the engine).
-await testCase('T77e Nick prompt imports @ARCHITECTURE.md and docs/codemap.md in one sentence', async () => {
+// T77e (#77, doc budgets) — ARCHITECTURE.md is imported into Sam's and Morgan's prompts only: Nick's
+// prompt carries no architecture or codemap import, and no prompt of the engine names docs/codemap.md.
+// The rules themselves live in the doc, never in the prompt (no DEBT marker syntax in the engine).
+await testCase('T77e Nick prompt imports neither ARCHITECTURE.md nor docs/codemap.md; Sam and Morgan import @ARCHITECTURE.md', async () => {
   const r = await run({
     entryStage: 'dev',
     mode: 'auto',
     simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] },
   })
-  const p = r.nickPromptPreview
-  const e1 = includes('nickPromptPreview', p, '@ARCHITECTURE.md')
-  const e2 = includes('nickPromptPreview', p, 'docs/codemap.md')
-  const e3 = p.includes('DEBT(#') ? { ok: false, msg: 'nickPromptPreview carries DEBT marker syntax; the rule belongs to ARCHITECTURE.md' } : null
-  const err = e1 || e2 || e3
-  return err ? err : { ok: true }
+  const p = String(r.nickPromptPreview || '')
+  if (!p) return { ok: false, msg: 'nickPromptPreview empty' }
+  if (p.includes('ARCHITECTURE.md')) return { ok: false, msg: 'nickPromptPreview imports ARCHITECTURE.md; it is for Sam and Morgan only' }
+  if (p.includes('docs/codemap.md')) return { ok: false, msg: 'nickPromptPreview names docs/codemap.md; no agent prompt gets it' }
+  if (p.includes('DEBT(#')) return { ok: false, msg: 'nickPromptPreview carries DEBT marker syntax; the rule belongs to ARCHITECTURE.md' }
+  const src = SUITE_ARGS.fpSource
+  if (!src) {
+    log('SKIP — T77e source checks: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  if (src.includes('docs/codemap.md')) return { ok: false, msg: 'workflow source names docs/codemap.md; no agent prompt gets it' }
+  if (src.includes('ARCH_IMPORT_NICK')) return { ok: false, msg: 'ARCH_IMPORT_NICK still present; Nick gets no architecture import' }
+  for (const use of ['${SAM_ONE_WAY_DOOR}${ARCH_IMPORT_SAM}', '`${ARCH_IMPORT_MORGAN}`']) {
+    if (!src.includes(use)) return { ok: false, msg: `workflow source lacks ${use}` }
+  }
+  return { ok: true }
 })
 
 // T77f (#77) — docs/critical-paths.md is a one-way door: a plan targeting it stops at the design
