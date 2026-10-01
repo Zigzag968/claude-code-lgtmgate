@@ -20,8 +20,11 @@
 #      via such a bump commit. Consumer repos (#145): no .claude-plugin/plugin.json in the merged tree ->
 #      log `no plugin manifest, version bump skipped` and continue; BUILD line edited only when present.
 #   5. push once (only when local HEAD differs from the remote head).
-#   6. wait until the PR reports the pushed sha with at least one check (bounded poll, cli/cli#7401),
-#      then gh pr checks --watch --fail-fast (--required when supported).
+#   6. wait until the PR reports the pushed sha with at least one check (bounded poll, cli/cli#7401), then ask whether
+#      main requires status checks (#156: classic protection, then rulesets; HTTP 403/404 = none; any other answer
+#      refuses). Required (mode: required-checks): bounded wait for them to register, then
+#      gh pr checks --watch --fail-fast --required. None (mode: no-required-checks): poll `gh pr checks --json` until
+#      the head's checks are green, restricted to config.ciChecks when set. A timeout names the mode.
 #   7. gh pr merge --merge --delete-branch (never the auto-merge flag).
 #   8. read the PR back over REST (merged == true and merged_at set); only then close, with the comment
 #      `Fixed by #<PR> (merged).`, each still-open issue named by a closing keyword (Closes/Fixes/Resolves #N,
@@ -333,21 +336,99 @@ sys.exit(0 if d.get("headRefOid") == os.environ["PUSHED"] and len(d.get("statusC
   sleep "$poll_sleep"
 done
 [ "$seen" -eq 1 ] || die "PR #$PR never reported checks for $pushed_sha after $poll_max polls; not merging"
-req=""
-if gh pr checks --help 2>&1 | grep -q -- --required; then req="--required"; fi
-# Required checks can register after other workflows (CodeQL): `--required` then exits 1 with
-# "no required checks reported". Keep polling (same bound) until they appear.
-if [ -n "$req" ]; then
-  n=0
-  # Capture first: under pipefail a `gh ... | grep -q` condition takes gh's exit 1 and never loops.
-  while out="$(gh pr checks "$PR" -R "$REPO" --required 2>&1 || true)"; printf '%s' "$out" | grep -q 'no required checks reported'; do
-    n=$((n + 1))
-    [ "$n" -lt "$poll_max" ] || die "PR #$PR never reported its required checks after $poll_max polls; not merging"
+# #156: `--required` only reports checks the base requires, through classic branch protection or a ruleset. A base with
+# neither (e.g. a private repo on GitHub Free: both APIs answer 403) never reports one, so decide the mode first.
+# Steps 3-4 merge origin/main, so the probes ask about main too.
+base_branch="main"
+# api_probe <path>: GET repos/$REPO/<path>. rc 0 + body on stdout; rc 1 on HTTP 403/404 (feature off, nothing set);
+# rc 2 on anything else, a rate-limit 403 included (message on stderr). gh ends its stderr with "... (HTTP <code>)".
+api_probe() {
+  local out rc=0
+  out="$(gh api "repos/$REPO/$1" 2>&1)" || rc=$?
+  if [ "$rc" -eq 0 ]; then printf '%s' "$out"; return 0; fi
+  case "$out" in *"rate limit"*) ;; *"(HTTP 403)"*|*"(HTTP 404)"*) return 1 ;; esac
+  echo "lead-merge: gh api repos/$REPO/$1 failed: $out" >&2; return 2
+}
+# base_requires_checks: rc 0 = $base_branch requires status checks, 1 = none, 2 = probe inconclusive. Two sources, the
+# two `gh pr checks --required` reads: classic protection (200 only with required status checks enabled) and rulesets
+# (`rules/branches/<base>` lists the active rules, one of type required_status_checks with contexts).
+base_requires_checks() {
+  local body rc=0 verdict
+  body="$(api_probe "branches/$base_branch/protection/required_status_checks")" || rc=$?
+  case "$rc" in 0) return 0 ;; 1) ;; *) return 2 ;; esac
+  rc=0
+  body="$(api_probe "rules/branches/$base_branch")" || rc=$?
+  case "$rc" in 0) ;; 1) return 1 ;; *) return 2 ;; esac
+  verdict="$(printf '%s' "$body" | python3 -c '
+import json, sys
+rules = json.load(sys.stdin)
+print("yes" if any(r.get("type") == "required_status_checks" and (r.get("parameters") or {}).get("required_status_checks") for r in rules) else "no")' 2>/dev/null)" || verdict=""
+  case "$verdict" in yes) return 0 ;; no) return 1 ;; *) return 2 ;; esac
+}
+# watch_head_checks (mode no-required-checks): `gh pr checks` has no name filter and rejects --watch with --json, so poll
+# the JSON. Scope = config.ciChecks when set (a name not reported yet is "missing", bounded by poll_max like the
+# registration race below), else every reported check. fail/cancel dies at once (--fail-fast); pending is waited out.
+watch_head_checks() {
+  local n=0 out state
+  while :; do
+    out="$(gh pr checks "$PR" -R "$REPO" --json name,bucket 2>/dev/null || true)"
+    state="$(printf '%s' "$out" | python3 -c '
+import json, sys
+try:
+    names = json.load(open(".claude/pipeline.config.json")).get("ciChecks") or []
+except (OSError, ValueError):
+    names = []
+rows = json.load(sys.stdin)
+have = [r.get("name") for r in rows]
+scope = [r for r in rows if not names or r.get("name") in names]
+gone = [x for x in names if x not in have] if names else ([] if rows else ["(none)"])
+bad = [r.get("name") for r in scope if r.get("bucket") in ("fail", "cancel")]
+if bad:
+    print("fail " + ",".join(bad))
+elif gone:
+    print("missing " + ",".join(gone))
+elif any(r.get("bucket") not in ("pass", "skipping") for r in scope):
+    print("pending")
+else:
+    print("pass")' 2>/dev/null)" || state="missing (unreadable)"
+    case "$state" in
+      pass) return 0 ;;
+      fail*) die "CI checks failed (${state#fail }); not merging" ;;
+      pending) ;;
+      *) n=$((n + 1)); [ "$n" -lt "$poll_max" ] || die "PR #$PR never reported its checks (${state#missing }) after $poll_max polls (mode: $mode); not merging" ;;
+    esac
     sleep "$poll_sleep"
   done
+}
+req=""
+if gh pr checks --help 2>&1 | grep -q -- --required; then req="--required"; fi
+mode="required-checks"
+if [ -n "$req" ]; then
+  has_rc=0; base_requires_checks || has_rc=$?
+  case "$has_rc" in
+    0) ;;
+    1) req=""; mode="no-required-checks"
+       echo "lead-merge: $base_branch requires no status checks (mode: $mode); watching the head's checks (config.ciChecks when set)" ;;
+    *) die "cannot tell whether $base_branch requires status checks; not merging" ;;
+  esac
 fi
-# shellcheck disable=SC2086
-gh pr checks "$PR" -R "$REPO" --watch --fail-fast $req || die "CI checks failed; not merging"
+if [ "$mode" = "no-required-checks" ]; then
+  watch_head_checks
+else
+  # Required checks can register after other workflows (CodeQL): `--required` then exits 1 with
+  # "no required checks reported". Keep polling (same bound) until they appear.
+  if [ -n "$req" ]; then
+    n=0
+    # Capture first: under pipefail a `gh ... | grep -q` condition takes gh's exit 1 and never loops.
+    while out="$(gh pr checks "$PR" -R "$REPO" --required 2>&1 || true)"; printf '%s' "$out" | grep -q 'no required checks reported'; do
+      n=$((n + 1))
+      [ "$n" -lt "$poll_max" ] || die "PR #$PR never reported its required checks after $poll_max polls (mode: $mode on $base_branch); not merging"
+      sleep "$poll_sleep"
+    done
+  fi
+  # shellcheck disable=SC2086
+  gh pr checks "$PR" -R "$REPO" --watch --fail-fast $req || die "CI checks failed; not merging"
+fi
 
 # --- 7. merge ------------------------------------------------------------------
 gh pr merge "$PR" -R "$REPO" --merge --delete-branch || die "gh pr merge failed"
