@@ -40,7 +40,7 @@
             "type": "command",
             "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/PostToolUse-probe-attest.sh\"",
             "timeout": 10,
-            "description": "Attest the PROBE line the lgtmgate:probe agent copies from templates/probe-run.cjs (fail-open, never blocks)"
+            "description": "Attest the PROBE and VERIFY lines the lgtmgate:probe agent copies from templates/probe-run.cjs (fail-open, never blocks)"
           }
         ]
       }
@@ -64,7 +64,7 @@
             "type": "command",
             "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/SubagentStop-probe.sh\"",
             "timeout": 10,
-            "description": "Block the lgtmgate:probe agent from stopping without an attested PROBE line (only agent_type lgtmgate:probe)"
+            "description": "Block the lgtmgate:probe agent from stopping without attested PROBE and VERIFY entries for its call (only agent_type lgtmgate:probe)"
           }
         ]
       }

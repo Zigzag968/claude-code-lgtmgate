@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# PostToolUse(Bash) — attest that a PROBE line really came out of templates/probe-run.cjs (#80).
+# PostToolUse(Bash) — attest that a PROBE / VERIFY line really came out of templates/probe-run.cjs (#80, #83).
 # Only for the lgtmgate:probe agent (spike #79: agent_type is namespaced) AND a probe-run command.
-# Appends {agent_id, tool_use_id, line, ts} to <cwd>/.pipeline/probe-attest.jsonl. The command may be
-# prefixed by `cd <dir> &&` (bare, single- or double-quoted dir, #82): the attestation then goes to
-# <dir>/.pipeline/probe-attest.jsonl (where probe-run.cjs --verify reads it) AND, if different, to
-# <cwd>/.pipeline/probe-attest.jsonl (where SubagentStop-probe.sh looks). Only PROBE lines are
-# attested, never a VERIFY line. Never blocks: any other case, and any error, is a silent exit 0
+# Appends {agent_id, tool_use_id, kind, label, round, line, ts} to <cwd>/.pipeline/probe-attest.jsonl:
+# kind=probe for the PROBE line of a run command, kind=verify for the VERIFY line of a `--verify`
+# command; label/round come from the command's --label/--round (null when absent), so an entry is
+# bound to the call it answers. The command may be prefixed by `cd <dir> &&` (bare, single- or
+# double-quoted dir, #82): the attestation then goes to <dir>/.pipeline/probe-attest.jsonl (where
+# probe-run.cjs --verify reads it) AND, if different, to <cwd>/.pipeline/probe-attest.jsonl (where
+# SubagentStop-probe.sh looks). Never blocks: any other case, and any error, is a silent exit 0
 # (fail-open).
 set -uo pipefail
 trap 'exit 0' ERR
@@ -30,15 +32,24 @@ fi
 [[ "$REST" =~ $RE ]] || exit 0
 
 STDOUT="$(printf '%s' "$INPUT" | jq -r '.tool_response.stdout // empty' 2>/dev/null)"
-LINE="$(printf '%s\n' "$STDOUT" | grep '^PROBE ' | tail -1)"
+KIND=probe
+PREFIX='PROBE '
+case " $REST " in *" --verify "*) KIND=verify; PREFIX='VERIFY ' ;; esac
+LINE="$(printf '%s\n' "$STDOUT" | grep "^$PREFIX" | tail -1)"
 [ -n "$LINE" ] || exit 0
+
+LABEL=""; ROUND=""
+[[ "$REST" =~ [[:space:]]--label[[:space:]]+([A-Za-z0-9._-]+) ]] && LABEL="${BASH_REMATCH[1]}"
+[[ "$REST" =~ [[:space:]]--round[[:space:]]+([0-9]+) ]] && ROUND="${BASH_REMATCH[1]}"
 
 CWD="$(printf '%s' "$INPUT" | jq -r '.cwd // empty' 2>/dev/null)"
 [ -n "$CWD" ] || CWD="$PWD"
 ENTRY="$(jq -cn --arg a "$(printf '%s' "$INPUT" | jq -r '.agent_id // empty')" \
        --arg t "$(printf '%s' "$INPUT" | jq -r '.tool_use_id // empty')" \
+       --arg k "$KIND" --arg lb "$LABEL" --arg r "$ROUND" \
        --arg l "$LINE" --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-       '{agent_id:$a, tool_use_id:$t, line:$l, ts:$ts}' 2>/dev/null)" || exit 0
+       '{agent_id:$a, tool_use_id:$t, kind:$k, label:(if $lb == "" then null else $lb end),
+         round:(if $r == "" then null else ($r | tonumber) end), line:$l, ts:$ts}' 2>/dev/null)" || exit 0
 [ -n "$ENTRY" ] || exit 0
 TARGETS="$CWD"
 if [ -n "$CDDIR" ]; then

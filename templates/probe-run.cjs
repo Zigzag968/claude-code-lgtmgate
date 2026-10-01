@@ -23,7 +23,8 @@
 //   --attest /abs/probe-attest.jsonl
 // Does NOT re-run the command. Prints ONE line (exit 0):
 //   VERIFY ok line=<PROBE line>                      the record exists and the attestation file
-//                                                    holds an entry equal to that recomputed line
+//                                                    holds an entry equal to that recomputed line,
+//                                                    attested for the SAME label and round (#83)
 //   VERIFY fail reason=no-record|no-attestation|sha-mismatch
 // The engine has no filesystem, so this is how it learns the copied PROBE line is the one the
 // script printed (hooks/PostToolUse-probe-attest.sh wrote the attestation).
@@ -84,6 +85,28 @@ const PARSERS = {
     }
     return { error: 'bad-freshness' }
   },
+  // preflight.sh output (E2.4, #83): ONE JSON object, mode dev|branch. Fields that could not be read are
+  // null; a malformed field is normalised to null, never trusted. No regex.
+  preflight(stdout) {
+    let v
+    try { v = JSON.parse(String(stdout)) } catch (_) { return { error: 'bad-json' } }
+    if (v === null || typeof v !== 'object' || Array.isArray(v)) return { error: 'bad-json' }
+    const strArr = (x) => (Array.isArray(x) && x.every((i) => typeof i === 'string') ? x : null)
+    const str = (x) => (typeof x === 'string' && x.length > 0 ? x : null)
+    if (v.mode === 'dev') {
+      return {
+        mode: 'dev',
+        planStale: strArr(v.planStale),
+        openSubIssues: strArr(v.openSubIssues),
+        gitDir: str(v.gitDir),
+        writable: typeof v.writable === 'boolean' ? v.writable : null,
+      }
+    }
+    if (v.mode === 'branch') {
+      return { mode: 'branch', headRef: str(v.headRef), branchPrefix: typeof v.branchPrefix === 'string' ? v.branchPrefix : null }
+    }
+    return { error: 'bad-mode' }
+  },
 }
 
 const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex')
@@ -115,11 +138,14 @@ function probeLine(parser, record) {
   return `PROBE name=${parser} exit=${record.exit} sha=${sha256(record.stdout)} json=${JSON.stringify(json)}`
 }
 
-// Pure: record (or null) + attestation entries [{line}] -> {ok:true,line} | {ok:false,reason} (#82).
-function verifyRecord(parser, record, entries) {
+// Pure: record (or null) + attestation entries [{line,label,round}] (+ optional bind {label,round})
+// -> {ok:true,line} | {ok:false,reason} (#82). With bind, only entries attested for the same call
+// (same label and round) count (#83).
+function verifyRecord(parser, record, entries, bind) {
   if (!record) return { ok: false, reason: 'no-record' }
   const prefix = `PROBE name=${parser} `
-  const mine = (entries || []).filter((e) => e && typeof e.line === 'string' && e.line.startsWith(prefix))
+  const mine = (entries || []).filter((e) => e && typeof e.line === 'string' && e.line.startsWith(prefix) &&
+    (!bind || (e.label === bind.label && e.round === bind.round)))
   if (mine.length === 0) return { ok: false, reason: 'no-attestation' }
   const line = probeLine(parser, record)
   return mine.some((e) => e.line === line) ? { ok: true, line } : { ok: false, reason: 'sha-mismatch' }
@@ -169,7 +195,7 @@ function main() {
   }
   const file = path.join(a.out, `${a.label}-r${Number(a.round)}.json`)
   if (a.verify) {
-    const v = verifyRecord(a.parser, readRecord(file), readJsonl(a.attest))
+    const v = verifyRecord(a.parser, readRecord(file), readJsonl(a.attest), { label: a.label, round: Number(a.round) })
     process.stdout.write((v.ok ? `VERIFY ok line=${v.line}` : `VERIFY fail reason=${v.reason}`) + '\n')
     process.exit(0)
   }
