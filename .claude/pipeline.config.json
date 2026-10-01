@@ -12,6 +12,7 @@
   },
   "ciChecks": ["guards", "smoke-install"],
   "oneWayDoorKinds": ["status", "agent", "hook", "seam"],
+  "engineRepo": true,
   "oneWayDoorPaths": [
     "hooks/**",
     "!hooks/test-*",

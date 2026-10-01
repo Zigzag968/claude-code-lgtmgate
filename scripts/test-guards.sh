@@ -4,7 +4,8 @@
 # GUARDS_ONLY) with throwaway files under $TMPDIR — never mutates tracked files.
 # Cases: positive (same counts), 3 negative R1 counters, parser markers not counted/balanced,
 # block comments, multi-line agent calls, missing base, all-tests-wired (wired/unwired/comment-only),
-# version floor, sam-parity, doc-budgets (at budget / over / missing / per-line cap, through GUARDS_ROOT),
+# version floor, sam-parity (PLAN RULE both sides, LAYER RULE workflow only, no engine vocabulary in the persona),
+# doc-budgets (at budget / over / missing / per-line cap, through GUARDS_ROOT),
 # instructions-wired (imports outside code, once each, no @AGENTS.md, AGENTS.md names both, omitClaudeMd).
 # Ends with `[test-guards] status=<ok|fail> passed=<n> failed=<n>`.
 set -u
@@ -190,19 +191,26 @@ run_wired "$T/w5"
 if [ "$RC" -ne 0 ]; then ok "suite named only in a step name (not a run:) -> FAIL"; else ko "name-only (rc=$RC) $OUT"; fi
 
 # ---- sam-parity ----
+# PR = neutral PLAN_RULE (persona + workflow), LR = engine LAYER_RULE (workflow only; the persona must not carry it, #163)
+PR="$(node -e "const s=require('fs').readFileSync('scripts/guards.cjs','utf8');console.log(/const PLAN_RULE = '(.*)'\n/.exec(s)[1])")"
 LR="$(node -e "const s=require('fs').readFileSync('scripts/guards.cjs','utf8');console.log(/const LAYER_RULE = '(.*)'\n/.exec(s)[1])")"
-printf '%s\nlist patch-avoided: x\n' "$LR" > "$T/sam-ok.md"
+printf '%s\nlist patch-avoided: x\n' "$PR" > "$T/sam-ok.md"
+printf '%s\n%s\nlist patch-avoided: x\n' "$PR" "$LR" > "$T/sam-js-ok.md"
 run_parity() { OUT="$(GUARDS_ONLY=parity GUARDS_SAM_FILE="$1" GUARDS_SAM_JS_FILE="$2" node scripts/guards.cjs 2>&1)"; RC=$?; }
-run_parity "$T/sam-ok.md" "$T/sam-ok.md"
-if [ "$RC" -eq 0 ] && echo "$OUT" | grep -q '^PASS: sam-parity'; then ok "sam-parity: both sides carry token + sentence -> PASS"; else ko "sam-parity positive (rc=$RC) $OUT"; fi
+run_parity "$T/sam-ok.md" "$T/sam-js-ok.md"
+if [ "$RC" -eq 0 ] && echo "$OUT" | grep -q '^PASS: sam-parity'; then ok "sam-parity: persona carries PLAN RULE + token, workflow adds the LAYER RULE -> PASS"; else ko "sam-parity positive (rc=$RC) $OUT"; fi
 printf 'nothing here\n' > "$T/sam-notoken.md"
-run_parity "$T/sam-notoken.md" "$T/sam-ok.md"
+run_parity "$T/sam-notoken.md" "$T/sam-js-ok.md"
 if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: sam-parity:.*lacks the token patch-avoided:'; then ok "sam-parity: token missing on one side -> FAIL"; else ko "sam-parity token (rc=$RC) $OUT"; fi
-printf 'list patch-avoided: x\n' > "$T/sam-nosentence.md"
-run_parity "$T/sam-ok.md" "$T/sam-nosentence.md"
-if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: sam-parity:.*LAYER RULE sentence'; then ok "sam-parity: sentence missing on one side -> FAIL"; else ko "sam-parity sentence (rc=$RC) $OUT"; fi
-printf '%s\nlist patch-avoided: x\nroot-cause: y\n' "$LR" > "$T/sam-rc.md"
-run_parity "$T/sam-rc.md" "$T/sam-ok.md"
+printf '%s\nlist patch-avoided: x\n' "$LR" > "$T/sam-js-noplan.md"
+run_parity "$T/sam-ok.md" "$T/sam-js-noplan.md"
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: sam-parity:.*PLAN RULE sentence'; then ok "sam-parity: PLAN RULE sentence missing in the workflow -> FAIL"; else ko "sam-parity plan sentence (rc=$RC) $OUT"; fi
+run_parity "$T/sam-ok.md" "$T/sam-ok.md"
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: sam-parity:.*LAYER RULE sentence'; then ok "sam-parity: LAYER RULE sentence missing in the workflow -> FAIL"; else ko "sam-parity layer sentence (rc=$RC) $OUT"; fi
+run_parity "$T/sam-js-ok.md" "$T/sam-js-ok.md"
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: sam-parity:.*engine vocabulary'; then ok "sam-parity: persona carrying the engine LAYER RULE -> FAIL engine vocabulary"; else ko "sam-parity engine vocabulary (rc=$RC) $OUT"; fi
+printf '%s\nlist patch-avoided: x\nroot-cause: y\n' "$PR" > "$T/sam-rc.md"
+run_parity "$T/sam-rc.md" "$T/sam-js-ok.md"
 if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: sam-parity:.*root-cause:'; then ok "sam-parity: root-cause: present -> FAIL"; else ko "sam-parity root-cause (rc=$RC) $OUT"; fi
 
 # ---- doc-budgets (#77) ----

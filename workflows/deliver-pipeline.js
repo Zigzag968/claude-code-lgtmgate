@@ -29,6 +29,7 @@ export const meta = {
 //                   commitHygiene:{squashBeforeHandoff,maxCommits}, commentHygiene:bool,
 //                   oneWayDoorPaths:[] (optional; R3 path globs/prefixes, default none; see oneWayDoorSignals),
 //                   oneWayDoorKinds:[] (optional; R3 kinds among status|agent|hook|seam, default none),
+//                   engineRepo:true (optional; marks the repo that IS this plugin: engine-only rules, default absent = consumer; see engineRules),
 //                   repo:'owner/repo' }  // repo: code repo for cross-repo runs; absent -> cwd-resolved
 //   config      — REQUIRED object: the parsed `.claude/pipeline.config.json`, supplied by the Lead. Absent or
 //                 not an object (e.g. a JSON string) -> throws before any agent call (#13, #12).
@@ -37,8 +38,8 @@ export const meta = {
 //                 read today (#61). Gitignored, machine-local, never versioned. Absent/garbage -> {}.
 //   pmReview    — run Mia before Sam (default false)
 //   issueType   — the issue's type, from its `type:*` label (e.g. 'bug', 'feature', 'chore'); optional,
-//                 absent = not a bug. With 'bug' AND a Sam target under `workflows/`, the R2 fixture
-//                 acceptance item is injected into Nick's prompt (#76). A launch arg, not a simulate key.
+//                 absent = not a bug. With 'bug' AND a Sam target under `workflows/` AND config.engineRepo
+//                 is true, the R2 fixture acceptance item is injected into Nick's prompt (#76, #163). A launch arg, not a simulate key.
 //   scoutAgent  — agent type for the scout/plan stage (default 'Sam'). Lets the consuming
 //                 project route to a different scout than Sam — e.g. a domain-specific
 //                 planner it registers itself — while keeping the same plan contract
@@ -218,7 +219,7 @@ export const meta = {
 // `version`, checked against plugin.json by templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '1.0.0-beta.2', cutFrom: 'f9bde6b' }
+const BUILD = { plugin: 'lgtmgate', version: '1.0.0-beta.3', cutFrom: '16b3b9b' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -1200,6 +1201,16 @@ function oneWayDoorSignals(plan, targetFiles, ctx = {}) {
 }
 // --- oneWayDoor:end ---
 
+// --- engineRules:start --- (pure & self-contained — engine-only rules, emitted only for the repo that IS this plugin, #163)
+// `engineRepo: true` in the project's own config is how a repo says it IS this plugin; any other value or
+// absence is a consumer (fail-closed to the neutral text). The neutral PLAN RULE keeps the discipline for
+// everyone (smallest change, `patch-avoided:`); the engine's own vocabulary moves behind the flag.
+const SAM_PLAN_RULE = 'PLAN RULE: plan the smallest change that removes the cause class; list `patch-avoided:` with the patches you rejected.'
+const SAM_ENGINE_LAYER_RULE = 'LAYER RULE: plan the smallest change that removes the cause class; never a `simulate.*` seam; say in the plan if the diff adds a status, an `agent()`, a hook or a seam; list `patch-avoided:` with the patches you rejected.'
+const isEngineRepo = (cfg) => cfg !== null && typeof cfg === 'object' && cfg.engineRepo === true
+const samLayerRule = (cfg) => isEngineRepo(cfg) ? SAM_ENGINE_LAYER_RULE : SAM_PLAN_RULE
+// --- engineRules:end ---
+
 // --- safeAbsorbedIssues:start --- (pure & self-contained — keep extractable by the consuming project's tests)
 // Sanitizes Sam's declared `absorbedIssues` (#174) BEFORE it is spread into the Closes# line handed
 // to Nick. Digit-only charset, deduped, capped at 20 entries, and the epic's own issue number is
@@ -2162,7 +2173,9 @@ if (after('plan', entryStage)) {
 // extraction, apart from the one new acceptanceChecklist sentence (see the OUTPUT-SPEC line).
 // Reads `pm`/`diag` (top-level, see above) by closure — both are still null/populated correctly
 // regardless of which call site invokes this, fresh Plan-phase or Review-phase amendment.
-const SAM_LAYER_RULE = 'LAYER RULE: plan the smallest change that removes the cause class; never a `simulate.*` seam; say in the plan if the diff adds a status, an `agent()`, a hook or a seam; list `patch-avoided:` with the patches you rejected.'
+// #163 — the engine's own layer rule (simulate seam, status/agent/hook/seam) only for the repo whose config sets
+// engineRepo:true; every consumer Sam gets the neutral PLAN RULE (see engineRules above). Pinned by T163a, T163c.
+const SAM_LAYER_RULE = samLayerRule(config)
 // #77 — product direction, Sam + Morgan prompts only, tool-neutral: agents receive each repo's own
 // instructions natively (Claude Code loads the project's CLAUDE.md and its imports), so the engine names no
 // file and imposes no doc on a consumer; a repo that states no direction gets the same run.
@@ -2668,7 +2681,8 @@ if (after('dev', entryStage)) {
   const epicRef = subGate.blocked ? `(see #${issue})` : 'Closes #' + issue
   const closesLine = [epicRef, ...samAbsorbedIssues.map(n => 'Closes #' + n)].join(', ')
   // R2 (#76): deterministic — the fixture acceptance item is decided here, never by Nick's judgment.
-  const r2Applies = issueType === 'bug' && safePlanTargets(samTargetFiles).some(p => p.startsWith('workflows/'))
+  // Engine-repo only (#163): the fixtures dir and replay script it names exist only in this plugin's repo.
+  const r2Applies = isEngineRepo(config) && issueType === 'bug' && safePlanTargets(samTargetFiles).some(p => p.startsWith('workflows/'))
   const r2Note = r2Applies
     ? `R2 fixture rule (issue #${issue}): add this acceptance item to the checklist verbatim — "fixture \`fixtures/incidents/${issue}-*.json\` present, replayed red on base and green on the branch by \`scripts/run-offline.cjs\`". If no such fixture exists in the branch, run \`gh issue edit ${issue} -R ${repo || '<repo>'} --add-label no-fixture\` and use \`Refs #${issue}\` instead of \`Closes #${issue}\` on the first line of the PR body (the issue then stays open). `
     : ''

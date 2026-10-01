@@ -117,7 +117,7 @@ resolved `ready`/`no-go`/`escalate`), do a check-in pass rather than silently ab
 
 ### R2 fixture rule (`no-fixture`)
 - The Lead passes `issueType` in the Workflow args, taken from the issue's `type:*` label (e.g. `bug`, `feature`, `chore`); omit it when unknown (= not a bug).
-- Workflow JS computes `r2Applies` = `issueType === 'bug'` AND a Sam target file under `workflows/`; Nick is never asked to judge it.
+- Workflow JS computes `r2Applies` = `issueType === 'bug'` AND a Sam target file under `workflows/` AND `config.engineRepo` is true (this plugin's own repo); a consumer run never carries the item. Nick is never asked to judge it.
 - When it applies, Nick's Dev-phase prompt carries the acceptance item: `fixtures/incidents/<issue>-*.json` present, replayed red on base and green on branch by `scripts/run-offline.cjs`.
 - No such fixture in the branch: Nick sets label `no-fixture` on the issue and uses `Refs #<N>` (not `Closes`) on the PR body's first line, so the issue stays open.
 - The Lead treats a `no-fixture` issue as not done.
