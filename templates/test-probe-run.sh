@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Regression test for templates/probe-run.cjs (E2.2, #80) and templates/preflight.sh (#83): pure parsers replayed against
+# Regression test for templates/probe-run.cjs (E2.2, #80), templates/preflight.sh (#83) and templates/pr-state.sh (#84): pure parsers replayed against
 # fixtures/probes/*.raw, plus end-to-end runs of the CLI in a temp dir. No network. bash 3.2 safe.
 set -uo pipefail
 
@@ -250,6 +250,84 @@ GHEOF
   check "preflight.sh unknown mode -> mode null (parser reports bad-mode)" "$ok"
 else
   echo "SKIP - preflight.sh e2e needs jq and git"
+fi
+
+# (j) pr-state.sh end to end (#84): stub gh first on PATH. No network.
+PS="$SCRIPT_DIR/pr-state.sh"
+if command -v jq >/dev/null 2>&1; then
+  PSD="$WORK/ps"; mkdir -p "$PSD/bin" "$PSD/wt"
+  cat > "$PSD/bin/gh" <<'GHEOF'
+#!/usr/bin/env bash
+[ -n "${GH_FAIL:-}" ] && exit 1
+case "$*" in
+  *"pr view"*)
+    cat <<'JSON'
+{"headRefName":"feat/issue-84","headRefOid":"abc123","body":"hello body","mergeable":"MERGEABLE","mergeStateStatus":"CLEAN",
+ "commits":[{"committedDate":"2026-01-01T00:10:00Z"},{"committedDate":"2026-01-01T00:20:00Z"}],
+ "comments":[{"id":"IC_1","isMinimized":false,"body":"<!-- pipeline-review-round 1 -->\nverdict"},
+             {"id":"IC_2","isMinimized":true,"body":"<!-- pipeline-review-round 0 -->\nold"},
+             {"id":"IC_3","isMinimized":false,"body":"unrelated comment"}]}
+JSON
+    ;;
+  *"issue list"*)
+    if [ -n "${GH_MANY:-}" ]; then
+      jq -nc '[range(0;1000) | {number:., createdAt:"2026-01-01T00:40:00Z", url:"u"}]'
+    else
+      echo '[{"number":90,"createdAt":"2026-01-01T00:40:00Z","url":"https://github.com/o/r/issues/90","title":"x"},{"number":91,"createdAt":"2026-01-01T00:50:00Z","url":"https://github.com/o/r/issues/91"}]'
+    fi
+    ;;
+  *) exit 1 ;;
+esac
+GHEOF
+  chmod +x "$PSD/bin/gh"
+
+  OUT="$(PATH="$PSD/bin:$PATH" bash "$PS" --pr 7 --wt "$PSD/wt" --repo o/r)"; RC=$?
+  ok=0
+  [ "$RC" -eq 0 ] && [ "$(printf '%s\n' "$OUT" | wc -l | tr -d ' ')" = "1" ] && ok=1
+  check "pr-state.sh: exit 0 and exactly one line" "$ok"
+  ok=0
+  [ "$(printf '%s' "$OUT" | jq -c '[.headRefName, .headRefOid, .mergeable, .mergeStateStatus, .lastCommitDate, .commitCount]')" = '["feat/issue-84","abc123","MERGEABLE","CLEAN","2026-01-01T00:20:00Z",2]' ] && ok=1
+  check "pr-state.sh: head, mergeability, last commit date and commit count from one gh call" "$ok"
+  ok=0
+  [ "$(printf '%s' "$OUT" | jq -c '.reviewCommentIds')" = '["IC_1"]' ] && ok=1
+  check "pr-state.sh: reviewCommentIds keeps only un-minimized pipeline-review-round comments" "$ok"
+  ok=0
+  printf '%s' "$OUT" | jq -e '(.bodyDigest | test("^[0-9a-f]{12}$")) and (.now | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]{8}Z$"))' >/dev/null 2>&1 && ok=1
+  check "pr-state.sh: 12-hex bodyDigest and an ISO now" "$ok"
+  ok=0
+  [ "$(printf '%s' "$OUT" | jq -c '[.openIssues, .openIssuesTruncated]')" = '[null,false]' ] && ok=1
+  check "pr-state.sh: openIssues is null without --since" "$ok"
+
+  OUT2="$(PATH="$PSD/bin:$PATH" bash "$PS" --pr 7 --wt "$PSD/wt" --repo o/r --since 2026-01-01T00:00:00Z)"
+  ok=0
+  [ "$(printf '%s' "$OUT2" | jq -c '[(.openIssues | map(.number)), .openIssuesTruncated]')" = '[[90,91],false]' ] && ok=1
+  check "pr-state.sh: --since lists the open issues created in the window (number, createdAt, url only)" "$ok"
+  ok=0
+  [ "$(printf '%s' "$OUT" | jq -r .bodyDigest)" = "$(printf '%s' "$OUT2" | jq -r .bodyDigest)" ] && ok=1
+  check "pr-state.sh: bodyDigest is stable for an unchanged body" "$ok"
+
+  OUT3="$(GH_MANY=1 PATH="$PSD/bin:$PATH" bash "$PS" --pr 7 --wt "$PSD/wt" --since 2026-01-01T00:00:00Z)"
+  ok=0
+  [ "$(printf '%s' "$OUT3" | jq -c '[.openIssues, .openIssuesTruncated]')" = '[null,true]' ] && ok=1
+  check "pr-state.sh: exactly the scan limit (1000) issues -> openIssues null, openIssuesTruncated true" "$ok"
+
+  OUT4="$(GH_FAIL=1 PATH="$PSD/bin:$PATH" bash "$PS" --pr 7 --wt "$PSD/wt" --since 2026-01-01T00:00:00Z)"; RC=$?
+  ok=0
+  [ "$RC" -eq 0 ] && [ "$(printf '%s\n' "$OUT4" | wc -l | tr -d ' ')" = "1" ] \
+    && [ "$(printf '%s' "$OUT4" | jq -c '[.headRefOid, .bodyDigest, .commitCount, .reviewCommentIds, .openIssues]')" = '[null,null,null,null,null]' ] \
+    && printf '%s' "$OUT4" | jq -e '.now | length > 0' >/dev/null 2>&1 && ok=1
+  check "pr-state.sh: failing gh -> nulls but now still set, exit 0, one line" "$ok"
+
+  ok=0
+  out5="$(PATH="$PSD/bin:$PATH" bash "$PS" --pr 7 --wt "$PSD/wt" --repo o/r | node -e '
+    const { PARSERS } = require(process.argv[1])
+    const v = PARSERS["pr-state"](require("fs").readFileSync(0, "utf8"), "", 0)
+    process.stdout.write(v.error ? "ERR" : v.headRefOid + ":" + v.commitCount)
+  ' "$PR")"
+  [ "$out5" = "abc123:2" ] && ok=1
+  check "pr-state.sh output round-trips through the pr-state parser" "$ok"
+else
+  echo "SKIP - pr-state.sh e2e needs jq"
 fi
 
 # (g) agents/probe.md tools: lists exactly Bash
