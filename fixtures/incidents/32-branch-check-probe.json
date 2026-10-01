@@ -1,0 +1,103 @@
+{
+  "name": "32-branch-check-probe",
+  "note": "incident #32: the branch-check agent fabricated a head ref; the pre-Dev reads and the head ref now come from one script-run probe (preflight.sh), so the run proceeds on the real head ref. Run shape borrowed from the #131 run (preflight-stuck skeleton, synthetic-raw probe objects).",
+  "args": {
+    "pluginRoot": "/plugin",
+    "issue": 32,
+    "brief": "fix slugify accents",
+    "wtPath": "/wt/root/issue-32",
+    "config": {},
+    "mode": "auto"
+  },
+  "calls": {
+    "probe-32-provision-provision-r0": {
+      "line": "PROBE name=provision exit=0 sha=30ad404e7bf922808eeb13427c66400303e810a9392f80082fb0abe2fc6fc271 cmd=36ea1f1c9380a1b5b2d374af562899cb1fb54a369f5ab2187f7f519bc72f2ec4 json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}",
+      "verify": "VERIFY ok line=PROBE name=provision exit=0 sha=30ad404e7bf922808eeb13427c66400303e810a9392f80082fb0abe2fc6fc271 cmd=36ea1f1c9380a1b5b2d374af562899cb1fb54a369f5ab2187f7f519bc72f2ec4 json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}"
+    },
+    "probe-32-provision-freshness-provision-freshness-r0": {
+      "line": "PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b cmd=a3bf7db4662cb5f44b6123f8fd493ffb0fab32352fb8052decc625e219185aea json={\"state\":\"fresh\",\"behind\":0,\"own\":0}",
+      "verify": "VERIFY ok line=PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b cmd=a3bf7db4662cb5f44b6123f8fd493ffb0fab32352fb8052decc625e219185aea json={\"state\":\"fresh\",\"behind\":0,\"own\":0}"
+    },
+    "diagnose-issue-32": {
+      "confirmed": true,
+      "evidence": "reproduced: `node -e` prints the wrong slug",
+      "actualCause": "accent stripping",
+      "laneOk": true,
+      "persistentStateSignal": false,
+      "authSecurityBoundarySignal": false,
+      "deployConfigSignal": false,
+      "immatureVendorApiSignal": false
+    },
+    "scout-issue-32-1": {
+      "decision": "GO",
+      "plan": "## Plan\n1. src/slugify.js: transliterate before stripping\n\n## Acceptance checklist\n- [ ] `npm test` passes",
+      "rationale": "",
+      "targetFiles": [
+        "src/slugify.js"
+      ],
+      "absorbedIssues": [],
+      "acceptanceChecklist": "- [ ] `npm test` passes"
+    },
+    "plan-check-32-1": {
+      "verdict": "CONFORMING",
+      "issues": []
+    },
+    "probe-32-preflight-dev-r0": {
+      "line": "PROBE name=preflight exit=0 sha=4bdeda47f0f6da268b4ba8e6c9859cf4722df806996b568458597946eb068401 cmd=3cfa7c027c140156495f230fcfed332456e6c86a6dd2cecf37a646ea7b0e5c58 json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/wt/root/.git/worktrees/issue-32\",\"writable\":true}",
+      "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=4bdeda47f0f6da268b4ba8e6c9859cf4722df806996b568458597946eb068401 cmd=3cfa7c027c140156495f230fcfed332456e6c86a6dd2cecf37a646ea7b0e5c58 json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/wt/root/.git/worktrees/issue-32\",\"writable\":true}"
+    },
+    "nick-issue-32": {
+      "prNumber": 42,
+      "branch": "features/issue-32",
+      "testsPass": true,
+      "summary": "opened PR #42"
+    },
+    "probe-32-preflight-branch-r0": {
+      "line": "PROBE name=preflight exit=0 sha=406ca30a9535d79799e921ad32d26944d2f86e9ea34b60d2f2a7a325a421d02f cmd=2a6187f8f96d3e0b87c5fb7aba202ad33d6c29931b7274b95481ebb15acfe384 json={\"mode\":\"branch\",\"headRef\":\"features/issue-32\",\"branchPrefix\":\"\"}",
+      "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=406ca30a9535d79799e921ad32d26944d2f86e9ea34b60d2f2a7a325a421d02f cmd=2a6187f8f96d3e0b87c5fb7aba202ad33d6c29931b7274b95481ebb15acfe384 json={\"mode\":\"branch\",\"headRef\":\"features/issue-32\",\"branchPrefix\":\"\"}"
+    },
+    "probe-32-git-rev-list-count-worktree-behind-42-r0": {
+      "line": "PROBE name=git-rev-list-count exit=0 sha=9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa cmd=52a874824e2461a957512d8528b0770f33995362b433810b5e48db6c3916c94a json={\"count\":0}",
+      "verify": "VERIFY ok line=PROBE name=git-rev-list-count exit=0 sha=9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa cmd=52a874824e2461a957512d8528b0770f33995362b433810b5e48db6c3916c94a json={\"count\":0}"
+    },
+    "preflight-32-42-0": {
+      "pass": false,
+      "issues": [
+        "PR #42 required check 'guards' is in FAILURE state on GitHub"
+      ],
+      "failedChecks": [
+        {
+          "name": "guards",
+          "step": "Run scripts/test-run-offline.sh",
+          "logTail": "guards\tRun scripts/test-run-offline.sh\tTraceback (most recent call last):\nguards\tRun scripts/test-run-offline.sh\tKeyError: 'merge-state-42-0'"
+        }
+      ]
+    },
+    "preflight-32-42-1": {
+      "pass": false,
+      "issues": [
+        "PR #42 required check 'guards' is in FAILURE state on GitHub"
+      ],
+      "failedChecks": [
+        {
+          "name": "guards",
+          "step": "Run scripts/test-run-offline.sh",
+          "logTail": "guards\tRun scripts/test-run-offline.sh\tTraceback (most recent call last):\nguards\tRun scripts/test-run-offline.sh\tKeyError: 'merge-state-42-0'"
+        }
+      ]
+    },
+    "nick-preflight-fix-32-42": {
+      "prNumber": 42,
+      "branch": "features/issue-32",
+      "testsPass": true,
+      "summary": "opened PR #42"
+    }
+  },
+  "expect": {
+    "status": "preflight-stuck",
+    "logsInclude": [
+      "KeyError: 'merge-state-42-0'",
+      "Run scripts/test-run-offline.sh"
+    ]
+  }
+}

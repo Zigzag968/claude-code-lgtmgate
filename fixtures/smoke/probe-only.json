@@ -1,0 +1,25 @@
+{
+  "name": "probe-only",
+  "note": "probe-run foundation (#80): probe() reached through the probeOnly arg; the probe agent answers with the exact PROBE line probe-run.cjs prints for printf 'hi\\n'",
+  "args": {
+    "pluginRoot": "/plugin",
+    "issue": 80,
+    "brief": "probe foundation",
+    "wtPath": "/wt/root/issue-80",
+    "config": { "branchPrefix": "features/" },
+    "mode": "auto",
+    "probeOnly": { "name": "lines", "cmd": "printf 'hi\\n'", "label": "selftest", "round": 0 }
+  },
+  "calls": {
+    "probe-80-lines-selftest-r0": {
+      "line": "PROBE name=lines exit=0 sha=98ea6e4f216f2fb4b69fff9b3a44842c38686ca685f3f55dc48c5d3fb1107be4 cmd=05cabbde9ed45f71fc2d5268d563df5d2498c0f21cfdd4462924b1836c043364 json={\"lines\":[\"hi\"]}",
+      "verify": "VERIFY ok line=PROBE name=lines exit=0 sha=98ea6e4f216f2fb4b69fff9b3a44842c38686ca685f3f55dc48c5d3fb1107be4 cmd=05cabbde9ed45f71fc2d5268d563df5d2498c0f21cfdd4462924b1836c043364 json={\"lines\":[\"hi\"]}"
+    }
+  },
+  "expect": {
+    "status": "dry-run-ok",
+    "reason": "probe-only",
+    "trace": ["probe:lines:haiku"],
+    "logsInclude": []
+  }
+}

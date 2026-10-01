@@ -1,7 +1,8 @@
 {
   "name": "99-gitdir-probe-prose",
-  "note": "incident 2026-09-30 (#99): the probe command was refused by Bash(rm *) deny and the agent answered NOT_WRITABLE|<path> followed by prose; the parser kept the prose as gitDir. Raw outputs captured from the real run journal (issue 33).",
+  "note": "incident 2026-09-30 (#99): the probe command was refused by Bash(rm *) deny and the agent answered NOT_WRITABLE|<path> followed by prose; the parser kept the prose as gitDir. Since #83 the git-dir read is the structured gitDir/writable fields of the preflight probe, so the prose incident is structurally impossible; the fixture keeps the not-writable escalate with the real path.",
   "args": {
+    "pluginRoot": "/plugin",
     "issue": 33,
     "brief": "Remove git checkout -B from Nick prompt",
     "wtPath": "/wt/root/issue-33",
@@ -40,8 +41,14 @@
     "mode": "auto"
   },
   "calls": {
-    "provision-33": "WARN optional src missing: /repo/.env\nPROVISION-EXIT:0",
-    "provision-freshness-33": "0",
+    "probe-33-provision-provision-r0": {
+      "line": "PROBE name=provision exit=0 sha=48a98479346f55b3c0b21672b638e3e090cec7e98f8c553af04a3ed88720a7ff cmd=0e7a6a743a89147907b2ae656f3f9ed19f72b521898824db1a1fd0fbf9d8d7ff json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":false}",
+      "verify": "VERIFY ok line=PROBE name=provision exit=0 sha=48a98479346f55b3c0b21672b638e3e090cec7e98f8c553af04a3ed88720a7ff cmd=0e7a6a743a89147907b2ae656f3f9ed19f72b521898824db1a1fd0fbf9d8d7ff json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":false}"
+    },
+    "probe-33-provision-freshness-provision-freshness-r0": {
+      "line": "PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b cmd=ae4cb91f300f9eae7e5d1846964cf752fcebbb40a927844170316d46d8db2654 json={\"state\":\"fresh\",\"behind\":0,\"own\":0}",
+      "verify": "VERIFY ok line=PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b cmd=ae4cb91f300f9eae7e5d1846964cf752fcebbb40a927844170316d46d8db2654 json={\"state\":\"fresh\",\"behind\":0,\"own\":0}"
+    },
     "diagnose-issue-33": {
       "confirmed": true,
       "evidence": "Chore, no claimed root-cause bug. In worktree issue-33 (branch feat/issue-33, frozen base): grep -rn 'checkout -B' workflows agents templates .claude returns exactly one hit, workflows/deliver-pipeline.js:2277, in the nickPrompt \"FIRST, before ANY commit\" branch-mismatch instruction (\"run git -C wtPath checkout -B expectedBranchName\"). That is the destructive reset described by the issue. agents/nick.md has no 'checkout -B' (grep for checkout/switch -c returned nothing), so that part of the brief is already clean or needs only optional alignment. Currently the guard does not exist: 'bash templates/test-canonical-guards.sh' exits 0 (21 passed, 0 failed), no check on this string. git log -S shows only the initial commit introduced it, so it is not already fixed. Issue is coherent and buildable; the acceptance commands are offline-verifiable. Note: acceptance grep 'grep -v test-' would filter out matches inside test- files, so the guard test may contain the literal string.",
@@ -55,7 +62,7 @@
     },
     "scout-issue-33-1": {
       "decision": "GO",
-      "plan": "GROUNDING: verified. Plan #33: (1) workflows/deliver-pipeline.js nickPrompt \"FIRST, before ANY commit\" sentence: replace the checkout -B clause with `git switch <branch>` if the branch exists locally (rev-parse --verify --quiet refs/heads/<branch>), else `git switch -c <branch>`; forbid reset/force; keep the confirming rev-parse; never write the literal even in a prohibition. (2) Bump const BUILD version 0.8.70 -> 0.8.71 in deliver-pipeline.js and .claude-plugin/plugin.json (bump-required + stamp-parity). (3) templates/test-canonical-guards.sh: add invariant 21 no-destructive-checkout after invariant 20 (scan tracked workflows/agents/templates/.claude files excluding test-* plus $WORKFLOW_FILE; one FAIL line per violation set; update header Invariants list). (4) agents/nick.md already clean, no change. Full details and acceptance checklist in .pipeline/plans/issue-33-sam.md. Index comment posted on #33.",
+      "plan": "GROUNDING: verified. Plan #33: (1) workflows/deliver-pipeline.js nickPrompt \"FIRST, before ANY commit\" sentence: replace the checkout -B clause with `git switch <branch>` if the branch exists locally (rev-parse --verify --quiet refs/heads/<branch>), else `git switch -c <branch>`; forbid reset/force; keep the confirming rev-parse; never write the literal even in a prohibition. (2) Bump const BUILD version 0.8.70 -> 0.8.71 in deliver-pipeline.js and .claude-plugin/plugin.json (bump-required + stamp-parity). (3) templates/test-canonical-guards.sh: add invariant 21 no-destructive-checkout after invariant 20 (scan tracked workflows/agents/templates/.claude files excluding test-* plus $WORKFLOW_FILE; one FAIL line per violation set; update header Invariants list). (4) agents/nick.md already clean, no change. Full details and acceptance checklist in .pipeline/plans/issue-33-sam.md. Index comment posted on #33.\n\n- [ ] `grep -rn 'checkout -B' workflows/ agents/ templates/ | grep -v test-` prints nothing\n- [ ] `bash templates/test-canonical-guards.sh` exits 0 and its last line is `[guards] status=ok passed=22 failed=0`\n- [ ] `bash templates/test-canonical-guards.sh` output contains a `PASS: no-destructive-checkout` line\n- [ ] Negative test: `WORKFLOW_FILE` pointed at a throwaway copy under `.pipeline/` containing `checkout -B` makes the script print `FAIL: no-destructive-checkout` and exit non-zero, tracked files unmodified (`git status --short` shows only intended files)\n- [ ] `grep -n \"switch\" workflows/deliver-pipeline.js` shows the non-destructive `git -C \"${wtPath}\" switch` form inside `nickPrompt`, and `git diff origin/main -- .claude-plugin/plugin.json` shows the version bumped in step with `const BUILD` (stamp-parity PASS line present)",
       "planPath": ".pipeline/plans/issue-33-sam.md",
       "targetFiles": [
         "workflows/deliver-pipeline.js",
@@ -87,15 +94,18 @@
       "verdict": "CONFORMING",
       "issues": []
     },
-    "plan-stale-33": "No files changed.",
-    "sub-issues-33": "Issue #33 (\"Remove git checkout -B from Nick's prompt\") has **no subissues** (total: 0), therefore there are **no open subissues to report**.\n\nThe task completed successfully with an empty result set.",
-    "worktree-gitdir-writable-33": "NOT_WRITABLE|/wt/root/issue-33/.git\n\nThe probe command was blocked by sandbox permissions in auto mode. Based on the worktree path and the probe's design, the probe cannot be executed within the current sandbox constraints. The status returned reflects that write access to the git directory could not be verified."
+    "probe-33-preflight-dev-r0": {
+      "line": "PROBE name=preflight exit=0 sha=2da8cc840849e3cd7a8c497d4661929df2e8be5972b07b6dc5877a9c6f66eea9 cmd=462c2f9139b641c6206a479e2581012aca3096aa2ed8508b8dc009ac72981402 json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/wt/root/issue-33/.git\",\"writable\":false}",
+      "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=2da8cc840849e3cd7a8c497d4661929df2e8be5972b07b6dc5877a9c6f66eea9 cmd=462c2f9139b641c6206a479e2581012aca3096aa2ed8508b8dc009ac72981402 json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/wt/root/issue-33/.git\",\"writable\":false}"
+    }
   },
   "expect": {
     "status": "escalate",
     "reason": "worktree-git-dir-not-writable",
     "trace": [
-      "plan-stale:1",
+      "probe:provision:haiku",
+      "probe:provision-freshness:haiku",
+      "probe:preflight:haiku",
       "worktree-git-dir-not-writable:/wt/root/issue-33/.git"
     ]
   }

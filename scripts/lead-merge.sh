@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Lead merge gesture (#74): scripts/lead-merge.sh <pr> [-R owner/repo]
+# Lead merge gesture (#74): scripts/lead-merge.sh <pr> [-R owner/repo] [--tick-from-review]
 # Run from a checkout of the PR head branch. Steps, each exit code checked:
 #   1. acceptance checklist via scripts/lib/acceptance-check.sh (same lib as the merge hook):
 #      any `- [ ]` between the acceptance markers, or missing markers, refuses.
@@ -17,7 +17,8 @@
 #   4. bump from the merged tree: patch+1 over max(branch, origin/main) in .claude-plugin/plugin.json
 #      + BUILD line of workflows/deliver-pipeline.js (cutFrom = origin/main short sha), commit
 #      `chore: bump X (lead-merge)`. Idempotent: skipped when the branch is already above origin/main
-#      via such a bump commit.
+#      via such a bump commit. Consumer repos (#145): no .claude-plugin/plugin.json in the merged tree ->
+#      log `no plugin manifest, version bump skipped` and continue; BUILD line edited only when present.
 #   5. push once (only when local HEAD differs from the remote head).
 #   6. wait until the PR reports the pushed sha with at least one check (bounded poll, cli/cli#7401),
 #      then gh pr checks --watch --fail-fast (--required when supported).
@@ -26,6 +27,26 @@
 #      `Fixed by #<PR> (merged).`, each still-open issue named by a closing keyword (Closes/Fixes/Resolves #N,
 #      same repo, parsed from the body read BEFORE the merge). `Refs #N` is never closed. A failed merge or a
 #      PR not read back as merged exits non-zero and touches no issue (#109).
+# --tick-from-review (#9): Morgan proved boxes but the auto-mode classifier refused his `gh pr edit` tick, so they stay
+#   `- [ ]` (`verified-untickable`). With the flag, after step 1b and before the base merge, the script reads Morgan's
+#   latest verdict comment, ticks the boxes it lists as proven, then RE-FETCHES the body and re-runs the step-1 gate,
+#   which still refuses any box left open. Without the flag nothing changes (step 1 refuses first).
+#   - Comment pick (REST `issues/<pr>/comments --paginate`): the LAST comment whose first line is exactly
+#     `<!-- pipeline-review-round pr=<N> -->` AND that has at least 2 non-empty lines after the marker (Nick's push-note
+#     reuses the marker but is one line, so it is skipped). None found: refused.
+#   - Matching rule (exact, structured; Morgan's template line for a proven-untickable box):
+#       `- [ ] **<box text verbatim>** — verified, tick pending (permissions): <proof with a `command` and its output>`
+#     A box is ticked iff some line of that comment, after stripping the list prefix (`- `, `- [ ] `), `**` and backticks
+#     and collapsing whitespace, equals the box text normalised the same way followed by an optional separator
+#     (em dash, en dash, `-`, `--`, `:`) and `verified, tick pending (permissions): <proof>`, and the raw proof holds a
+#     backtick-quoted command or the template form `<command> -> <output>`. Only boxes between the acceptance markers are considered; a `[human-gate]` box is never
+#     ticked; an unmatched box stays open. The tick turns that line's `- [ ]` into `- [x]` and appends
+#     ` — ticked by lead-merge from Morgan's review`. PATCH via REST (`pulls/<N>`).
+#   - Limitation: index-style proofs ("Box 2: `cmd` -> out") and one line covering several boxes ("Boxes 1-4 verified")
+#     are NOT matched (too loose to map to a box reliably): those boxes stay open and the merge is refused.
+#   - Stale proofs: refused (`FAIL: tick-from-review: a push followed Morgan's verdict; re-review first`, nothing ticked)
+#     when a marker comment (e.g. a Nick push-note) follows the chosen verdict, or when the PR head commit date
+#     (REST `pulls/<N>` head sha -> `commits/<sha>` committer date) is later than the verdict's `created_at`.
 # Afterwards prints the manual step to sync the local main. The PR itself never bumps: this script does.
 # Env: LEAD_MERGE_POLL_MAX (default 30), LEAD_MERGE_POLL_SLEEP seconds (default 10).
 set -euo pipefail
@@ -39,15 +60,16 @@ WORKFLOW="workflows/deliver-pipeline.js"
 
 die() { echo "lead-merge: $*" >&2; exit 1; }
 
-PR=""; REPO=""
+PR=""; REPO=""; TICK=0
 while [ $# -gt 0 ]; do
   case "$1" in
     -R|--repo) [ $# -ge 2 ] || die "$1 needs a value"; REPO="$2"; shift 2 ;;
+    --tick-from-review) TICK=1; shift ;;
     -*) die "unknown option: $1" ;;
     *) [ -z "$PR" ] || die "unexpected argument: $1"; PR="$1"; shift ;;
   esac
 done
-case "$PR" in ''|*[!0-9]*) die "usage: scripts/lead-merge.sh <pr-number> [-R owner/repo]" ;; esac
+case "$PR" in ''|*[!0-9]*) die "usage: scripts/lead-merge.sh <pr-number> [-R owner/repo] [--tick-from-review]" ;; esac
 
 # Repo resolution: -R flag, else .claude/pipeline.config.json "repo", else gh repo view.
 if [ -z "$REPO" ] && [ -f .claude/pipeline.config.json ]; then
@@ -62,7 +84,14 @@ fi
 body="$(gh pr view "$PR" -R "$REPO" --json body -q .body)" || die "cannot read PR #$PR body"
 rc=0
 printf '%s\n' "$body" | acceptance_check_body || rc=$?
-[ "$rc" -eq 0 ] || die "PR #$PR acceptance gate failed (rc=$rc); nothing bumped, nothing merged"
+if [ "$rc" -ne 0 ]; then
+  # --tick-from-review (#9): open boxes (rc 1) are handled by the tick step below, which re-runs this gate
+  if [ "$TICK" -eq 1 ] && [ "$rc" -eq 1 ]; then
+    echo "lead-merge: open boxes found, trying --tick-from-review"
+  else
+    die "PR #$PR acceptance gate failed (rc=$rc); nothing bumped, nothing merged"
+  fi
+fi
 
 # --- 1b. declared exceptions (#122) -------------------------------------------
 # Format: `exception: <what> — <why> — #N` (em dash; ` -- ` also accepted). Only lines inside the acceptance markers.
@@ -97,6 +126,103 @@ if [ -n "$exc_lines" ]; then
   done <<EOX
 $exc_lines
 EOX
+fi
+
+# --- 1c. --tick-from-review (#9) -----------------------------------------------
+if [ "$TICK" -eq 1 ] && [ "$rc" -eq 1 ]; then
+  tick_tmp="$(mktemp -d "${TMPDIR:-/tmp}/lead-merge-tick.XXXXXX")"
+  gh api "repos/$REPO/issues/$PR/comments" --paginate > "$tick_tmp/comments.json" || die "cannot read the comments of PR #$PR"
+  pick_rc=0
+  PR="$PR" python3 - "$tick_tmp/comments.json" "$tick_tmp/verdict_at.txt" > "$tick_tmp/review.txt" <<'PY' || pick_rc=$?
+import json, os, sys
+raw, dec, i, comments = open(sys.argv[1]).read(), json.JSONDecoder(), 0, []
+while i < len(raw):
+    if raw[i].isspace():
+        i += 1; continue
+    obj, i = dec.raw_decode(raw, i)
+    comments.extend(obj if isinstance(obj, list) else [obj])
+marker = "<!-- pipeline-review-round pr=%s -->" % os.environ["PR"]
+def marked(c):
+    lines = (c.get("body") or "").replace("\r", "").split("\n")
+    return lines, bool(lines) and lines[0].strip() == marker
+best = None
+for n, c in enumerate(comments):
+    lines, is_marked = marked(c)
+    if is_marked and len([l for l in lines[1:] if l.strip()]) >= 2:
+        best = n
+if best is None:
+    sys.exit(1)
+if any(marked(c)[1] for c in comments[best + 1:]):
+    sys.exit(2)  # a later marker comment (e.g. a Nick push-note): the verdict is stale
+open(sys.argv[2], "w").write(comments[best].get("created_at") or "")
+print(comments[best]["body"])
+PY
+  case "$pick_rc" in
+    0) ;;
+    2) die "FAIL: tick-from-review: a push followed Morgan's verdict; re-review first" ;;
+    *) die "PR #$PR has no Morgan review comment (marker '<!-- pipeline-review-round pr=$PR -->' with a multi-line verdict); nothing ticked, nothing merged" ;;
+  esac
+  # the PR head must not be newer than the verdict (REST: pulls/<N> head sha -> commits/<sha> committer date)
+  head_sha="$(gh api "repos/$REPO/pulls/$PR" --jq .head.sha)" || die "cannot read the head sha of PR #$PR"
+  head_date="$(gh api "repos/$REPO/commits/$head_sha" --jq .commit.committer.date)" || die "cannot read the commit date of $head_sha"
+  verdict_at="$(cat "$tick_tmp/verdict_at.txt")"
+  [ -n "$head_date" ] && [ -n "$verdict_at" ] || die "tick-from-review: cannot compare the head commit date with the verdict date; nothing ticked"
+  python3 -c 'import sys; sys.exit(0 if sys.argv[1] <= sys.argv[2] else 1)' "$head_date" "$verdict_at" \
+    || die "FAIL: tick-from-review: a push followed Morgan's verdict; re-review first"
+  printf '%s\n' "$body" > "$tick_tmp/body.txt"
+  python3 - "$tick_tmp/body.txt" "$tick_tmp/review.txt" > "$tick_tmp/newbody.txt" <<'PY' || die "tick step failed"
+import re, sys
+body = open(sys.argv[1]).read().rstrip("\n").split("\n")
+review = open(sys.argv[2]).read().replace("\r", "").split("\n")
+def norm(s):
+    return re.sub(r"\s+", " ", s.replace("**", "").replace("`", "")).strip()
+proven = []  # (normalised box text, raw proof)
+pat = re.compile(r"^\s*(?:[—–:]|--?)?\s*verified,?\s+tick pending\s*\(permissions\)\s*:\s*(\S.*)$", re.I)
+for line in review:
+    m = re.match(r"^\s*[-*]\s*(?:\[[ xX]\]\s*)?(.*)$", line)
+    if not m:
+        continue
+    raw = m.group(1)
+    k = raw.lower().find("(permissions):")
+    proof = raw[k + len("(permissions):"):] if k >= 0 else ""
+    if k < 0 or not ("`" in proof or " -> " in proof):
+        continue  # the proof must show a command: backticks, or Morgan's `<command> -> <output>` template
+    n = norm(raw)
+    proven.append(n)
+suffix = " — ticked by lead-merge from Morgan's review"
+out, inblock = [], False
+for line in body:
+    if re.search(r"<!--\s*acceptance:end\s*-->", line):
+        inblock = False
+    m = re.match(r"^(\s*-\s*)\[ \](\s*)(.*)$", line) if inblock else None
+    if m:
+        text = m.group(3)
+        if re.search(r"\[human-gate\]", text, re.I):
+            print("left open (human-gate): " + norm(text), file=sys.stderr)
+        else:
+            bn, hit = norm(text), False
+            for n in proven:
+                if bn and n.lower().startswith(bn.lower()):
+                    rest = n[len(bn):]
+                    if pat.match(rest):
+                        hit = True; break
+            if hit:
+                line = m.group(1) + "[x]" + m.group(2) + text + suffix
+                print("ticked: " + bn, file=sys.stderr)
+            else:
+                print("left open (no proof in the review): " + bn, file=sys.stderr)
+    out.append(line)
+    if re.search(r"<!--\s*acceptance:start\s*-->", line):
+        inblock = True
+print("\n".join(out))
+PY
+  if ! cmp -s "$tick_tmp/body.txt" "$tick_tmp/newbody.txt"; then
+    gh api -X PATCH "repos/$REPO/pulls/$PR" -F "body=@$tick_tmp/newbody.txt" >/dev/null || die "cannot PATCH the PR #$PR body"
+  fi
+  body="$(gh pr view "$PR" -R "$REPO" --json body -q .body)" || die "cannot re-read PR #$PR body"
+  rc=0
+  printf '%s\n' "$body" | acceptance_check_body || rc=$?
+  [ "$rc" -eq 0 ] || die "PR #$PR acceptance gate still failing after --tick-from-review (rc=$rc); nothing bumped, nothing merged"
 fi
 
 # --- 2. sync with the remote head branch ---------------------------------------
@@ -142,11 +268,16 @@ semver_gt() {
   [ "$a3" -gt "$b3" ]
 }
 
+# --- 4. bump from the merged tree (idempotent; plugin repo only, #145) ----------
+if [ ! -f "$MANIFEST" ]; then
+  echo "lead-merge: no plugin manifest, version bump skipped"
+else
 main_ver="$(git show "origin/main:$MANIFEST" | ver_of)"
 branch_ver="$(ver_of < "$MANIFEST")"
 [ -n "$main_ver" ] && [ -n "$branch_ver" ] || die "cannot read versions (main='$main_ver' branch='$branch_ver')"
+have_build=0
+if [ -f "$WORKFLOW" ] && grep -q '^const BUILD' "$WORKFLOW"; then have_build=1; fi
 
-# --- 4. bump from the merged tree (idempotent) ---------------------------------
 if semver_gt "$branch_ver" "$main_ver" && git log -n 50 --format=%s origin/main..HEAD | grep -qxF "chore: bump $branch_ver (lead-merge)"; then
   echo "lead-merge: bump commit for $branch_ver already on the branch, skipping bump"
 else
@@ -157,7 +288,7 @@ $base_ver
 EOV
   new_ver="$v1.$v2.$((v3 + 1))"
   cut_from="$(git rev-parse --short origin/main)"
-  NEW_VER="$new_ver" CUT_FROM="$cut_from" MANIFEST="$MANIFEST" WORKFLOW="$WORKFLOW" python3 - <<'PY' || die "bump edit failed"
+  NEW_VER="$new_ver" CUT_FROM="$cut_from" MANIFEST="$MANIFEST" WORKFLOW="$WORKFLOW" HAVE_BUILD="$have_build" python3 - <<'PY' || die "bump edit failed"
 import os, re, sys
 v, cut = os.environ["NEW_VER"], os.environ["CUT_FROM"]
 def edit(path, pat, repl):
@@ -167,12 +298,15 @@ def edit(path, pat, repl):
         sys.exit("pattern not found in " + path)
     open(path, "w").write(out)
 edit(os.environ["MANIFEST"], r'("version"\s*:\s*")[^"]*(")', lambda m: m.group(1) + v + m.group(2))
-edit(os.environ["WORKFLOW"], r"const BUILD = \{[^}]*\}",
-     "const BUILD = { plugin: 'lgtmgate', version: '%s', cutFrom: '%s' }" % (v, cut))
+if os.environ["HAVE_BUILD"] == "1":
+    edit(os.environ["WORKFLOW"], r"const BUILD = \{[^}]*\}",
+         "const BUILD = { plugin: 'lgtmgate', version: '%s', cutFrom: '%s' }" % (v, cut))
 PY
-  git add "$MANIFEST" "$WORKFLOW"
+  git add "$MANIFEST"
+  if [ "$have_build" = 1 ]; then git add "$WORKFLOW"; fi
   git commit -m "chore: bump $new_ver (lead-merge)" || die "bump commit failed"
   echo "lead-merge: bumped $base_ver -> $new_ver"
+fi
 fi
 
 # --- 5. push once --------------------------------------------------------------
@@ -201,6 +335,17 @@ done
 [ "$seen" -eq 1 ] || die "PR #$PR never reported checks for $pushed_sha after $poll_max polls; not merging"
 req=""
 if gh pr checks --help 2>&1 | grep -q -- --required; then req="--required"; fi
+# Required checks can register after other workflows (CodeQL): `--required` then exits 1 with
+# "no required checks reported". Keep polling (same bound) until they appear.
+if [ -n "$req" ]; then
+  n=0
+  # Capture first: under pipefail a `gh ... | grep -q` condition takes gh's exit 1 and never loops.
+  while out="$(gh pr checks "$PR" -R "$REPO" --required 2>&1 || true)"; printf '%s' "$out" | grep -q 'no required checks reported'; do
+    n=$((n + 1))
+    [ "$n" -lt "$poll_max" ] || die "PR #$PR never reported its required checks after $poll_max polls; not merging"
+    sleep "$poll_sleep"
+  done
+fi
 # shellcheck disable=SC2086
 gh pr checks "$PR" -R "$REPO" --watch --fail-fast $req || die "CI checks failed; not merging"
 

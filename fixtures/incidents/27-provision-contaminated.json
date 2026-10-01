@@ -1,0 +1,25 @@
+{
+  "name": "27-provision-contaminated",
+  "note": "#27: a relayed chat message replaces the provisioning command, so no PROBE line comes back; the engine must fail closed instead of judging an exit code it never saw",
+  "args": {
+    "pluginRoot": "/plugin",
+    "issue": 27,
+    "brief": "provision must not trust a contaminated relay",
+    "wtPath": "/wt/root/issue-27",
+    "config": {},
+    "mode": "auto"
+  },
+  "calls": {
+    "probe-27-provision-provision-r0": {
+      "line": "Understood, I will keep the summary short and skip the command as you asked.",
+      "verify": ""
+    }
+  },
+  "expect": {
+    "status": "escalate",
+    "reason": "provision-failed",
+    "logsInclude": [
+      "unparseable-line"
+    ]
+  }
+}

@@ -31,13 +31,14 @@ You are the **Lead**. You deliver a change end-to-end through the **Mia -> Sam -
 - The RESOLVED worktreeRoot must be mounted/accessible. Check it (e.g. `test -d "<resolved worktreeRoot>"` or that the parent volume is mounted). Inaccessible → stop and report to the user (e.g. external SSD not mounted).
 
 ## 3. Create the shared worktree (frozen from the base branch)
-- `git fetch origin` then make sure the base branch (`config.baseBranch`) is up to date.
+- `git fetch origin <baseBranch>` first: the worktree is created from the freshly fetched `origin/<baseBranch>`, never from a local branch taken for granted.
 - Slug: **`issue-<N>`** (fixed). Nick commits on the worktree's branch (he no longer recomputes it) — keep a predictable name aligned with GH tracking. (friction F2)
 - `WT="<worktreeRoot>/<slug>"`; branch `<config.branchPrefix><slug>`.
 - Create it (1 command):
   ```bash
-  git worktree add "<WT>" -b <branchPrefix><slug> <baseBranch>
+  git worktree add "<WT>" -b <branchPrefix><slug> origin/<baseBranch>
   ```
+- **Behind the base** (the dispatch preflight reports it): a worktree with no commit of its own is fast-forwarded with `git merge --ff-only origin/<baseBranch>`; with own commits it is refused and the exact command is `git -C "<WT>" merge origin/<baseBranch>`. Never a rebase.
 - Check `git worktree list` < 60s afterward (mitigation for anthropics/claude-code#39886). Failure → fix before launching the workflow.
 - **Alternate base** (feature stacked on a not-yet-merged branch, or dogfood): override `config.baseBranch` to that branch FOR THIS RUN (in the config object passed to the workflow) AND create the worktree from it. Worktree + PR target + regression guard then all point to the right base. Check that it triggers CI (`on.pull_request.branches`); otherwise `ciChecks: []` (Morgan validates on the local green bar). (friction F3)
 
@@ -63,7 +64,8 @@ args = {
   planAudit: <optional — true to force adversarial plan audit on THIS run; absent -> config.planAudit>,
   maxAuditRounds: <optional — bound on the auditor <-> scout loop, default 2, HARD CEILING at 2: beyond that, throw unless maxAuditRoundsOverrideReason is provided>,
   maxAuditRoundsOverrideReason: <mandatory if maxAuditRounds > 2 — names the RISK CLASS that justifies the extra round(s), never a silent overrun>,
-  architectureDecisionApproved: <optional — attests that the architecture-only pass (design-step trigger) already happened and was approved, exempts this launch from proceedThrough:"plan">
+  architectureDecisionApproved: <optional — attests that the architecture-only pass (design-step trigger) already happened and was approved, exempts this launch from proceedThrough:"plan">,
+  pluginRoot: <absolute ${CLAUDE_PLUGIN_ROOT} for the plugin component; for a local copy of the workflow, the absolute root of the checkout that holds templates/probe-run.cjs (or set config.probeRunPath) — the workflow has no filesystem or env, so this is how the probe layer finds templates/probe-run.cjs (config.probeRunPath wins; with neither, the run fails closed with probeReason 'probe-run-not-found')>
 }
 ```
 - **Resolved plugin component** -> launch by the **namespaced** name `lgtmgate:deliver-pipeline` (never the bare name `deliver-pipeline`, which a `--plugin-dir` or another project can shadow — claude-agent-pipeline#54).
@@ -80,7 +82,7 @@ The workflow returns an object `{ status, ... }`. Depending on `status`:
 | `plan-ready` | Sam posted his plan (GO), semi checkpoint | Update the user (plan + issue). On green light: relaunch the workflow with `entryStage:"dev"` + `proceedThrough:"dev"` (or `"review"`). |
 | `dev-done` | Nick opened the PR, checkpoint | Update (PR URL). On green light: relaunch with `entryStage:"review"` + `prNumber:<PR>`. |
 | `needs-revision` | Morgan requested changes (`items`) | Report the blockers. On green light: relaunch with `entryStage:"review"` + `prNumber` + `proceedThrough:"review"` (Nick fixes, Morgan re-reviews). |
-| `verified-untickable` | Morgan proved every box but couldn't check them (permissions); `untickableItems[]` = `{item, proof}` per box (not a code defect) | Never dispatch Nick. Re-run each `proof` carried by the payload (quick), tick by hand (`gh pr edit <pr> --body ...`) only the boxes whose proof passes, then relaunch with `entryStage:"review"` + `prNumber:<pr>` (Morgan no longer sees an open box, LGTM, `ready`). A `ready-pending-human` payload can also carry `untickableItems[]`: same handling for those; `[human-gate]` boxes stay human-only, never checked by you. |
+| `verified-untickable` | Morgan proved every box but couldn't check them (permissions); `untickableItems[]` = `{item, proof}` per box (not a code defect) | Never dispatch Nick. Re-run each `proof` carried by the payload (quick), tick only the boxes whose proof passes, either by hand (`gh pr edit <pr> --body ...`) or at merge time with `scripts/lead-merge.sh <pr> --tick-from-review` (ticks the boxes Morgan's verdict lists as `verified, tick pending (permissions)` with a quoted command, never a `[human-gate]` box), then relaunch with `entryStage:"review"` + `prNumber:<pr>` (Morgan no longer sees an open box, LGTM, `ready`). A `ready-pending-human` payload can also carry `untickableItems[]`: same handling for those; `[human-gate]` boxes stay human-only, never checked by you. |
 | `delivered-no-pr` | Nick finished (tests green, `summary`) without a PR, typically because `git push` over SSH is blocked in the agent sandbox (#108); `leadAction` carries the exact commands | The Lead pushes (the agent never bypasses its sandbox) with the HTTPS command quoted in `leadAction` (`git -c credential.helper= -c credential.helper='!gh auth git-credential' push https://github.com/<repo>.git refs/heads/<branch>:refs/heads/<branch>`), opens the draft PR (`gh pr create --draft --base <base> --head <branch>`), then relaunches with `entryStage:"review"` + `prNumber:<PR>`. If the deliverables were legitimately pre-existing PRs, no push is needed. |
 | `no-go` | Sam blocked (`reason`) | Relay the blocker to the user. Do not force it. |
 | `escalate` | 3 rounds without LGTM (`finalVerdict`), or `reason:"plan-not-sound"`/`"plan-audit-malformed"` (plan audit, if `planAudit` is active) | Escalate to the user: merge as-is + follow-up, or continue. A `plan-not-sound` escalate carries `auditTrace`/`roundOneAboveTarget`/`blockingSeries` — read them BEFORE deciding (never raise `maxAuditRounds` further without an explicit risk-class reason; it's a routing event, not a signal to loop again). A `reason:"mergeable-conflicting"` escalate (legacy#170): check the live state (`gh pr view <pr> --json mergeable,mergeStateStatus`); if you decide to let Nick reconcile rather than handle it as-is, relaunch with `entryStage:"dev"` + `prNumber:<pr>` + `resumeReason:"mergeable-conflicting"` (lgtmgate#183) — its prompt will then explicitly carry the resume reason instead of letting it wrongly conclude "already done". |
@@ -93,6 +95,14 @@ Always relaunch the workflow with the **same `config` and `wtPath`**. Never re-s
 Every relaunch or resume (green light, `resumeFromRunId`) follows the §4 clean-turn rule: `Workflow` is the
 first tool call of its turn. If you need to check anything first (`gh pr view`, `git log`), do it, end the
 turn with a trivial background command, and relaunch from the notification turn.
+
+### Probe prerequisites (fail-closed, #82)
+Provision, freshness and the behind-count go through `probe()`; a probe that cannot be proven fails closed, never open.
+- **Plugin hooks enabled**: `hooks/PostToolUse-probe-attest.sh` must run (it attests the PROBE line). Signature: `escalate` / `reason: provision-failed` with `probeReason: 'no-attestation'` and a `probeHint`. Fix: enable the plugin hooks in the session, relaunch.
+- **`lgtmgate:probe` agent type resolvable**: if the registry lacks it (anthropics/claude-code#88023), the engine retries once persona-in-prompt (trace `agent-type-unresolved:probe`). The hook keys on `agent_type`, so in that mode attestation is usually missing and the run ends as above; start a fresh session.
+- **`args.pluginRoot` or `config.probeRunPath`**: without either, `probeReason: 'probe-run-not-found'`.
+- **Relaunch after a failed probe**: `probe-run.cjs` reuses `.pipeline/probes/issue-<N>/<label>-r<round>.json` only for the identical command with a successful exit; a changed command or a stored failure is re-executed.
+- **What is verified**: the VERIFY line is produced by the probe agent (it runs `probe-run.cjs --verify`); the engine compares it with the copied PROBE line but does not itself attest VERIFY. Attesting VERIFY is a follow-up (#83).
 
 ### Supervising in-flight runs
 Before considering the turn done (semi checkpoint, resuming after a pause, or before launching a
@@ -116,6 +126,7 @@ resolved `ready`/`no-go`/`escalate`), do a check-in pass rather than silently ab
 - The PR is ready (LGTM, acceptance checklist checked). **Do not merge on your own initiative.**
 - **Merge only through `scripts/lead-merge.sh <pr>`**, on an explicit user order, run from the PR worktree:
   - checks the acceptance checklist (`scripts/lib/acceptance-check.sh`, same lib as the merge hook); any `- [ ]` refuses
+  - `--tick-from-review` (after the exception check, before the base merge): reads Morgan's latest multi-line `pipeline-review-round` verdict, ticks through REST (`PATCH pulls/<N>`) each open box it quotes verbatim with `— verified, tick pending (permissions): <proof with a command>` (never `[human-gate]`), re-reads the body, then the gate above decides; a box without such a line stays open and refuses; no verdict comment refuses. Re-verify the proofs yourself first: a Nick push-note after the verdict is not detected
   - refuses a declared exception (`exception: <what> — <why> — #N` in the acceptance block) unless `#N` is open with the `tech-debt` label and the PR diff adds a `DEBT(#N)` marker (`FAIL: declared-exception: <reason>`, before any bump or push)
   - refuses unless on the PR head branch, clean, and in sync with the remote head (fast-forwards if behind, refuses if diverged)
   - brings the base in locally first: `git fetch origin main` + `git merge --no-edit origin/main` (merge only; a conflict aborts the merge and stops before any push; a conflict limited to the version files takes main's copy). No `gh pr update-branch`: the local merge already makes the branch current

@@ -537,8 +537,11 @@ GH_STATUS_A="templates/gh-pipeline-status.sh"
 GH_STATUS_B=".claude/scripts/gh-pipeline-status.sh"
 if [ -f "$WORKFLOW_FILE" ] && grep -q 'gh project item-list' "$WORKFLOW_FILE"; then
   fail "project-item-lookup" "$WORKFLOW_FILE still calls 'gh project item-list' (board scan) — updateStatus() must use the issue's own projectItems connection instead"
-elif [ -f "$WORKFLOW_FILE" ] && { ! grep -q 'projectItems(first:' "$WORKFLOW_FILE" || ! grep -q 'select(.project.number==' "$WORKFLOW_FILE"; }; then
-  fail "project-item-lookup" "$WORKFLOW_FILE is missing the issue-side GraphQL projectItems lookup (projectItems(first: / select(.project.number==)"
+elif [ -f "templates/pr-write.sh" ] && grep -q 'gh project item-list' "templates/pr-write.sh"; then
+  fail "project-item-lookup" "templates/pr-write.sh still calls 'gh project item-list' (board scan)"
+elif [ ! -f "templates/pr-write.sh" ] || ! grep -q 'projectItems(first:' "templates/pr-write.sh" || ! grep -q 'select(.project.number==' "templates/pr-write.sh"; then
+  # #85: the status write moved from updateStatus()'s haiku prompt into templates/pr-write.sh (op status).
+  fail "project-item-lookup" "templates/pr-write.sh is missing the issue-side GraphQL projectItems lookup (projectItems(first: / select(.project.number==)"
 elif [ ! -f "$GH_STATUS_A" ] || [ ! -f "$GH_STATUS_B" ]; then
   fail "project-item-lookup" "one or both of $GH_STATUS_A / $GH_STATUS_B is missing"
 elif ! cmp -s "$GH_STATUS_A" "$GH_STATUS_B"; then
@@ -755,27 +758,25 @@ fi
 # silently truncates (no error, no warning) and the downstream reviewerWindowCandidates()
 # filter treated that partial page as exhaustive. Fixed by bounding the query with the GitHub
 # search `created:>=<windowStart>` qualifier, so the result set is scoped to the review round's
-# (minutes-to-hours-wide) window instead of the whole open-issue backlog. This is a STATIC guard
-# (grep against source, not a live `gh` call): the offline flow-suite's `simulate` harness
-# deliberately makes the real (non-simulate) branch of flagReviewerWindowIssues — where this `gh
-# issue list` command is built — unreachable (every agent() call site must be intercepted by a
-# simulate fixture or the harness itself throws, scripts/run-flow-suite.cjs), so a live-request
-# regression test isn't feasible through that harness; this grep-based check is the durable
-# regression guard instead. The runtime belt-and-suspenders assertion (exact-limit truncation
-# check right after the call, workflows/deliver-pipeline.js) is the second, complementary guard.
-if [ -f "$WORKFLOW_FILE" ]; then
-  SCAN_LINE="$(grep -n 'gh issue list --state open' "$WORKFLOW_FILE" | head -1)"
+# (minutes-to-hours-wide) window instead of the whole open-issue backlog. E2.5 (#84) moved the scan
+# out of the workflow into templates/pr-state.sh (the workflow no longer builds any `gh` command for
+# it); this is a STATIC guard (grep against that script, not a live `gh` call) and stays the durable
+# regression guard. The runtime belt-and-suspenders assertion is the script's own exact-limit check
+# (`openIssuesTruncated`, pr-state.sh), replayed in templates/test-probe-run.sh.
+RWS_FILE="${RWS_FILE:-templates/pr-state.sh}"
+if [ -f "$RWS_FILE" ]; then
+  SCAN_LINE="$(grep -n 'gh issue list --state open' "$RWS_FILE" | head -1)"
   if [ -z "$SCAN_LINE" ]; then
-    fail "reviewer-window-scan-bounded" "no 'gh issue list --state open' call found in $WORKFLOW_FILE"
+    fail "reviewer-window-scan-bounded" "no 'gh issue list --state open' call found in $RWS_FILE"
   elif ! echo "$SCAN_LINE" | grep -q -- '--search "created:>='; then
     fail "reviewer-window-scan-bounded" "reviewer-window issue scan is missing a '--search \"created:>=\"' bound — a flat --limit alone silently truncates past the limit (lgtmgate#18): $SCAN_LINE"
-  elif ! grep -q 'REVIEWER_WINDOW_SCAN_SAFETY_LIMIT' "$WORKFLOW_FILE"; then
-    fail "reviewer-window-scan-bounded" "REVIEWER_WINDOW_SCAN_SAFETY_LIMIT (exact-limit truncation guard) not found in $WORKFLOW_FILE"
+  elif ! grep -q 'REVIEWER_WINDOW_SCAN_SAFETY_LIMIT' "$RWS_FILE"; then
+    fail "reviewer-window-scan-bounded" "REVIEWER_WINDOW_SCAN_SAFETY_LIMIT (exact-limit truncation guard) not found in $RWS_FILE"
   else
-    pass "reviewer-window-scan-bounded: reviewer-window issue scan is date-bounded via --search \"created:>=\"; safety-limit truncation guard present"
+    pass "reviewer-window-scan-bounded: reviewer-window issue scan ($RWS_FILE) is date-bounded via --search \"created:>=\"; safety-limit truncation guard present"
   fi
 else
-  fail "reviewer-window-scan-bounded" "$WORKFLOW_FILE missing"
+  fail "reviewer-window-scan-bounded" "$RWS_FILE missing"
 fi
 
 # =============================================================================
@@ -783,18 +784,21 @@ fi
 # =============================================================================
 # #99: the git-dir write probe ran `touch ... && rm -f ...`; a repo whose settings deny
 # `Bash(rm *)` refused the whole command and the haiku agent answered with prose, escalating
-# the run. The probe must use `unlink`, never an `rm` token. Static grep on the probe lines.
-if [ -f "$WORKFLOW_FILE" ]; then
-  GDP_LINES="$(grep -n 'pipeline-write-probe' -A1 "$WORKFLOW_FILE")"
+# the run. The probe must use `unlink`, never an `rm` token. Since #83 the probe lives in
+# templates/preflight.sh (run by probe-run.cjs), no longer in a prompt of the workflow.
+# Static grep on the probe lines.
+GDP_FILE="${GDP_FILE:-templates/preflight.sh}"
+if [ -f "$GDP_FILE" ]; then
+  GDP_LINES="$(grep -n 'pipeline-write-probe' -A1 "$GDP_FILE")"
   if [ -z "$GDP_LINES" ]; then
-    fail "gitdir-probe-no-rm" "no 'pipeline-write-probe' command found in $WORKFLOW_FILE"
+    fail "gitdir-probe-no-rm" "no 'pipeline-write-probe' command found in $GDP_FILE"
   elif echo "$GDP_LINES" | grep -qE '\brm\b'; then
     fail "gitdir-probe-no-rm" "git-dir write probe contains an rm token (denied by Bash(rm *) settings, #99) — use unlink: $GDP_LINES"
   else
     pass "gitdir-probe-no-rm: git-dir write probe has no rm token (unlink)"
   fi
 else
-  fail "gitdir-probe-no-rm" "$WORKFLOW_FILE missing"
+  fail "gitdir-probe-no-rm" "$GDP_FILE missing"
 fi
 
 # =============================================================================

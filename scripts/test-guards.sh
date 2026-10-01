@@ -47,6 +47,14 @@ run_r1 "$T/b1.js"; expect_up "extra await agent( outside callAgent -> agent-call
 cp "$BASE" "$T/b2.js"; printf 'const k = simulate.x\n' >> "$T/b2.js"
 run_r1 "$T/b2.js"; expect_up "new simulate.x key -> simulate-seams UP" simulate-seams
 
+# negative: a new simulate.probes.<key> (dotted, bracket, optional-chain forms) counts as a seam
+cp "$BASE" "$T/b2a.js"; printf 'const k = simulate.probes.brandNewSeamA\n' >> "$T/b2a.js"
+run_r1 "$T/b2a.js"; expect_up "new simulate.probes.x key -> simulate-seams UP" simulate-seams
+cp "$BASE" "$T/b2b.js"; printf "const k = simulate.probes['brandNewSeamB']\n" >> "$T/b2b.js"
+run_r1 "$T/b2b.js"; expect_up "new simulate.probes['x'] bracket key -> simulate-seams UP" simulate-seams
+cp "$BASE" "$T/b2c.js"; printf 'const k = simulate?.probes?.brandNewSeamC\n' >> "$T/b2c.js"
+run_r1 "$T/b2c.js"; expect_up "new simulate?.probes?.x optional-chain key -> simulate-seams UP" simulate-seams
+
 # negative: one more .match( outside markers
 cp "$BASE" "$T/b3.js"; printf 'const m = out.match(/z/)\n' >> "$T/b3.js"
 run_r1 "$T/b3.js"; expect_up "new .match( outside markers -> agent-output-regex UP" agent-output-regex

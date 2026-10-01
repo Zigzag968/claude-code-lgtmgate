@@ -3,6 +3,7 @@ export const meta = {
   description: 'Sam (plan) -> Nick (dev+PR) -> Morgan (review) -> loop until LGTM',
   whenToUse: 'Deliver a change end-to-end through the specialized agent pipeline (bug fix, chore, or feature). The Lead creates the shared worktree before launching and passes its path.',
   phases: [
+    { title: 'Setup', detail: 'Run identity + early probes (config recheck, provision, freshness) before any agent work' },
     { title: 'Diagnose', detail: 'Theo qualifies EVERY issue before Sam plans — mandatory, no opt-out' },
     { title: 'Plan', detail: 'Mia (optional) + Sam scout/plan, posted on the issue' },
     { title: 'Dev', detail: 'Nick implements in the shared worktree + opens PR' },
@@ -11,7 +12,7 @@ export const meta = {
 }
 
 // Guards (scripts/guards.cjs, R1 ratchet vs origin/main): the counters of `await agent(` outside
-// callAgent, distinct `simulate.<key>` keys and regex applications on agent output may never go
+// callAgent, distinct simulate seam keys and regex applications on agent output may never go
 // up. A parser wrapped between the comment lines `// guards:parser-begin` and
 // `// guards:parser-end` is not counted by agent-output-regex, so moving one inside markers lowers it.
 //
@@ -66,6 +67,13 @@ export const meta = {
 //                  narrow (one value today): a branch-mismatch or plan-stale escalate doesn't
 //                  resolve by relaunching Nick with this same message.
 //   dryRun      — if true, validate args and return immediately (no agents spawned)
+//   probeOnly   — optional { name, cmd, label, round }: run ONE probe() (probe-run gate, #80) and return
+//                 status 'dry-run-ok' reason 'probe-only'. Lets a run-offline fixture reach probe()
+//                 while no engine call site is migrated yet. Not a simulate key.
+//   pluginRoot  — optional absolute path of the plugin root (#82). The Lead passes
+//                 ${CLAUDE_PLUGIN_ROOT} for the plugin component and omits it for a local copy; the
+//                 probe layer resolves templates/probe-run.cjs from it (the workflow has no
+//                 filesystem or env). config.probeRunPath wins; fallback <wtPath>/templates/probe-run.cjs.
 //   models      — optional per-role model override: { scout?, planAudit?, morgan? }. Resolution
 //                 order per role is `models.<role> ?? config.models?.<role> ?? 'sonnet'` (same `??`
 //                 idiom as planAudit above — arg wins per-run over the project default). Default is
@@ -117,29 +125,14 @@ export const meta = {
 //                 is byte-for-bit identical to before #97. Must be a non-negative integer; a
 //                 non-integer or negative value throws. Flipped by the human only after
 //                 observing shadow-mode `trace` evidence that the classification is trustworthy.
-//   simulate    — test fixture object: { sam, samPlan, samRationale, debtIssue, nick, morgan, mia,
-//                   alreadyDoneCheck, provision, preflight, theo, planCheck, audit,
-//                   squashCommits, headRefName, agentTypeUnresolved, branchCheckRaw,
-//                   configBranchPrefixRaw }
-//                 when set, no real agent is spawned; trace is still recorded
-//                 simulate.audit — array indexed by auditRound (1-based, same idiom as
-//                 planCheck): { verdict: 'SOUND'|'SOUND-WITH-NOTES'|'NOT_SOUND', findings: [...] }.
-//                 Absent/undefined round -> defaults to { verdict: 'SOUND', findings: [] }.
-//                 simulate.agentTypeUnresolved — #54 fixture: { <role>: [attempt, ...] } replays
-//                 P1's captured registry-gap harness signature (a thrown "agent type '<name>' not
-//                 found" error) on the NAMED attempt numbers for that role, when opts.agentType is
-//                 set. simulate.<role> = 'DIE' (the literal string) is the plain-death lever for a
-//                 role — `??`-based defaulting elsewhere means `null` cannot serve this purpose.
-//                 simulate.branchCheckRaw — lgtmgate#71: raw text the branch-check agent
-//                 would return, replayed offline in place of the `agent()` call in the branch-
-//                 conformance guard (same idiom as simulate.headRefName/squashCommits in
-//                 squashBeforeHandoff — but that field is a DIFFERENT lever, consumed by a
-//                 different mechanism; do not conflate them).
-//                 simulate.configBranchPrefixRaw — lgtmgate#131: raw text the worktree's own
-//                 pipeline.config.json branchPrefix re-check would return, replayed offline in
-//                 place of the agent() call the branch-conformance guard makes AFTER a mismatch,
-//                 before escalating (same idiom as simulate.branchCheckRaw above — a DIFFERENT
-//                 lever, gates a DIFFERENT recovery step; do not conflate them).
+//   simulate    — test fixture object; the only key the engine reads is `simulate.probes`, a map keyed
+//                 by seam name (agent mocks sam/mia/nick/morgan/theo/audit/planCheck/preflight/
+//                 alreadyDoneCheck, parsed-value probes such as headSha/prBody/mergeState/behindCount,
+//                 agentTypeUnresolved, branchCheckRaw, ...). When set, no real agent is spawned and the
+//                 trace is still recorded. The translation from the suite's flat keys to `probes` and
+//                 every default live in run() of the flow suite (scripts/run-flow-suite.cjs runs it);
+//                 the engine carries no `??` default on a seam. `simulate.probes[<role>] = 'DIE'` (the
+//                 literal string) is the plain-death lever for a role, since `null` is nullish.
 //
 // config.commitHygiene — OFF by default: { squashBeforeHandoff: bool, maxCommits: int }.
 // squashBeforeHandoff=true makes the pipeline soft-reset a >maxCommits branch to 2-3 logical
@@ -223,7 +216,7 @@ export const meta = {
 // `version`, checked against plugin.json by templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '0.8.89', cutFrom: 'a42d211' }
+const BUILD = { plugin: 'lgtmgate', version: '0.8.108', cutFrom: '19b33f2' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -236,6 +229,7 @@ log(BUILD_STAMP)
 // below: lets the flow tests assert the composed Nick brief (notably the resolved worktree root)
 // without exposing prompt text outside simulate runs.
 let nickPromptPreview = null
+let preflightFixPromptPreview = null   // #132 — simulate-only, same idiom as nickPromptPreview
 // provisionCmdPreview (#72) — same simulate-only idiom as nickPromptPreview above: lets the
 // flow tests assert the composed provisioning command (notably PROVISION_ENV_SYMLINK) without
 // exposing it outside simulate runs.
@@ -243,7 +237,7 @@ let provisionCmdPreview = null
 // #110: set by callAgent when an agent call stayed cut off by a classifier outage past its retry
 // bound; finish() then names the cause on the resulting `*-died` status.
 let classifierOutageDeath = false
-const finish = (o) => ({ buildStamp: BUILD_STAMP, ...(simulate ? { nickPromptPreview, provisionCmdPreview } : {}),
+const finish = (o) => ({ buildStamp: BUILD_STAMP, ...(simulate ? { nickPromptPreview, provisionCmdPreview, preflightFixPromptPreview } : {}),
   ...(classifierOutageDeath && String(o.status).endsWith('-died')
     ? { reason: 'classifier-outage: resume with resumeFromRunId' } : {}), ...o })
 
@@ -259,6 +253,8 @@ const {
   proceedThrough = null,
   planText = null,
   dryRun = false,
+  probeOnly = null,
+  pluginRoot = null,
   maxPlanAttempts = 2,
   planAudit = undefined,
   planFreshness = undefined,
@@ -287,6 +283,9 @@ if (config === null || typeof config !== 'object' || Array.isArray(config)) {
 if (!['auto', 'semi', 'manual'].includes(mode)) throw new Error(`Invalid mode: ${mode}`)
 if (!['plan', 'dev', 'review'].includes(entryStage)) throw new Error(`Invalid entryStage: ${entryStage}`)
 if (entryStage === 'review' && !prNumber) throw new Error('entryStage=review requires prNumber argument')
+// Run identity (#130): first log line + Setup phase, before any agent call, so runs can be told apart.
+log(`deliver #${issue} — ${String(brief).slice(0, 80)}${entryStage === 'review' ? ` (PR #${prNumber})` : ''}`)
+phase('Setup')
 // planAudit: arg wins per-run over the project default; an explicit `false` beats a
 // `true` config (`??` only falls through on null/undefined, never on a real `false`).
 const planAuditEnabled = planAudit ?? config.planAudit ?? false
@@ -342,7 +341,9 @@ const modelsCfg = config.models || {}
 const scoutModel = models.scout ?? modelsCfg.scout ?? 'sonnet'
 const planAuditModel = models.planAudit ?? modelsCfg.planAudit ?? 'sonnet'
 const morganModel = models.morgan ?? modelsCfg.morgan ?? 'sonnet'
-if (dryRun) return finish({ status: 'dry-run-ok', issue, mode, entryStage, planAudit: planAuditEnabled, planFreshness: planFreshnessMode, maxAuditRounds, maxAuditRoundsOverrideReason: auditBudgetOverrideReason || null, maxPlanAmendRounds, models: { scout: scoutModel, planAudit: planAuditModel, morgan: morganModel } })
+// Probe-run gate (#80): version of the PROBES registry (the call-site names declared at `const PROBES`).
+const PROBES_VERSION = 2
+if (dryRun) return finish({ status: 'dry-run-ok', probesVersion: PROBES_VERSION, issue, mode, entryStage, planAudit: planAuditEnabled, planFreshness: planFreshnessMode, maxAuditRounds, maxAuditRoundsOverrideReason: auditBudgetOverrideReason || null, maxPlanAmendRounds, models: { scout: scoutModel, planAudit: planAuditModel, morgan: morganModel } })
 
 const trace = []
 if (auditBudgetOverridden) {
@@ -382,7 +383,7 @@ if (branchPrefixArgIgnored) {
 // resolveWorktreeRoot() itself is defined below (see its :start/:end sentinel block) — hoisted,
 // so this call resolves fine despite the definition appearing later in the file.
 const runtimeEnv = simulate
-  ? (simulate.env || {})
+  ? (simulate.probes?.env || {})
   : ((typeof process !== 'undefined' && process && process.env) ? process.env : {})
 const worktreeRoot = resolveWorktreeRoot({ env: runtimeEnv, configLocal, config, wtPath })
 log(`worktreeRoot: ${worktreeRoot ?? '(unresolved)'} (env=${runtimeEnv.LGTMGATE_WORKTREE_ROOT ? 'set' : 'unset'}, local=${configLocal.worktreeRoot ? 'set' : 'unset'}, config=${config.worktreeRoot ? 'set' : 'unset'})`)
@@ -407,7 +408,7 @@ let conventionsRule = config.conventionsRule || '.claude/rules/conventions.md'
 if (entryStage !== 'plan') {
   let configProjectRecheckRaw = null
   if (simulate) {
-    if (simulate.configProjectRecheckRaw !== undefined) configProjectRecheckRaw = simulate.configProjectRecheckRaw
+    if (simulate.probes?.configProjectRecheckRaw !== undefined) configProjectRecheckRaw = simulate.probes?.configProjectRecheckRaw
   } else {
     try {
       configProjectRecheckRaw = await agent(
@@ -594,13 +595,8 @@ function isSubset(smaller, larger) {
 const reviewerWindowCandidates = (issues, windowStart, windowEnd) =>
   (issues || []).filter(i => i && i.createdAt && i.createdAt >= windowStart && i.createdAt <= windowEnd)
 
-// Belt-and-suspenders ceiling for the reviewer-window `gh issue list` scan (lgtmgate#18) — NOT
-// the primary bound (the `created:>=windowStart` search qualifier at the call site is), see the
-// comment there. A single named constant so the call site's `--limit` and its exact-limit
-// truncation check never drift apart.
-const REVIEWER_WINDOW_SCAN_SAFETY_LIMIT = 1000
-
 // Decision log — durable counterpart to the comment-collapse pass above. Pure body composer.
+// --- prBodySplice:start --- (pure & self-contained: templates/pr-body-splice.cjs carries a byte-identical copy, parity-tested)
 const DECISION_LOG_START = '<!-- decision-log:start -->'
 const DECISION_LOG_END = '<!-- decision-log:end -->'
 // Line-anchored (column 0 only) so an INDENTED/fenced illustrative copy of the markers — e.g.
@@ -688,6 +684,7 @@ function bodyWriteGuardOk(preLen, newBody) {
   if (!b.includes('<!-- acceptance:end -->')) return false
   return true
 }
+// --- prBodySplice:end ---
 
 // ---------------------------------------------------------------------------
 // GH Project config (IDs supplied by the project — see config.ghProject)
@@ -741,6 +738,10 @@ const NICK = {
   },
 }
 
+// #9: the Lead ticks `proven-untickable` boxes from Morgan's verdict comment (scripts/lead-merge.sh --tick-from-review),
+// which only matches one line per box in this exact shape.
+const UNTICKABLE_LINE_RULE = 'In the posted verdict comment, for every box you could not tick, write ONE line per box, exactly `- [ ] **<box text verbatim>** — verified, tick pending (permissions): <command> -> <verbatim output>` — never grouped ("Boxes 1-4"), never cited by index ("Box 2"): the Lead ticks from these lines mechanically and skips any other shape. '
+const ACCEPTANCE_PRESENCE_RULE = 'If the PR body has no acceptance:start / acceptance:end marker pair, or the block between them holds no `- [ ]` or `- [x]` line, the verdict is REQUIRED_CHANGES (never LGTM) and `items` carries the literal line `Acceptance block absent or empty`. '
 const MORGAN = {
   type: 'object',
   required: ['verdict'],
@@ -846,6 +847,18 @@ const PREFLIGHT = {
     pass: { type: 'boolean' },
     issues: { type: 'array', items: { type: 'string' } },
     testCommandRun: { type: 'string', description: 'Check-3 test command as actually executed, verbatim (drift forensics)' },
+    failedChecks: {
+      type: 'array',
+      description: 'Check 5: one entry per required check in FAILURE state (#132); the engine folds it into issues',
+      items: {
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+          step: { type: 'string', description: 'Failing step name as printed by gh run view --log-failed' },
+          logTail: { type: 'string', description: 'last failing lines of the check log, verbatim' },
+        },
+      },
+    },
   },
 }
 
@@ -891,7 +904,7 @@ function normalizeAgentType(agentType) {
 }
 
 // --- acceptAlreadyDone:start --- (pure & self-contained — keep extractable by the consuming project's tests)
-function acceptAlreadyDone(guard, expectedHead, nowIso) {
+function acceptAlreadyDone(guard, expectedHead, asOfIso) {
   const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/
   if (!guard || typeof guard !== 'object') return { accepted: false, reason: 'no-guard-response' }
   if (guard.checkFailed === true) return { accepted: false, reason: 'gh-tool-failure' }
@@ -903,7 +916,7 @@ function acceptAlreadyDone(guard, expectedHead, nowIso) {
   if (!ISO.test(at)) return { accepted: false, reason: 'merged-without-valid-timestamp' }
   if (!Number.isInteger(guard.mergedPr) || guard.mergedPr <= 0) return { accepted: false, reason: 'merged-without-pr-number' }
   const t = Date.parse(at)
-  const now = Date.parse(nowIso)
+  const now = Date.parse(asOfIso)
   if (Number.isFinite(now) && t > now) return { accepted: false, reason: 'merged-in-the-future' }
   const created = typeof guard.issueCreatedAt === 'string' ? Date.parse(guard.issueCreatedAt) : NaN
   if (Number.isFinite(created) && t < created) return { accepted: false, reason: 'merged-before-issue-created' }
@@ -1405,8 +1418,9 @@ function auditConvergenceNote(auditTrace) {
 // map entry there would mislead the next reader.
 function agentDeathRouting(role, attempt, maxAttempts = 2) {
   const RETRY_SAFE = new Set([
-    'provision', 'theo', 'mia', 'sam', 'planCheck', 'audit', 'alreadyDoneCheck', 'preflight',
+    'provision', 'theo', 'mia', 'sam', 'planCheck', 'audit', 'alreadyDoneCheck', 'preflight', 'probe',
   ])
+  // probe is RETRY_SAFE: side-effect free, probe-run.cjs reuses the stored record on a retry (#82)
   const STATUS = {
     provision: 'provision-died',
     theo: 'diagnose-died',
@@ -1430,37 +1444,37 @@ function agentDeathRouting(role, attempt, maxAttempts = 2) {
 
 function simFixture(role, round = 0, prNum = null) {
   if (!simulate) return null
-  if (role === 'mia') return simulate.mia || { framing: '(simulated PM)' }
+  if (role === 'mia') return simulate.probes?.mia || { framing: '(simulated PM)' }
   if (role === 'sam') return {
-    decision: simulate.sam === 'NO-GO' ? 'NO-GO' : 'GO',
-    plan: simulate.samPlan || '(simulated plan)',
-    planPath: simulate.samPlanPath || planPath,
-    rationale: simulate.samRationale || '',
-    debtIssue: simulate.debtIssue || '',
-    targetFiles: simulate.samTargetFiles || [],
-    absorbedIssues: simulate.samAbsorbedIssues || [],
+    decision: simulate.probes?.sam === 'NO-GO' ? 'NO-GO' : 'GO',
+    // #153: the default simulated plan carries its checklist, as a compliant Sam's plan does.
+    plan: simulate.probes?.samPlan || ('(simulated plan)' + (simulate.probes?.samAcceptanceChecklist ? '\n' + simulate.probes.samAcceptanceChecklist : '')),
+    planPath: simulate.probes?.samPlanPath || planPath,
+    rationale: simulate.probes?.samRationale || '',
+    debtIssue: simulate.probes?.debtIssue || '',
+    targetFiles: simulate.probes?.samTargetFiles || [],
+    absorbedIssues: simulate.probes?.samAbsorbedIssues || [],
     // #97 — without this, a simulated plan-amendment round would return an empty checklist,
     // fail syncAcceptanceBlock's empty-checklist guard, and escalate as acceptance-sync-failed.
-    acceptanceChecklist: simulate.samAcceptanceChecklist ?? '- [ ] (simulated acceptance item)',
+    acceptanceChecklist: simulate.probes?.samAcceptanceChecklist,
   }
-  if (role === 'nick') return {
-    prNumber: simulate.nick?.prNumber ?? prNum ?? 999,
-    branch: simulate.nick?.branch ?? `${expectedBranchName}`,
-    testsPass: simulate.nick?.testsPass ?? true,
-    summary: '(sim)',
+  if (role === 'nick') {
+    const nickFx = simulate.probes?.nick || {}
+    return {
+      prNumber: nickFx.prNumber ?? prNum ?? 999,
+      branch: nickFx.branch ?? `${expectedBranchName}`,
+      testsPass: nickFx.testsPass ?? true,
+      summary: '(sim)',
+    }
   }
   if (role === 'alreadyDoneCheck')
-    return simulate.alreadyDoneCheck ?? { isAlreadyDone: false, isIssueClosed: false, isMerged: false }
-  if (role === 'provision')
-    return simulate.provisionRaw !== undefined
-      ? simulate.provisionRaw
-      : (simulate.provision ?? { ok: true, exitCode: 0, linked: [], missing: [] })
+    return simulate.probes?.alreadyDoneCheck
   if (role === 'preflight') {
-    const f = simulate.preflight?.[round]
+    const f = simulate.probes?.preflight?.[round]
     return f ?? { pass: true, issues: [] }
   }
   if (role === 'morgan') {
-    const m = simulate.morgan?.[round]
+    const m = simulate.probes?.morgan?.[round]
     if (m === null) return null
     return {
       verdict: m ? m.verdict : 'LGTM',
@@ -1471,13 +1485,13 @@ function simFixture(role, round = 0, prNum = null) {
     }
   }
   if (role === 'planCheck') {
-    const c = simulate.planCheck?.[round]
+    const c = simulate.probes?.planCheck?.[round]
     return c ? { verdict: c.verdict || 'CONFORMING', issues: c.issues || [] } : { verdict: 'CONFORMING', issues: [] }
   }
   if (role === 'theo')
-    return simulate.theo ?? { confirmed: true, evidence: '(simulated)', actualCause: '' }
+    return simulate.probes?.theo
   if (role === 'audit') {
-    const a = simulate.audit?.[round]
+    const a = simulate.probes?.audit?.[round]
     return a ?? { verdict: 'SOUND', findings: [] }
   }
   throw new Error(`Unknown role: ${role}`)
@@ -1508,14 +1522,14 @@ async function callAgent(role, prompt, opts, round = 0, attempt = 1) {
     // #54 seam A — replay P1's captured harness signature on the NAMED attempt numbers.
     // Per-attempt (never a module-scope fire-once Set): correctness must not depend on the
     // runner re-evaluating the body per case, which the Workflow-tool path does not do.
-    const spec = simulate.agentTypeUnresolved && simulate.agentTypeUnresolved[role]
+    const spec = simulate.probes?.agentTypeUnresolved && simulate.probes?.agentTypeUnresolved[role]
     if (Array.isArray(spec) && spec.includes(attempt) && opts && opts.agentType) {
       throw new Error(`agent({agentType}): agent type '${normalizeAgentType(opts.agentType)}' ` +
         `not found. Available agents: (simulated)`)
     }
-    // #54 seam B — the plain-death lever. `simulate.<role> = null` CANNOT work: simFixture uses
-    // `simulate.theo ?? default`, and `??` treats null as nullish. 'DIE' is free (0 occurrences).
-    if (simulate[role] === 'DIE') return null
+    // #54 seam B — the plain-death lever. A null role fixture CANNOT work: the suite's run() applies
+    // its defaults with nullish coalescing, which treats null as nullish. 'DIE' is free (0 occurrences).
+    if (simulate.probes[role] === 'DIE') return null
     return simFixture(role, round, prNumber)
   }
   // Normalize bare role names to lgtmgate:<Name> so agent() can resolve them.
@@ -1631,22 +1645,245 @@ async function updateStatus(name) {
   }
   trace.push(name)
   if (simulate) return
+  // pr-write.sh reads the issue's own project items (never a board scan), skips a missing item or an
+  // option already set, and never edits with an empty id (#85).
+  await prWrite('status', 'status-' + sanitizeProbeToken(name), 0,
+    ['--issue', issue, '--project-number', ghProject.projectNumber, '--project-id', ghProject.projectId,
+      '--field-id', ghProject.fieldId, '--option-id', optionId])
+}
+
+// ---------------------------------------------------------------------------
+// Probe-run gate (#80, E2.2; provision migrated by #82) — ONE gate to the world:
+// templates/probe-run.cjs EXECUTES the command and keeps the raw output on disk; the probe agent
+// (haiku, Bash only) runs TWO commands and copies their single lines: the `PROBE ` line (run) and
+// the `VERIFY ` line (probe-run.cjs --verify: the stored record's recomputed line must equal an entry
+// of hooks/PostToolUse-probe-attest.sh's attestation). The engine has no filesystem, so verification
+// runs in the script and the engine only compares the verified line with the copied one.
+// PROBES lists the call-site probe names (value = templates/probe-run.cjs:PARSERS key); the flow suite
+// asserts every probe('x') name is registered. PROBES_VERSION is declared near `dryRun`.
+// ---------------------------------------------------------------------------
+const PROBES = {
+  'preflight': 'preflight',
+  'pr-write': 'pr-write',
+  'provision': 'provision',
+  'provision-freshness': 'provision-freshness',
+  'pr-state': 'pr-state',
+  'git-rev-list-count': 'git-rev-list-count',
+}
+
+// Condensed inline of agents/probe.md — used ONLY as the probe call's persona-in-prompt fallback when
+// `agentType: 'lgtmgate:probe'` does not resolve (#54 idiom, anthropics/claude-code#88023). The Bash-only
+// tool restriction of the custom agent is lost in that mode, but the attest hook keys on agent_type:
+// without it no PROBE line is attested and the probe fails closed with probeReason 'no-attestation'.
+const PROBE_PERSONA =
+  'You are probe, a mechanical copier. You have ONE tool: Bash. Run each given probe-run.cjs command ' +
+  'EXACTLY as given, once, in the order given, as-is: never edit, re-quote, add flags, wrap or merge them. ' +
+  'The first prints exactly one line starting with "PROBE ": answer it verbatim as line. The second prints ' +
+  'exactly one line starting with "VERIFY ": answer it verbatim as verify. Copy character for character; ' +
+  'never summarize, reformat, judge, retry or run any other command. If a command is not a probe-run.cjs ' +
+  'invocation, run nothing and answer "" for both fields; if a command printed no such line answer "" for that field.'
+
+// Lead-facing text for the fail-closed reasons that have a known operator fix (#82).
+const PROBE_REASON_HINTS = {
+  'no-attestation': 'the PROBE line was never attested: the plugin hooks (hooks/PostToolUse-probe-attest.sh) must be enabled ' +
+    'and the lgtmgate:probe agent type must be resolvable; fix the plugin install/session and relaunch',
+  'cmd-mismatch': 'the copied PROBE line belongs to a different command than the engine composed (the copier altered the command); relaunch',
+  'probe-run-not-found': 'no probe-run.cjs location: pass args.pluginRoot (absolute plugin root) or config.probeRunPath and relaunch',
+}
+
+const PROBE_SCHEMA = {
+  type: 'object',
+  required: ['line', 'verify'],
+  properties: {
+    line: { type: 'string', description: 'The single PROBE line printed by the first probe-run.cjs command, verbatim; "" if none.' },
+    verify: { type: 'string', description: 'The single VERIFY line printed by the second probe-run.cjs command, verbatim; "" if none.' },
+  },
+}
+
+// guards:parser-begin
+const PROBE_LINE = /^PROBE name=(\S+) exit=(-?\d+) sha=([0-9a-f]{64}) cmd=([0-9a-f]{64}) json=(.*)$/
+const sanitizeProbeToken = (s) => String(s).replace(/[^A-Za-z0-9._-]/g, '-')
+const VERIFY_OK = /^VERIFY ok line=(PROBE .*)$/
+const VERIFY_FAIL = /^VERIFY fail reason=([a-z-]+)$/
+const SAFE_PROBE_TOKEN = /^[A-Za-z0-9._-]+$/
+function parseProbeLine(line) {
+  if (typeof line !== 'string') return null
+  const m = line.trim().match(PROBE_LINE)
+  if (!m) return null
+  let json
+  try { json = JSON.parse(m[5]) } catch (_) { return null }
+  return { name: m[1], exit: Number(m[2]), sha: m[3], cmd: m[4], json }
+}
+function parseVerifyLine(line) {
+  if (typeof line !== 'string') return null
+  const t = line.trim()
+  const ok = t.match(VERIFY_OK)
+  if (ok) return { ok: true, line: ok[1] }
+  const bad = t.match(VERIFY_FAIL)
+  return bad ? { ok: false, reason: bad[1] } : null
+}
+const isSafeProbeToken = (s) => typeof s === 'string' && SAFE_PROBE_TOKEN.test(s)
+// guards:parser-end
+
+const shellSingleQuote = (s) => `'${String(s).split("'").join("'\\''")}'`
+
+// --- sha256Hex:start --- (pure & self-contained: SHA-256 of the UTF-8 bytes, lowercase hex; must equal probe-run.cjs sha256)
+function sha256Hex(str) {
+  const bytes = []
+  for (const ch of String(str)) {
+    const c = ch.codePointAt(0)
+    if (c < 0x80) bytes.push(c)
+    else if (c < 0x800) bytes.push(0xc0 | (c >> 6), 0x80 | (c & 63))
+    else if (c < 0x10000) bytes.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63))
+    else bytes.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63))
+  }
+  const K = [
+    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+    0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+    0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+    0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+    0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+  ]
+  const H = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19]
+  const bitLen = bytes.length * 8
+  bytes.push(0x80)
+  while (bytes.length % 64 !== 56) bytes.push(0)
+  const hi = Math.floor(bitLen / 0x100000000)
+  const lo = bitLen >>> 0
+  bytes.push((hi >>> 24) & 255, (hi >>> 16) & 255, (hi >>> 8) & 255, hi & 255, (lo >>> 24) & 255, (lo >>> 16) & 255, (lo >>> 8) & 255, lo & 255)
+  const rotr = (x, n) => (x >>> n) | (x << (32 - n))
+  for (let off = 0; off < bytes.length; off += 64) {
+    const w = new Array(64)
+    for (let i = 0; i < 16; i++) w[i] = ((bytes[off + 4 * i] << 24) | (bytes[off + 4 * i + 1] << 16) | (bytes[off + 4 * i + 2] << 8) | bytes[off + 4 * i + 3]) | 0
+    for (let i = 16; i < 64; i++) {
+      const s0 = rotr(w[i - 15], 7) ^ rotr(w[i - 15], 18) ^ (w[i - 15] >>> 3)
+      const s1 = rotr(w[i - 2], 17) ^ rotr(w[i - 2], 19) ^ (w[i - 2] >>> 10)
+      w[i] = (w[i - 16] + s0 + w[i - 7] + s1) | 0
+    }
+    let [a, b, c, d, e, f, g, h] = H
+    for (let i = 0; i < 64; i++) {
+      const S1 = rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25)
+      const t1 = (h + S1 + ((e & f) ^ (~e & g)) + K[i] + w[i]) | 0
+      const S0 = rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22)
+      const t2 = (S0 + ((a & b) ^ (a & c) ^ (b & c))) | 0
+      h = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0
+    }
+    H[0] = (H[0] + a) | 0; H[1] = (H[1] + b) | 0; H[2] = (H[2] + c) | 0; H[3] = (H[3] + d) | 0
+    H[4] = (H[4] + e) | 0; H[5] = (H[5] + f) | 0; H[6] = (H[6] + g) | 0; H[7] = (H[7] + h) | 0
+  }
+  return H.map((x) => (x >>> 0).toString(16).padStart(8, '0')).join('')
+}
+// --- sha256Hex:end ---
+
+// --- probeCommands:start --- (pure & self-contained — keep extractable by the consuming project's tests)
+// The two commands the probe agent runs, in order (#82). Both start with `cd '<wtPath>' && node '<script>'`
+// (the attest hook accepts that prefix). The script is config.probeRunPath, else the plugin root's
+// templates/probe-run.cjs (arg pluginRoot), else the worktree's own copy.
+function probeCommands({ wtPath, issue, pluginRoot, probeRunPath, name, cmd, label, round, noReuse }) {
+  const q = (x) => `'${String(x).split("'").join("'\\''")}'`
+  const script = probeRunPath ?? (pluginRoot ? pluginRoot + '/templates/probe-run.cjs' : wtPath + '/templates/probe-run.cjs')
+  const outDir = `${wtPath}/.pipeline/probes/issue-${issue}`
+  const head = `cd ${q(wtPath)} && node ${q(script)} `
+  const common = `--label ${label} --round ${round} --out ${q(outDir)} --parser ${name}`
+  return {
+    run: `${head}${common} --model haiku${noReuse ? ' --no-reuse' : ''} --cmd ${q(cmd)}`,
+    verify: `${head}--verify ${common} --attest ${q(wtPath + '/.pipeline/probe-attest.jsonl')}`,
+  }
+}
+// --- probeCommands:end ---
+
+async function probe(name, cmd, { label, round = 0, onFail, noReuse = false } = {}) {
+  if (!isSafeProbeToken(name) || !isSafeProbeToken(label)) {
+    throw new Error(`probe: unsafe name/label (${JSON.stringify(name)} / ${JSON.stringify(label)})`)
+  }
+  const fail = (reason) => {
+    if (onFail) return onFail(reason)
+    throw new Error(`probe ${name}/${label}: ${reason}`)
+  }
+  if (!config.probeRunPath && !pluginRoot) return fail('probe-run-not-found')
+  const cmds = probeCommands({ wtPath, issue, pluginRoot, probeRunPath: config.probeRunPath, name, cmd, label, round, noReuse })
+  const prompt =
+    `Run EXACTLY these two commands once each, in this order, from the worktree "${wtPath}", without editing or re-quoting them:\n\n` +
+    `1. ${cmds.run}\n2. ${cmds.verify}\n\n` +
+    `The first prints exactly one line starting with "PROBE ": answer it verbatim as "line". ` +
+    `The second prints exactly one line starting with "VERIFY ": answer it verbatim as "verify". ` +
+    `Never judge or retry; if a command printed no such line, answer "" for that field.`
+  trace.push(`probe:${name}:haiku`)
+  const res = await callAgentSafe('probe', prompt,
+    { agentType: 'lgtmgate:probe', schema: PROBE_SCHEMA, label: `probe-${issue}-${name}-${label}-r${round}`, model: 'haiku', personaFallback: PROBE_PERSONA }, round)
+  if (isAgentDeath(res)) return fail('agent-death')
+  const parsed = parseProbeLine(res && res.line)
+  if (!parsed) return fail('unparseable-line')
+  if (parsed.name !== name) return fail('name-mismatch')
+  const want = sha256Hex(cmd)
+  if (parsed.cmd !== want) return fail('cmd-mismatch')
+  const verified = parseVerifyLine(res && res.verify)
+  if (!verified) return fail('unparseable-verify')
+  if (!verified.ok) return fail(verified.reason === 'no-attestation' ? 'no-attestation' : `verify-${verified.reason}`)
+  const vp = parseProbeLine(verified.line)
+  if (!vp || vp.sha !== parsed.sha) return fail('sha-mismatch')
+  if (vp.cmd !== want) return fail('cmd-mismatch')
+  if (verified.line !== String(res.line).trim()) return fail('line-mismatch')
+  return parsed
+}
+
+// preflightProbe (#83): the pre-Dev / branch-guard reads as ONE probe (templates/preflight.sh, parser
+// `preflight`). mode 'dev' | 'branch'; returns the parsed object, or null on any failure (fail-open,
+// like the reads it replaces). The script sits next to probe-run.cjs.
+const probeScriptPath = (file) => {
+  const runPath = config.probeRunPath ?? (pluginRoot ? pluginRoot + '/templates/probe-run.cjs' : wtPath + '/templates/probe-run.cjs')
+  return runPath.slice(0, runPath.lastIndexOf('/') + 1) + file
+}
+
+async function preflightProbe(mode, label, argv) {
   try {
-    await agent(
-      `Best-effort (if any step fails, log and continue — NEVER throw):\n` +
-      (repo
-        ? `0) OWNER="${String(repo).split('/')[0]}"; NAME="${String(repo).split('/')[1]}" (from config.repo).\n`
-        : `0) cd into "${wtPath}"; OWNER=$(gh repo view --json owner -q .owner.login); NAME=$(gh repo view --json name -q .name).\n`) +
-      `1) item id — query the ISSUE's own project items, NEVER scan the board with gh's ` +
-      `"project item-list" (it defaults to 30 items and returns NOTHING for an issue past the first page):\n` +
-      `gh api graphql -f query='query($owner:String!,$repo:String!,$number:Int!){repository(owner:$owner,name:$repo){issue(number:$number){projectItems(first:20){nodes{id project{number}}}}}}' ` +
-      `-f owner="$OWNER" -f repo="$NAME" -F number=${issue} ` +
-      `--jq '.data.repository.issue.projectItems.nodes[]|select(.project.number==${ghProject.projectNumber})|.id'\n` +
-      `2) gh project item-edit --id <ITEM_ID> --field-id ${ghProject.fieldId} --project-id ${ghProject.projectId} --single-select-option-id ${optionId}\n` +
-      `If step 1 prints nothing, issue #${issue} is not on project ${ghProject.projectNumber} — log that and STOP; never run step 2 with an empty id.`,
-      { label: `status:${name}`, model: 'haiku' },
-    )
-  } catch (e) { log(`updateStatus ${name} failed: ${e.message}, continuing`) }
+    const script = probeScriptPath('preflight.sh')
+    const cmd = 'bash ' + shellSingleQuote(script) + ' ' + mode + ' ' + argv.map(shellSingleQuote).join(' ')
+    const r = await probe('preflight', cmd, {
+      label,
+      noReuse: true,   // live state: a stored record from an earlier launch must never answer (#83)
+      onFail: (reason) => { log(`preflight probe (${mode}): ${reason} — fail-open`); return null },
+    })
+    return r && r.json && !r.json.error && r.json.mode === mode ? r.json : null
+  } catch (e) {
+    log(`preflight probe (${mode}) failed (${e.message}) — fail-open`)
+    return null
+  }
+}
+
+// prWrite (E2.6a, #85): every PR/issue/project WRITE of the review phase as ONE probe (templates/pr-write.sh,
+// parser `pr-write`). The script reads before it writes and never writes after a failed read; a write is
+// never reused from a stored record (noReuse). Returns the parsed {op, result, reason, bytes} or null on any
+// failure (fail-open, like the best-effort sites it replaces: a failed write logs and the run continues).
+// The result line is always logged so fixtures can assert on it.
+async function prWrite(op, label, round, argv) {
+  let out = null
+  try {
+    const script = probeScriptPath('pr-write.sh')
+    const args = [...argv, '--wt', wtPath, ...(repo ? ['--repo', repo] : [])]
+    const cmd = 'bash ' + shellSingleQuote(script) + ' ' + op + ' ' + args.map((a) => shellSingleQuote(String(a))).join(' ')
+    const r = await probe('pr-write', cmd, {
+      label,
+      round,
+      noReuse: true,   // a write is never replayed from a stored record (#85)
+      onFail: (reason) => { log(`pr-write ${op} (${label}, round ${round}): probe failed (${reason}) — fail-open`); return null },
+    })
+    if (r && r.json && !r.json.error) out = r.json
+    else if (r) log(`pr-write ${op} (${label}, round ${round}): unusable result (${r.json && r.json.error}) — fail-open`)
+  } catch (e) {
+    log(`pr-write ${op} (${label}, round ${round}): failed (${e.message}) — fail-open`)
+  }
+  if (out) log(`pr-write ${op} (${label}, round ${round}): ${out.result}${out.reason ? ' — ' + out.reason : ''}`)
+  return out
+}
+
+// probeOnly (#80): reach probe() from a run-offline fixture while no call site exists yet.
+if (probeOnly) {
+  const r = await probe(probeOnly.name, probeOnly.cmd, { ...probeOnly })
+  return finish({ status: 'dry-run-ok', reason: 'probe-only', issue, probesVersion: PROBES_VERSION, probe: r, trace })
 }
 
 // ---------------------------------------------------------------------------
@@ -1697,53 +1934,39 @@ async function updateStatus(name) {
   const provisionCmd =
     `SCRIPT="${provisionScript}"; if [ -f "$SCRIPT" ]; then PROVISION_ENV_SYMLINK="${envSymlink}" bash "$SCRIPT" "${wtPath}"${provisionArgs}; else ${noScriptBranch}; fi`
   if (simulate) provisionCmdPreview = provisionCmd
-  // parseProvisionOutput (#175) — pure, deterministic parse of provision_worktree.sh's own
-  // verbatim markers (templates/provision_worktree.sh:49-59), replacing the removed PROVISION
-  // schema's LLM semantic judgment. `ok` is derived STRICTLY as exitCode===0 — never a
-  // separate LLM-emitted boolean — closing the gap the 2026-08-23 "LOCAL HARDENING" comment
-  // below originally flagged as incomplete (an absent/non-numeric exitCode used to never fail
-  // closed, exactly #114/#120's observed shape). `missing` is populated ONLY from a literal
-  // `MISSING-SRC ` line, never from a soft `WARN` line.
-  const parseProvisionOutput = (raw) => {
-    const text = String(raw ?? '')
-    const exitMatch = text.match(/PROVISION-EXIT:(\d+)/)
-    const exitCode = exitMatch ? Number(exitMatch[1]) : null
-    const linked = [...text.matchAll(/^LINKED\s+(\S+)\s+->/gm)].map((m) => m[1])
-    const missing = [...text.matchAll(/^MISSING-SRC\s+(\S+)/gm)].map((m) => m[1])
-    const skipped = /PROVISION-SKIPPED-NO-SCRIPT/.test(text)
-    return { ok: exitCode === 0, exitCode, linked, missing, skipped }
-  }
-  // Exit code travels as literal appended text (never LLM-judged) so the parser above can
-  // recover it deterministically even when the agent relays nothing else usefully.
-  const provisionCmdWithExit = `(${provisionCmd}); echo "PROVISION-EXIT:$?"`
-  const provisionRaw = await callAgentSafe(
-    'provision',
-    `Run EXACTLY this command once, as a SINGLE bash invocation, verbatim (do not split or reformat it). ` +
-      `Do NOT create, repair or improvise any symlink yourself. Do NOT judge success or failure yourself — ` +
-      `relay the command's ENTIRE raw output (stdout and stderr) byte-for-byte, including every ` +
-      `\`LINKED\` / \`MISSING-SRC\` / \`PROVISION-SKIPPED-NO-SCRIPT\` line and the trailing ` +
-      `\`PROVISION-EXIT:<code>\` line, verbatim and in full — never summarize, judge, or omit any line.\n\n` +
-      provisionCmdWithExit,
-    { label: `provision-${issue}`, model: 'haiku' },
-  )
-  if (isAgentDeath(provisionRaw)) {
+  // #82: the call goes through probe() (probe-run gate): probe-run.cjs executes the command and keeps
+  // the raw output, PARSERS.provision derives linked/missing/skipped in the script, the exit code
+  // travels as `exit=` in the PROBE line and is never LLM-judged. `2>&1` so MISSING-SRC (stderr)
+  // reaches the parser. `ok` is STRICTLY exit === 0 (and no parser error) — never an LLM boolean.
+  // A probe failure (agent death, contaminated copy, failed attestation) is fail-closed.
+  const provision = simulate
+    ? simulate.probes?.provision
+    : await (async () => {
+        const res = await probe('provision', `(${provisionCmd}) 2>&1`,
+          { label: 'provision', onFail: (reason) => ({ probeFailed: reason }) })
+        if (res.probeFailed) return res
+        return {
+          ok: res.exit === 0 && !res.json.error,
+          exitCode: res.exit,
+          linked: res.json.linked || [],
+          missing: res.json.missing || [],
+          skipped: res.json.skipped === true,
+        }
+      })()
+  if (provision?.probeFailed === 'agent-death') {
     return finish({ status: 'provision-died', issue, trace, resumable: true })
   }
-  // Simulate-mode routing: an existing fixture (`simulate.provision`, already object-shaped)
-  // bypasses the parser untouched so pre-existing tests (T37/T38/F2/T99/T100/T104a-d) keep
-  // exercising the SAME pre-shaped object they always have; only the new `simulate.provisionRaw`
-  // seam (raw text) routes through the real deterministic parser under test.
-  const provision = (simulate && simulate.provisionRaw === undefined) ? provisionRaw : parseProvisionOutput(provisionRaw)
+  if (provision?.probeFailed) {
+    log(`Provisioning probe failed (${provision.probeFailed}) — failing closed` + (PROBE_REASON_HINTS[provision.probeFailed] ? `: ${PROBE_REASON_HINTS[provision.probeFailed]}` : ''))
+    await updateStatus('Blocked')
+    return finish({ status: 'escalate', reason: 'provision-failed', issue, missing: [], exitCode: null, probeReason: provision.probeFailed, probeHint: PROBE_REASON_HINTS[provision.probeFailed] || null, trace })
+  }
   log(`Provision: ok=${provision?.ok}, exitCode=${provision?.exitCode ?? 'unknown'}, ` +
     `skipped=${provision?.skipped === true}, ` +
     `linked=${(provision?.linked || []).join(', ') || 'none'}, missing=${(provision?.missing || []).join(', ') || 'none'}`)
   if (provision?.skipped === true) {
     log(`Provision: nothing to link — ${provisionScript} not found and no provision.extraLinks configured`)
   }
-  // LOCAL HARDENING (2026-08-23), extended by #175: `ok` is now derived strictly
-  // as `exitCode === 0` inside parseProvisionOutput above — no separate LLM-emitted boolean
-  // feeds this gate any more, so the former exitCode/ok cross-check is now redundant by
-  // construction and has been removed.
   if (provision?.ok !== true) {
     log(`Provisioning failed — missing source(s): ${(provision?.missing || []).join(', ') || 'unknown'}`)
     await updateStatus('Blocked')
@@ -1766,27 +1989,30 @@ async function updateStatus(name) {
 // discover the staleness itself before opening a doomed diff — this preflight catches the same
 // case for 0 planning tokens.
 // ---------------------------------------------------------------------------
+// #82: the freshness check goes through probe() ('provision-freshness' parser in probe-run.cjs parses the
+// last `PROVISION-FRESHNESS:<ffwd|fresh|stale>:<behind>[:<own>]` line, #40); a probe failure is
+// fail-open (log + null) — a git/network error never blocks a legitimate run, only a CONFIRMED
+// positive behind-count does.
 if (entryStage === 'plan') {
-  const provisionBehind = simulate
-    ? (simulate.provisionBehindCount ?? 0)
+  const provisionFresh = simulate
+    ? { state: 'legacy', behind: simulate.probes?.provisionBehindCount, own: null }
     : await (async () => {
-        try {
-          const out = await agent(
-            `cd "${wtPath}" && git fetch origin ${baseBranch} -q 2>/dev/null; git rev-list --count HEAD..origin/${baseBranch}`,
-            { label: `provision-freshness-${issue}`, model: 'haiku' },
-          )
-          const n = Number(String(out ?? '').trim().split(/\s+/).pop())
-          return Number.isFinite(n) ? n : null
-        } catch (e) {
-          log(`provisionBehindCount: probe failed (${e.message}), skipping staleness preflight`)
-          return null
-        }
+        const res = await probe('provision-freshness',
+          `cd "${wtPath}" && git fetch origin ${baseBranch} -q 2>/dev/null; B=$(git rev-list --count HEAD..origin/${baseBranch}); O=$(git rev-list --count origin/${baseBranch}..HEAD); if [ "$B" -gt 0 ] && [ "$O" -eq 0 ] && git merge --ff-only origin/${baseBranch} -q >/dev/null 2>&1; then echo "PROVISION-FRESHNESS:ffwd:$B"; elif [ "$B" -eq 0 ]; then echo "PROVISION-FRESHNESS:fresh:0:$O"; else echo "PROVISION-FRESHNESS:stale:$B:$O"; fi`,
+          { label: 'provision-freshness', onFail: (reason) => { log(`provisionBehindCount: probe failed (${reason}), skipping staleness preflight`); return null } })
+        return res && res.json && !res.json.error ? res.json : null
       })()
-  if (typeof provisionBehind === 'number' && provisionBehind > 0) {
-    log(`Provision-freshness: worktree is ${provisionBehind} commit(s) behind origin/${baseBranch} at dispatch — escalating before any planning spend`)
+  if (provisionFresh?.state === 'ffwd') {
+    log(`Provision-freshness: worktree was ${provisionFresh.behind} commit(s) behind origin/${baseBranch} with no commit of its own — fast-forwarded, continuing`)
+    trace.push(`provision-ffwd:${provisionFresh.behind}`)
+  } else if (provisionFresh && provisionFresh.behind > 0) {
+    const provisionBehind = provisionFresh.behind
+    const ownCommits = provisionFresh.own
+    const mergeCommand = `git -C "${wtPath}" merge origin/${baseBranch}`
+    log(`Provision-freshness: worktree is ${provisionBehind} commit(s) behind origin/${baseBranch} at dispatch (own commits: ${ownCommits ?? 'unknown'}) — escalating before any planning spend; run: ${mergeCommand}`)
     trace.push(`provision-stale:${provisionBehind}`)
     await updateStatus('Blocked')
-    return finish({ status: 'escalate', reason: 'provision-stale', issue, behind: provisionBehind, baseBranch, wtPath, trace })
+    return finish({ status: 'escalate', reason: 'provision-stale', issue, behind: provisionBehind, ownCommits, mergeCommand, baseBranch, wtPath, trace })
   }
 }
 
@@ -1897,6 +2123,14 @@ const VISION_IMPORT_MORGAN = 'Read `@VISION.md` and `@ARCHITECTURE.md` at the re
 const ARCH_IMPORT_NICK = 'Read `@ARCHITECTURE.md` (where new code goes, tests named by the plan, declared exceptions) and `docs/codemap.md` at the repo root if they exist and follow them; skip silently any that is absent. '
 // R3 (#77): the announcement line the SCRIPT parses (oneWayDoorSignals) — one line per kind, or `none`.
 const SAM_ONE_WAY_DOOR = 'ONE-WAY-DOOR ANNOUNCEMENT: in the plan text, state on its own line for each kind the diff adds — `one-way-door: status — <what>`, `one-way-door: agent — <what>`, `one-way-door: hook — <what>`, `one-way-door: seam — <what>` — or the single line `one-way-door: none`. The script parses these lines; a kind you announce stops the run at the design step. '
+const ACCEPTANCE_PROOF_RULE = 'ACCEPTANCE PROOF RULE: (1) every acceptance item is a command you RAN in the provisioned worktree during planning; the plan carries a "Proof log" listing, per item, the command and its real output pasted verbatim (output on the base branch: green for state-preservation checks, red for the stated reason for a check the change must turn green); (2) a command you saw fail for any other reason, or could not run (missing gitignored directory, no network), is rewritten to run in the worktree or dropped, never inscribed as-is and never excused in Risks; (3) an item describes a verifiable state of the repo or branch only: never an external-world state (e.g. "no known advisory for pinned dependency X", a network service, a file present only outside the worktree) and never a negative universal claim ("no known X", "absence of Y") about anything outside the diff; write commands that run as-is from a plain bash script.'
+// #153: checklist lines (`- [ ]`) Sam returned in acceptanceChecklist that are absent from the
+// returned plan text. Pure string ops, no regex. Empty checklist => [] (nothing to compare).
+const planMissingChecklistLines = (plan, checklist) => {
+  const text = String(plan || '')
+  return String(checklist || '').split('\n').map((l) => l.trim())
+    .filter((l) => l.startsWith('- [ ]') && !text.includes(l))
+}
 const samScoutPrompt = ({ fixBlock = '', auditFixBlock = '', reviewFixBlock = '' } = {}) => {
   // B4: whenever the design-step trigger fired for this issue, the plan MUST
   // explicitly answer the split question. Recomputed here (not a captured outer const) so this
@@ -1919,12 +2153,13 @@ const samScoutPrompt = ({ fixBlock = '', auditFixBlock = '', reviewFixBlock = ''
     `${SAM_LAYER_RULE} ` +
     `${SAM_ONE_WAY_DOOR}${VISION_IMPORT_SAM}` +
     `Author the acceptance checklist against ${conventionsRule} — in particular its Format-status and Test-status acceptance-item sections: never assert a whole-repo clean state the base branch cannot satisfy. ` +
+    `${ACCEPTANCE_PROOF_RULE} ` +
     `Then post an INDEX comment on issue #${issue} — never the full plan, whatever its size. The index comment is exactly: ${planMarker} alone on its first line, a condensed summary (~15 lines max), the acceptance checklist VERBATIM, and a pointer to the canonical artifact "${planPath}" in the shared worktree. ` +
     `HARD CAP: keep that comment under ${planCommentMaxChars} characters (GitHub rejects an issue-comment body over 65536 chars); it is an index, so the bound holds by construction — if you approach it, cut summary prose, never the checklist. ` +
     `POST IDEMPOTENTLY: write the index body to ".pipeline/issue-${issue}-comment.md", then look for an existing marked comment with ` +
     `\`gh api repos/{owner}/{repo}/issues/${issue}/comments --jq '.[]|select(.body|startswith("${planMarker}"))|.id'\` — if an id comes back, EDIT that comment in place with ` +
     `\`gh api -X PATCH repos/{owner}/{repo}/issues/comments/<id> -F body=@.pipeline/issue-${issue}-comment.md\`; otherwise create it with \`gh issue comment ${issue} --body-file .pipeline/issue-${issue}-comment.md\`. Reuse the id returned by the listing; never reconstruct it. Never stack a second plan comment on the issue. ` +
-    `Then return GO/NO-GO, the full plan text in the \`plan\` field, and the artifact path in \`planPath\` (use "${planPath}"), and \`targetFiles\`: the worktree-RELATIVE paths your steps modify, delete or create (repo-relative, no absolute path, no \`..\`; omit it if your plan touches no file). Return the acceptance checklist lines VERBATIM (\`- [ ] ...\` lines only, no markers, no prose) in \`acceptanceChecklist\`.\n\n` +
+    `Then return GO/NO-GO, the COMPLETE text of the artifact in the \`plan\` field (NEVER a summary or pointer to the artifact; the plan gate judges only this field and refuses a plan lacking the checklist lines you return in acceptanceChecklist), and the artifact path in \`planPath\` (use "${planPath}"), and \`targetFiles\`: the worktree-RELATIVE paths your steps modify, delete or create (repo-relative, no absolute path, no \`..\`; omit it if your plan touches no file). Return the acceptance checklist lines VERBATIM (\`- [ ] ...\` lines only, no markers, no prose) in \`acceptanceChecklist\`.\n\n` +
     `OUTPUT-SPEC GATE: if this is a human-facing deliverable (asset/render/copy/UI-visible), the plan MUST start from a concrete OUTPUT EXAMPLE with named content contracts, and MUST cite any existing corpus/asset spec (precedent: a similar prior deliverable, if one exists). If no spec exists, propose the contract for human validation — do not skip it.\n` +
     `OBSERVED-INTERFACES RULE: any step consuming an external interface MUST cite a REAL observed payload. REUSE a provided field (e.g. \`qr_url\`) over reconstructing it — reconstruction is a plan defect.\n` +
     `VERSION RULE: do NOT bump .claude-plugin/plugin.json or the BUILD line; the Lead's scripts/lead-merge.sh bumps at merge time.${designStepBlock}${fixBlock}${auditFixBlock}${reviewFixBlock}`
@@ -2000,12 +2235,24 @@ if (after('plan', entryStage)) {
       samTargetFiles = sam.targetFiles
       samAbsorbedIssues = safeAbsorbedIssues(sam.absorbedIssues, issue)
 
-      const planCheck = await callAgentSafe(
+      // #153: the gate judges only the returned text. A summary/pointer plan that lacks the checklist
+      // lines Sam also returned is refused here (no plan-check call) and looped back to Sam.
+      const missingChecklist = planMissingChecklistLines(sam.plan, sam.acceptanceChecklist)
+      if (missingChecklist.length > 0) {
+        log(`Plan-verification gate: returned plan lacks ${missingChecklist.length} acceptance checklist line(s) Sam also returned (summary/pointer plan) — refusing without a plan-check call`)
+      }
+      const planCheck = missingChecklist.length > 0
+        ? {
+            verdict: 'NOT_CONFORMING',
+            issues: [`The returned plan field is a summary/pointer, not the full plan: ${missingChecklist.length} acceptance checklist line(s) you returned are absent from it. Return the FULL artifact text from "${planPath}" in the plan field, including the acceptance checklist and the Proof log.`],
+          }
+        : await callAgentSafe(
         'planCheck',
         `You are a cheap, binary conformance gate on Sam's plan for issue #${issue} — verify it against the plan text below (authoritative; do NOT re-read the issue from GitHub).\n\n` +
           `PLAN:\n${samPlan}\n\n` +
           `Verify: (1) a corpus/asset spec is cited when one exists, for human-facing/asset lanes; (2) any external interface is cited from a REAL observed payload, never reconstructed; (3) human-facing/asset lanes have a written output example + named content contracts. Lanes with no human-facing/asset deliverable (pure backend/mechanical) auto-pass item (3) as N/A.\n` +
           `(4) CONFORMANCE COMPLETENESS: the plan MUST contain an acceptance-checklist section. A criterion is an ORPHAN only when it names a concrete deliverable or behavior that no plan step addresses => NOT_CONFORMING (list each orphan in issues). Standard boilerplate verification criteria — full regression/test suite green, lint clean, format-check clean, scope-guard/diff-stat checks — are gate-level (satisfied by the project's own build/test/format commands, never authored as a dedicated plan step) and are EXEMPT from this check; never flag them as orphans. No acceptance-checklist section at all => NOT_CONFORMING.\n` +
+          `(5) ACCEPTANCE PROOF CHECK: NOT_CONFORMING (list each offending item in issues) when an acceptance item has no executed command with its verbatim quoted output in the plan (Proof log), or is phrased as an external-world state or a "no known X" / "absence of Y" claim about anything outside the diff.\n` +
           `Return { verdict: 'CONFORMING'|'NOT_CONFORMING', issues: string[] } — issues empty when CONFORMING.`,
         { schema: PLAN_CHECK, label: `plan-check-${issue}-${planPass}`, model: 'haiku' },
         planPass,
@@ -2045,6 +2292,7 @@ if (after('plan', entryStage)) {
       `AXIS 2 — IDIOMACY vs the CURRENT version of the stack.\n\n` +
       `AXIS 3 — DEBT: classify every non-idiomatic choice as fenced-debt (acceptable, plan must name the exit) / accidental-debt (free to avoid) / structural-mistake (redesign now).\n\n` +
       `NEVER-FROM-MEMORY RULE (hard): any claim about a library, framework, API, version or best practice — including the OWASP Top 10 category list itself — MUST be verified this session against current documentation (context7, else WebSearch) and cited in sources; an unverifiable claim is stated as unverified, never as fact.\n\n` +
+      `ACCEPTANCE PROOF CHECK: an acceptance item lacking an executed command with quoted output, or phrased as an external-world / "no known X" state, is a blocking finding (severity 'blocking', fix = rewrite the item to a command run in the worktree with its output logged).\n` +
       `FINDINGS: ranked most-damaging first; each carries a concrete rewrite mandate as fix, never a hint. severity:'blocking' = the plan must change before dev; 'note' = worth doing, not a blocker; when in doubt, blocking.\n` +
       `VERDICT GRID: SOUND (nothing to change) / SOUND-WITH-NOTES (approach holds, findings still fold in) / NOT_SOUND (approach itself is wrong).\n\n` +
       `Return { verdict: 'SOUND'|'SOUND-WITH-NOTES'|'NOT_SOUND', findings: [{severity, area, title, finding, fix, debtClass?, sources}], stackVerified: string }.`
@@ -2194,7 +2442,7 @@ if (entryStage === 'dev' || entryStage === 'review') {
     const expectedHead = `${expectedBranchName}`
     // Harness bans argless new Date() (breaks resume) — the run timestamp travels via
     // args.stamp (epoch ms); with no stamp the future-merged check degrades gracefully
-    // (acceptAlreadyDone skips it on a non-finite nowIso parse).
+    // (acceptAlreadyDone skips it on a non-finite as-of parse).
     const verdict = acceptAlreadyDone(guard, expectedHead, stamp ? new Date(Number(stamp)).toISOString() : '')
     if (verdict.accepted) {
       log(`Already-done guard: issue #${issue} is ${verdict.reason} — aborting relaunch`)
@@ -2229,20 +2477,21 @@ const assertBranchConformance = async (prNum, nickBranchFallback) => {
   const expectedBranch = `${expectedBranchName}`
   let headRef = nickBranchFallback ?? null
   let rawHeadRef = null
-  if (simulate) {
-    if (simulate.branchCheckRaw !== undefined) rawHeadRef = simulate.branchCheckRaw
-  } else if (prNum) {
-    try {
-      rawHeadRef = await agent(
-        `Run EXACTLY this command: gh pr view ${prNum}${prFlag} --json headRefName --jq '.headRefName'. ` +
-        `Your answer MUST be that command's stdout VERBATIM — a bare branch name and nothing else: ` +
-        `no sentence, no quotes, no backticks, no markdown, no explanation. ` +
-        `If the command itself fails, answer exactly ERROR.`,
-        { label: `branch-check-${issue}`, model: 'haiku' },
-      )
-    } catch (e) {
-      log(`Branch guard: gh pr view failed (${e.message}) — falling back to nick.branch`)
+  let branchPf = null   // one preflight 'branch' probe per guard call, shared by the head-ref and prefix reads
+  let branchPfDone = false
+  const branchProbe = async () => {
+    if (!branchPfDone) {
+      branchPfDone = true
+      branchPf = await preflightProbe('branch', 'branch', ['--wt', wtPath, '--pr', prNum ? String(prNum) : '', '--repo', repo || '', '--stamp', String(stamp ?? '')])
     }
+    return branchPf
+  }
+  if (simulate) {
+    if (simulate.probes?.branchCheckRaw !== undefined) rawHeadRef = simulate.probes?.branchCheckRaw
+  } else if (prNum) {
+    const pf = await branchProbe()
+    if (pf) rawHeadRef = pf.headRef ?? ''
+    else log(`Branch guard: preflight branch probe unavailable — falling back to nick.branch`)
   }
   if (rawHeadRef !== null) {
     const parsed = parseHeadRef(rawHeadRef, expectedBranch)
@@ -2262,19 +2511,11 @@ const assertBranchConformance = async (prNum, nickBranchFallback) => {
     if (branchOverrideName !== null) {
       // #232: an explicit override is authoritative — never accept a config-prefix branch.
     } else if (simulate) {
-      if (simulate.configBranchPrefixRaw !== undefined) realBranchPrefixRaw = simulate.configBranchPrefixRaw
+      if (simulate.probes?.configBranchPrefixRaw !== undefined) realBranchPrefixRaw = simulate.probes?.configBranchPrefixRaw
     } else {
-      try {
-        realBranchPrefixRaw = await agent(
-          `Run EXACTLY this command: jq -r '.branchPrefix // empty' "${wtPath}/.claude/pipeline.config.json" 2>/dev/null. ` +
-          `Your answer MUST be that command's stdout VERBATIM — a bare string (or nothing) and nothing else: ` +
-          `no sentence, no quotes, no backticks, no markdown, no explanation. ` +
-          `If the command itself fails, answer exactly ERROR.`,
-          { label: `branch-prefix-recheck-${issue}`, model: 'haiku' },
-        )
-      } catch (e) {
-        log(`Branch guard: pipeline.config.json re-check failed (${e.message}) — escalating as before`)
-      }
+      const pf = await branchProbe()
+      if (pf) realBranchPrefixRaw = pf.branchPrefix
+      else log(`Branch guard: preflight branch probe unavailable — escalating as before`)
     }
     const reconciled = branchOverrideName !== null ? null : reconcileStaleBranchPrefix(headRef, issue, realBranchPrefixRaw)
     if (reconciled) {
@@ -2308,20 +2549,20 @@ if (after('dev', entryStage)) {
   // Nick ever opens a doomed PR. Mirrors worktreeBehindCount's shape/fail-open contract exactly.
   const planTargets = safePlanTargets(samTargetFiles)
   planTargetsChecked = planTargets.length
+  // #83: the three pre-Dev reads (plan freshness, open sub-issues, git-dir writable) are ONE probe.
+  // null = probe unavailable -> each read below takes its existing fail-open skip.
+  const preflightDev = simulate ? null : await preflightProbe('dev', 'dev', [
+    '--wt', wtPath, '--issue', String(issue), '--base', baseBranch, '--repo', repo || '',
+    '--targets', planTargets.join(' '), '--stamp', String(stamp ?? ''),
+  ])
   if (planFreshnessMode !== 'off' && planTargets.length > 0) {
     const planStaleFilesProbe = async () => {
-      if (simulate) return simulate.planStaleFiles ?? []
-      try {
-        const pathArgs = planTargets.map(p => `"${p}"`).join(' ')
-        const out = await agent(
-          `cd "${wtPath}" && git fetch origin ${baseBranch} -q 2>/dev/null; git diff --name-only HEAD...origin/${baseBranch} -- ${pathArgs}`,
-          { label: `plan-stale-${issue}`, model: 'haiku' },
-        )
-        return String(out ?? '').split('\n').map(s => s.trim()).filter(Boolean)
-      } catch (e) {
-        log(`planStaleFilesProbe: probe failed (${e.message}), skipping plan-freshness check`)
+      if (simulate) return simulate.probes?.planStaleFiles
+      if (!preflightDev || !Array.isArray(preflightDev.planStale)) {
+        log(`planStaleFilesProbe: no preflight result, skipping plan-freshness check`)
         return null
       }
+      return preflightDev.planStale
     }
     planStaleFiles = await planStaleFilesProbe()
     if (Array.isArray(planStaleFiles) && planStaleFiles.length > 0) {
@@ -2335,21 +2576,12 @@ if (after('dev', entryStage)) {
   }
 
   const openSubIssuesProbe = async () => {
-    if (simulate) return simulate.openSubIssues ?? []
-    try {
-      const repoResolve = repo
-        ? `REPO="${repo}"`
-        : `cd "${wtPath}" && REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)`
-      const out = await agent(
-        `${repoResolve} && TOTAL=$(gh issue view ${issue} -R "$REPO" --json subIssuesSummary --jq '.subIssuesSummary.total // 0') && ` +
-        `if [ "$TOTAL" = "0" ]; then exit 0; fi; gh api repos/$REPO/issues/${issue}/sub_issues --jq '.[] | select(.state=="open") | .number'`,
-        { label: `sub-issues-${issue}`, model: 'haiku' },
-      )
-      return String(out ?? '').split('\n').map(s => s.trim()).filter(Boolean)
-    } catch (e) {
-      log(`openSubIssuesProbe: probe failed (${e.message}), skipping sub-issues gate (fail-open, mirrors planStaleFilesProbe)`)
+    if (simulate) return simulate.probes?.openSubIssues
+    if (!preflightDev || !Array.isArray(preflightDev.openSubIssues)) {
+      log(`openSubIssuesProbe: no preflight result, skipping sub-issues gate (fail-open, mirrors planStaleFilesProbe)`)
       return null
     }
+    return preflightDev.openSubIssues
   }
   openSubIssues = await openSubIssuesProbe()
   const subGate = Array.isArray(openSubIssues)
@@ -2368,25 +2600,12 @@ if (after('dev', entryStage)) {
   // tracked file. Ungated by entryStage (unlike the fresh-dispatch provision-stale preflight
   // above): a resumed run can hit the same external sandbox-grant gap as a fresh one.
   const gitDirWritableProbe = async () => {
-    if (simulate) return simulate.gitDirWritable ?? { writable: true, gitDir: null }
-    try {
-      const out = await agent(
-        `cd "${wtPath}" && GITDIR=$(git rev-parse --absolute-git-dir 2>/dev/null) && PROBE="$GITDIR/.pipeline-write-probe-${issue}-$$" && ` +
-        `if (touch "$PROBE" 2>/dev/null && unlink "$PROBE" 2>/dev/null); then echo "WRITABLE|$GITDIR"; else echo "NOT_WRITABLE|$GITDIR"; fi`,
-        { label: `worktree-gitdir-writable-${issue}`, model: 'haiku' },
-      )
-      const s = String(out ?? '').trim().split('\n')[0].trim()
-      const sep = s.indexOf('|')
-      const status = sep === -1 ? s : s.slice(0, sep)
-      const gitDir = sep === -1 ? null : s.slice(sep + 1)
-      if (status === 'WRITABLE') return { writable: true, gitDir }
-      if (status === 'NOT_WRITABLE') return { writable: false, gitDir }
-      log(`gitDirWritableProbe: unparseable probe output "${s.slice(0, 120)}" — skipping (fail-open)`)
-      return null
-    } catch (e) {
-      log(`gitDirWritableProbe: probe failed (${e.message}), skipping worktree write-access preflight (fail-open)`)
+    if (simulate) return simulate.probes?.gitDirWritable
+    if (!preflightDev || typeof preflightDev.writable !== 'boolean') {
+      log(`gitDirWritableProbe: no preflight result, skipping worktree write-access preflight (fail-open)`)
       return null
     }
+    return { writable: preflightDev.writable, gitDir: preflightDev.gitDir }
   }
   const gitDirProbe = await gitDirWritableProbe()
   if (gitDirProbe && gitDirProbe.writable === false) {
@@ -2504,67 +2723,57 @@ if (after('review', entryStage)) {
   // `createdAt`, so it is never a candidate), and the action on a candidate is a single
   // non-destructive comment — no close, no copied title/body — because unattributed issues must
   // never be closed automatically.
-  // Harness bans argless `new Date()`/`Date.now()` anywhere in a workflow script (breaks
-  // resume) — confirmed live on a real (non-simulate) dispatch (claude-agent-pipeline#144):
-  // every real Review-phase Morgan call crashed here with "Date.now() / new Date() are
-  // unavailable in workflow scripts". #135's fix only made the SIMULATE-path windowEnd
-  // computation conditional (fixing the offline flow-suite's nested-workflow invocation);
-  // it left this real-path call — and reviewerWindowStart's own bare new Date() below —
-  // unconditionally reachable on every actual dispatch. Fetch wall-clock time through a
-  // cheap haiku agent call instead (same idiom as the other agent-based probes in this
-  // file) so the read goes through the harness's resumable agent-call cache like everything
-  // else, rather than a direct (banned) Date() read inside the script body.
-  const nowIsoViaAgent = async (label) => String((await agent('date -u +%Y-%m-%dT%H:%M:%SZ', { label, model: 'haiku' })) ?? '').trim()
+  // PR state reads (E2.5, #84): ONE probe (templates/pr-state.sh, parser `pr-state`, run with noReuse:
+  // live state) answers every review-phase read of the PR: the wall clock, the head sha and body
+  // digest, mergeability, the commit count and last commit date, the un-minimized review comments and
+  // (with `since`) the open issues created in the window. The harness bans argless
+  // `new Date()`/`Date.now()` in a workflow script (breaks resume; claude-agent-pipeline#144/#135), so
+  // the clock is `date -u` inside pr-state.sh, run by the probe gate: no LLM interprets it (incident #14).
+  // Returns the parsed object, or null on any failure (fail-open: every caller keeps its own fallback).
+  const prState = async (label, round, { since } = {}) => {
+    try {
+      const argv = ['--pr', String(pr), '--wt', wtPath]
+      if (repo) argv.push('--repo', repo)
+      if (since) argv.push('--since', since)
+      const cmd = 'bash ' + shellSingleQuote(probeScriptPath('pr-state.sh')) + ' ' + argv.map(shellSingleQuote).join(' ')
+      const r = await probe('pr-state', cmd, {
+        label,
+        round,
+        noReuse: true,   // live state: a stored record from an earlier launch must never answer (#83)
+        onFail: (reason) => { log(`pr-state probe (${label}, round ${round}): ${reason} — fail-open`); return null },
+      })
+      return r && r.json && !r.json.error ? r.json : null
+    } catch (e) {
+      log(`pr-state probe (${label}, round ${round}) failed (${e.message}) — fail-open`)
+      return null
+    }
+  }
 
-  const reviewerWindowStart = async () => (simulate ? (simulate.windowStart ?? '1970-01-01T00:00:00Z') : await nowIsoViaAgent(`review-window-start-${pr}`))
+  const reviewerWindowStart = async (round) => {
+    if (simulate) return simulate.probes?.windowStart
+    return (await prState('window-start', round))?.now ?? null
+  }
 
-  const flagReviewerWindowIssues = async (windowStart, round) => {
+  const flagReviewerWindowIssues = async (windowStart, round, endState) => {
     let candidates
     let windowEnd
     if (simulate) {
-      const raw = simulate.issueWindow?.[round]
+      const raw = simulate.probes?.issueWindow?.[round]
+      const morganIssuesFx = simulate.probes?.morganIssues
       candidates = raw
         ? reviewerWindowCandidates(raw.issues, windowStart, raw.windowEnd ?? '9999-12-31T23:59:59Z')
-        : (simulate.morganIssues?.[round] ?? [])
+        : (morganIssuesFx?.[round] ?? [])
     } else {
-      // Harness bans argless `new Date()` in a nested workflow() call (breaks resume) — only
-      // computed on the real path, never under simulate (lgtmgate, 2026-09-13:
-      // this unconditional call made the ENTIRE flow suite unrunnable via the documented
-      // `--plugin-dir` nested-workflow invocation, MAINTAINING.md §1, discovered while testing
-      // the provision-stale preflight in the same commit).
-      windowEnd = await nowIsoViaAgent(`review-window-end-${pr}-${round}`)
-      let issues
-      try {
-        // lgtmgate#18: a flat `--limit 1000` silently truncates on any repo with 1000+ open
-        // issues — `gh issue list` returns the partial page with NO error, and the
-        // reviewerWindowCandidates() filter below then treats that partial list as exhaustive
-        // (silently WRONG, not just slow). Fixed by bounding the query server-side with the
-        // GitHub search `created:` qualifier (ISO 8601, confirmed via `gh issue list --help` +
-        // a live query against this repo and cli/cli: `created:>=<ISO8601>` and `--state
-        // <state>` compose with AND semantics when both are passed to `--search`) to exactly
-        // this review round's window, which is minutes-to-hours wide — never the whole
-        // open-issue backlog a flat `--limit` was trying (and failing) to bound.
-        // REVIEWER_WINDOW_SCAN_SAFETY_LIMIT below is a belt-and-suspenders ceiling, not the
-        // primary bound: `created:` is what makes the result set small. If the search ever
-        // DOES return exactly this many issues, that is itself the truncation signal (the
-        // same silent-truncation shape as the original bug) — the count check right after
-        // this call turns it into a loud, explicit failure instead of a silently partial list.
-        const out = await agent(
-          `cd "${wtPath}" && gh issue list --state open --search "created:>=${windowStart}"${prFlag} --limit ${REVIEWER_WINDOW_SCAN_SAFETY_LIMIT} --json number,createdAt,url --jq '[.[]|{number,createdAt,url}]'`,
-          { label: `reviewer-window-scan-${pr}-${round}`, model: 'haiku' },
-        )
-        issues = JSON.parse(out)
-        if (Array.isArray(issues) && issues.length === REVIEWER_WINDOW_SCAN_SAFETY_LIMIT) {
-          throw new Error(
-            `reviewer-window-scan returned exactly the safety limit (${REVIEWER_WINDOW_SCAN_SAFETY_LIMIT}) issues — ` +
-            'likely truncated; refusing to treat a partial list as exhaustive (lgtmgate#18)',
-          )
-        }
-      } catch (e) {
-        log(`flagReviewerWindowIssues round ${round}: issue scan failed (${e.message}), skipping`)
+      // lgtmgate#18: the scan is bounded server-side by the `created:>=` qualifier and by the
+      // script's safety limit (templates/pr-state.sh); a result of exactly that limit comes back as
+      // openIssues:null + openIssuesTruncated:true, and a partial list is never treated as exhaustive.
+      // A failed probe, a missing window start or a truncated scan skip the pass (fail-open).
+      if (!windowStart || !endState || !Array.isArray(endState.openIssues)) {
+        log(`flagReviewerWindowIssues round ${round}: issue scan unavailable or truncated, skipping`)
         return
       }
-      candidates = reviewerWindowCandidates(issues, windowStart, windowEnd)
+      windowEnd = endState.now
+      candidates = reviewerWindowCandidates(endState.openIssues, windowStart, windowEnd)
     }
     const flagged = []
     for (const it of candidates) {
@@ -2572,43 +2781,32 @@ if (after('review', entryStage)) {
       trace.push(`reviewer-window-issue-flagged:${num}`)
       flagged.push({ number: num, url: it && it.url ? it.url : null })
       if (simulate) continue
-      try {
-        // Non-destructive by design (see the header note above): a single comment on the
-        // candidate itself, no copied title/body, and never a close-the-issue call — closing an
-        // unattributed issue is exactly the defect this replaces.
-        await agent(
-          `Run EXACTLY this shell script, as ONE Bash tool call, in the worktree "${wtPath}". ` +
-          `Reply with ONLY a short OK/FAIL token.\n\n` +
-          `cd "${wtPath}" && mkdir -p .pipeline\n` +
-          `printf '<!-- pipeline-reviewer-window pr=${pr} -->\\n` +
-          `Opened during the reviewer (Morgan) window of PR #${pr} (${windowStart} .. ${windowEnd}).\\n` +
-          `If this is a review finding, it belongs on that PR, not on a new issue\\n` +
-          `(see .claude/rules/pr-acceptance.md). If it is unrelated, ignore this comment.\\n` +
-          `This issue was NOT closed.\\n' > .pipeline/reviewer-window-${num}.md\n` +
-          `gh issue comment ${num}${prFlag} --body-file .pipeline/reviewer-window-${num}.md\n` +
-          `echo OK`,
-          { label: `reviewer-window-flag-${num}`, model: 'haiku' },
-        )
-      } catch (e) {
-        log(`flagReviewerWindowIssues round ${round}: failed to flag issue #${num} (${e.message}), continuing`)
-      }
+      // Non-destructive by design (see the header note above): a single comment on the
+      // candidate itself, no copied title/body, and never a close-the-issue call — closing an
+      // unattributed issue is exactly the defect this replaces. pr-write.sh skips it when a comment
+      // carrying the marker is already there (idempotent across a re-run of the same round).
+      await prWrite('issue-comment', 'rw-flag-' + num, round, [
+        '--number', num,
+        '--marker', `<!-- pipeline-reviewer-window pr=${pr} -->`,
+        '--body',
+        `<!-- pipeline-reviewer-window pr=${pr} -->\n` +
+        `Opened during the reviewer (Morgan) window of PR #${pr} (${windowStart} .. ${windowEnd}).\n` +
+        `If this is a review finding, it belongs on that PR, not on a new issue\n` +
+        `(see .claude/rules/pr-acceptance.md). If it is unrelated, ignore this comment.\n` +
+        `This issue was NOT closed.`,
+      ])
     }
     if (!simulate && flagged.length > 0) {
-      try {
-        const lines = flagged.map(f => `- #${f.number}${f.url ? ` (${f.url})` : ''}`).join('\\n')
-        await agent(
-          `Run EXACTLY this shell script, as ONE Bash tool call, in the worktree "${wtPath}". ` +
-          `Reply with ONLY a short OK/FAIL token.\n\n` +
-          `cd "${wtPath}" && mkdir -p .pipeline\n` +
-          `printf 'Reviewer-window issues flagged — opened during this review round, ` +
-          `NOT closed (see .claude/rules/pr-acceptance.md):\\n\\n${lines}\\n' > .pipeline/reviewer-window-rollup-${pr}-${round}.md\n` +
-          `gh pr comment ${pr}${prFlag} --body-file .pipeline/reviewer-window-rollup-${pr}-${round}.md\n` +
-          `echo OK`,
-          { label: `reviewer-window-rollup-${pr}-${round}`, model: 'haiku' },
-        )
-      } catch (e) {
-        log(`flagReviewerWindowIssues round ${round}: roll-up comment failed (${e.message}), continuing`)
-      }
+      const lines = flagged.map(f => `- #${f.number}${f.url ? ` (${f.url})` : ''}`).join('\n')
+      const rollupMarker = `<!-- pipeline-reviewer-window-rollup pr=${pr} round=${round} -->`
+      await prWrite('pr-comment', 'rw-rollup', round, [
+        '--pr', pr,
+        '--marker', rollupMarker,
+        '--body',
+        `${rollupMarker}\n` +
+        `Reviewer-window issues flagged — opened during this review round, ` +
+        `NOT closed (see .claude/rules/pr-acceptance.md):\n\n${lines}`,
+      ])
     }
   }
 
@@ -2630,52 +2828,35 @@ if (after('review', entryStage)) {
     if (!simulate && config.commentHygiene !== true) return
     let ids
     if (simulate) {
-      ids = simulate.minimizedComments?.[round] ?? []
+      const mcFx = simulate.probes?.minimizedComments
+      ids = mcFx?.[round] ?? []
     } else {
-      try {
-        // issue #87 (sweep finding #3) — bounded/already-fail-safe payload (short id list), so
-        // prompt-hardening only (same verbatim-reply pattern already used by rawHeadRef above);
-        // no restructuring, nothing here is republished.
-        const out = await agent(
-          `Run EXACTLY this command: gh pr view ${pr}${prFlag} --json comments -q '[.comments[]|select(.isMinimized==false)|select(.body|startswith("<!-- pipeline-review-round"))|.id]'. ` +
-          `Then reply with its raw stdout verbatim (a JSON array), nothing else — no explanation, no markdown.`,
-          { label: `review-comment-scan-${pr}-${round}`, model: 'haiku' },
-        )
-        ids = JSON.parse(out)
-      } catch (e) {
-        log(`minimizeSupersededReviewComments round ${round}: scan failed (${e.message}), skipping`)
+      const st = await prState('comments', round)
+      ids = st && st.reviewCommentIds
+      if (!Array.isArray(ids)) {
+        log(`minimizeSupersededReviewComments round ${round}: scan failed, skipping`)
         return
       }
     }
+    let index = 0
     for (const id of ids) {
       trace.push(`review-comment-minimized:${id}`)
       if (simulate) continue
-      try {
-        await agent(
-          `gh api graphql -f query='mutation($id:ID!){minimizeComment(input:{subjectId:$id,classifier:OUTDATED}){minimizedComment{isMinimized}}}' -F id=${id}`,
-          { label: `review-comment-minimize-${id}`, model: 'haiku' },
-        )
-      } catch (e) {
-        log(`minimizeSupersededReviewComments round ${round}: failed to minimize comment ${id} (${e.message}), continuing`)
-      }
+      // The probe name carries the index, not the id (GraphQL node ids are not guaranteed label-safe);
+      // pr-write.sh reads isMinimized first.
+      await prWrite('minimize', 'minimize-' + index, round, ['--id', id])
+      index += 1
     }
   }
 
   // Artifact-proof freshness floor — lazy: only resolved when Morgan actually declares
   // artifactProofs, so a run with no declared proof spends zero extra agent calls. Never throws
   // on a `gh` hiccup (mirrors reconcileMorganIssues): logs and falls through to the run stamp.
-  const artifactFloorIso = async (round) => {
-    if (simulate) return simulate.artifactFloor ?? null
-    try {
-      const out = await agent(
-        `gh pr view ${pr}${prFlag} --json commits --jq '.commits[-1].committedDate'`,
-        { label: `artifact-floor-${pr}-${round}`, model: 'haiku' },
-      )
-      const trimmed = String(out ?? '').trim()
-      if (trimmed) return trimmed
-    } catch (e) {
-      log(`artifactFloorIso round ${round}: gh lookup failed (${e.message}), falling back to run stamp`)
-    }
+  const artifactFloorIso = async (round, endState) => {
+    if (simulate) return simulate.probes?.artifactFloor
+    const t = endState && endState.lastCommitDate
+    if (t) return t
+    log(`artifactFloorIso round ${round}: no last commit date from the pr-state probe, falling back to run stamp`)
     return stamp ? new Date(Number(stamp)).toISOString() : null
   }
 
@@ -2683,7 +2864,7 @@ if (after('review', entryStage)) {
   // proofs, never trusting her LGTM alone. No-op when artifactProofs is absent/empty — every
   // pre-existing flow is unchanged.
   const callMorganGuarded = async (prompt, opts, round) => {
-    const windowStart = await reviewerWindowStart()
+    const windowStart = await reviewerWindowStart(round)
     let v
     try {
       v = await callAgent('morgan', prompt, opts, round)
@@ -2696,11 +2877,15 @@ if (after('review', entryStage)) {
       log(`callMorganGuarded round ${round}: Morgan threw (${e && e.message ? e.message : e}) — treating as death (null)`)
       v = null
     }
-    await flagReviewerWindowIssues(windowStart, round)
+    // ONE pr-state probe per Morgan round serves the window end, the issue scan and the artifact floor.
+    // Without a window start (its probe failed) it carries no `since`, so lastCommitDate still feeds
+    // artifactFloorIso; flagReviewerWindowIssues skips on its own when windowStart is falsy (#85).
+    const endState = simulate ? null : await prState('window-end', round, windowStart ? { since: windowStart } : {})
+    await flagReviewerWindowIssues(windowStart, round, endState)
     if (v === null) return v
     const proofs = Array.isArray(v.artifactProofs) ? v.artifactProofs : []
     if (proofs.length === 0) return v
-    const floorIso = await artifactFloorIso(round)
+    const floorIso = await artifactFloorIso(round, endState)
     const blockers = staleArtifactBlockers(proofs, floorIso)
     if (blockers.length === 0) return v
     const merged = [...(v.items || [])]
@@ -2749,14 +2934,12 @@ if (after('review', entryStage)) {
   // so a local-vs-CI test-count mismatch reads as expected, not a regression. Degrades to null on
   // any failure (mirrors artifactFloorIso) — a `git`/agent hiccup can never crash the review.
   const worktreeBehindCount = async () => {
-    if (simulate) return simulate.behindCount ?? 0
+    if (simulate) return simulate.probes?.behindCount
     try {
-      const out = await agent(
+      const res = await probe('git-rev-list-count',
         `cd "${wtPath}" && git fetch origin ${baseBranch} -q 2>/dev/null; git rev-list --count HEAD..origin/${baseBranch}`,
-        { label: `worktree-behind-${pr}`, model: 'haiku' },
-      )
-      const n = Number(String(out ?? '').trim().split(/\s+/).pop())
-      return Number.isFinite(n) ? n : null
+        { label: `worktree-behind-${pr}`, onFail: () => null })
+      return res && res.json && Number.isFinite(res.json.count) ? res.json.count : null
     } catch (e) {
       log(`worktreeBehindCount: probe failed (${e.message}), skipping freshness note`)
       return null
@@ -2819,7 +3002,12 @@ if (after('review', entryStage)) {
       (banPattern
         ? `4. gh pr view ${pr}${prFlag} --json body -q .body | grep -iE "${banPattern}" — no banned strings in PR body (fail if match found)\n`
         : '') +
-      `5. gh pr checks ${pr}${prFlag} --json name,state -q '[.[]|select(.state=="FAILURE")|.name]' — no required-check FAILURES (PENDING is OK)\n` +
+      `5. gh pr checks ${pr}${prFlag} --json name,state,link — no required-check FAILURES (PENDING is OK). ` +
+      `For each check in FAILURE state: list \`check '<name>' is in FAILURE state\` in issues, take the run id ` +
+      `from its link (the number after /actions/runs/), run \`gh run view <id> --log-failed\`, and report in ` +
+      `failedChecks one entry { name, step, logTail } (step = the failing step name as printed by gh; logTail = ` +
+      `the last ~40 lines of that output, verbatim). If the log command ITSELF fails (tls/x509/auth/no run id), ` +
+      `keep the name in issues, leave logTail empty, and do NOT set pass:false for that tool failure.\n` +
       `Checks 4-5 use gh and require live GitHub/TLS access. If the gh command ITSELF fails ` +
       `(e.g. "tls: failed to verify certificate", "x509", "OSStatus", a network error, an auth error, ` +
       `or any non-zero exit that is NOT a check result), that is a TOOL failure, not a check failure: ` +
@@ -2831,7 +3019,7 @@ if (after('review', entryStage)) {
       `issues[] (e.g. "sandbox TLS blocked the dependency install — deps missing") — pass:false is still ` +
       `correct, skipping the install would not install anything.\n` +
       `${SANDBOX_INSTALL_HINT}\n` +
-      `Return { pass: bool, issues: string[] } where pass=true if HARD checks ${hardRange} all pass AND no ADVISORY ` +
+      `Return { pass: bool, issues: string[], failedChecks } where pass=true if HARD checks ${hardRange} all pass AND no ADVISORY ` +
       `check (4-5) that actually ran found a positive result; an advisory check skipped due to a tool ` +
       `failure does NOT set pass:false. ` +
       `Also include testCommandRun as forensics only (see check 3) — it does not affect the check-3 verdict.`
@@ -2839,11 +3027,26 @@ if (after('review', entryStage)) {
     if (simulate) preflightPromptPreview = p
     return p
   }
+  // #132 — fold the probe's failedChecks data into issues (deterministic, string ops only).
+  // guards:parser-begin
+  const FAILED_LOG_TAIL_LINES = 40
+  const foldFailedChecks = (pf) => {
+    const base = Array.isArray(pf?.issues) ? pf.issues : []
+    const fc = Array.isArray(pf?.failedChecks) ? pf.failedChecks : []
+    const extra = []
+    for (const c of fc) {
+      if (!c || typeof c !== 'object') continue
+      const tail = String(c.logTail || '').split('\n').slice(-FAILED_LOG_TAIL_LINES).join('\n')
+      extra.push(`check '${c.name || '?'}' failing step '${c.step || '?'}'` + (tail ? ` — last failing log lines:\n${tail}` : ''))
+    }
+    return [...base, ...extra]
+  }
+  // guards:parser-end
   const runPreflight = async (currentRound) => {
     const pf = await callAgentSafe(
       'preflight',
       preflightPrompt(),
-      { schema: PREFLIGHT, label: `preflight-${pr}-${preflightCallCount}`, model: 'haiku' },
+      { schema: PREFLIGHT, label: `preflight-${issue}-${pr}-${preflightCallCount}`, model: 'haiku' },
       preflightCallCount,
     )
     preflightCallCount++
@@ -2854,11 +3057,11 @@ if (after('review', entryStage)) {
     if (pf?.pass !== false) return true
 
     // Preflight failed — ask Nick to fix mechanical issues, then retry once
-    log(`Preflight failed (attempt ${preflightCallCount - 1}): ${(pf.issues || []).join(', ')}`)
-    const nickFix = await callAgentSafe(
-      'nick',
+    const foldedIssues = foldFailedChecks(pf)
+    log(`Preflight failed (attempt ${preflightCallCount - 1}): ${foldedIssues.join(', ')}`)
+    const nickFixPrompt = (
       `Pre-Morgan preflight failed on worktree "${wtPath}" (PR #${pr}). Fix these mechanical issues and push:\n` +
-      `${(pf.issues || []).map(i => `- ${i}`).join('\n')}\n` +
+      `${foldedIssues.map(i => `- ${i}`).join('\n')}\n` +
       `${SANDBOX_INSTALL_HINT} ` +
       `Do NOT change any product code — fix only the listed mechanical issues; reinstalling deps is NOT ` +
       `product code and is allowed. If the install cannot succeed under the sandbox, stop and report it ` +
@@ -2867,8 +3070,13 @@ if (after('review', entryStage)) {
       `literally what this PR's diff changes (self-reference-preflight — the running pipeline is the ` +
       `DISPATCH-time snapshot, so it enforces pre-PR gate logic), do not mutate the worktree to satisfy ` +
       `it and do not revert the PR's own change; stop and report it as blocked in your return, so the ` +
-      `second preflight fails and the workflow escalates for the Lead/human.`,
-      { agentType: 'Nick', label: `nick-preflight-fix-${pr}`, model: 'sonnet' },
+      `second preflight fails and the workflow escalates for the Lead/human.`
+    )
+    if (simulate) preflightFixPromptPreview = nickFixPrompt
+    const nickFix = await callAgentSafe(
+      'nick',
+      nickFixPrompt,
+      { agentType: 'Nick', label: `nick-preflight-fix-${issue}-${pr}`, model: 'sonnet' },
       currentRound,
     )
     if (isAgentDeath(nickFix)) {
@@ -2878,7 +3086,7 @@ if (after('review', entryStage)) {
     const pf2 = await callAgentSafe(
       'preflight',
       preflightPrompt(),
-      { schema: PREFLIGHT, label: `preflight-${pr}-${preflightCallCount}`, model: 'haiku' },
+      { schema: PREFLIGHT, label: `preflight-${issue}-${pr}-${preflightCallCount}`, model: 'haiku' },
       preflightCallCount,
     )
     preflightCallCount++
@@ -2889,7 +3097,7 @@ if (after('review', entryStage)) {
     if (pf2?.pass !== false) return true
 
     log(`Preflight still failing after retry — escalating as preflight-stuck`)
-    return finish({ status: 'preflight-stuck', pr, issue, round: currentRound, issues: pf2?.issues || [], trace })
+    return finish({ status: 'preflight-stuck', pr, issue, round: currentRound, issues: foldFailedChecks(pf2), trace })
   }
 
   let prevRoundItems = null
@@ -2898,7 +3106,7 @@ if (after('review', entryStage)) {
   const decisionLog = []
   let prBodyPreview = null   // simulate-only: lets the flow tests assert the composed body
   let guardProbeResult = null   // simulate-only: T87b probes the REAL bodyWriteGuardOk (issue #87)
-  let acceptanceSpliceProbe = null   // simulate.acceptanceSpliceProbe-only: T113 probes the REAL spliceAcceptanceBlock (issue #97)
+  let acceptanceSpliceProbe = null   // simulate.probes?.acceptanceSpliceProbe-only: T113 probes the REAL spliceAcceptanceBlock (issue #97)
   let planAmendRounds = 0   // #97 — budget counter for the plan-defect-persists escalation (S13)
 
   // Decision log — durable counterpart to the comment-collapse pass above. Best-effort, never
@@ -2912,74 +3120,23 @@ if (after('review', entryStage)) {
       : `- round ${r} — ${verdict} (${n} blocker${n === 1 ? '' : 's'})`)
     if (simulate) {
       // T87b (issue #87) — additive lever, zero behavior change when absent (mirrors
-      // simulate.artifactFloor/simulate.behindCount). Exercises the REAL production
+      // simulate.probes?.artifactFloor/simulate.probes?.behindCount). Exercises the REAL production
       // bodyWriteGuardOk, never a hand-duplicated copy in the test file.
-      if (simulate.recordDecisionGuardProbe) {
-        const { preLen, newBody } = simulate.recordDecisionGuardProbe
+      if (simulate.probes?.recordDecisionGuardProbe) {
+        const { preLen, newBody } = simulate.probes?.recordDecisionGuardProbe
         guardProbeResult = bodyWriteGuardOk(preLen, newBody)
       }
-      if (simulate.prBody === undefined) return
-      prBodyPreview = upsertDecisionLog(simulate.prBody, decisionLog)
+      if (simulate.probes?.prBody === undefined) return
+      prBodyPreview = upsertDecisionLog(simulate.probes?.prBody, decisionLog)
       return
     }
-    // issue #87 — the PR body content (routinely 5-30 KB) must NEVER transit through the
-    // model's own chat reply (a haiku agent asked to relay a large command's stdout silently
-    // summarizes it, corrupting the acceptance checklist + <details> block). Read, splice and
-    // write happen in ONE deterministic shell chain the subagent runs via a single Bash tool
-    // call; content moves only through shell redirection (`>`) and file I/O, never through the
-    // model's answer channel. The chain embeds the REAL spliceDecisionLogBlock/bodyWriteGuardOk
-    // SOURCE (via .toString()) as its single source of truth — no hand-duplicated copy.
-    const block = composeDecisionLogBlock(decisionLog)
-    const nodeScript =
-      `'use strict'\n` +
-      `const fs = require('fs')\n` +
-      `const DECISION_LOG_END = ${JSON.stringify(DECISION_LOG_END)}\n` +
-      `const DECISION_LOG_START_RE = /${DECISION_LOG_START_RE.source}/${DECISION_LOG_START_RE.flags}\n` +
-      `const DECISION_LOG_END_RE = /${DECISION_LOG_END_RE.source}/${DECISION_LOG_END_RE.flags}\n` +
-      `${spliceDecisionLogBlock.toString()}\n` +
-      `${bodyWriteGuardOk.toString()}\n` +
-      `const mode = process.argv[2]\n` +
-      `if (mode === 'splice') {\n` +
-      `  const preBody = fs.readFileSync(process.argv[3], 'utf8')\n` +
-      `  const blockText = fs.readFileSync(process.argv[4], 'utf8').replace(/\\n$/, '')\n` +
-      `  fs.writeFileSync(process.argv[5], spliceDecisionLogBlock(preBody, blockText))\n` +
-      `  process.exit(0)\n` +
-      `} else if (mode === 'guard') {\n` +
-      `  const preLen = Number(process.argv[3])\n` +
-      `  const newBody = fs.readFileSync(process.argv[4], 'utf8')\n` +
-      `  process.exit(bodyWriteGuardOk(preLen, newBody) ? 0 : 1)\n` +
-      `} else {\n` +
-      `  process.exit(2)\n` +
-      `}\n`
-    let syncReply
-    try {
-      syncReply = await agent(
-        `Run EXACTLY this shell script, as ONE Bash tool call, in the worktree "${wtPath}". ` +
-        `Your final reply must be ONLY the last printed line (\`OK bytes=...\`, or one of ` +
-        `\`READ_FAIL\`/\`SPLICE_FAIL\`/\`WRITE_FAIL\`/\`GUARD_FAIL ...\`) — never repeat, quote, ` +
-        `paraphrase or summarize any part of the PR body content in your reply.\n\n` +
-        `cd "${wtPath}" && mkdir -p .pipeline\n` +
-        `cat > .pipeline/pr-body-sync-${pr}.cjs <<'PIPELINE_SYNC_EOF'\n${nodeScript}\nPIPELINE_SYNC_EOF\n` +
-        `gh pr view ${pr}${prFlag} --json body -q .body > .pipeline/pr-body-${pr}.pre.md\n` +
-        `if [ $? -ne 0 ]; then echo "READ_FAIL"; exit 0; fi\n` +
-        `PRE_LEN=$(wc -c < .pipeline/pr-body-${pr}.pre.md)\n` +
-        `cat > .pipeline/pr-body-${pr}.block.md <<'PIPELINE_BLOCK_EOF'\n${block}\nPIPELINE_BLOCK_EOF\n` +
-        `node .pipeline/pr-body-sync-${pr}.cjs splice .pipeline/pr-body-${pr}.pre.md .pipeline/pr-body-${pr}.block.md .pipeline/pr-body-${pr}.md\n` +
-        `if [ $? -ne 0 ]; then echo "SPLICE_FAIL"; exit 0; fi\n` +
-        `gh pr edit ${pr}${prFlag} --body-file .pipeline/pr-body-${pr}.md\n` +
-        `if [ $? -ne 0 ]; then echo "WRITE_FAIL"; exit 0; fi\n` +
-        `gh pr view ${pr}${prFlag} --json body -q .body > .pipeline/pr-body-${pr}.post.md\n` +
-        `POST_LEN=$(wc -c < .pipeline/pr-body-${pr}.post.md)\n` +
-        `node .pipeline/pr-body-sync-${pr}.cjs guard "$PRE_LEN" .pipeline/pr-body-${pr}.post.md\n` +
-        `if [ $? -eq 0 ]; then echo "OK bytes=$POST_LEN"; else gh pr edit ${pr}${prFlag} --body-file .pipeline/pr-body-${pr}.pre.md; echo "GUARD_FAIL restored=true pre=$PRE_LEN post=$POST_LEN"; fi\n`,
-        { label: `pr-body-sync-${pr}-${r}`, model: 'haiku' })
-    } catch (e) { log(`recordDecision round ${r}: sync failed (${e.message}), skipping`); return }
-    const replyLine = String(syncReply ?? '').trim()
-    if (replyLine.startsWith('GUARD_FAIL')) {
-      log(`recordDecision round ${r}: ${replyLine}`)
-    } else if (!replyLine.startsWith('OK')) {
-      log(`recordDecision round ${r}: unexpected sync reply "${replyLine.slice(0, 200)}"`)
-    }
+    // issue #87 — the PR body content (routinely 5-30 KB) must NEVER transit through the model's own
+    // chat reply. #85: read, splice, write, re-read, guard and restore run in templates/pr-write.sh
+    // (op body-splice); the agent only copies a PROBE line, and the block text is the only content that
+    // passes through the probe command.
+    const res = await prWrite('body-splice', 'decision-log', r, ['--pr', pr, '--mode', 'decision-log', '--text', composeDecisionLogBlock(decisionLog)])
+    if (!res) { log(`recordDecision round ${r}: sync failed (probe unavailable), skipping`); return }
+    if (res.result === 'failed') log(`recordDecision round ${r}: ${res.reason || 'failed'}`)
   }
 
   // reviewParkedTerminal(v, round) (issue #228) — Morgan PROVED every remaining box but could not tick it
@@ -3013,71 +3170,26 @@ if (after('review', entryStage)) {
     const list = String(checklist ?? '').trim()
     if (!list) { log(`syncAcceptanceBlock round ${r}: empty checklist — refusing to sync`); return false }
     if (simulate) {
-      if (simulate.prBody === undefined) return simulate.acceptanceSync !== false
-      const out = spliceAcceptanceBlock(simulate.prBody, list)
+      if (simulate.probes?.prBody === undefined) return simulate.probes?.acceptanceSync !== false
+      const out = spliceAcceptanceBlock(simulate.probes?.prBody, list)
       if (out !== null) prBodyPreview = out
       return out !== null
     }
-    const nodeScript =
-      `'use strict'\n` +
-      `const fs = require('fs')\n` +
-      `const ACCEPTANCE_START_RE = /${ACCEPTANCE_START_RE.source}/${ACCEPTANCE_START_RE.flags}\n` +
-      `const ACCEPTANCE_END_RE = /${ACCEPTANCE_END_RE.source}/${ACCEPTANCE_END_RE.flags}\n` +
-      `const ACCEPTANCE_START = ${JSON.stringify(ACCEPTANCE_START)}\n` +
-      `${spliceAcceptanceBlock.toString()}\n` +
-      `${bodyWriteGuardOk.toString()}\n` +
-      `const mode = process.argv[2]\n` +
-      `if (mode === 'splice') {\n` +
-      `  const preBody = fs.readFileSync(process.argv[3], 'utf8')\n` +
-      `  const checklistText = fs.readFileSync(process.argv[4], 'utf8').replace(/\\n$/, '')\n` +
-      `  const out = spliceAcceptanceBlock(preBody, checklistText)\n` +
-      `  if (out === null) { process.exit(3) }\n` +
-      `  fs.writeFileSync(process.argv[5], out)\n` +
-      `  process.exit(0)\n` +
-      `} else if (mode === 'guard') {\n` +
-      `  const preLen = Number(process.argv[3])\n` +
-      `  const newBody = fs.readFileSync(process.argv[4], 'utf8')\n` +
-      `  process.exit(bodyWriteGuardOk(preLen, newBody) ? 0 : 1)\n` +
-      `} else {\n` +
-      `  process.exit(2)\n` +
-      `}\n`
-    let syncReply
-    try {
-      syncReply = await agent(
-        `Run EXACTLY this shell script, as ONE Bash tool call, in the worktree "${wtPath}". ` +
-        `Your final reply must be ONLY the last printed line (\`OK bytes=...\`, or one of ` +
-        `\`READ_FAIL\`/\`NO_MARKERS\`/\`SPLICE_FAIL\`/\`WRITE_FAIL\`/\`GUARD_FAIL ...\`) — never repeat, quote, ` +
-        `paraphrase or summarize any part of the PR body content in your reply.\n\n` +
-        `cd "${wtPath}" && mkdir -p .pipeline\n` +
-        `cat > .pipeline/pr-acceptance-sync-${pr}.cjs <<'PIPELINE_ACC_EOF'\n${nodeScript}\nPIPELINE_ACC_EOF\n` +
-        `gh pr view ${pr}${prFlag} --json body -q .body > .pipeline/pr-body-${pr}.pre.md\n` +
-        `if [ $? -ne 0 ]; then echo "READ_FAIL"; exit 0; fi\n` +
-        `PRE_LEN=$(wc -c < .pipeline/pr-body-${pr}.pre.md)\n` +
-        `cat > .pipeline/pr-acceptance-${pr}.checklist.md <<'PIPELINE_ACC_LIST_EOF'\n${list}\nPIPELINE_ACC_LIST_EOF\n` +
-        `node .pipeline/pr-acceptance-sync-${pr}.cjs splice .pipeline/pr-body-${pr}.pre.md .pipeline/pr-acceptance-${pr}.checklist.md .pipeline/pr-body-${pr}.md\n` +
-        `RC=$?\n` +
-        `if [ $RC -eq 3 ]; then echo "NO_MARKERS"; exit 0; fi\n` +
-        `if [ $RC -ne 0 ]; then echo "SPLICE_FAIL"; exit 0; fi\n` +
-        `gh pr edit ${pr}${prFlag} --body-file .pipeline/pr-body-${pr}.md\n` +
-        `if [ $? -ne 0 ]; then echo "WRITE_FAIL"; exit 0; fi\n` +
-        `gh pr view ${pr}${prFlag} --json body -q .body > .pipeline/pr-body-${pr}.post.md\n` +
-        `POST_LEN=$(wc -c < .pipeline/pr-body-${pr}.post.md)\n` +
-        `node .pipeline/pr-acceptance-sync-${pr}.cjs guard "$PRE_LEN" .pipeline/pr-body-${pr}.post.md\n` +
-        `if [ $? -eq 0 ]; then echo "OK bytes=$POST_LEN"; else gh pr edit ${pr}${prFlag} --body-file .pipeline/pr-body-${pr}.pre.md; echo "GUARD_FAIL restored=true pre=$PRE_LEN post=$POST_LEN"; fi\n`,
-        { label: `pr-acceptance-sync-${pr}-${r}`, model: 'haiku' })
-    } catch (e) { log(`syncAcceptanceBlock round ${r}: sync failed (${e.message})`); return false }
-    const replyLine = String(syncReply ?? '').trim()
-    if (replyLine.startsWith('OK')) { trace.push(`acceptance-synced:${r}`); return true }
-    log(`syncAcceptanceBlock round ${r}: ${replyLine || '(empty reply)'}`)
+    // #85: the chain (read, splice, write, re-read, guard, restore) lives in templates/pr-write.sh; the
+    // checklist never transits a model reply, the agent only copies a PROBE line. Never appends: absent
+    // markers come back as failed/no-markers.
+    const res = await prWrite('body-splice', 'acceptance-sync', r, ['--pr', pr, '--mode', 'acceptance', '--text', list])
+    if (res && (res.result === 'written' || res.result === 'skipped')) { trace.push(`acceptance-synced:${r}`); return true }
+    log(`syncAcceptanceBlock round ${r}: ${res ? (res.reason || res.result) : 'probe unavailable'}`)
     return false
   }
 
-  // Offline probe lever (issue #97, T87b precedent) — when simulate.acceptanceSpliceProbe is set,
+  // Offline probe lever (issue #97, T87b precedent) — when simulate.probes?.acceptanceSpliceProbe is set,
   // evaluate the REAL spliceAcceptanceBlock once against that fixture and expose the result on
   // the terminal payload, so the offline suite can prove the pure splice function's marker
   // selection/fail-closed behavior without hand-duplicating it in the test file.
-  if (simulate?.acceptanceSpliceProbe) {
-    const { body: probeBody, checklist: probeChecklist } = simulate.acceptanceSpliceProbe
+  if (simulate?.probes?.acceptanceSpliceProbe) {
+    const { body: probeBody, checklist: probeChecklist } = simulate.probes?.acceptanceSpliceProbe
     acceptanceSpliceProbe = spliceAcceptanceBlock(probeBody, probeChecklist)
   }
 
@@ -3094,37 +3206,25 @@ if (after('review', entryStage)) {
       // sha: unchanged expressions (same idiom the pre-#97 no-op gate used) — before is a plain
       // index, after looks ahead to r+1 with a round-scoped fallback so two absent defaults
       // still differ (a normal round must never fabricate a no-op).
+      const shaFx = simulate.probes?.headSha
+      const bodyFx = simulate.probes?.prBodySig
       const sha = when === 'before'
-        ? (simulate.headSha?.[r] ?? `sha-round-${r}`)
-        : (simulate.headSha?.[r + 1] ?? (simulate.headSha?.[r] !== undefined ? simulate.headSha[r] : `sha-round-${r}-post`))
-      // body: SAME polarity, keyed off simulate.prBodySig — identical by default (no lever set)
+        ? (shaFx?.[r] ?? `sha-round-${r}`)
+        : (shaFx?.[r + 1] ?? (shaFx?.[r] !== undefined ? shaFx[r] : `sha-round-${r}-post`))
+      // body: SAME polarity, keyed off simulate.probes?.prBodySig — identical by default (no lever set)
       // so a plain SHA-only fixture (T23) still escalates exactly as before #97; a fixture that
       // sets prBodySig[r] and prBodySig[r+1] to different strings models a body-only fix.
       const body = when === 'before'
-        ? (simulate.prBodySig?.[r] ?? `body-round-${r}`)
-        : (simulate.prBodySig?.[r + 1] ?? simulate.prBodySig?.[r] ?? `body-round-${r}`)
+        ? (bodyFx?.[r] ?? `body-round-${r}`)
+        : (bodyFx?.[r + 1] ?? bodyFx?.[r] ?? `body-round-${r}`)
       return { sha, body }
     }
-    let out
-    try {
-      out = await agent(
-        `Run EXACTLY this as ONE Bash tool call and reply with ONLY one line "<sha> <digest>" ` +
-        `(space-separated, nothing else — no quoting, no paraphrasing, no summary of the PR body):\n` +
-        `SHA=$(gh pr view ${pr}${prFlag} --json headRefOid -q .headRefOid)\n` +
-        `DIGEST=$(gh pr view ${pr}${prFlag} --json body -q .body | { shasum -a 256 2>/dev/null || sha256sum; } | cut -c1-12)\n` +
-        `echo "$SHA $DIGEST"`,
-        { label: `pr-sig-${when}-round-${r}`, model: 'haiku' },
-      )
-    } catch (e) {
-      log(`prSignature ${when} round ${r}: probe failed (${e.message}) — failing open`)
+    const st = await prState(`sig-${when}`, r)
+    if (!st || !st.headRefOid || !st.bodyDigest) {
+      log(`prSignature ${when} round ${r}: pr-state probe unavailable — failing open`)
       return { sha: `probe-fail-${when}-${r}`, body: `probe-fail-${when}-${r}` }
     }
-    const parts = String(out ?? '').trim().split(/\s+/)
-    if (parts.length !== 2 || !parts[0] || !parts[1]) {
-      log(`prSignature ${when} round ${r}: unparseable reply "${String(out ?? '').slice(0, 200)}" — failing open`)
-      return { sha: `probe-fail-${when}-${r}`, body: `probe-fail-${when}-${r}` }
-    }
-    return { sha: parts[0], body: parts[1] }
+    return { sha: st.headRefOid, body: st.bodyDigest }
   }
 
   // Preflight before initial Morgan call
@@ -3151,8 +3251,8 @@ if (after('review', entryStage)) {
       `Confirm CI is green via the GitHub checks ${ciChecks.join(' + ')} (gh pr checks ${pr}${prFlag}), ` +
       `then POST your verdict (LGTM | REQUIRED_CHANGES | REGRESSION_DETECTED) as a comment on PR #${pr}. Prefix that posted comment EXACTLY with the pipeline-review-round marker \`${reviewMarker}\` as its own first line (hidden HTML marker; do NOT let it leak into \`items\`). ` +
       `For each remaining unticked acceptance box, put in \`items\` the **verbatim checklist line** it blocks on (copy the box text exactly — do NOT paraphrase — so a persistent blocker reads identically across rounds). Any box whose line contains the tag \`[human-gate]\` is a **human-only** item: you cannot verify it and MUST NOT tick it or ask Nick to fix it — copy its line verbatim into \`items\` (tag preserved) and treat it as a human gate, not a code defect. Emit \`REQUIRED_CHANGES\` whenever any box is unticked (human-gate or not). ` +
-      `For each item in \`items\`, ALSO classify it in \`itemOwners\` ({item, itemOwner, proof}): 'code-defect' is the DEFAULT whenever you are uncertain — a plan owner ('plan-defect'|'checklist-wording-defect') REQUIRES a concrete \`proof\` quoting the exact contradiction between the plan/checklist and reality, and NEVER excuses unfinished code. If a box's verification PASSED but ticking it (\`gh pr edit\`) is denied by permissions, do NOT retry, do NOT work around the denial and do NOT post "Ready to merge": leave the box \`- [ ]\`, copy its verbatim line into \`items\`, and classify it in \`itemOwners\` as 'proven-untickable' with \`proof\` = the command you ran and its verbatim output. A box whose verification failed or was not run stays 'code-defect'. A [human-gate] box is NEVER 'proven-untickable'.`,
-    { agentType: 'Morgan', phase: 'Review', schema: MORGAN, label: `morgan-pr-${pr}-r${round}`, model: morganModel },
+      `For each item in \`items\`, ALSO classify it in \`itemOwners\` ({item, itemOwner, proof}): 'code-defect' is the DEFAULT whenever you are uncertain — a plan owner ('plan-defect'|'checklist-wording-defect') REQUIRES a concrete \`proof\` quoting the exact contradiction between the plan/checklist and reality, and NEVER excuses unfinished code. If a box's verification PASSED but ticking it (\`gh pr edit\`) is denied by permissions, do NOT retry, do NOT work around the denial and do NOT post "Ready to merge": leave the box \`- [ ]\`, copy its verbatim line into \`items\`, and classify it in \`itemOwners\` as 'proven-untickable' with \`proof\` = the command you ran and its verbatim output. ${UNTICKABLE_LINE_RULE}${ACCEPTANCE_PRESENCE_RULE}A box whose verification failed or was not run stays 'code-defect'. A [human-gate] box is NEVER 'proven-untickable'.`,
+    { agentType: 'Morgan', phase: 'Review', schema: MORGAN, label: `morgan-pr-${issue}-${pr}-r${round}`, model: morganModel },
     round,
   )
 
@@ -3242,7 +3342,7 @@ if (after('review', entryStage)) {
       const nickFixRound = await callAgentSafe(
         'nick',
         `Work in the shared worktree "${wtPath}". Read Morgan's review on PR #${pr} (gh pr view ${pr}${prFlag} --comments), address every REQUIRED_CHANGES item${planRouted ? ' listed below (the other blockers on this PR are handled by a plan amendment — do NOT touch them)' : ''} while staying faithful to the plan below, re-run the green bar (\`${buildCmd}\` + \`${testCmd}\`, format modified files via \`${formatCmd}\`), and push. When deleting repo-tracked files, use \`git rm <file>\` instead of bare \`rm\` — bare rm is sandbox-denied and burns permission rounds. ${SANDBOX_INSTALL_HINT} After pushing, post a ONE-LINE push-note comment on PR #${pr} (only there, not on the issue) prefixed EXACTLY with the pipeline-review-round marker \`${reviewMarker}\` as its own first line, summarizing the change you just made.${planRouted ? `\n\nItems to address:\n${nickItems.map(i => `- ${i}`).join('\n')}` : ''}\n\n${planBlock}`,
-        { agentType: 'Nick', phase: 'Review', label: `nick-pr-${pr}`, model: 'sonnet' },
+        { agentType: 'Nick', phase: 'Review', label: `nick-pr-${issue}-${pr}`, model: 'sonnet' },
         round,
       )
       if (isAgentDeath(nickFixRound)) {
@@ -3278,8 +3378,8 @@ if (after('review', entryStage)) {
         `${freshnessStep}` +
         `Then post the new verdict (LGTM | REQUIRED_CHANGES | REGRESSION_DETECTED) as a comment on the PR. Prefix that posted comment EXACTLY with the pipeline-review-round marker \`${reviewMarker}\` as its own first line (hidden HTML marker; do NOT let it leak into \`items\`). ` +
         `For each remaining unticked acceptance box, put in \`items\` the **verbatim checklist line** it blocks on (copy the box text exactly — do NOT paraphrase — so a persistent blocker reads identically across rounds). Any box whose line contains the tag \`[human-gate]\` is a **human-only** item: you cannot verify it and MUST NOT tick it or ask Nick to fix it — copy its line verbatim into \`items\` (tag preserved) and treat it as a human gate, not a code defect. Emit \`REQUIRED_CHANGES\` whenever any box is unticked (human-gate or not). ` +
-        `For each item in \`items\`, ALSO classify it in \`itemOwners\` ({item, itemOwner, proof}): 'code-defect' is the DEFAULT whenever you are uncertain — a plan owner ('plan-defect'|'checklist-wording-defect') REQUIRES a concrete \`proof\` quoting the exact contradiction between the plan/checklist and reality, and NEVER excuses unfinished code. If a box's verification PASSED but ticking it (\`gh pr edit\`) is denied by permissions, do NOT retry, do NOT work around the denial and do NOT post "Ready to merge": leave the box \`- [ ]\`, copy its verbatim line into \`items\`, and classify it in \`itemOwners\` as 'proven-untickable' with \`proof\` = the command you ran and its verbatim output. A box whose verification failed or was not run stays 'code-defect'. A [human-gate] box is NEVER 'proven-untickable'.\n\n${planBlock}`,
-      { agentType: 'Morgan', phase: 'Review', schema: MORGAN, label: `morgan-pr-${pr}-r${round}`, model: morganModel },
+        `For each item in \`items\`, ALSO classify it in \`itemOwners\` ({item, itemOwner, proof}): 'code-defect' is the DEFAULT whenever you are uncertain — a plan owner ('plan-defect'|'checklist-wording-defect') REQUIRES a concrete \`proof\` quoting the exact contradiction between the plan/checklist and reality, and NEVER excuses unfinished code. If a box's verification PASSED but ticking it (\`gh pr edit\`) is denied by permissions, do NOT retry, do NOT work around the denial and do NOT post "Ready to merge": leave the box \`- [ ]\`, copy its verbatim line into \`items\`, and classify it in \`itemOwners\` as 'proven-untickable' with \`proof\` = the command you ran and its verbatim output. ${UNTICKABLE_LINE_RULE}${ACCEPTANCE_PRESENCE_RULE}A box whose verification failed or was not run stays 'code-defect'. A [human-gate] box is NEVER 'proven-untickable'.\n\n${planBlock}`,
+      { agentType: 'Morgan', phase: 'Review', schema: MORGAN, label: `morgan-pr-${issue}-${pr}-r${round}`, model: morganModel },
       round,
     )
 
@@ -3343,18 +3443,15 @@ if (after('review', entryStage)) {
     if (!squashEnabled) return
     let headRefName, commitCount
     if (simulate) {
-      if (simulate.squashCommits === undefined) return
-      commitCount = simulate.squashCommits
-      headRefName = simulate.headRefName ?? `${expectedBranchName}`
+      if (simulate.probes?.squashCommits === undefined) return
+      commitCount = simulate.probes?.squashCommits
+      const hrFx = simulate.probes?.headRefName
+      headRefName = hrFx ?? `${expectedBranchName}`
     } else {
-      try {
-        const raw = await agent(
-          `cd "${wtPath}" && gh pr view ${pr}${prFlag} --json headRefName,commits`,
-          { label: `squash-scan-${pr}`, model: 'haiku' })
-        const j = JSON.parse(raw)
-        headRefName = j.headRefName            // REUSE the provided field — never rebuild it
-        commitCount = (j.commits || []).length
-      } catch (e) { log(`squashBeforeHandoff: scan failed (${e.message}), skipping`); return }
+      const st = await prState('squash', round)
+      if (!st || typeof st.commitCount !== 'number') { log('squashBeforeHandoff: scan failed, skipping'); return }
+      headRefName = st.headRefName            // REUSE the provided field — never rebuild it
+      commitCount = st.commitCount
     }
     if (!headRefName || commitCount <= squashMaxCommits) return
     trace.push(`commit-squashed:${pr}`)
@@ -3370,7 +3467,7 @@ if (after('review', entryStage)) {
       `6. git push --force-with-lease origin "${headRefName}".\n` +
       `7. Post ONE comment on PR #${pr}, prefixed with \`${reviewMarker}\` as its own first line, stating the old and new head SHAs and that \`git diff <old> <new>\` is empty (the LGTM still holds).\n` +
       `Never use bare --force. Never push to ${baseBranch}/main. Never merge this PR yourself — merging is an external gesture handled outside the pipeline. Never throw — the handoff must complete either way.`,
-      { agentType: 'Nick', label: `nick-squash-${pr}`, model: 'sonnet' },
+      { agentType: 'Nick', label: `nick-squash-${issue}-${pr}`, model: 'sonnet' },
       round,
     )
   }
@@ -3380,18 +3477,9 @@ if (after('review', entryStage)) {
   // ambiguity: only an exact `mergeable === 'CONFLICTING'` escalates — `MERGEABLE`, `UNKNOWN` (GitHub
   // still computing, not a conflict), and a `null` (tool-failure) result all fall through unchanged.
   const checkMergeState = async () => {
-    if (simulate) return simulate.mergeState ?? null
-    try {
-      const out = await agent(
-        `gh pr view ${pr}${prFlag} --json mergeable,mergeStateStatus --jq '{mergeable,mergeStateStatus}'`,
-        { label: `merge-state-${pr}-${round}`, model: 'haiku' },
-      )
-      const j = JSON.parse(out)
-      return (j && typeof j.mergeable === 'string') ? j : null
-    } catch (e) {
-      log(`checkMergeState: probe failed (${e.message}), skipping mergeability recheck`)
-      return null
-    }
+    if (simulate) return simulate.probes?.mergeState
+    const st = await prState('merge', round)
+    return (st && typeof st.mergeable === 'string') ? { mergeable: st.mergeable, mergeStateStatus: st.mergeStateStatus } : null
   }
   if (v.verdict === 'LGTM') {
     const mergeState = await checkMergeState()
@@ -3422,5 +3510,6 @@ if (after('review', entryStage)) {
     guardProbeResult,
     acceptanceSpliceProbe,
     preflightPromptPreview,
+    preflightFixPromptPreview,
   })
 }

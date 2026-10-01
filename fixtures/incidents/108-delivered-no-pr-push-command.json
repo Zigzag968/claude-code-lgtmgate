@@ -2,6 +2,7 @@
   "name": "108-delivered-no-pr-push-command",
   "note": "incident #41/#108: Nick could not push over SSH inside the agent sandbox and the run ended delivered-no-pr; the Lead had to work out the push itself. The escalation must quote the exact sandbox-safe HTTPS push command.",
   "args": {
+    "pluginRoot": "/plugin",
     "issue": 123,
     "brief": "fix slugify accents",
     "wtPath": "/wt/root/issue-123",
@@ -9,8 +10,14 @@
     "mode": "auto"
   },
   "calls": {
-    "provision-123": "PROVISION-SKIPPED-NO-SCRIPT x\nPROVISION-EXIT:0\n",
-    "provision-freshness-123": "0\n",
+    "probe-123-provision-provision-r0": {
+      "line": "PROBE name=provision exit=0 sha=30ad404e7bf922808eeb13427c66400303e810a9392f80082fb0abe2fc6fc271 cmd=cb49d972cd5e77c121dac04294f3d1fa6a3363d2451bd60461ad1c814588897a json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}",
+      "verify": "VERIFY ok line=PROBE name=provision exit=0 sha=30ad404e7bf922808eeb13427c66400303e810a9392f80082fb0abe2fc6fc271 cmd=cb49d972cd5e77c121dac04294f3d1fa6a3363d2451bd60461ad1c814588897a json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}"
+    },
+    "probe-123-provision-freshness-provision-freshness-r0": {
+      "line": "PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b cmd=f7148584e77c9da7779115228bbfa0f4223ff89ed5d3031f3e51605249a7eaa7 json={\"state\":\"fresh\",\"behind\":0,\"own\":0}",
+      "verify": "VERIFY ok line=PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b cmd=f7148584e77c9da7779115228bbfa0f4223ff89ed5d3031f3e51605249a7eaa7 json={\"state\":\"fresh\",\"behind\":0,\"own\":0}"
+    },
     "diagnose-issue-123": {
       "confirmed": true,
       "evidence": "reproduced: `node -e` prints the wrong slug",
@@ -35,16 +42,20 @@
       "verdict": "CONFORMING",
       "issues": []
     },
-    "plan-stale-123": "",
-    "sub-issues-123": "",
-    "worktree-gitdir-writable-123": "WRITABLE|/wt/root/.git/worktrees/issue-123\n",
+    "probe-123-preflight-dev-r0": {
+      "line": "PROBE name=preflight exit=0 sha=0acd6243a89b98b4bb2d70cb70c8f020921b3ba8feae419783c1e32c54be75dd cmd=61f2760483151fb3cb232c269b86e8edf8e5d96659e23745f2384bd22c46be69 json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/wt/root/.git/worktrees/issue-123\",\"writable\":true}",
+      "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=0acd6243a89b98b4bb2d70cb70c8f020921b3ba8feae419783c1e32c54be75dd cmd=61f2760483151fb3cb232c269b86e8edf8e5d96659e23745f2384bd22c46be69 json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/wt/root/.git/worktrees/issue-123\",\"writable\":true}"
+    },
     "nick-issue-123": {
       "prNumber": 0,
       "branch": "features/issue-123",
       "testsPass": true,
       "summary": "Implemented and tested. git push origin features/issue-123 failed: ssh_dispatch_run_fatal: Broken pipe; HTTPS retry not attempted. No PR opened."
     },
-    "branch-check-123": "features/issue-123\n"
+    "probe-123-preflight-branch-r0": {
+      "line": "PROBE name=preflight exit=0 sha=5fbfdf840750936170ea0caa2986e56765751306cca75f230cff37f141b42cdc json={\"mode\":\"branch\",\"headRef\":\"features/issue-123\",\"branchPrefix\":\"\"}",
+      "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=5fbfdf840750936170ea0caa2986e56765751306cca75f230cff37f141b42cdc json={\"mode\":\"branch\",\"headRef\":\"features/issue-123\",\"branchPrefix\":\"\"}"
+    }
   },
   "expect": {
     "status": "delivered-no-pr",

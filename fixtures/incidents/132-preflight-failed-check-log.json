@@ -1,0 +1,103 @@
+{
+  "name": "132-preflight-failed-check-log",
+  "note": "incident from the #131 run: guards failed after the first push; Nick saw only the check name; the run ended preflight-stuck. Preflight probe object is synthetic-raw (raw run data not retained).",
+  "args": {
+    "pluginRoot": "/plugin",
+    "issue": 132,
+    "brief": "fix slugify accents",
+    "wtPath": "/wt/root/issue-132",
+    "config": {},
+    "mode": "auto"
+  },
+  "calls": {
+    "probe-132-provision-provision-r0": {
+      "line": "PROBE name=provision exit=0 sha=30ad404e7bf922808eeb13427c66400303e810a9392f80082fb0abe2fc6fc271 cmd=2129e70f785c9cf526e17c1119b76a16a58d7b519bc3ad89a1815abff2ff2985 json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}",
+      "verify": "VERIFY ok line=PROBE name=provision exit=0 sha=30ad404e7bf922808eeb13427c66400303e810a9392f80082fb0abe2fc6fc271 cmd=2129e70f785c9cf526e17c1119b76a16a58d7b519bc3ad89a1815abff2ff2985 json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}"
+    },
+    "probe-132-provision-freshness-provision-freshness-r0": {
+      "line": "PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b cmd=431eb12559670d2ef67eccb0398202ba1958bb08396b7d7ea75c4ce67d6f722e json={\"state\":\"fresh\",\"behind\":0,\"own\":0}",
+      "verify": "VERIFY ok line=PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b cmd=431eb12559670d2ef67eccb0398202ba1958bb08396b7d7ea75c4ce67d6f722e json={\"state\":\"fresh\",\"behind\":0,\"own\":0}"
+    },
+    "diagnose-issue-132": {
+      "confirmed": true,
+      "evidence": "reproduced: `node -e` prints the wrong slug",
+      "actualCause": "accent stripping",
+      "laneOk": true,
+      "persistentStateSignal": false,
+      "authSecurityBoundarySignal": false,
+      "deployConfigSignal": false,
+      "immatureVendorApiSignal": false
+    },
+    "scout-issue-132-1": {
+      "decision": "GO",
+      "plan": "## Plan\n1. src/slugify.js: transliterate before stripping\n\n## Acceptance checklist\n- [ ] `npm test` passes",
+      "rationale": "",
+      "targetFiles": [
+        "src/slugify.js"
+      ],
+      "absorbedIssues": [],
+      "acceptanceChecklist": "- [ ] `npm test` passes"
+    },
+    "plan-check-132-1": {
+      "verdict": "CONFORMING",
+      "issues": []
+    },
+    "probe-132-preflight-dev-r0": {
+      "line": "PROBE name=preflight exit=0 sha=4bdeda47f0f6da268b4ba8e6c9859cf4722df806996b568458597946eb068401 cmd=91f2f484a356b69b80c9ef30240e7db0047ccc2e437108d909f3db839eec614e json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/wt/root/.git/worktrees/issue-132\",\"writable\":true}",
+      "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=4bdeda47f0f6da268b4ba8e6c9859cf4722df806996b568458597946eb068401 cmd=91f2f484a356b69b80c9ef30240e7db0047ccc2e437108d909f3db839eec614e json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/wt/root/.git/worktrees/issue-132\",\"writable\":true}"
+    },
+    "nick-issue-132": {
+      "prNumber": 42,
+      "branch": "features/issue-132",
+      "testsPass": true,
+      "summary": "opened PR #42"
+    },
+    "probe-132-preflight-branch-r0": {
+      "line": "PROBE name=preflight exit=0 sha=406ca30a9535d79799e921ad32d26944d2f86e9ea34b60d2f2a7a325a421d02f cmd=6511b6add426bc904ea6d35b811d2c12fe08b7d7d3bfaa48f5a1db559d7ea9a5 json={\"mode\":\"branch\",\"headRef\":\"features/issue-132\",\"branchPrefix\":\"\"}",
+      "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=406ca30a9535d79799e921ad32d26944d2f86e9ea34b60d2f2a7a325a421d02f cmd=6511b6add426bc904ea6d35b811d2c12fe08b7d7d3bfaa48f5a1db559d7ea9a5 json={\"mode\":\"branch\",\"headRef\":\"features/issue-132\",\"branchPrefix\":\"\"}"
+    },
+    "probe-132-git-rev-list-count-worktree-behind-42-r0": {
+      "line": "PROBE name=git-rev-list-count exit=0 sha=9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa cmd=4be58c059231213128a9e165227fe2c3e4f1dd5e7a1a4e5f26e2db12ceaa6c07 json={\"count\":0}",
+      "verify": "VERIFY ok line=PROBE name=git-rev-list-count exit=0 sha=9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa cmd=4be58c059231213128a9e165227fe2c3e4f1dd5e7a1a4e5f26e2db12ceaa6c07 json={\"count\":0}"
+    },
+    "preflight-132-42-0": {
+      "pass": false,
+      "issues": [
+        "PR #42 required check 'guards' is in FAILURE state on GitHub"
+      ],
+      "failedChecks": [
+        {
+          "name": "guards",
+          "step": "Run scripts/test-run-offline.sh",
+          "logTail": "guards\tRun scripts/test-run-offline.sh\tTraceback (most recent call last):\nguards\tRun scripts/test-run-offline.sh\tKeyError: 'merge-state-42-0'"
+        }
+      ]
+    },
+    "preflight-132-42-1": {
+      "pass": false,
+      "issues": [
+        "PR #42 required check 'guards' is in FAILURE state on GitHub"
+      ],
+      "failedChecks": [
+        {
+          "name": "guards",
+          "step": "Run scripts/test-run-offline.sh",
+          "logTail": "guards\tRun scripts/test-run-offline.sh\tTraceback (most recent call last):\nguards\tRun scripts/test-run-offline.sh\tKeyError: 'merge-state-42-0'"
+        }
+      ]
+    },
+    "nick-preflight-fix-132-42": {
+      "prNumber": 42,
+      "branch": "features/issue-132",
+      "testsPass": true,
+      "summary": "opened PR #42"
+    }
+  },
+  "expect": {
+    "status": "preflight-stuck",
+    "logsInclude": [
+      "KeyError: 'merge-state-42-0'",
+      "Run scripts/test-run-offline.sh"
+    ]
+  }
+}

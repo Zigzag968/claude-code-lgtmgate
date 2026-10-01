@@ -49,6 +49,10 @@ jobs:
         run: bash hooks/test-deny-destructive-git.sh
       - name: SubagentStop worktree-cleanup hook regression test
         run: bash hooks/test-SubagentStop-worktree-cleanup.sh
+      - name: probe attest and stop hooks regression test
+        run: bash hooks/test-PostToolUse-probe-attest.sh
+      - name: probe-run runner regression test
+        run: bash templates/test-probe-run.sh
       - name: cleanup-worktree script regression test
         run: bash scripts/test-cleanup-worktree.sh
       - name: verify-workflow-launch regression test

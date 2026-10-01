@@ -1,0 +1,25 @@
+{
+  "name": "27-provision-sha-mismatch",
+  "note": "#27: the copied PROBE line carries the sha of another stdout than the stored record; the verify step names the true line, the engine must refuse the copy",
+  "args": {
+    "pluginRoot": "/plugin",
+    "issue": 27,
+    "brief": "provision must not trust a contaminated relay",
+    "wtPath": "/wt/root/issue-27",
+    "config": {},
+    "mode": "auto"
+  },
+  "calls": {
+    "probe-27-provision-provision-r0": {
+      "line": "PROBE name=provision exit=0 sha=43906f9f12fdfc3e46bd7f72f0c9b44369719e90aa9b5f8bb4d06822efed0860 cmd=d05939234d8e3289e1c8e68892b03c84f47f98b166f84e186c5dc220c0748abd json={\"version\":1,\"linked\":[\".env\"],\"missing\":[],\"skipped\":false}",
+      "verify": "VERIFY ok line=PROBE name=provision exit=0 sha=30ad404e7bf922808eeb13427c66400303e810a9392f80082fb0abe2fc6fc271 cmd=d05939234d8e3289e1c8e68892b03c84f47f98b166f84e186c5dc220c0748abd json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}"
+    }
+  },
+  "expect": {
+    "status": "escalate",
+    "reason": "provision-failed",
+    "logsInclude": [
+      "sha-mismatch"
+    ]
+  }
+}

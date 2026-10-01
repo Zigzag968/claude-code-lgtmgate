@@ -1,0 +1,530 @@
+#!/usr/bin/env bash
+# Regression test for templates/probe-run.cjs (E2.2, #80), templates/preflight.sh (#83) and templates/pr-state.sh (#84) and templates/pr-write.sh (#85): pure parsers replayed against
+# fixtures/probes/*.raw, plus end-to-end runs of the CLI in a temp dir. No network. bash 3.2 safe.
+set -uo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+PR="$SCRIPT_DIR/probe-run.cjs"
+TMP_BASE="$(cd "${TMPDIR:-/tmp}" && pwd -P)"
+WORK="$(mktemp -d "$TMP_BASE/probe-run-test.XXXXXX")"
+trap 'rm -rf "$WORK"' EXIT
+
+HI_SHA=98ea6e4f216f2fb4b69fff9b3a44842c38686ca685f3f55dc48c5d3fb1107be4
+
+pass_count=0
+fail_count=0
+
+check() {
+  local name="$1" ok="$2"
+  if [ "$ok" -eq 1 ]; then echo "PASS - $name"; pass_count=$((pass_count + 1))
+  else echo "FAIL - $name"; fail_count=$((fail_count + 1)); fi
+}
+
+# (a) every fixtures/probes/<parser>--<case>.raw through PARSERS deep-equals its .expected
+n_raw=0
+for raw in "$ROOT"/fixtures/probes/*.raw; do
+  [ -f "$raw" ] || continue
+  n_raw=$((n_raw + 1))
+  base="$(basename "$raw" .raw)"
+  parser="${base%%--*}"
+  exp="$ROOT/fixtures/probes/$base.expected"
+  ok=0
+  if [ -f "$exp" ] && node -e '
+    const fs = require("fs"), assert = require("assert")
+    const { PARSERS } = require(process.argv[1])
+    const got = PARSERS[process.argv[2]](fs.readFileSync(process.argv[3], "utf8"), "", 0)
+    assert.deepStrictEqual(got, JSON.parse(fs.readFileSync(process.argv[4], "utf8")))
+  ' "$PR" "$parser" "$raw" "$exp" 2>/dev/null; then ok=1; fi
+  check "parser fixture $base" "$ok"
+done
+[ "$n_raw" -ge 12 ] && ok=1 || ok=0
+check "at least 2 fixtures per parser (found $n_raw .raw files)" "$ok"
+
+# (b) e2e: one PROBE line, exit=0, known sha, record with 8 keys
+OUT1="$WORK/b"
+LINE="$(node "$PR" --label t --round 0 --out "$OUT1" --parser lines --cmd "printf 'hi\n'")"
+CMD_SHA="$(node -e 'process.stdout.write(require("crypto").createHash("sha256").update(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).cmd).digest("hex"))' "$OUT1/t-r0.json")"
+RC=$?
+ok=0
+[ "$RC" -eq 0 ] && [ "$(printf '%s\n' "$LINE" | wc -l | tr -d ' ')" = "1" ] &&
+  [ "$LINE" = "PROBE name=lines exit=0 sha=$HI_SHA cmd=$CMD_SHA json={\"lines\":[\"hi\"]}" ] && ok=1
+check "e2e printf hi: single PROBE line with expected sha" "$ok"
+ok=0
+[ "$CMD_SHA" = "$(node -e 'process.stdout.write(require("crypto").createHash("sha256").update("printf '"'"'hi\\n'"'"'").digest("hex"))')" ] && case "$LINE" in *" cmd=$CMD_SHA json="*) ok=1 ;; esac
+check "[151] PROBE line carries cmd= equal to the sha256 of the executed command" "$ok"
+ok=0
+[ "$(node -e 'const r=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));console.log(Object.keys(r).length)' "$OUT1/t-r0.json")" = "8" ] && ok=1
+check "record has 8 keys" "$ok"
+
+# (c) failing command: exit=3 reported, script exits 0
+LINE="$(node "$PR" --label f --round 1 --out "$WORK/c" --parser lines --cmd 'exit 3')"
+RC=$?
+ok=0
+[ "$RC" -eq 0 ] && case "$LINE" in "PROBE name=lines exit=3 "*) ok=1 ;; esac
+check "failing cmd: exit=3 in line, script exit 0" "$ok"
+
+# (d) idempotence: identical cmd + successful record -> reused, file unchanged, command NOT re-run
+BEFORE="$(cat "$OUT1/t-r0.json")"
+LINE2="$(node "$PR" --label t --round 0 --out "$OUT1" --parser lines --cmd "printf 'hi\n'")"
+AFTER="$(cat "$OUT1/t-r0.json")"
+ok=0
+case "$LINE2" in *"sha=$HI_SHA "*) [ "$BEFORE" = "$AFTER" ] && ok=1 ;; esac
+check "idempotent: identical successful record reused, bytes unchanged" "$ok"
+
+# (d2) same label/round, DIFFERENT cmd -> rebuilt (record bound to its command, #82)
+LINE3="$(node "$PR" --label t --round 0 --out "$OUT1" --parser lines --cmd "printf 'other\n'")"
+ok=0
+case "$LINE3" in *"sha=$HI_SHA "*) ok=0 ;; *'json={"lines":["other"]}') ok=1 ;; esac
+[ "$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).cmd)' "$OUT1/t-r0.json")" = "printf 'other\n'" ] || ok=0
+check "different cmd on same label/round re-executes and rewrites the record" "$ok"
+
+# (d3) failed record -> re-executed on the next run (relaunch after a fix), then reused once it succeeds
+RD="$WORK/relaunch"
+MARK="$WORK/fixed-marker"
+RCMD="test -f '$MARK' && echo ok"
+L1="$(node "$PR" --label prov --round 0 --out "$RD" --parser lines --cmd "$RCMD")"
+ok=0; case "$L1" in "PROBE name=lines exit=1 "*) ok=1 ;; esac
+check "relaunch: first run fails (exit=1, record stored)" "$ok"
+: > "$MARK"
+L2="$(node "$PR" --label prov --round 0 --out "$RD" --parser lines --cmd "$RCMD")"
+ok=0; case "$L2" in "PROBE name=lines exit=0 "*'json={"lines":["ok"]}') ok=1 ;; esac
+check "relaunch: failed record re-executed after the cause is fixed (exit=0)" "$ok"
+rm -f "$MARK"
+L3="$(node "$PR" --label prov --round 0 --out "$RD" --parser lines --cmd "$RCMD")"
+[ "$L3" = "$L2" ] && ok=1 || ok=0
+check "relaunch: successful record is then reused without re-running" "$ok"
+
+# (e) 70000 bytes -> truncated, stored length 65536
+node "$PR" --label big --round 0 --out "$WORK/e" --parser lines --cmd "head -c 70000 /dev/zero | tr '\\0' x" >/dev/null
+ok=0
+[ "$(node -e 'const r=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));console.log(r.truncated+":"+Buffer.byteLength(r.stdout))' "$WORK/e/big-r0.json")" = "true:65536" ] && ok=1
+check "70000-byte output: truncated true, stored 65536" "$ok"
+
+# (f) invalid invocations exit 2
+node "$PR" --label t --round 0 --out relative/dir --parser lines --cmd 'true' >/dev/null 2>&1
+RC=$?
+[ "$RC" -eq 2 ] && ok=1 || ok=0
+check "relative --out exits 2" "$ok"
+node "$PR" --label 'a b' --round 0 --out "$WORK/g" --parser lines --cmd 'true' >/dev/null 2>&1
+RC=$?
+[ "$RC" -eq 2 ] && ok=1 || ok=0
+check "unsafe label exits 2" "$ok"
+
+# unknown parser still prints a line
+LINE="$(node "$PR" --label u --round 0 --out "$WORK/h" --parser nope --cmd 'true')"
+case "$LINE" in *'json={"error":"unknown-parser"}') ok=1 ;; *) ok=0 ;; esac
+check "unknown parser -> error json" "$ok"
+
+# provision parser: unknown version is an error, not a silent v1 (#82)
+ok=0
+[ "$(node -e 'const {PARSERS}=require(process.argv[1]);console.log(JSON.stringify(PARSERS.provision("PROVISION-VERSION:9\nLINKED a -> /x\n")))' "$PR")" = '{"error":"unknown-version"}' ] && ok=1
+check "provision parser: unknown version -> error" "$ok"
+
+# (h) verify mode (#82): never re-runs the command, compares the recomputed line with the attestation
+VD="$WORK/v"
+VLINE="$(node "$PR" --label vt --round 0 --out "$VD" --parser lines --cmd "printf 'hi\n'")"
+ATT="$WORK/v-attest.jsonl"
+VOUT="$(node "$PR" --verify --label vt --round 0 --out "$VD" --parser lines --attest "$ATT")"
+ok=0; [ "$VOUT" = "VERIFY fail reason=no-attestation" ] && ok=1
+check "verify no-attestation: no attest file" "$ok"
+
+node -e 'console.log(JSON.stringify({agent_id:"a",tool_use_id:"t",kind:"probe",label:"vt",round:0,line:process.argv[1],ts:new Date().toISOString()}))' "$VLINE" > "$ATT"
+VOUT="$(node "$PR" --verify --label vt --round 0 --out "$VD" --parser lines --attest "$ATT")"
+ok=0; [ "$VOUT" = "VERIFY ok line=$VLINE" ] && ok=1
+check "verify ok: attested line equals the recomputed one (entry bound to label and round)" "$ok"
+
+# the attestation is bound to the call (#83): the same line attested for another label or round does not verify
+cp "$VD/vt-r0.json" "$VD/vt-r1.json"; cp "$VD/vt-r0.json" "$VD/other-r0.json"
+VOUT="$(node "$PR" --verify --label vt --round 1 --out "$VD" --parser lines --attest "$ATT")"
+ok=0; [ "$VOUT" = "VERIFY fail reason=no-attestation" ] && ok=1
+check "verify no-attestation: entry attested for another round" "$ok"
+VOUT="$(node "$PR" --verify --label other --round 0 --out "$VD" --parser lines --attest "$ATT")"
+ok=0; [ "$VOUT" = "VERIFY fail reason=no-attestation" ] && ok=1
+check "verify no-attestation: entry attested for another label" "$ok"
+
+VOUT="$(node "$PR" --verify --label nope --round 0 --out "$VD" --parser lines --attest "$ATT")"
+ok=0; [ "$VOUT" = "VERIFY fail reason=no-record" ] && ok=1
+check "verify no-record: missing record" "$ok"
+
+node -e 'const fs=require("fs");const f=process.argv[1];const r=JSON.parse(fs.readFileSync(f,"utf8"));r.stdout="tampered\n";fs.writeFileSync(f,JSON.stringify(r))' "$VD/vt-r0.json"
+VOUT="$(node "$PR" --verify --label vt --round 0 --out "$VD" --parser lines --attest "$ATT")"
+ok=0; [ "$VOUT" = "VERIFY fail reason=sha-mismatch" ] && ok=1
+check "verify sha-mismatch: tampered record" "$ok"
+
+VOUT="$(node "$PR" --verify --label vt --round 0 --out "$VD" --parser git-rev-list-count --attest "$ATT")"
+ok=0; [ "$VOUT" = "VERIFY fail reason=no-attestation" ] && ok=1
+check "verify no-attestation: entries exist only for another parser name" "$ok"
+
+node "$PR" --verify --label vt --round 0 --out "$VD" --parser lines --attest relative.jsonl >/dev/null 2>&1
+RC=$?
+[ "$RC" -eq 2 ] && ok=1 || ok=0
+check "verify relative --attest exits 2" "$ok"
+
+# --no-reuse (#83): a live-state probe re-executes even with an identical cmd and a stored exit-0 record
+NR="$WORK/nr"
+NRC="printf '%s\\n' \"\$(cat $WORK/nr-prefix)\""
+printf 'a/' > "$WORK/nr-prefix"
+node "$PR" --label nr --round 0 --out "$NR" --parser lines --cmd "$NRC" >/dev/null
+printf 'b/' > "$WORK/nr-prefix"
+O1="$(node "$PR" --label nr --round 0 --out "$NR" --parser lines --cmd "$NRC")"
+case "$O1" in *'"a/"'*) ok=1 ;; *) ok=0 ;; esac
+check "default: identical cmd + exit 0 is reused (still a/)" "$ok"
+O2="$(node "$PR" --label nr --round 0 --out "$NR" --parser lines --no-reuse --cmd "$NRC")"
+case "$O2" in *'"b/"'*) ok=1 ;; *) ok=0 ;; esac
+check "--no-reuse: same cmd re-executes (b/)" "$ok"
+node "$PR" --verify --label nr --round 0 --out "$NR" --parser lines --no-reuse --attest "$WORK/nr-a.jsonl" >/dev/null 2>&1
+[ "$?" -eq 2 ] && ok=1 || ok=0
+check "--no-reuse with --verify exits 2" "$ok"
+
+# VERIFY needs an attestation newer than the record, and the latest one for the call (#83)
+SD="$WORK/sv"; SA="$WORK/sv-attest.jsonl"
+SL="$(node "$PR" --label sv --round 0 --out "$SD" --parser lines --cmd "printf 'x\\n'")"
+node -e 'const l=process.argv[1];const e=(ts,line)=>JSON.stringify({agent_id:"a",tool_use_id:"t",kind:"probe",label:"sv",round:0,line,ts});console.log(e("2000-01-01T00:00:00Z",l))' "$SL" > "$SA"
+SOUT="$(node "$PR" --verify --label sv --round 0 --out "$SD" --parser lines --attest "$SA")"
+ok=0; [ "$SOUT" = "VERIFY fail reason=stale-attestation" ] && ok=1
+check "verify: an attestation older than the record does not satisfy VERIFY" "$ok"
+node -e 'const l=process.argv[1];const e=(ts,line)=>JSON.stringify({agent_id:"a",tool_use_id:"t",kind:"probe",label:"sv",round:0,line,ts});console.log(e("2000-01-01T00:00:00Z",l));console.log(e(new Date().toISOString(),l))' "$SL" > "$SA"
+SOUT="$(node "$PR" --verify --label sv --round 0 --out "$SD" --parser lines --attest "$SA")"
+ok=0; [ "$SOUT" = "VERIFY ok line=$SL" ] && ok=1
+check "verify: a fresh latest attestation after an old one passes" "$ok"
+node -e 'const l=process.argv[1];const e=(ts,line)=>JSON.stringify({agent_id:"a",tool_use_id:"t",kind:"probe",label:"sv",round:0,line,ts});console.log(e(new Date().toISOString(),l));console.log(e(new Date().toISOString(),"PROBE name=lines exit=0 sha=0 json={}"))' "$SL" > "$SA"
+SOUT="$(node "$PR" --verify --label sv --round 0 --out "$SD" --parser lines --attest "$SA")"
+ok=0; [ "$SOUT" = "VERIFY fail reason=sha-mismatch" ] && ok=1
+check "verify: the latest entry for the call must match (older matching entry is not enough)" "$ok"
+
+# (i) preflight.sh end to end (#83): stub gh first on PATH, temp git repo with a local bare origin. No network.
+PF="$SCRIPT_DIR/preflight.sh"
+if command -v jq >/dev/null 2>&1 && command -v git >/dev/null 2>&1; then
+  PFD="$WORK/pf"; mkdir -p "$PFD/bin" "$PFD/wt/.claude"
+  cat > "$PFD/bin/gh" <<'GHEOF'
+#!/usr/bin/env bash
+case "$*" in
+  *"pr view"*) [ -n "${GH_FAIL:-}" ] && exit 1; echo "feat/issue-83" ;;
+  *"issue view"*) [ -n "${GH_FAIL:-}" ] && exit 1; echo "${GH_TOTAL:-0}" ;;
+  *"sub_issues"*) printf '12\n15\n' ;;
+  *) exit 1 ;;
+esac
+GHEOF
+  chmod +x "$PFD/bin/gh"
+  echo '{"branchPrefix":"feat/"}' > "$PFD/wt/.claude/pipeline.config.json"
+
+  OUT="$(PATH="$PFD/bin:$PATH" bash "$PF" branch --wt "$PFD/wt" --pr 7 --repo o/r --stamp 1)"
+  ok=0; [ "$OUT" = '{"mode":"branch","headRef":"feat/issue-83","branchPrefix":"feat/"}' ] && ok=1
+  check "preflight.sh branch: head ref and branch prefix in one JSON line" "$ok"
+
+  OUT="$(GH_FAIL=1 PATH="$PFD/bin:$PATH" bash "$PF" branch --wt "$PFD/nowt" --pr 7)"; RC=$?
+  ok=0; [ "$RC" -eq 0 ] && [ "$OUT" = '{"mode":"branch","headRef":null,"branchPrefix":null}' ] && ok=1
+  check "preflight.sh branch: failing gh and missing config -> nulls, exit 0, one line" "$ok"
+
+  echo '{}' > "$PFD/wt/.claude/pipeline.config.json"
+  OUT="$(PATH="$PFD/bin:$PATH" bash "$PF" branch --wt "$PFD/wt" --pr '')"
+  ok=0; [ "$OUT" = '{"mode":"branch","headRef":null,"branchPrefix":""}' ] && ok=1
+  check "preflight.sh branch: no PR number, key absent -> headRef null, branchPrefix empty string" "$ok"
+
+  # dev: temp repo, local bare origin with one target changed upstream
+  git init -q --bare "$PFD/origin.git" 2>/dev/null
+  git init -q -b main "$PFD/repo" 2>/dev/null
+  git -C "$PFD/repo" config user.email t@t; git -C "$PFD/repo" config user.name t
+  echo a > "$PFD/repo/a.txt"; echo b > "$PFD/repo/b.txt"
+  git -C "$PFD/repo" add . >/dev/null; git -C "$PFD/repo" commit -q -m base
+  git -C "$PFD/repo" remote add origin "$PFD/origin.git"; git -C "$PFD/repo" push -q origin main 2>/dev/null
+  echo a2 > "$PFD/repo/a.txt"; git -C "$PFD/repo" commit -q -am upstream; git -C "$PFD/repo" push -q origin main 2>/dev/null
+  git -C "$PFD/repo" reset -q --hard HEAD~1 2>/dev/null
+
+  OUT="$(PATH="$PFD/bin:$PATH" GH_TOTAL=0 bash "$PF" dev --wt "$PFD/repo" --issue 83 --base main --repo o/r --targets 'a.txt b.txt')"
+  ok=0
+  [ "$(printf '%s' "$OUT" | jq -c '[.mode, .planStale, .openSubIssues, .writable]')" = '["dev",["a.txt"],[],true]' ] && ok=1
+  check "preflight.sh dev: changed plan target listed, sub-issues total 0 -> [], git dir writable" "$ok"
+  ok=0
+  [ "$(printf '%s' "$OUT" | jq -r '.gitDir')" = "$(git -C "$PFD/repo" rev-parse --absolute-git-dir)" ] && ok=1
+  check "preflight.sh dev: gitDir is the absolute git dir of the worktree" "$ok"
+
+  OUT="$(PATH="$PFD/bin:$PATH" GH_TOTAL=2 bash "$PF" dev --wt "$PFD/repo" --issue 83 --base main --repo o/r --targets '')"
+  ok=0
+  [ "$(printf '%s' "$OUT" | jq -c '[.planStale, .openSubIssues]')" = '[null,["12","15"]]' ] && ok=1
+  check "preflight.sh dev: empty targets -> planStale null, open sub-issues listed" "$ok"
+
+  OUT="$(GH_FAIL=1 PATH="$PFD/bin:$PATH" bash "$PF" dev --wt "$PFD/repo" --issue 83 --base main --repo o/r --targets 'a.txt')"
+  ok=0
+  [ "$(printf '%s' "$OUT" | jq -c '.openSubIssues')" = "null" ] && [ "$(printf '%s\n' "$OUT" | wc -l | tr -d ' ')" = "1" ] && ok=1
+  check "preflight.sh dev: failing gh -> openSubIssues null, still exactly one line" "$ok"
+
+  OUT="$(bash "$PF" bogus)"; ok=0; [ "$(printf '%s' "$OUT" | jq -c '.mode')" = "null" ] && ok=1
+  check "preflight.sh unknown mode -> mode null (parser reports bad-mode)" "$ok"
+else
+  echo "SKIP - preflight.sh e2e needs jq and git"
+fi
+
+# (j) pr-state.sh end to end (#84): stub gh first on PATH. No network.
+PS="$SCRIPT_DIR/pr-state.sh"
+if command -v jq >/dev/null 2>&1; then
+  PSD="$WORK/ps"; mkdir -p "$PSD/bin" "$PSD/wt"
+  cat > "$PSD/bin/gh" <<'GHEOF'
+#!/usr/bin/env bash
+[ -n "${GH_FAIL:-}" ] && exit 1
+case "$*" in
+  *"pr view"*)
+    cat <<'JSON'
+{"headRefName":"feat/issue-84","headRefOid":"abc123","body":"hello body","mergeable":"MERGEABLE","mergeStateStatus":"CLEAN",
+ "commits":[{"committedDate":"2026-01-01T00:10:00Z"},{"committedDate":"2026-01-01T00:20:00Z"}],
+ "comments":[{"id":"IC_1","isMinimized":false,"body":"<!-- pipeline-review-round 1 -->\nverdict"},
+             {"id":"IC_2","isMinimized":true,"body":"<!-- pipeline-review-round 0 -->\nold"},
+             {"id":"IC_3","isMinimized":false,"body":"unrelated comment"}]}
+JSON
+    ;;
+  *"issue list"*)
+    if [ -n "${GH_MANY:-}" ]; then
+      jq -nc '[range(0;1000) | {number:., createdAt:"2026-01-01T00:40:00Z", url:"u"}]'
+    else
+      echo '[{"number":90,"createdAt":"2026-01-01T00:40:00Z","url":"https://github.com/o/r/issues/90","title":"x"},{"number":91,"createdAt":"2026-01-01T00:50:00Z","url":"https://github.com/o/r/issues/91"}]'
+    fi
+    ;;
+  *) exit 1 ;;
+esac
+GHEOF
+  chmod +x "$PSD/bin/gh"
+
+  OUT="$(PATH="$PSD/bin:$PATH" bash "$PS" --pr 7 --wt "$PSD/wt" --repo o/r)"; RC=$?
+  ok=0
+  [ "$RC" -eq 0 ] && [ "$(printf '%s\n' "$OUT" | wc -l | tr -d ' ')" = "1" ] && ok=1
+  check "pr-state.sh: exit 0 and exactly one line" "$ok"
+  ok=0
+  [ "$(printf '%s' "$OUT" | jq -c '[.headRefName, .headRefOid, .mergeable, .mergeStateStatus, .lastCommitDate, .commitCount]')" = '["feat/issue-84","abc123","MERGEABLE","CLEAN","2026-01-01T00:20:00Z",2]' ] && ok=1
+  check "pr-state.sh: head, mergeability, last commit date and commit count from one gh call" "$ok"
+  ok=0
+  [ "$(printf '%s' "$OUT" | jq -c '.reviewCommentIds')" = '["IC_1"]' ] && ok=1
+  check "pr-state.sh: reviewCommentIds keeps only un-minimized pipeline-review-round comments" "$ok"
+  ok=0
+  printf '%s' "$OUT" | jq -e '(.bodyDigest | test("^[0-9a-f]{12}$")) and (.now | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]{8}Z$"))' >/dev/null 2>&1 && ok=1
+  check "pr-state.sh: 12-hex bodyDigest and an ISO now" "$ok"
+  ok=0
+  [ "$(printf '%s' "$OUT" | jq -c '[.openIssues, .openIssuesTruncated]')" = '[null,false]' ] && ok=1
+  check "pr-state.sh: openIssues is null without --since" "$ok"
+
+  OUT2="$(PATH="$PSD/bin:$PATH" bash "$PS" --pr 7 --wt "$PSD/wt" --repo o/r --since 2026-01-01T00:00:00Z)"
+  ok=0
+  [ "$(printf '%s' "$OUT2" | jq -c '[(.openIssues | map(.number)), .openIssuesTruncated]')" = '[[90,91],false]' ] && ok=1
+  check "pr-state.sh: --since lists the open issues created in the window (number, createdAt, url only)" "$ok"
+  ok=0
+  [ "$(printf '%s' "$OUT" | jq -r .bodyDigest)" = "$(printf '%s' "$OUT2" | jq -r .bodyDigest)" ] && ok=1
+  check "pr-state.sh: bodyDigest is stable for an unchanged body" "$ok"
+
+  OUT3="$(GH_MANY=1 PATH="$PSD/bin:$PATH" bash "$PS" --pr 7 --wt "$PSD/wt" --since 2026-01-01T00:00:00Z)"
+  ok=0
+  [ "$(printf '%s' "$OUT3" | jq -c '[.openIssues, .openIssuesTruncated]')" = '[null,true]' ] && ok=1
+  check "pr-state.sh: exactly the scan limit (1000) issues -> openIssues null, openIssuesTruncated true" "$ok"
+
+  OUT4="$(GH_FAIL=1 PATH="$PSD/bin:$PATH" bash "$PS" --pr 7 --wt "$PSD/wt" --since 2026-01-01T00:00:00Z)"; RC=$?
+  ok=0
+  [ "$RC" -eq 0 ] && [ "$(printf '%s\n' "$OUT4" | wc -l | tr -d ' ')" = "1" ] \
+    && [ "$(printf '%s' "$OUT4" | jq -c '[.headRefOid, .bodyDigest, .commitCount, .reviewCommentIds, .openIssues]')" = '[null,null,null,null,null]' ] \
+    && printf '%s' "$OUT4" | jq -e '.now | length > 0' >/dev/null 2>&1 && ok=1
+  check "pr-state.sh: failing gh -> nulls but now still set, exit 0, one line" "$ok"
+
+  ok=0
+  out5="$(PATH="$PSD/bin:$PATH" bash "$PS" --pr 7 --wt "$PSD/wt" --repo o/r | node -e '
+    const { PARSERS } = require(process.argv[1])
+    const v = PARSERS["pr-state"](require("fs").readFileSync(0, "utf8"), "", 0)
+    process.stdout.write(v.error ? "ERR" : v.headRefOid + ":" + v.commitCount)
+  ' "$PR")"
+  [ "$out5" = "abc123:2" ] && ok=1
+  check "pr-state.sh output round-trips through the pr-state parser" "$ok"
+else
+  echo "SKIP - pr-state.sh e2e needs jq"
+fi
+
+# (k) pr-write.sh end to end (#85): a stub gh first on PATH logs every call and serves per-op state. Every op must
+# READ before it writes, skip an already-applied write, and write nothing after a failed read. No network.
+PW="$SCRIPT_DIR/pr-write.sh"
+if command -v jq >/dev/null 2>&1; then
+  PWD_="$WORK/pw"; mkdir -p "$PWD_/bin" "$PWD_/wt"
+  GHLOG="$PWD_/gh.log"
+  cat > "$PWD_/bin/gh" <<'GHEOF'
+#!/usr/bin/env bash
+echo "$*" >> "$GHLOG"
+case "$*" in
+  *"pr edit"*)
+    f=""; prev=""
+    for a in "$@"; do [ "$prev" = "--body-file" ] && f="$a"; prev="$a"; done
+    if [ -n "${GH_EDIT_TRUNCATE:-}" ] && [ ! -f "$GH_BODY_FILE.trunc" ]; then
+      : > "$GH_BODY_FILE.trunc"; printf 'x\n' > "$GH_BODY_FILE"
+    else
+      cp "$f" "$GH_BODY_FILE"
+    fi
+    exit 0 ;;
+  *"pr comment"*|*"issue comment"*|*"project item-edit"*|*minimizeComment*) exit 0 ;;
+esac
+[ -n "${GH_READ_FAIL:-}" ] && exit 1
+case "$*" in
+  *"pr view"*"--json body"*)
+    cat "$GH_BODY_FILE"
+    if [ -n "${GH_MUTATE_AFTER_READ:-}" ] && [ ! -f "$GH_BODY_FILE.mut" ]; then : > "$GH_BODY_FILE.mut"; printf 'edited by someone else\n' >> "$GH_BODY_FILE"; fi ;;
+  *"api "*"/comments"*) printf '%s\n' "${GH_PAGINATED:-}" ;;
+  *"--json comments"*) d='{"comments":[]}'; printf '%s\n' "${GH_COMMENTS:-$d}" ;;
+  *"node(id"*) printf '%s\n' "${GH_MINIMIZED:-false}" ;;
+  *projectItems*) printf '%s\n' "${GH_STATUS:-}" ;;
+  *) exit 1 ;;
+esac
+GHEOF
+  chmod +x "$PWD_/bin/gh"
+
+  # run_pw <op> args... : runs pr-write.sh against the stub, fresh log; prints the single stdout line
+  run_pw() {
+    : > "$GHLOG"
+    PATH="$PWD_/bin:$PATH" GHLOG="$GHLOG" GH_BODY_FILE="$PWD_/body.md" bash "$PW" "$@" --wt "$PWD_/wt" --repo o/r
+  }
+  first_line() { awk -v p="$1" 'index($0, p) { print NR; exit }' "$GHLOG"; }
+  # read_first <read pattern> <write pattern>: both calls logged, the read strictly before the write
+  read_first() {
+    local r w
+    r="$(first_line "$1")"; w="$(first_line "$2")"
+    [ -n "$r" ] && [ -n "$w" ] && [ "$r" -lt "$w" ] && echo 1 || echo 0
+  }
+  no_call() { [ -z "$(first_line "$1")" ] && echo 1 || echo 0; }
+  res() { printf '%s' "$1" | jq -r '[.result, (.reason // "-")] | join("/")'; }
+  one_line() { [ "$(printf '%s\n' "$1" | wc -l | tr -d ' ')" = "1" ] && echo 1 || echo 0; }
+
+  # issue-comment and pr-comment
+  for kind in issue pr; do
+    if [ "$kind" = "issue" ]; then FLAG="--number"; else FLAG="--pr"; fi
+    MK='<!-- pipeline-reviewer-window pr=7 -->'
+    OUT="$(GH_COMMENTS='{"comments":[{"body":"hello"}]}' run_pw "$kind-comment" "$FLAG" 501 --marker "$MK" --body "$MK
+text")"
+    ok=0; [ "$(res "$OUT")" = "written/-" ] && [ "$(one_line "$OUT")" = 1 ] && [ "$(read_first "$kind view" "$kind comment")" = 1 ] && ok=1
+    check "pr-write.sh $kind-comment: read-before-write (view, then comment)" "$ok"
+    OUT="$(GH_COMMENTS="{\"comments\":[{\"body\":\"$MK\\ntext\"}]}" run_pw "$kind-comment" "$FLAG" 501 --marker "$MK" --body "$MK
+text")"
+    ok=0; [ "$(res "$OUT")" = "skipped/marker-present" ] && [ "$(no_call "$kind comment")" = 1 ] && ok=1
+    check "pr-write.sh $kind-comment: skips when already applied (marker present, no comment call)" "$ok"
+    OUT="$(GH_READ_FAIL=1 run_pw "$kind-comment" "$FLAG" 501 --marker "$MK" --body "$MK
+text")"
+    ok=0; [ "$(res "$OUT")" = "failed/read-failed" ] && [ "$(no_call "$kind comment")" = 1 ] && ok=1
+    check "pr-write.sh $kind-comment: read failure writes nothing" "$ok"
+  done
+
+  # [151] marker lookup past the 100-comment cap: the view serves 100 marker-less comments, REST serves 101
+  C100="$(node -e 'console.log(JSON.stringify({comments:Array.from({length:100},(_, i)=>({body:"c"+i}))}))')"
+  PAG="$(node -e 'const a=Array.from({length:100},(_, i)=>({body:"c"+i}));a.push({body:process.argv[1]+"\ntext"});a.forEach(o=>console.log(JSON.stringify(o)))' "$MK")"
+  OUT="$(GH_COMMENTS="$C100" GH_PAGINATED="$PAG" run_pw issue-comment --number 501 --marker "$MK" --body "$MK
+text")"
+  ok=0; [ "$(res "$OUT")" = "skipped/marker-present" ] && [ "$(no_call 'issue comment')" = 1 ] && [ -n "$(first_line 'api repos/o/r/issues/501/comments')" ] && ok=1
+  check "[151] pr-write.sh issue-comment: marker only in the 101st comment is found (paginated), no comment call" "$ok"
+  OUT="$(GH_COMMENTS="$C100" GH_PAGINATED="$PAG" run_pw pr-comment --pr 501 --marker "$MK" --body "$MK
+text")"
+  ok=0; [ "$(res "$OUT")" = "skipped/marker-present" ] && [ "$(no_call 'pr comment')" = 1 ] && [ -n "$(first_line 'api repos/o/r/issues/501/comments')" ] && ok=1
+  check "[151] pr-write.sh pr-comment: marker only in the 101st comment is found (paginated), no comment call" "$ok"
+
+  # minimize
+  OUT="$(GH_MINIMIZED=false run_pw minimize --id IC_1)"
+  ok=0; [ "$(res "$OUT")" = "written/-" ] && [ "$(read_first 'node(id' 'minimizeComment')" = 1 ] && ok=1
+  check "pr-write.sh minimize: read-before-write (isMinimized read, then the mutation)" "$ok"
+  OUT="$(GH_MINIMIZED=true run_pw minimize --id IC_1)"
+  ok=0; [ "$(res "$OUT")" = "skipped/already-minimized" ] && [ "$(no_call minimizeComment)" = 1 ] && ok=1
+  check "pr-write.sh minimize: skips when already applied (already minimized)" "$ok"
+  OUT="$(GH_READ_FAIL=1 run_pw minimize --id IC_1)"
+  ok=0; [ "$(res "$OUT")" = "failed/read-failed" ] && [ "$(no_call minimizeComment)" = 1 ] && ok=1
+  check "pr-write.sh minimize: read failure writes nothing" "$ok"
+
+  # status
+  ST_OLD='{"data":{"repository":{"issue":{"projectItems":{"nodes":[{"id":"PVTI_1","project":{"number":5},"fieldValues":{"nodes":[{},{"optionId":"opt-old","field":{"id":"F1"}}]}}]}}}}}'
+  ST_SET='{"data":{"repository":{"issue":{"projectItems":{"nodes":[{"id":"PVTI_1","project":{"number":5},"fieldValues":{"nodes":[{"optionId":"opt-new","field":{"id":"F1"}}]}}]}}}}}'
+  ST_NONE='{"data":{"repository":{"issue":{"projectItems":{"nodes":[]}}}}}'
+  SARGS="--issue 85 --project-number 5 --project-id P1 --field-id F1 --option-id opt-new"
+  OUT="$(GH_STATUS="$ST_OLD" run_pw status $SARGS)"
+  ok=0; [ "$(res "$OUT")" = "written/-" ] && [ "$(read_first projectItems 'project item-edit')" = 1 ] && grep -q -- '--id PVTI_1 --field-id F1 --project-id P1 --single-select-option-id opt-new' "$GHLOG" && ok=1
+  check "pr-write.sh status: read-before-write (item read, then item-edit with the read id)" "$ok"
+  OUT="$(GH_STATUS="$ST_SET" run_pw status $SARGS)"
+  ok=0; [ "$(res "$OUT")" = "skipped/already-set" ] && [ "$(no_call 'project item-edit')" = 1 ] && ok=1
+  check "pr-write.sh status: skips when already applied (option already set)" "$ok"
+  OUT="$(GH_STATUS="$ST_NONE" run_pw status $SARGS)"
+  ok=0; [ "$(res "$OUT")" = "skipped/not-on-project" ] && [ "$(no_call 'project item-edit')" = 1 ] && ok=1
+  check "pr-write.sh status: issue not on the project -> no edit with an empty id" "$ok"
+  OUT="$(GH_READ_FAIL=1 run_pw status $SARGS)"
+  ok=0; [ "$(res "$OUT")" = "failed/read-failed" ] && [ "$(no_call 'project item-edit')" = 1 ] && ok=1
+  check "pr-write.sh status: read failure writes nothing" "$ok"
+
+  # body-splice
+  PRE_BODY='Closes #1
+
+## Acceptance checklist
+<!-- acceptance:start -->
+- [ ] old
+<!-- acceptance:end -->
+<!-- decision-log:start -->
+<!-- decision-log:end -->'
+  DL='<!-- decision-log:start -->
+## Decision log
+- round 0 — LGTM
+<!-- decision-log:end -->'
+  printf '%s\n' "$PRE_BODY" > "$PWD_/body.md"
+  OUT="$(run_pw body-splice --pr 9 --mode decision-log --text "$DL")"
+  ok=0; [ "$(res "$OUT")" = "written/-" ] && [ "$(read_first 'pr view' 'pr edit')" = 1 ] && grep -q -- '- round 0 — LGTM' "$PWD_/body.md" && ok=1
+  check "pr-write.sh body-splice: read-before-write (body read, spliced, then edit)" "$ok"
+  OUT="$(run_pw body-splice --pr 9 --mode decision-log --text "$DL")"
+  ok=0; [ "$(res "$OUT")" = "skipped/unchanged" ] && [ "$(no_call 'pr edit')" = 1 ] && ok=1
+  check "pr-write.sh body-splice: skips when already applied (spliced body unchanged)" "$ok"
+  OUT="$(run_pw body-splice --pr 9 --mode acceptance --text '- [ ] new one
+- [ ] new two')"
+  ok=0; [ "$(res "$OUT")" = "written/-" ] && grep -q -- '- \[ \] new two' "$PWD_/body.md" && ! grep -q -- '- \[ \] old' "$PWD_/body.md" && ok=1
+  check "pr-write.sh body-splice: acceptance mode replaces the block contents" "$ok"
+  printf 'no markers here, long enough body text to matter\n' > "$PWD_/body.md"
+  OUT="$(run_pw body-splice --pr 9 --mode acceptance --text '- [ ] x')"
+  ok=0; [ "$(res "$OUT")" = "failed/no-markers" ] && [ "$(no_call 'pr edit')" = 1 ] && ok=1
+  check "pr-write.sh body-splice: acceptance markers absent -> failed, never appends, no edit" "$ok"
+  OUT="$(GH_READ_FAIL=1 run_pw body-splice --pr 9 --mode decision-log --text "$DL")"
+  ok=0; [ "$(res "$OUT")" = "failed/read-failed" ] && [ "$(no_call 'pr edit')" = 1 ] && ok=1
+  check "pr-write.sh body-splice: read failure writes nothing" "$ok"
+  printf '%s\n' "$PRE_BODY" > "$PWD_/body.md"
+  OUT="$(GH_EDIT_TRUNCATE=1 run_pw body-splice --pr 9 --mode decision-log --text "$DL")"
+  ok=0; [ "$(res "$OUT")" = "failed/guard-failed-restored" ] && [ "$(cat "$PWD_/body.md")" = "$PRE_BODY" ] && ok=1
+  check "pr-write.sh body-splice: a lossy write trips the guard and the pre body is restored" "$ok"
+  printf '%s\n' "$PRE_BODY" > "$PWD_/body.md"
+  OUT="$(run_pw body-splice --pr 9 --mode decision-log --text "$DL" --expect-digest 000000000000)"
+  ok=0; [ "$(res "$OUT")" = "failed/stale-read" ] && [ "$(no_call 'pr edit')" = 1 ] && [ "$(cat "$PWD_/body.md")" = "$PRE_BODY" ] && ok=1
+  check "[151] pr-write.sh body-splice: a stale --expect-digest fails stale-read, no edit" "$ok"
+  printf '%s\n' "$PRE_BODY" > "$PWD_/body.md"
+  OUT="$(GH_MUTATE_AFTER_READ=1 run_pw body-splice --pr 9 --mode decision-log --text "$DL")"
+  ok=0; [ "$(res "$OUT")" = "failed/stale-read" ] && [ "$(no_call 'pr edit')" = 1 ] && grep -q 'edited by someone else' "$PWD_/body.md" && ok=1
+  check "[151] pr-write.sh body-splice: body changed between the first read and the edit fails stale-read, no edit" "$ok"
+
+  # parser round trip and the engine/helper block parity
+  OUT="$(GH_MINIMIZED=true run_pw minimize --id IC_1)"
+  out_rt="$(printf '%s\n' "$OUT" | node -e '
+    const { PARSERS } = require(process.argv[1])
+    const v = PARSERS["pr-write"](require("fs").readFileSync(0, "utf8"), "", 0)
+    process.stdout.write(v.error ? "ERR" : v.op + ":" + v.result + ":" + v.reason)
+  ' "$PR")"
+  [ "$out_rt" = "minimize:skipped:already-minimized" ] && ok=1 || ok=0
+  check "pr-write.sh output round-trips through the pr-write parser" "$ok"
+else
+  echo "SKIP - pr-write.sh e2e needs jq"
+fi
+
+BLK='/^\/\/ --- prBodySplice:start ---/,/^\/\/ --- prBodySplice:end ---/p'
+[ -n "$(sed -n "$BLK" "$ROOT/workflows/deliver-pipeline.js")" ] && [ "$(sed -n "$BLK" "$ROOT/workflows/deliver-pipeline.js")" = "$(sed -n "$BLK" "$SCRIPT_DIR/pr-body-splice.cjs")" ] && ok=1 || ok=0
+check "pr-body-splice.cjs: source identical to the engine block" "$ok"
+
+SHA_BLK="$(sed -n '/^\/\/ --- sha256Hex:start ---/,/^\/\/ --- sha256Hex:end ---/p' "$ROOT/workflows/deliver-pipeline.js")"
+ok=0
+[ -n "$SHA_BLK" ] && node -e '
+  const assert = require("assert"), crypto = require("crypto")
+  const sha = new Function(process.argv[1] + "\nreturn sha256Hex")()
+  for (const s of ["", "printf '"'"'hi\\n'"'"'", "abc", "x".repeat(200), "caf\u00e9 \u20ac \ud83d\ude00 \u65e5\u672c"]) {
+    assert.strictEqual(sha(s), crypto.createHash("sha256").update(s, "utf8").digest("hex"))
+  }
+' "$SHA_BLK" 2>/dev/null && ok=1
+check "[151] engine sha256Hex equals crypto sha256 (empty, ASCII, 200 bytes, non-ASCII)" "$ok"
+SAN_LINE="$(grep -m1 '^const sanitizeProbeToken' "$ROOT/workflows/deliver-pipeline.js")"
+ok=0
+[ -n "$SAN_LINE" ] && [ "$(node -e 'const f = new Function(process.argv[1] + "; return sanitizeProbeToken")(); process.stdout.write(f("PR Ready/Merged:x"))' "$SAN_LINE" 2>/dev/null)" = "PR-Ready-Merged-x" ] && ok=1
+check "[151] sanitizeProbeToken maps 'PR Ready/Merged:x' to 'PR-Ready-Merged-x'" "$ok"
+
+# (g) agents/probe.md tools: lists exactly Bash
+TOOLS="$(awk '/^---$/{f++; next} f==1 && /^tools:/{t=1; next} f==1 && t && /^  - /{sub(/^  - /,""); print; next} f==1 && t{t=0}' "$ROOT/agents/probe.md" | tr '\n' ',')"
+[ "$TOOLS" = "Bash," ] && ok=1 || ok=0
+check "agents/probe.md tools is exactly Bash (got '$TOOLS')" "$ok"
+
+if [ "$fail_count" -eq 0 ]; then st=ok; else st=fail; fi
+echo "[probe-run] status=$st passed=$pass_count failed=$fail_count"
+[ "$fail_count" -eq 0 ]

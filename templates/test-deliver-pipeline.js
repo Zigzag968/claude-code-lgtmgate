@@ -119,8 +119,33 @@ const BASE = { issue: 1, brief: 'test feature', wtPath: '/tmp/lgtmgate-test', co
 const SUITE_ARGS = (typeof args === 'undefined' ? null
   : (typeof args === 'string' ? JSON.parse(args) : args)) || {}
 const FP_REF = SUITE_ARGS.fpScriptPath ? { scriptPath: SUITE_ARGS.fpScriptPath } : 'deliver-pipeline'
+// #86 — the engine reads only `simulate.probes` and carries no `??` default on a seam. Cases keep
+// writing the flat legacy keys (`simulate: { sam: ... }`); run() translates them into
+// `simulate.probes` and applies every static default here, with the same nullish semantics the
+// engine `??` had (an explicit null/undefined still falls back). dryRun calls pass through.
+const SIM_DEFAULTS = {
+  samAcceptanceChecklist: '- [ ] (simulated acceptance item)',
+  alreadyDoneCheck: { isAlreadyDone: false, isIssueClosed: false, isMerged: false },
+  theo: { confirmed: true, evidence: '(simulated)', actualCause: '' },
+  provision: { ok: true, exitCode: 0, linked: [], missing: [] },
+  provisionBehindCount: 0,
+  planStaleFiles: [],
+  openSubIssues: [],
+  gitDirWritable: { writable: true, gitDir: null },
+  windowStart: '1970-01-01T00:00:00Z',
+  artifactFloor: null,
+  behindCount: 0,
+  mergeState: null,
+}
+function toProbes(sim) {
+  if (!sim) return sim
+  const probes = { ...sim }
+  for (const k of Object.keys(SIM_DEFAULTS)) probes[k] = sim[k] ?? SIM_DEFAULTS[k]
+  return { probes }
+}
 async function run(overrides) {
-  return await workflow(FP_REF, { ...BASE, ...overrides })
+  const a = { ...BASE, ...overrides }
+  return await workflow(FP_REF, 'simulate' in a ? { ...a, simulate: toProbes(a.simulate) } : a)
 }
 
 // Guard: confirm we resolved the NEW, simulate-aware deliver-pipeline — not an older copy.
@@ -1126,78 +1151,6 @@ await testCase('T38 provision succeeds (default fixture) → ready, trace unchan
 })
 
 // ---------------------------------------------------------------------------
-// #175 (epic slice 2: #114/#120) — parseProvisionOutput regression coverage. Unlike
-// T37/T38/F2/T99/T100/T104a-d above (which all stub the ALREADY-SHAPED `simulate.provision`
-// result object, bypassing the parser entirely), these three route raw provision_worktree.sh-style
-// text through `simulate.provisionRaw` so they exercise the REAL deterministic parser under test —
-// the only regression coverage this repo has for the false-`provision-failed` (#114) and
-// flip-flopping missing/linked (#120) defects the LLM-judgment schema used to cause.
-// ---------------------------------------------------------------------------
-
-// T175a (#114 negative control) — a WARN-only (soft-miss) raw transcript with exit 0 parses to
-// ok=true (derived strictly from PROVISION-EXIT:0) → ready, same as T38's happy path, but this
-// time via the REAL parser: proves a soft WARN line is never mistaken for a hard MISSING-SRC one.
-await testCase('T175a provisionRaw WARN-only + exit 0 → parsed ok=true, ready, trace unchanged', async () => {
-  const raw =
-    'LINKED .env -> /main/.env\n' +
-    'WARN optional src missing: /main/.cache\n' +
-    'PROVISION-EXIT:0\n'
-  const r = await run({
-    mode: 'auto',
-    simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }], provisionRaw: raw },
-  })
-  const e1 = eq('status', r.status, 'ready')
-  const e2 = eq('trace', r.trace, ['Plan', 'Dev', 'Review', 'PR Ready'])
-  return (e1 || e2) ? (e1 || e2) : { ok: true }
-})
-
-// T175b (#114 positive case) — a MISSING-SRC (hard-miss) raw transcript with exit 2 parses to
-// ok=false, missing=['/main/.venv'] parsed verbatim from the literal MISSING-SRC line (never
-// from the WARN line above it) → escalate/provision-failed, mirroring T37's assertions but
-// through the real parser instead of a pre-shaped stub.
-await testCase('T175b provisionRaw MISSING-SRC + exit 2 → parsed missing verbatim, escalate/provision-failed', async () => {
-  const raw =
-    'WARN optional src missing: /main/.cache\n' +
-    'MISSING-SRC /main/.venv\n' +
-    'PROVISION-FAILED: 1 link(s)\n' +
-    'PROVISION-EXIT:2\n'
-  const r = await run({
-    mode: 'auto',
-    simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }], provisionRaw: raw },
-  })
-  const e1 = eq('status', r.status, 'escalate')
-  const e2 = eq('reason', r.reason, 'provision-failed')
-  const e3 = eq('missing', r.missing, ['/main/.venv'])
-  const e4 = eq('exitCode', r.exitCode, 2)
-  const err = e1 || e2 || e3 || e4
-  return err ? err : { ok: true }
-})
-
-// T175c (#120 determinism criterion) — the SAME raw transcript run twice must yield an IDENTICAL
-// status + trace both times. #120's own observed defect was the LLM judgment flip-flopping
-// missing/linked across identical re-runs of the same underlying script output; this proves the
-// deterministic parser has no such non-determinism at the JS-parsing layer.
-await testCase('T175c provisionRaw identical input twice → identical status + trace (determinism)', async () => {
-  const raw =
-    'MISSING-SRC /main/.venv\n' +
-    'PROVISION-FAILED: 1 link(s)\n' +
-    'PROVISION-EXIT:2\n'
-  const r1 = await run({
-    mode: 'auto',
-    simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }], provisionRaw: raw },
-  })
-  const r2 = await run({
-    mode: 'auto',
-    simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }], provisionRaw: raw },
-  })
-  const e1 = eq('status (run1 vs run2)', r1.status, r2.status)
-  const e2 = eq('trace (run1 vs run2)', r1.trace, r2.trace)
-  const e3 = eq('missing (run1 vs run2)', r1.missing, r2.missing)
-  const err = e1 || e2 || e3
-  return err ? err : { ok: true }
-})
-
-// ---------------------------------------------------------------------------
 // #384 fixtures + helpers — decision-log body composer + pre-handoff squash gate
 // ---------------------------------------------------------------------------
 
@@ -2000,6 +1953,8 @@ await testCase('T214c agentDeathRouting() table extracted from source markers', 
   const route = new Function(block + '\nreturn agentDeathRouting')()
   const checks = [
     eq('sam attempt 1 retries', route('sam', 1), { action: 'retry' }),
+    eq('probe attempt 1 retries (RETRY_SAFE, #82)', route('probe', 1), { action: 'retry' }),
+    eq('probe attempt 2 fails (agent-died)', route('probe', 2), { action: 'fail', status: 'agent-died', resumable: true }),
     eq('sam attempt 2 fails', route('sam', 2), { action: 'fail', status: 'plan-died', resumable: true }),
     eq('nick never retried', route('nick', 1), { action: 'fail', status: 'dev-died', resumable: true }),
     eq('morgan never retried', route('morgan', 1), { action: 'fail', status: 'review-died', resumable: true }),
@@ -2008,6 +1963,59 @@ await testCase('T214c agentDeathRouting() table extracted from source markers', 
     eq('non-integer attempt treated as 1', route('sam', 'x'), { action: 'retry' }),
     eq('maxAttempts 0 falls back to 2', route('sam', 1, 0), { action: 'retry' }),
     eq('maxAttempts 0 fallback still caps at 2', route('sam', 2, 0), { action: 'fail', status: 'plan-died', resumable: true }),
+  ]
+  return checks.find(c => c) || { ok: true }
+})
+
+// T272 (#82) — probeCommands() extracted from its source markers: both commands start with the
+// cd prefix the attest hook accepts, the script is single-quoted, --verify adds --attest and no --cmd.
+await testCase('T272 probeCommands() extracted from source markers (#82)', async () => {
+  const src = SUITE_ARGS.fpSource
+  if (!src) {
+    log('SKIP — T272: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const block = extractBetween(src, '// --- probeCommands:start ---', '// --- probeCommands:end ---')
+  if (!block) return { ok: false, msg: 'probeCommands:start/:end markers not found in pipeline source' }
+  // eslint-disable-next-line no-new-func
+  const pc = new Function(block + '\nreturn probeCommands')()
+  const base = { wtPath: '/wt/issue-7', issue: 7, name: 'provision', cmd: "echo 'hi'", label: 'provision', round: 0 }
+  const withRoot = pc({ ...base, pluginRoot: '/plug' })
+  const cfgWins = pc({ ...base, pluginRoot: '/plug', probeRunPath: '/cfg/probe-run.cjs' })
+  const fallback = pc({ ...base })
+  const att = "--attest '/wt/issue-7/.pipeline/probe-attest.jsonl'"
+  const checks = [
+    eq('run starts with cd prefix + quoted plugin script', withRoot.run.startsWith("cd '/wt/issue-7' && node '/plug/templates/probe-run.cjs' "), true),
+    eq('verify starts with the same prefix', withRoot.verify.startsWith("cd '/wt/issue-7' && node '/plug/templates/probe-run.cjs' --verify "), true),
+    eq('run carries --cmd with the quoted command', withRoot.run.includes("--cmd 'echo '\\''hi'\\'''"), true),
+    eq('run has no --verify', withRoot.run.includes('--verify'), false),
+    eq('verify has --attest <wt>/.pipeline/probe-attest.jsonl', withRoot.verify.includes(att), true),
+    eq('verify has no --cmd', withRoot.verify.includes('--cmd'), false),
+    eq('config.probeRunPath wins over pluginRoot', cfgWins.run.includes("node '/cfg/probe-run.cjs' "), true),
+    eq('fallback is the worktree copy', fallback.run.includes("node '/wt/issue-7/templates/probe-run.cjs' "), true),
+    eq('same out dir in both', withRoot.run.includes("--out '/wt/issue-7/.pipeline/probes/issue-7'") && withRoot.verify.includes("--out '/wt/issue-7/.pipeline/probes/issue-7'"), true),
+    eq('default run has no --no-reuse (provision record rule unchanged)', withRoot.run.includes('--no-reuse'), false),
+    eq('noReuse run carries --no-reuse before --cmd (#83)', /--no-reuse --cmd /.test(pc({ ...base, pluginRoot: '/plug', noReuse: true }).run), true),
+    eq('noReuse never reaches the verify command', pc({ ...base, pluginRoot: '/plug', noReuse: true }).verify.includes('--no-reuse'), false),
+    eq('preflightProbe passes noReuse: true to probe() (live state, #83)', /async function preflightProbe[\s\S]*?probe\('preflight', cmd, \{[\s\S]*?noReuse: true/.test(src), true),
+  ]
+  return checks.find(c => c) || { ok: true }
+})
+
+// T273 (#82) — the probe role has the same persona-in-prompt fallback as Theo, and the two fail-closed
+// prerequisites carry a distinct reason: static checks on the source (no simulate seam exists for probe()).
+await testCase('T273 probe(): persona fallback wired, no-attestation and probe-run-not-found reasons (#82)', async () => {
+  const src = SUITE_ARGS.fpSource
+  if (!src) {
+    log('SKIP — T273: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const checks = [
+    eq('probe call carries personaFallback: PROBE_PERSONA', /agentType: 'lgtmgate:probe'[^\n]*personaFallback: PROBE_PERSONA/.test(src), true),
+    eq('PROBE_PERSONA is the probe-run copier persona', /const PROBE_PERSONA =[\s\S]*?probe-run\.cjs/.test(src), true),
+    eq("no-attestation maps to its own probeReason", src.includes("verified.reason === 'no-attestation' ? 'no-attestation'"), true),
+    eq('probe-run-not-found fails early', src.includes("if (!config.probeRunPath && !pluginRoot) return fail('probe-run-not-found')"), true),
+    eq('escalation carries probeHint', src.includes('probeHint: PROBE_REASON_HINTS[provision.probeFailed]'), true),
   ]
   return checks.find(c => c) || { ok: true }
 })
@@ -2599,10 +2607,13 @@ await testCase('T97e no design-step signals (0/3, no immature API) → gate neve
 // T77 (#77, R3) — 5th design-step signal computed by the script from Sam's plan announcement and
 // targetFiles: a plan adding a status / agent / hook / seam ends the run in design-step-required.
 const T77_THEO = { confirmed: true, evidence: 'e', actualCause: '', persistentStateSignal: false, authSecurityBoundarySignal: false, deployConfigSignal: false, immatureVendorApiSignal: false }
+// #153: a plan returned by Sam must carry the checklist lines she also returns; a custom samPlan therefore
+// ends with the default simulated checklist, as the default simulated plan does.
+const T77_CK = '\n' + SIM_DEFAULTS.samAcceptanceChecklist
 await testCase('T77a R3: a plan announcing a new status → design-step-required with a <=10-line summary', async () => {
   const r = await run({
     mode: 'semi',
-    simulate: { theo: T77_THEO, sam: 'GO', samPlan: '## Plan\n1. add it\none-way-door: status — new `foo-blocked` terminal status\n' },
+    simulate: { theo: T77_THEO, sam: 'GO', samPlan: '## Plan\n1. add it\none-way-door: status — new `foo-blocked` terminal status\n' + T77_CK },
   })
   const e1 = eq('status', r.status, 'design-step-required')
   const e2 = eq('oneWayDoorKinds', JSON.stringify(r.oneWayDoorKinds), JSON.stringify(['status']))
@@ -2615,7 +2626,7 @@ await testCase('T77a R3: a plan announcing a new status → design-step-required
 await testCase('T77b R3: targetFiles touching hooks/plugin-hooks.json → design-step-required (hook)', async () => {
   const r = await run({
     mode: 'semi',
-    simulate: { theo: T77_THEO, sam: 'GO', samPlan: 'plan\none-way-door: none', samTargetFiles: ['hooks/plugin-hooks.json'] },
+    simulate: { theo: T77_THEO, sam: 'GO', samPlan: 'plan\none-way-door: none' + T77_CK, samTargetFiles: ['hooks/plugin-hooks.json'] },
   })
   const err = eq('status', r.status, 'design-step-required') || eq('kinds', JSON.stringify(r.oneWayDoorKinds), JSON.stringify(['hook']))
   return err ? err : { ok: true }
@@ -2624,7 +2635,7 @@ await testCase('T77b R3: targetFiles touching hooks/plugin-hooks.json → design
 await testCase('T77c R3 negative: no announcement (`one-way-door: none`, ordinary targets) → plan-ready, R3 does not trigger', async () => {
   const r = await run({
     mode: 'semi',
-    simulate: { theo: T77_THEO, sam: 'GO', samPlan: 'plan\none-way-door: none', samTargetFiles: ['workflows/deliver-pipeline.js', 'hooks/test-block-merge-unchecked.sh'] },
+    simulate: { theo: T77_THEO, sam: 'GO', samPlan: 'plan\none-way-door: none' + T77_CK, samTargetFiles: ['workflows/deliver-pipeline.js', 'hooks/test-block-merge-unchecked.sh'] },
   })
   const err = eq('status', r.status, 'plan-ready')
   return err ? err : { ok: true }
@@ -2634,7 +2645,7 @@ await testCase('T77d R3 + architectureDecisionApproved:true → announced status
   const r = await run({
     mode: 'semi',
     architectureDecisionApproved: true,
-    simulate: { theo: T77_THEO, sam: 'GO', samPlan: 'one-way-door: agent — new reviewer agent' },
+    simulate: { theo: T77_THEO, sam: 'GO', samPlan: 'one-way-door: agent — new reviewer agent' + T77_CK },
   })
   const err = eq('status', r.status, 'plan-ready')
   return err ? err : { ok: true }
@@ -2661,7 +2672,7 @@ await testCase('T77e Nick prompt imports @ARCHITECTURE.md and docs/codemap.md in
 await testCase('T77f R3: targetFiles touching docs/critical-paths.md → design-step-required (critical-path)', async () => {
   const r = await run({
     mode: 'semi',
-    simulate: { theo: T77_THEO, sam: 'GO', samPlan: 'plan\none-way-door: none', samTargetFiles: ['docs/critical-paths.md'] },
+    simulate: { theo: T77_THEO, sam: 'GO', samPlan: 'plan\none-way-door: none' + T77_CK, samTargetFiles: ['docs/critical-paths.md'] },
   })
   const err = eq('status', r.status, 'design-step-required') || eq('kinds', JSON.stringify(r.oneWayDoorKinds), JSON.stringify(['critical-path']))
   return err ? err : { ok: true }
@@ -2899,6 +2910,36 @@ await testCase('T270 all blockers checklist-wording-defect (amend off) → verif
   const e2 = eq('untickableItems.length', r.untickableItems?.length, 1)
   const e3 = (r.trace || []).some(t => /^nick/i.test(String(t))) ? { ok: false, msg: `Nick dispatched: trace=${JSON.stringify(r.trace)}` } : null
   return e1 || e2 || e3 || { ok: true }
+})
+
+// T271 (#132) — a failed required check reaches Nick's preflight-fix prompt with the failing step name
+// and the last 40 log lines (the 50-line tail is capped, the first lines are dropped).
+await testCase('T271 failed required check → Nick preflight-fix prompt carries failing step name and log lines', async () => {
+  const lines = []
+  for (let i = 1; i <= 49; i++) lines.push(`log-line-${i}`)
+  lines.push("KeyError: 'merge-state-42-0'")
+  const r = await run({
+    mode: 'auto',
+    simulate: {
+      sam: 'GO',
+      preflight: [
+        {
+          pass: false,
+          issues: ["PR #999 required check 'guards' is in FAILURE state on GitHub"],
+          failedChecks: [{ name: 'guards', step: 'Run scripts/test-run-offline.sh', logTail: lines.join('\n') }],
+        },
+        { pass: true, issues: [] },
+      ],
+      morgan: [{ verdict: 'LGTM' }],
+    },
+  })
+  const p = String(r.preflightFixPromptPreview || '')
+  const e1 = eq('status', r.status, 'ready')
+  const e2 = includes('step name', p, 'Run scripts/test-run-offline.sh')
+  const e3 = includes('log line', p, "KeyError: 'merge-state-42-0'")
+  const e4 = p.includes('log-line-1\n') ? { ok: false, msg: 'first line of the 50 must be dropped by the 40-line cap' } : null
+  const e5 = includes('kept tail start', p, 'log-line-11\n')
+  return e1 || e2 || e3 || e4 || e5 || { ok: true }
 })
 
 // T109 — Morgan classifies a REQUIRED_CHANGES item as a checklist-wording-defect with a concrete
@@ -3498,6 +3539,133 @@ await testCase('T109j worktreeFreshnessNote: behind:100 → plural "commits"', a
     return { ok: false, msg: `expected "100 commits" but got: ${result.substring(0, 150)}...` }
   }
   return { ok: true }
+})
+
+// T9001 (#9) — Morgan's initial AND re-review prompts carry the exact one-line-per-box template that
+// `scripts/lead-merge.sh --tick-from-review` matches (never grouped, never by index). Source-level: the
+// shared UNTICKABLE_LINE_RULE text is present and interpolated into both Morgan prompts.
+await testCase('T9001 Morgan prompts (initial + re-review) require one matchable tick-pending line per untickable box', async () => {
+  const src = SUITE_ARGS.fpSource
+  if (!src) {
+    log('SKIP — T9001: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const tpl = '`- [ ] **<box text verbatim>** — verified, tick pending (permissions): <command> -> <verbatim output>`'
+  const e1 = includes('template sentence', src, 'write ONE line per box, exactly ' + tpl)
+  const e2 = includes('never grouped / never by index', src, 'never grouped ("Boxes 1-4"), never cited by index ("Box 2")')
+  const e3 = eq('interpolations in the Morgan prompts', src.split('${UNTICKABLE_LINE_RULE}').length - 1, 2)
+  return (e1 || e2 || e3) ? (e1 || e2 || e3) : { ok: true }
+})
+
+// T9030 (#30) — Morgan's initial AND re-review prompts treat an absent or empty acceptance block as
+// REQUIRED_CHANGES. Source-level: the shared ACCEPTANCE_PRESENCE_RULE literal is present and is
+// interpolated into both Morgan prompts.
+await testCase('T9030 Morgan prompts (initial + re-review) treat an absent or empty acceptance block as REQUIRED_CHANGES', async () => {
+  const src = SUITE_ARGS.fpSource
+  if (!src) {
+    log('SKIP — T9030: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const e1 = includes('literal items line', src, 'Acceptance block absent or empty')
+  const e2 = eq('interpolations in the Morgan prompts', src.split('${ACCEPTANCE_PRESENCE_RULE}').length - 1, 2)
+  return (e1 || e2) ? (e1 || e2) : { ok: true }
+})
+
+// T9036 (#36, #37) — acceptance items are executed commands describing repo states only. Source-level:
+// the shared rule is defined once, interpolated once (Sam prompt), and the blocking check sits in the
+// planCheck prompt and the plan-audit prompt.
+await testCase('T9036 ACCEPTANCE_PROOF_RULE defined once, interpolated once; ACCEPTANCE PROOF CHECK in planCheck and audit prompts', async () => {
+  const src = SUITE_ARGS.fpSource
+  if (!src) {
+    log('SKIP — T9036: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const e1 = eq('ACCEPTANCE_PROOF_RULE occurrences (definition + interpolation)', src.split('ACCEPTANCE_PROOF_RULE').length - 1, 2)
+  const e2 = eq('interpolations in the Sam prompt', src.split('${ACCEPTANCE_PROOF_RULE}').length - 1, 1)
+  const e3 = eq('ACCEPTANCE PROOF CHECK (planCheck + audit)', src.split('ACCEPTANCE PROOF CHECK').length - 1, 2)
+  return (e1 || e2 || e3) ? (e1 || e2 || e3) : { ok: true }
+})
+
+// T130 (#130) — run identity: the first log() is `deliver #<issue> — <brief>`, `Setup` is the first
+// declared phase and is entered before any agent call, and every agent label carries the issue number.
+// Source-anchored: the suite-scope log() cannot intercept the pipeline's own log (run-flow-suite.cjs).
+await testCase('T130 run identity: first log is deliver #<issue>, Setup phase first (#130)', async () => {
+  const src = SUITE_ARGS.fpSource
+  if (!src) {
+    log('SKIP — T130: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const idx = (needle) => src.indexOf(needle)
+  const firstTitle = /title: ['"]([^'"]+)['"]/.exec(src)
+  const e1 = eq('first meta phase title', firstTitle && firstTitle[1], 'Setup')
+  if (e1) return e1
+  const iLog = idx('log(`deliver #${issue} — ')
+  const iSetup = idx("phase('Setup')")
+  const iRoot = idx('log(`worktreeRoot: ')
+  const iRecheck = idx('config-project-recheck-')
+  const iProv = idx("label: 'provision'")
+  const iDiag = idx("phase('Diagnose')")
+  const order = [['deliver log', iLog], ['phase(Setup)', iSetup], ['worktreeRoot log', iRoot], ['config-project-recheck-', iRecheck], ["label: 'provision'", iProv], ["phase('Diagnose')", iDiag]]
+  for (const [n, i] of order) if (i < 0) return { ok: false, msg: `${n} not found in pipeline source` }
+  for (let k = 1; k < order.length; k++) {
+    if (!(order[k - 1][1] < order[k][1])) return { ok: false, msg: `expected ${order[k - 1][0]} before ${order[k][0]}` }
+  }
+  const e2 = eq('old status label gone', src.includes('label: `status:'), false)
+  // The status write is a pr-write probe (#85): its agent label is probe-${issue}-pr-write-status-<name>-r0.
+  const e3 = eq('status write goes through prWrite', src.includes("prWrite('status'"), true)
+  // probe() call sites (#82) pass a bare `label` + `onFail`; probe() itself builds the agent label
+  // `probe-${issue}-<name>-<label>-r<round>`, so the issue number is still in every agent label.
+  const bad = src.split('\n').filter(l => l.includes('label:') && !l.includes('${issue}') && !l.includes('onFail'))
+  const e4 = eq('agent labels without ${issue}', bad.length, 0)
+  return e2 || e3 || e4 || { ok: true }
+})
+
+// T86 (#86) — the engine reads only `simulate.probes`; every probe('x') call-site name is registered
+// in PROBES; no seam carries a `?? ` default (defaults live in SIM_DEFAULTS above). Source-anchored,
+// each detector has a negative control.
+const engineCode = (src) => src.split('\n').filter(l => !/^\s*\/\//.test(l))
+const probeCallNames = (src) => [...engineCode(src).join('\n').matchAll(/\bprobe\('([^']+)'/g)].map(m => m[1])
+const probesRegistered = (src) => {
+  const m = /const PROBES = \{([\s\S]*?)\n\}/.exec(src)
+  return m ? [...m[1].matchAll(/^\s*'([^']+)'\s*:/gm)].map(x => x[1]) : []
+}
+const probesMissing = (src) => { const reg = probesRegistered(src); return [...new Set(probeCallNames(src))].filter(n => !reg.includes(n)) }
+const seamDefaultLines = (src) => engineCode(src).filter(l => l.includes('simulate.probes') && l.includes('?? '))
+const simulateKeys = (src) => [...new Set([...engineCode(src).join('\n').matchAll(/simulate\??\.([A-Za-z_][A-Za-z0-9_]*)/g)].map(m => m[1]))]
+
+await testCase('T86a every probe(x) name used by the engine is registered in PROBES (#86)', async () => {
+  const src = SUITE_ARGS.fpSource
+  if (!src) {
+    log('SKIP — T86a: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const control = eq('negative control', probesMissing("const PROBES = {\n  'a': 'a',\n}\nawait probe('a', 1)\nawait probe('b', 2)\n"), ['b'])
+  if (control) return control
+  const e0 = eq('PROBES is populated', probesRegistered(src).length > 0, true)
+  if (e0) return e0
+  return eq('probe names missing from PROBES', probesMissing(src), []) || { ok: true }
+})
+
+await testCase('T86b no `??` on a `simulate.probes` read line in the engine (#86)', async () => {
+  const src = SUITE_ARGS.fpSource
+  if (!src) {
+    log('SKIP — T86b: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const control = eq('negative control', seamDefaultLines('const x = simulate.probes.a ?? 1\nconst y = simulate.probes.b\n').length, 1)
+  if (control) return control
+  return eq('simulate.probes read lines with a ?? default', seamDefaultLines(src), []) || { ok: true }
+})
+
+await testCase('T86c the engine reads only simulate.probes (#86)', async () => {
+  const src = SUITE_ARGS.fpSource
+  if (!src) {
+    log('SKIP — T86c: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const control = eq('negative control', simulateKeys('simulate.probes.a\nsimulate?.other\n'), ['probes', 'other'])
+  if (control) return control
+  return eq('simulate keys read by the engine', simulateKeys(src), ['probes']) || { ok: true }
 })
 
 // T123 (#42) — every test ID is unique across the suite. Must stay the LAST case so `results`
