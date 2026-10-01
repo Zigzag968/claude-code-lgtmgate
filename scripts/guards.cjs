@@ -32,8 +32,9 @@
 //      Since #74 (scripts/lead-merge.sh bumps at merge; bump-required is retired) this floor is
 //      the only version check besides stamp-parity in templates/test-canonical-guards.sh.
 //   doc-budgets (#77): the agent-read docs stay within the maintainer's budgets — VISION.md
-//      (imported for every agent through CLAUDE.md) <= 20 lines, ARCHITECTURE.md (imported into
-//      Sam's and Morgan's prompts) <= 60 lines. A missing file FAILS.
+//      (imported for every agent through `@VISION.md` in CLAUDE.md) <= 20 lines, ARCHITECTURE.md
+//      (read by Sam and Morgan on a prompt instruction) <= 60 lines, and every line of both <= 160
+//      characters, so a long line cannot dodge the line budget. A missing file FAILS.
 //
 // Env (test seams, all optional)
 //   GUARDS_ONLY            comma list among r1,wired,version,parity,budgets (default: all)
@@ -315,6 +316,8 @@ function checkSamParity() {
 
 // ---- doc-budgets (#77) --------------------------------------------------------------------------
 const DOC_BUDGETS = [['VISION.md', 20], ['ARCHITECTURE.md', 60]]
+// Per-line cap, so a long line cannot dodge the line budget. Counted in characters (code points).
+const DOC_LINE_CAP = 160
 // Same count as `wc -l` for a file ending with a newline; a last line without one still counts.
 const lineCount = (t) => (t === '' ? 0 : t.split('\n').length - (t.endsWith('\n') ? 1 : 0))
 function checkDocBudgets() {
@@ -324,11 +327,15 @@ function checkDocBudgets() {
     const txt = readOr(path.join(ROOT, rel))
     if (txt === null) { problems.push(`${rel} missing`); continue }
     const n = lineCount(txt)
-    sizes.push(`${rel} ${n}/${max}`)
+    const widths = txt.split('\n').map((l) => [...l.replace(/\r$/, '')].length)
+    const longest = widths.reduce((a, w) => Math.max(a, w), 0)
+    sizes.push(`${rel} ${n}/${max} lines, longest ${longest}/${DOC_LINE_CAP} chars`)
     if (n > max) problems.push(`${rel} has ${n} lines, budget ${max}`)
+    const over = widths.map((w, i) => [i + 1, w]).filter(([, w]) => w > DOC_LINE_CAP)
+    if (over.length) problems.push(`${rel} line ${over[0][0]} has ${over[0][1]} characters, cap ${DOC_LINE_CAP}` + (over.length > 1 ? ` (+${over.length - 1} more)` : ''))
   }
   if (problems.length) bad(`FAIL: doc-budgets: ${problems.join('; ')} — move detail to docs/ (never imported), never raise the budget`)
-  else out(`PASS: doc-budgets: ${sizes.join(', ')}`)
+  else out(`PASS: doc-budgets: ${sizes.join('; ')}`)
 }
 
 if (ONLY.includes('r1')) checkR1()
