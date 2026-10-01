@@ -9,7 +9,8 @@ name: guards
 #   - scripts/run-offline.cjs --all fixtures : record/replay harness with the real parsers
 #   - scripts/test-guards.sh, test-run-offline.sh, test-cleanup-worktree.sh,
 #     test-verify-workflow-launch.sh, hooks/test-*.sh, templates/test-provision-worktree.sh,
-#     test-blocked-by-check.sh, test-gh-pipeline-status.sh : per-script regression tests
+#     test-blocked-by-check.sh, test-gh-pipeline-status.sh, test-probe-evals.sh : per-script
+#     regression tests
 # Job `smoke-install` loads the plugin through the real `claude` CLI.
 # The all-tests-wired check in guards.cjs fails if a test suite is added without a step here.
 #
@@ -69,6 +70,8 @@ jobs:
         run: bash scripts/test-lead-merge.sh
       - name: block-merge-unchecked hook regression test
         run: bash hooks/test-block-merge-unchecked.sh
+      - name: probe eval cases offline validation
+        run: bash scripts/test-probe-evals.sh
 
   smoke-install:
     # First-install regression guard (legacy#60): MAINTAINING.md §3's documented command
