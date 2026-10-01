@@ -4,8 +4,6 @@
 - Unattended runs: consumer repos deliver issues overnight with no one watching; most runs reach `ready` with no relaunch.
 - Product-aligned agents: plans follow each repo's own VISION; the human stops correcting product choices, not just code.
 - Self-improving pipeline: every incident becomes a replayed fixture and a fix without the human.
-- One glance: the state of every run in every repo (running, blocked, to validate) from a phone; the human acts on notification.
-- Community: other solo Product Engineers install it in one command and trust it.
 For whom, today: the solo Product Engineer, with more ideas than they can code, who delegates code to agents and reads proofs, not diffs.
 ## Doctrine, ranked (the higher one wins a conflict)
 1. Proof over autonomy: every acceptance item is proven, even when that costs a human step.
