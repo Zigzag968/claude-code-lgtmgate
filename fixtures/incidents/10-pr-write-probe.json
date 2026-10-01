@@ -1,15 +1,21 @@
 {
-  "name": "110-classifier-outage-retry",
-  "note": "incident 2026-09-30 (#110): Nick cut off by an auto-mode classifier outage was reported dev-died; one retry completes. The outage turn text is SYNTHETIC (harness wording not captured); the real wording must replace it on the next capture.",
+  "name": "10-pr-write-probe",
+  "note": "incident #10: a founder message typed during a run leaked into a free-form haiku PR write (the six write sites of the review phase). Every write now goes through the pr-write probe: minimize, reviewer-window flag + roll-up comments, decision-log body splice and status. Replayed against the pre-#85 workflow it fails on the old agent labels (R2).",
   "args": {
     "pluginRoot": "/plugin",
     "issue": 123,
     "brief": "fix slugify accents",
     "wtPath": "/wt/root/issue-123",
     "config": {
-      "classifierOutage": {
-        "retries": 1,
-        "backoffMs": 0
+      "commentHygiene": true,
+      "ghProject": {
+        "owner": "o",
+        "projectNumber": 5,
+        "projectId": "P1",
+        "fieldId": "F1",
+        "statusOptions": {
+          "PR Ready": "opt1"
+        }
       }
     },
     "mode": "auto"
@@ -51,15 +57,12 @@
       "line": "PROBE name=preflight exit=0 sha=0acd6243a89b98b4bb2d70cb70c8f020921b3ba8feae419783c1e32c54be75dd json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/wt/root/.git/worktrees/issue-123\",\"writable\":true}",
       "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=0acd6243a89b98b4bb2d70cb70c8f020921b3ba8feae419783c1e32c54be75dd json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/wt/root/.git/worktrees/issue-123\",\"writable\":true}"
     },
-    "nick-issue-123": [
-      "Auto mode classifier returned no safety verdict (10 consecutive); ending the turn. Classifier temporarily unavailable.",
-      {
-        "prNumber": 42,
-        "branch": "features/issue-123",
-        "testsPass": true,
-        "summary": "opened PR #42"
-      }
-    ],
+    "nick-issue-123": {
+      "prNumber": 42,
+      "branch": "features/issue-123",
+      "testsPass": true,
+      "summary": "opened PR #42"
+    },
     "probe-123-preflight-branch-r0": {
       "line": "PROBE name=preflight exit=0 sha=5fbfdf840750936170ea0caa2986e56765751306cca75f230cff37f141b42cdc json={\"mode\":\"branch\",\"headRef\":\"features/issue-123\",\"branchPrefix\":\"\"}",
       "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=5fbfdf840750936170ea0caa2986e56765751306cca75f230cff37f141b42cdc json={\"mode\":\"branch\",\"headRef\":\"features/issue-123\",\"branchPrefix\":\"\"}"
@@ -73,6 +76,14 @@
       "issues": [],
       "testCommandRun": "run the unit tests"
     },
+    "probe-123-pr-state-comments-r0": {
+      "line": "PROBE name=pr-state exit=0 sha=13f1874c9f9d579b327e658b926579563e60b2868e62a48203edcef7ad9c0b80 json={\"now\":\"2026-01-01T00:00:00Z\",\"headRefName\":\"features/issue-123\",\"headRefOid\":\"abc123def456\",\"bodyDigest\":\"0123456789ab\",\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-01-01T00:30:00Z\",\"commitCount\":1,\"reviewCommentIds\":[\"IC_1\"],\"openIssues\":null,\"openIssuesTruncated\":false}",
+      "verify": "VERIFY ok line=PROBE name=pr-state exit=0 sha=13f1874c9f9d579b327e658b926579563e60b2868e62a48203edcef7ad9c0b80 json={\"now\":\"2026-01-01T00:00:00Z\",\"headRefName\":\"features/issue-123\",\"headRefOid\":\"abc123def456\",\"bodyDigest\":\"0123456789ab\",\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-01-01T00:30:00Z\",\"commitCount\":1,\"reviewCommentIds\":[\"IC_1\"],\"openIssues\":null,\"openIssuesTruncated\":false}"
+    },
+    "probe-123-pr-write-minimize-0-r0": {
+      "line": "PROBE name=pr-write exit=0 sha=00239488cd1cd13285a1a1c5f6e970515ca39aafa6bf649e669e7138707cf82f json={\"op\":\"minimize\",\"result\":\"skipped\",\"reason\":\"already-minimized\",\"bytes\":null}",
+      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=00239488cd1cd13285a1a1c5f6e970515ca39aafa6bf649e669e7138707cf82f json={\"op\":\"minimize\",\"result\":\"skipped\",\"reason\":\"already-minimized\",\"bytes\":null}"
+    },
     "probe-123-pr-state-window-start-r0": {
       "line": "PROBE name=pr-state exit=0 sha=3db97813d3f35e5488d7bd0a4df525f2043fbb38bec5e1283d69931d12b70ced json={\"now\":\"2026-01-01T00:00:00Z\",\"headRefName\":\"features/issue-123\",\"headRefOid\":\"abc123def456\",\"bodyDigest\":\"0123456789ab\",\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-01-01T00:30:00Z\",\"commitCount\":1,\"reviewCommentIds\":[],\"openIssues\":null,\"openIssuesTruncated\":false}",
       "verify": "VERIFY ok line=PROBE name=pr-state exit=0 sha=3db97813d3f35e5488d7bd0a4df525f2043fbb38bec5e1283d69931d12b70ced json={\"now\":\"2026-01-01T00:00:00Z\",\"headRefName\":\"features/issue-123\",\"headRefOid\":\"abc123def456\",\"bodyDigest\":\"0123456789ab\",\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-01-01T00:30:00Z\",\"commitCount\":1,\"reviewCommentIds\":[],\"openIssues\":null,\"openIssuesTruncated\":false}"
@@ -85,8 +96,16 @@
       "itemOwners": []
     },
     "probe-123-pr-state-window-end-r0": {
-      "line": "PROBE name=pr-state exit=0 sha=a2ecf0cc9d123582b92813d2aaafa231fa1201ab8e083ba1ff8d690d08376805 json={\"now\":\"2026-01-01T01:00:00Z\",\"headRefName\":\"features/issue-123\",\"headRefOid\":\"abc123def456\",\"bodyDigest\":\"0123456789ab\",\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-01-01T00:30:00Z\",\"commitCount\":1,\"reviewCommentIds\":[],\"openIssues\":[],\"openIssuesTruncated\":false}",
-      "verify": "VERIFY ok line=PROBE name=pr-state exit=0 sha=a2ecf0cc9d123582b92813d2aaafa231fa1201ab8e083ba1ff8d690d08376805 json={\"now\":\"2026-01-01T01:00:00Z\",\"headRefName\":\"features/issue-123\",\"headRefOid\":\"abc123def456\",\"bodyDigest\":\"0123456789ab\",\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-01-01T00:30:00Z\",\"commitCount\":1,\"reviewCommentIds\":[],\"openIssues\":[],\"openIssuesTruncated\":false}"
+      "line": "PROBE name=pr-state exit=0 sha=d4b2a80c0228abe6a492fb180453204d25a1c6ed3a0bc67b35fcff6c9efc3b05 json={\"now\":\"2026-01-01T01:00:00Z\",\"headRefName\":\"features/issue-123\",\"headRefOid\":\"abc123def456\",\"bodyDigest\":\"0123456789ab\",\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-01-01T00:30:00Z\",\"commitCount\":1,\"reviewCommentIds\":[],\"openIssues\":[{\"number\":501,\"createdAt\":\"2026-01-01T00:40:00Z\",\"url\":\"https://github.com/o/r/issues/501\"}],\"openIssuesTruncated\":false}",
+      "verify": "VERIFY ok line=PROBE name=pr-state exit=0 sha=d4b2a80c0228abe6a492fb180453204d25a1c6ed3a0bc67b35fcff6c9efc3b05 json={\"now\":\"2026-01-01T01:00:00Z\",\"headRefName\":\"features/issue-123\",\"headRefOid\":\"abc123def456\",\"bodyDigest\":\"0123456789ab\",\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-01-01T00:30:00Z\",\"commitCount\":1,\"reviewCommentIds\":[],\"openIssues\":[{\"number\":501,\"createdAt\":\"2026-01-01T00:40:00Z\",\"url\":\"https://github.com/o/r/issues/501\"}],\"openIssuesTruncated\":false}"
+    },
+    "probe-123-pr-write-rw-flag-501-r0": {
+      "line": "PROBE name=pr-write exit=0 sha=0b438fc3e1de89715532703e37b362987406510245fd02e8aeb4631a28d29fde json={\"op\":\"issue-comment\",\"result\":\"written\",\"reason\":null,\"bytes\":280}",
+      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=0b438fc3e1de89715532703e37b362987406510245fd02e8aeb4631a28d29fde json={\"op\":\"issue-comment\",\"result\":\"written\",\"reason\":null,\"bytes\":280}"
+    },
+    "probe-123-pr-write-rw-rollup-r0": {
+      "line": "PROBE name=pr-write exit=0 sha=c8780dd3a07e78cd349ca73ee825db69c2030a767c28f24793db48d89f4ba437 json={\"op\":\"pr-comment\",\"result\":\"written\",\"reason\":null,\"bytes\":180}",
+      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=c8780dd3a07e78cd349ca73ee825db69c2030a767c28f24793db48d89f4ba437 json={\"op\":\"pr-comment\",\"result\":\"written\",\"reason\":null,\"bytes\":180}"
     },
     "probe-123-pr-write-decision-log-r0": {
       "line": "PROBE name=pr-write exit=0 sha=0774fad4714f3978deed785c2de6fd25ce5cf3d7d8c46b32d362616459f0cde0 json={\"op\":\"body-splice\",\"result\":\"written\",\"reason\":null,\"bytes\":1234}",
@@ -95,12 +114,20 @@
     "probe-123-pr-state-merge-r0": {
       "line": "PROBE name=pr-state exit=0 sha=1a9275d0c78b1c08927bef5fe2689906d59996ae44f8131308ab92854c0e6c28 json={\"now\":\"2026-01-01T01:00:00Z\",\"headRefName\":\"features/issue-123\",\"headRefOid\":\"abc123def456\",\"bodyDigest\":\"0123456789ab\",\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-01-01T00:30:00Z\",\"commitCount\":1,\"reviewCommentIds\":[],\"openIssues\":null,\"openIssuesTruncated\":false}",
       "verify": "VERIFY ok line=PROBE name=pr-state exit=0 sha=1a9275d0c78b1c08927bef5fe2689906d59996ae44f8131308ab92854c0e6c28 json={\"now\":\"2026-01-01T01:00:00Z\",\"headRefName\":\"features/issue-123\",\"headRefOid\":\"abc123def456\",\"bodyDigest\":\"0123456789ab\",\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-01-01T00:30:00Z\",\"commitCount\":1,\"reviewCommentIds\":[],\"openIssues\":null,\"openIssuesTruncated\":false}"
+    },
+    "probe-123-pr-write-status-PR-Ready-r0": {
+      "line": "PROBE name=pr-write exit=0 sha=16d0b6a4f20b1f2ae9b54436f0da355521cba63397715c491aa8d921b5d85652 json={\"op\":\"status\",\"result\":\"written\",\"reason\":null,\"bytes\":null}",
+      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=16d0b6a4f20b1f2ae9b54436f0da355521cba63397715c491aa8d921b5d85652 json={\"op\":\"status\",\"result\":\"written\",\"reason\":null,\"bytes\":null}"
     }
   },
   "expect": {
     "status": "ready",
     "logsInclude": [
-      "cut off by a classifier outage"
+      "pr-write minimize (minimize-0, round 0): skipped",
+      "pr-write issue-comment (rw-flag-501, round 0): written",
+      "pr-write pr-comment (rw-rollup, round 0): written",
+      "pr-write body-splice (decision-log, round 0): written",
+      "pr-write status (status-PR-Ready, round 0): written"
     ]
   }
 }

@@ -119,8 +119,33 @@ const BASE = { issue: 1, brief: 'test feature', wtPath: '/tmp/lgtmgate-test', co
 const SUITE_ARGS = (typeof args === 'undefined' ? null
   : (typeof args === 'string' ? JSON.parse(args) : args)) || {}
 const FP_REF = SUITE_ARGS.fpScriptPath ? { scriptPath: SUITE_ARGS.fpScriptPath } : 'deliver-pipeline'
+// #86 — the engine reads only `simulate.probes` and carries no `??` default on a seam. Cases keep
+// writing the flat legacy keys (`simulate: { sam: ... }`); run() translates them into
+// `simulate.probes` and applies every static default here, with the same nullish semantics the
+// engine `??` had (an explicit null/undefined still falls back). dryRun calls pass through.
+const SIM_DEFAULTS = {
+  samAcceptanceChecklist: '- [ ] (simulated acceptance item)',
+  alreadyDoneCheck: { isAlreadyDone: false, isIssueClosed: false, isMerged: false },
+  theo: { confirmed: true, evidence: '(simulated)', actualCause: '' },
+  provision: { ok: true, exitCode: 0, linked: [], missing: [] },
+  provisionBehindCount: 0,
+  planStaleFiles: [],
+  openSubIssues: [],
+  gitDirWritable: { writable: true, gitDir: null },
+  windowStart: '1970-01-01T00:00:00Z',
+  artifactFloor: null,
+  behindCount: 0,
+  mergeState: null,
+}
+function toProbes(sim) {
+  if (!sim) return sim
+  const probes = { ...sim }
+  for (const k of Object.keys(SIM_DEFAULTS)) probes[k] = sim[k] ?? SIM_DEFAULTS[k]
+  return { probes }
+}
 async function run(overrides) {
-  return await workflow(FP_REF, { ...BASE, ...overrides })
+  const a = { ...BASE, ...overrides }
+  return await workflow(FP_REF, 'simulate' in a ? { ...a, simulate: toProbes(a.simulate) } : a)
 }
 
 // Guard: confirm we resolved the NEW, simulate-aware deliver-pipeline — not an older copy.
@@ -3512,12 +3537,61 @@ await testCase('T130 run identity: first log is deliver #<issue>, Setup phase fi
     if (!(order[k - 1][1] < order[k][1])) return { ok: false, msg: `expected ${order[k - 1][0]} before ${order[k][0]}` }
   }
   const e2 = eq('old status label gone', src.includes('label: `status:'), false)
-  const e3 = eq('status label carries issue', src.includes('status-${issue}:'), true)
+  // The status write is a pr-write probe (#85): its agent label is probe-${issue}-pr-write-status-<name>-r0.
+  const e3 = eq('status write goes through prWrite', src.includes("prWrite('status'"), true)
   // probe() call sites (#82) pass a bare `label` + `onFail`; probe() itself builds the agent label
   // `probe-${issue}-<name>-<label>-r<round>`, so the issue number is still in every agent label.
   const bad = src.split('\n').filter(l => l.includes('label:') && !l.includes('${issue}') && !l.includes('onFail'))
   const e4 = eq('agent labels without ${issue}', bad.length, 0)
   return e2 || e3 || e4 || { ok: true }
+})
+
+// T86 (#86) — the engine reads only `simulate.probes`; every probe('x') call-site name is registered
+// in PROBES; no seam carries a `?? ` default (defaults live in SIM_DEFAULTS above). Source-anchored,
+// each detector has a negative control.
+const engineCode = (src) => src.split('\n').filter(l => !/^\s*\/\//.test(l))
+const probeCallNames = (src) => [...engineCode(src).join('\n').matchAll(/\bprobe\('([^']+)'/g)].map(m => m[1])
+const probesRegistered = (src) => {
+  const m = /const PROBES = \{([\s\S]*?)\n\}/.exec(src)
+  return m ? [...m[1].matchAll(/^\s*'([^']+)'\s*:/gm)].map(x => x[1]) : []
+}
+const probesMissing = (src) => { const reg = probesRegistered(src); return [...new Set(probeCallNames(src))].filter(n => !reg.includes(n)) }
+const seamDefaultLines = (src) => engineCode(src).filter(l => l.includes('simulate.probes') && l.includes('?? '))
+const simulateKeys = (src) => [...new Set([...engineCode(src).join('\n').matchAll(/simulate\??\.([A-Za-z_][A-Za-z0-9_]*)/g)].map(m => m[1]))]
+
+await testCase('T86a every probe(x) name used by the engine is registered in PROBES (#86)', async () => {
+  const src = SUITE_ARGS.fpSource
+  if (!src) {
+    log('SKIP — T86a: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const control = eq('negative control', probesMissing("const PROBES = {\n  'a': 'a',\n}\nawait probe('a', 1)\nawait probe('b', 2)\n"), ['b'])
+  if (control) return control
+  const e0 = eq('PROBES is populated', probesRegistered(src).length > 0, true)
+  if (e0) return e0
+  return eq('probe names missing from PROBES', probesMissing(src), []) || { ok: true }
+})
+
+await testCase('T86b no `??` on a `simulate.probes` read line in the engine (#86)', async () => {
+  const src = SUITE_ARGS.fpSource
+  if (!src) {
+    log('SKIP — T86b: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const control = eq('negative control', seamDefaultLines('const x = simulate.probes.a ?? 1\nconst y = simulate.probes.b\n').length, 1)
+  if (control) return control
+  return eq('simulate.probes read lines with a ?? default', seamDefaultLines(src), []) || { ok: true }
+})
+
+await testCase('T86c the engine reads only simulate.probes (#86)', async () => {
+  const src = SUITE_ARGS.fpSource
+  if (!src) {
+    log('SKIP — T86c: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const control = eq('negative control', simulateKeys('simulate.probes.a\nsimulate?.other\n'), ['probes', 'other'])
+  if (control) return control
+  return eq('simulate keys read by the engine', simulateKeys(src), ['probes']) || { ok: true }
 })
 
 // T123 (#42) — every test ID is unique across the suite. Must stay the LAST case so `results`
