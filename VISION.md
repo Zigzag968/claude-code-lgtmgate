@@ -14,6 +14,6 @@ Serves the Product Engineer who has more ideas than they can code, lets agents b
 2. One state registry. Every run outcome is a typed status; the Lead's table and the hooks are checked against it. Rejected: status strings scattered through the engine.
 3. The checklist is data. Acceptance items carry ids, are rendered by the workflow and proven per id. Rejected: a Markdown checklist read by three parsers.
 
-Out of scope: new agent roles for mechanical jobs, new probes, auto-merge until a change class has a measured clean record, forges other than GitHub, multi-human roles and permissions.
+Out of scope: forges other than GitHub, multi-human roles and permissions, auto-merge.
 
 Sam's mandate: smallest change that removes the cause class; never a `simulate.*` seam; say in the plan if the diff adds a status, an `agent()`, a hook or a seam.

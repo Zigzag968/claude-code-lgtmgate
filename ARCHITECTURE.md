@@ -14,14 +14,15 @@ Vocabulary: **R1** is the ratchet (counters compared to `origin/main`, never to 
 8. Every test suite runs in CI — `scripts/guards.cjs` `all-tests-wired`.
 9. `agents/sam.md` and `samScoutPrompt` carry the same LAYER RULE sentence and `patch-avoided:`, never a `root-cause:` field — `scripts/guards.cjs` `sam-parity`.
 10. The plugin version never drops below `main` — `scripts/guards.cjs` `version-floor`.
-11. A plan adding a status, an `agent()`, a hook or a seam, or touching `docs/critical-paths.md`, ends in `design-step-required` (R3) — `oneWayDoor` block, flow suite T77a-d and T77f.
-12. Every line of `docs/critical-paths.md` names a proof that exists — `templates/test-canonical-guards.sh` `critical-paths-proven`.
-13. `VISION.md` stays within 20 lines and this file within 60 — `scripts/guards.cjs` `doc-budgets`.
+11. A plan adding a status, an `agent()`, a hook or a seam, or touching a path of `oneWayDoorPaths`, ends in `design-step-required` (R3) — `oneWayDoor` block, flow suite T77a-k.
+12. No new agent role for a mechanical job (use a script or a probe): a new role is a new model call, announced `one-way-door: agent` and stopped by R3 (constraint 11) — flow suite T77d.
+13. Every line of `docs/critical-paths.md` names a proof that exists — `templates/test-canonical-guards.sh` `critical-paths-proven`.
+14. `VISION.md` stays within 20 lines and this file within 60 — `scripts/guards.cjs` `doc-budgets`.
 
 The other invariants of the canonical guard net (stamp parity, PR body structure, no private refs, ...) are listed in the header of `templates/test-canonical-guards.sh`.
 
 ## One-way doors
-A plan that adds a status, an `agent()` call, a hook or a seam, or that touches `docs/critical-paths.md`, stops at the design step (`design-step-required`). The maintainer approves explicitly (`architectureDecisionApproved`) or edits the file themself; otherwise the run stays stopped. Adding a rule or a guard is a one-way door too: announce it, then stop.
+A plan that adds a status, an `agent()` call, a hook or a seam stops at the design step (`design-step-required`): Sam announces it on a line `one-way-door: <kind> — <what>` (kind: `status`, `agent`, `hook` or `seam`), or `one-way-door: none`. So does a plan whose target files match `oneWayDoorPaths` in `.claude/pipeline.config.json` (here: the hook scripts, `hooks/plugin-hooks.json`, `docs/critical-paths.md`); the engine knows no path, a repo that declares none is never stopped. The maintainer approves explicitly (`architectureDecisionApproved`) or edits the file themself; otherwise the run stays stopped. Adding a rule or a guard is a one-way door too: announce it, then stop.
 
 ## Where new code goes
 - A probe or a shell side effect: `templates/probe-run.cjs` (executes, keeps the raw output, prints one line).
@@ -39,6 +40,7 @@ A shortcut is allowed at the margin and never in silence.
 ## Conventions without a check yet
 - A new file gets its line in `docs/codemap.md` (check to come: a generator from one header per file, verified in CI).
 - An `exception:` line in a PR has an open follow-up issue and a `DEBT` marker in the diff (check to come in `scripts/lead-merge.sh`, #122; Morgan flags it meanwhile).
+- No new probe kind (a parser in `templates/probe-run.cjs`) without a design decision: it is a one-way door (no check yet; announce it, then stop).
 - Stage functions return `finish({ status, ... })`; never a bare `return { status }`.
 - `callAgent` / `callAgentSafe` validate a schema with bounded retries; agent output is structured (`verdict` is an enum), never free text parsed by a regex.
 - Blocks between `// --- name:start ---` and `// --- name:end ---` are pure and self-contained (extracted by `extractBetween` for tests): no I/O, no closure state.

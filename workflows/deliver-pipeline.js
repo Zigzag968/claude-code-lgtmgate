@@ -27,6 +27,7 @@ export const meta = {
 //                   commands:{build,test,format}, ciChecks:[], regressionGuard:{testGlob,testFnPattern,baselineCmd},
 //                   provision:{extraLinks:[{src,dst}]}, preflight:{canonicalStringBan:[]},
 //                   commitHygiene:{squashBeforeHandoff,maxCommits}, commentHygiene:bool,
+//                   oneWayDoorPaths:[] (optional; R3 path globs/prefixes, default none; see oneWayDoorSignals),
 //                   repo:'owner/repo' }  // repo: code repo for cross-repo runs; absent -> cwd-resolved
 //   config      — REQUIRED object: the parsed `.claude/pipeline.config.json`, supplied by the Lead. Absent or
 //                 not an object (e.g. a JSON string) -> throws before any agent call (#13, #12).
@@ -1117,34 +1118,61 @@ function safePlanTargets(files) {
 // --- safePlanTargets:end ---
 
 // --- oneWayDoor:start --- (pure & self-contained — R3: the 5th design-step signal, computed by the script)
-// R3 one-way-door signal. A diff that adds a status, an `agent()`, a hook or a seam, or that touches
-// the declared critical paths, stops at the design step. Two deterministic inputs, never an
-// LLM-filled boolean: (a) Sam's `targetFiles` (hooks/plugin-hooks.json, or a non-test/non-lib script
-// under hooks/ = a hook; docs/critical-paths.md = a critical path); (b) the announcement lines Sam's
-// plan carries, `one-way-door: status|agent|hook|seam — <what>` (`one-way-door: none` announces
-// nothing). Returns { kinds: string[], summary: string[<=10] }.
+// R3 one-way-door signal. A change the TARGET repo declares a one-way door stops at the design step.
+// Two deterministic inputs, never an LLM-filled boolean: (a) Sam's `targetFiles` matched against
+// `config.oneWayDoorPaths` (ctx.paths; absent or empty = no path-based stop, so a repo that declares
+// nothing is never stopped); (b) the announcement lines Sam's plan carries, `one-way-door: <kind> — <what>`
+// (`one-way-door: none` announces nothing; the kinds are the repo's own, see its ARCHITECTURE.md).
+// A path entry is, in order: `!<entry>` = exclusion (wins over any match); `<dir>/` = prefix;
+// a pattern with `*` (within a segment), `**` (across segments) or `?` = glob; else the exact path.
+// Returns { kinds: string[], summary: string[<=10] }.
 function oneWayDoorSignals(plan, targetFiles, ctx = {}) {
+  const globMatch = (pat, s) => {
+    const go = (pi, si) => {
+      while (pi < pat.length) {
+        if (pat[pi] === '*') {
+          const deep = pat[pi + 1] === '*'
+          let np = pi + 1
+          while (pat[np] === '*') np++
+          if (np === pat.length) return deep || !s.slice(si).includes('/')
+          for (let k = si; k <= s.length; k++) {
+            if (go(np, k)) return true
+            if (k < s.length && s[k] === '/' && !deep) break
+          }
+          return false
+        }
+        if (si >= s.length) return false
+        if (pat[pi] === '?' ? s[si] === '/' : pat[pi] !== s[si]) return false
+        pi++; si++
+      }
+      return si === s.length
+    }
+    return go(0, 0)
+  }
+  const entryHit = (entry, f) => entry.endsWith('/') ? f.startsWith(entry)
+    : (entry.includes('*') || entry.includes('?')) ? globMatch(entry, f) : f === entry
+  const entries = (Array.isArray(ctx.paths) ? ctx.paths : [])
+    .filter(e => typeof e === 'string' && e.trim() !== '').map(e => e.trim())
+  const excluded = entries.filter(e => e.startsWith('!')).map(e => e.slice(1))
+  const included = entries.filter(e => !e.startsWith('!'))
   const found = new Map() // kind -> evidence line
   for (const f of safePlanTargets(targetFiles)) {
-    // guards:parser-begin
-    const isHookScript = f.startsWith('hooks/') && !f.slice(6).includes('/') && /\.(sh|py|js|cjs)$/.test(f)
-      && !f.startsWith('hooks/test-') && !f.startsWith('hooks/lib-')
-    // guards:parser-end
-    if ((f === 'hooks/plugin-hooks.json' || isHookScript) && !found.has('hook')) found.set('hook', `targetFiles: ${f}`)
-    if (f === 'docs/critical-paths.md' && !found.has('critical-path')) found.set('critical-path', `targetFiles: ${f}`)
+    if (excluded.some(e => entryHit(e, f))) continue
+    const hit = included.find(e => entryHit(e, f))
+    if (hit !== undefined && !found.has('path')) found.set('path', `targetFiles: ${f} (oneWayDoorPaths: ${hit})`)
   }
   // guards:parser-begin
-  const announced = String(plan ?? '').match(/^[ \t>*-]*`?one-way-door:[ \t]*(?:status|agent|hook|seam)\b[^\n]*/gim) || []
+  const announced = String(plan ?? '').match(/^[ \t>*-]*`?one-way-door:[ \t]*(?!none\b)[a-z][a-z0-9_-]{0,31}\b[^\n]*/gim) || []
   for (const line of announced) {
-    const m = /one-way-door:[ \t]*(status|agent|hook|seam)\b/i.exec(line)
+    const m = /one-way-door:[ \t]*([a-z][a-z0-9_-]{0,31})\b/i.exec(line)
     const kind = m[1].toLowerCase()
     if (!found.has(kind)) found.set(kind, `plan: ${line.replace(/^[ \t>*-]*`?/, '').slice(0, 160)}`)
   }
   // guards:parser-end
   const kinds = [...found.keys()]
   const summary = kinds.length === 0 ? [] : [
-    `R3 one-way-door: the plan for issue #${ctx.issue ?? '?'} adds ${kinds.join(' + ')}.`,
-    ...kinds.map(k => `- ${k}: ${found.get(k)}`),
+    `R3 one-way-door: the plan for issue #${ctx.issue ?? '?'} hits a one-way door (${kinds.slice(0, 5).join(' + ')}${kinds.length > 5 ? ` + ${kinds.length - 5} more` : ''}).`,
+    ...kinds.slice(0, 5).map(k => `- ${k}: ${found.get(k)}`),
     `Plan artifact: ${ctx.planPath || '(none)'}`,
     'Stopped at the design step (design-step-required): the maintainer decides before dev.',
     `Relaunch with architectureDecisionApproved:true once the decision is recorded.`,
@@ -2124,7 +2152,9 @@ const SAM_LAYER_RULE = 'LAYER RULE: plan the smallest change that removes the ca
 const ARCH_IMPORT_SAM = 'Read `ARCHITECTURE.md` and `VISION.md` at the repo root, each only if it exists, and plan within the constraints and decisions they state; skip silently any that does not exist. '
 const ARCH_IMPORT_MORGAN = "Read `ARCHITECTURE.md` and `VISION.md` at the repo root, each only if it exists, and check the diff against the constraints and decisions they state; per that repo's `ARCHITECTURE.md`, if it defines a declared-exception rule, apply it exactly as that file words it (an exception it does not allow, or that lacks what it requires, is a FAIL); skip silently any file that does not exist.\n"
 // R3 (#77): the announcement line the SCRIPT parses (oneWayDoorSignals) — one line per kind, or `none`.
-const SAM_ONE_WAY_DOOR = 'ONE-WAY-DOOR ANNOUNCEMENT: in the plan text, state on its own line for each kind the diff adds — `one-way-door: status — <what>`, `one-way-door: agent — <what>`, `one-way-door: hook — <what>`, `one-way-door: seam — <what>` — or the single line `one-way-door: none`. The script parses these lines; a kind you announce stops the run at the design step. '
+// Conditional on the target repo's own ARCHITECTURE.md listing one-way doors: names no kind of this repo,
+// so a consumer's Sam announces nothing unless that file asks for it. Pinned by flow test T77g.
+const SAM_ONE_WAY_DOOR = 'ONE-WAY-DOOR ANNOUNCEMENT: only if `ARCHITECTURE.md` at the repo root lists one-way doors (changes that need a design decision before dev), state in the plan text, on its own line for each such change the diff makes, `one-way-door: <kind> — <what>` (<kind> is one word, the name that file gives it), or the single line `one-way-door: none`; skip silently if the file does not exist or lists none. The script parses these lines; a kind you announce stops the run at the design step. '
 const ACCEPTANCE_PROOF_RULE = 'ACCEPTANCE PROOF RULE: (1) every acceptance item is a command you RAN in the provisioned worktree during planning; the plan carries a "Proof log" listing, per item, the command and its real output pasted verbatim (output on the base branch: green for state-preservation checks, red for the stated reason for a check the change must turn green); (2) a command you saw fail for any other reason, or could not run (missing gitignored directory, no network), is rewritten to run in the worktree or dropped, never inscribed as-is and never excused in Risks; (3) an item describes a verifiable state of the repo or branch only: never an external-world state (e.g. "no known advisory for pinned dependency X", a network service, a file present only outside the worktree) and never a negative universal claim ("no known X", "absence of Y") about anything outside the diff; write commands that run as-is from a plain bash script.'
 // #153: checklist lines (`- [ ]`) Sam returned in acceptanceChecklist that are absent from the
 // returned plan text. Pure string ops, no regex. Empty checklist => [] (nothing to compare).
@@ -2348,7 +2378,7 @@ if (after('plan', entryStage)) {
 
   // R3 (#77) — 5th design-step signal, computed here from Sam's plan + targetFiles (never an
   // LLM-filled field). Same status and bypass as the trigger above: no new status, agent or seam.
-  const oneWayDoor = oneWayDoorSignals(sam.plan, sam.targetFiles, { issue, planPath })
+  const oneWayDoor = oneWayDoorSignals(sam.plan, sam.targetFiles, { issue, planPath, paths: config.oneWayDoorPaths })
   if (oneWayDoor.kinds.length > 0 && !architectureDecisionApproved) {
     log(`R3 one-way-door: plan adds ${oneWayDoor.kinds.join(' + ')} — design step required`)
     trace.push(`one-way-door:${oneWayDoor.kinds.join('+')}`)
