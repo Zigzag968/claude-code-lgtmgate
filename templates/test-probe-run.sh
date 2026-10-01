@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Regression test for templates/probe-run.cjs (E2.2, #80), templates/preflight.sh (#83) and templates/pr-state.sh (#84): pure parsers replayed against
+# Regression test for templates/probe-run.cjs (E2.2, #80), templates/preflight.sh (#83) and templates/pr-state.sh (#84) and templates/pr-write.sh (#85): pure parsers replayed against
 # fixtures/probes/*.raw, plus end-to-end runs of the CLI in a temp dir. No network. bash 3.2 safe.
 set -uo pipefail
 
@@ -329,6 +329,154 @@ GHEOF
 else
   echo "SKIP - pr-state.sh e2e needs jq"
 fi
+
+# (k) pr-write.sh end to end (#85): a stub gh first on PATH logs every call and serves per-op state. Every op must
+# READ before it writes, skip an already-applied write, and write nothing after a failed read. No network.
+PW="$SCRIPT_DIR/pr-write.sh"
+if command -v jq >/dev/null 2>&1; then
+  PWD_="$WORK/pw"; mkdir -p "$PWD_/bin" "$PWD_/wt"
+  GHLOG="$PWD_/gh.log"
+  cat > "$PWD_/bin/gh" <<'GHEOF'
+#!/usr/bin/env bash
+echo "$*" >> "$GHLOG"
+case "$*" in
+  *"pr edit"*)
+    f=""; prev=""
+    for a in "$@"; do [ "$prev" = "--body-file" ] && f="$a"; prev="$a"; done
+    if [ -n "${GH_EDIT_TRUNCATE:-}" ] && [ ! -f "$GH_BODY_FILE.trunc" ]; then
+      : > "$GH_BODY_FILE.trunc"; printf 'x\n' > "$GH_BODY_FILE"
+    else
+      cp "$f" "$GH_BODY_FILE"
+    fi
+    exit 0 ;;
+  *"pr comment"*|*"issue comment"*|*"project item-edit"*|*minimizeComment*) exit 0 ;;
+esac
+[ -n "${GH_READ_FAIL:-}" ] && exit 1
+case "$*" in
+  *"pr view"*"--json body"*) cat "$GH_BODY_FILE" ;;
+  *"--json comments"*) d='{"comments":[]}'; printf '%s\n' "${GH_COMMENTS:-$d}" ;;
+  *"node(id"*) printf '%s\n' "${GH_MINIMIZED:-false}" ;;
+  *projectItems*) printf '%s\n' "${GH_STATUS:-}" ;;
+  *) exit 1 ;;
+esac
+GHEOF
+  chmod +x "$PWD_/bin/gh"
+
+  # run_pw <op> args... : runs pr-write.sh against the stub, fresh log; prints the single stdout line
+  run_pw() {
+    : > "$GHLOG"
+    PATH="$PWD_/bin:$PATH" GHLOG="$GHLOG" GH_BODY_FILE="$PWD_/body.md" bash "$PW" "$@" --wt "$PWD_/wt" --repo o/r
+  }
+  first_line() { awk -v p="$1" 'index($0, p) { print NR; exit }' "$GHLOG"; }
+  # read_first <read pattern> <write pattern>: both calls logged, the read strictly before the write
+  read_first() {
+    local r w
+    r="$(first_line "$1")"; w="$(first_line "$2")"
+    [ -n "$r" ] && [ -n "$w" ] && [ "$r" -lt "$w" ] && echo 1 || echo 0
+  }
+  no_call() { [ -z "$(first_line "$1")" ] && echo 1 || echo 0; }
+  res() { printf '%s' "$1" | jq -r '[.result, (.reason // "-")] | join("/")'; }
+  one_line() { [ "$(printf '%s\n' "$1" | wc -l | tr -d ' ')" = "1" ] && echo 1 || echo 0; }
+
+  # issue-comment and pr-comment
+  for kind in issue pr; do
+    if [ "$kind" = "issue" ]; then FLAG="--number"; else FLAG="--pr"; fi
+    MK='<!-- pipeline-reviewer-window pr=7 -->'
+    OUT="$(GH_COMMENTS='{"comments":[{"body":"hello"}]}' run_pw "$kind-comment" "$FLAG" 501 --marker "$MK" --body "$MK
+text")"
+    ok=0; [ "$(res "$OUT")" = "written/-" ] && [ "$(one_line "$OUT")" = 1 ] && [ "$(read_first "$kind view" "$kind comment")" = 1 ] && ok=1
+    check "pr-write.sh $kind-comment: read-before-write (view, then comment)" "$ok"
+    OUT="$(GH_COMMENTS="{\"comments\":[{\"body\":\"$MK\\ntext\"}]}" run_pw "$kind-comment" "$FLAG" 501 --marker "$MK" --body "$MK
+text")"
+    ok=0; [ "$(res "$OUT")" = "skipped/marker-present" ] && [ "$(no_call "$kind comment")" = 1 ] && ok=1
+    check "pr-write.sh $kind-comment: skips when already applied (marker present, no comment call)" "$ok"
+    OUT="$(GH_READ_FAIL=1 run_pw "$kind-comment" "$FLAG" 501 --marker "$MK" --body "$MK
+text")"
+    ok=0; [ "$(res "$OUT")" = "failed/read-failed" ] && [ "$(no_call "$kind comment")" = 1 ] && ok=1
+    check "pr-write.sh $kind-comment: read failure writes nothing" "$ok"
+  done
+
+  # minimize
+  OUT="$(GH_MINIMIZED=false run_pw minimize --id IC_1)"
+  ok=0; [ "$(res "$OUT")" = "written/-" ] && [ "$(read_first 'node(id' 'minimizeComment')" = 1 ] && ok=1
+  check "pr-write.sh minimize: read-before-write (isMinimized read, then the mutation)" "$ok"
+  OUT="$(GH_MINIMIZED=true run_pw minimize --id IC_1)"
+  ok=0; [ "$(res "$OUT")" = "skipped/already-minimized" ] && [ "$(no_call minimizeComment)" = 1 ] && ok=1
+  check "pr-write.sh minimize: skips when already applied (already minimized)" "$ok"
+  OUT="$(GH_READ_FAIL=1 run_pw minimize --id IC_1)"
+  ok=0; [ "$(res "$OUT")" = "failed/read-failed" ] && [ "$(no_call minimizeComment)" = 1 ] && ok=1
+  check "pr-write.sh minimize: read failure writes nothing" "$ok"
+
+  # status
+  ST_OLD='{"data":{"repository":{"issue":{"projectItems":{"nodes":[{"id":"PVTI_1","project":{"number":5},"fieldValues":{"nodes":[{},{"optionId":"opt-old","field":{"id":"F1"}}]}}]}}}}}'
+  ST_SET='{"data":{"repository":{"issue":{"projectItems":{"nodes":[{"id":"PVTI_1","project":{"number":5},"fieldValues":{"nodes":[{"optionId":"opt-new","field":{"id":"F1"}}]}}]}}}}}'
+  ST_NONE='{"data":{"repository":{"issue":{"projectItems":{"nodes":[]}}}}}'
+  SARGS="--issue 85 --project-number 5 --project-id P1 --field-id F1 --option-id opt-new"
+  OUT="$(GH_STATUS="$ST_OLD" run_pw status $SARGS)"
+  ok=0; [ "$(res "$OUT")" = "written/-" ] && [ "$(read_first projectItems 'project item-edit')" = 1 ] && grep -q -- '--id PVTI_1 --field-id F1 --project-id P1 --single-select-option-id opt-new' "$GHLOG" && ok=1
+  check "pr-write.sh status: read-before-write (item read, then item-edit with the read id)" "$ok"
+  OUT="$(GH_STATUS="$ST_SET" run_pw status $SARGS)"
+  ok=0; [ "$(res "$OUT")" = "skipped/already-set" ] && [ "$(no_call 'project item-edit')" = 1 ] && ok=1
+  check "pr-write.sh status: skips when already applied (option already set)" "$ok"
+  OUT="$(GH_STATUS="$ST_NONE" run_pw status $SARGS)"
+  ok=0; [ "$(res "$OUT")" = "skipped/not-on-project" ] && [ "$(no_call 'project item-edit')" = 1 ] && ok=1
+  check "pr-write.sh status: issue not on the project -> no edit with an empty id" "$ok"
+  OUT="$(GH_READ_FAIL=1 run_pw status $SARGS)"
+  ok=0; [ "$(res "$OUT")" = "failed/read-failed" ] && [ "$(no_call 'project item-edit')" = 1 ] && ok=1
+  check "pr-write.sh status: read failure writes nothing" "$ok"
+
+  # body-splice
+  PRE_BODY='Closes #1
+
+## Acceptance checklist
+<!-- acceptance:start -->
+- [ ] old
+<!-- acceptance:end -->
+<!-- decision-log:start -->
+<!-- decision-log:end -->'
+  DL='<!-- decision-log:start -->
+## Decision log
+- round 0 — LGTM
+<!-- decision-log:end -->'
+  printf '%s\n' "$PRE_BODY" > "$PWD_/body.md"
+  OUT="$(run_pw body-splice --pr 9 --mode decision-log --text "$DL")"
+  ok=0; [ "$(res "$OUT")" = "written/-" ] && [ "$(read_first 'pr view' 'pr edit')" = 1 ] && grep -q -- '- round 0 — LGTM' "$PWD_/body.md" && ok=1
+  check "pr-write.sh body-splice: read-before-write (body read, spliced, then edit)" "$ok"
+  OUT="$(run_pw body-splice --pr 9 --mode decision-log --text "$DL")"
+  ok=0; [ "$(res "$OUT")" = "skipped/unchanged" ] && [ "$(no_call 'pr edit')" = 1 ] && ok=1
+  check "pr-write.sh body-splice: skips when already applied (spliced body unchanged)" "$ok"
+  OUT="$(run_pw body-splice --pr 9 --mode acceptance --text '- [ ] new one
+- [ ] new two')"
+  ok=0; [ "$(res "$OUT")" = "written/-" ] && grep -q -- '- \[ \] new two' "$PWD_/body.md" && ! grep -q -- '- \[ \] old' "$PWD_/body.md" && ok=1
+  check "pr-write.sh body-splice: acceptance mode replaces the block contents" "$ok"
+  printf 'no markers here, long enough body text to matter\n' > "$PWD_/body.md"
+  OUT="$(run_pw body-splice --pr 9 --mode acceptance --text '- [ ] x')"
+  ok=0; [ "$(res "$OUT")" = "failed/no-markers" ] && [ "$(no_call 'pr edit')" = 1 ] && ok=1
+  check "pr-write.sh body-splice: acceptance markers absent -> failed, never appends, no edit" "$ok"
+  OUT="$(GH_READ_FAIL=1 run_pw body-splice --pr 9 --mode decision-log --text "$DL")"
+  ok=0; [ "$(res "$OUT")" = "failed/read-failed" ] && [ "$(no_call 'pr edit')" = 1 ] && ok=1
+  check "pr-write.sh body-splice: read failure writes nothing" "$ok"
+  printf '%s\n' "$PRE_BODY" > "$PWD_/body.md"
+  OUT="$(GH_EDIT_TRUNCATE=1 run_pw body-splice --pr 9 --mode decision-log --text "$DL")"
+  ok=0; [ "$(res "$OUT")" = "failed/guard-failed-restored" ] && [ "$(cat "$PWD_/body.md")" = "$PRE_BODY" ] && ok=1
+  check "pr-write.sh body-splice: a lossy write trips the guard and the pre body is restored" "$ok"
+
+  # parser round trip and the engine/helper block parity
+  OUT="$(GH_MINIMIZED=true run_pw minimize --id IC_1)"
+  out_rt="$(printf '%s\n' "$OUT" | node -e '
+    const { PARSERS } = require(process.argv[1])
+    const v = PARSERS["pr-write"](require("fs").readFileSync(0, "utf8"), "", 0)
+    process.stdout.write(v.error ? "ERR" : v.op + ":" + v.result + ":" + v.reason)
+  ' "$PR")"
+  [ "$out_rt" = "minimize:skipped:already-minimized" ] && ok=1 || ok=0
+  check "pr-write.sh output round-trips through the pr-write parser" "$ok"
+else
+  echo "SKIP - pr-write.sh e2e needs jq"
+fi
+
+BLK='/^\/\/ --- prBodySplice:start ---/,/^\/\/ --- prBodySplice:end ---/p'
+[ -n "$(sed -n "$BLK" "$ROOT/workflows/deliver-pipeline.js")" ] && [ "$(sed -n "$BLK" "$ROOT/workflows/deliver-pipeline.js")" = "$(sed -n "$BLK" "$SCRIPT_DIR/pr-body-splice.cjs")" ] && ok=1 || ok=0
+check "pr-body-splice.cjs: source identical to the engine block" "$ok"
 
 # (g) agents/probe.md tools: lists exactly Bash
 TOOLS="$(awk '/^---$/{f++; next} f==1 && /^tools:/{t=1; next} f==1 && t && /^  - /{sub(/^  - /,""); print; next} f==1 && t{t=0}' "$ROOT/agents/probe.md" | tr '\n' ',')"
