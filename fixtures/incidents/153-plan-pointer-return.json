@@ -1,0 +1,92 @@
+{
+  "name": "153-plan-pointer-return",
+  "note": "#153: replay of the #151 run. Sam returned a summary plus pointer in the plan field while also returning the checklist and planPath; plan-check judged the pointer text and escalated a complete plan. The engine must refuse a plan lacking the returned checklist lines BEFORE any plan-check call. Diagnose and Sam returns are raw from the run; probe cmd= was recomputed (post-#151 wire format). No plan-check entries on purpose: any plan-check call fails the fixture.",
+  "args": {
+    "pluginRoot": "/plugin",
+    "issue": 151,
+    "brief": "probe line must bind the executed command",
+    "wtPath": "/wt/root/issue-151",
+    "config": {},
+    "mode": "auto"
+  },
+  "calls": {
+    "diagnose-issue-151": {
+      "confirmed": true,
+      "evidence": "Worktree at edd88e4 (main). The issue's four gaps are all present and not yet shipped. (1) templates/probe-run.cjs:195 emits `PROBE name= exit= sha= json=` with no `cmd=`; the engine PROBE_LINE regex at workflows/deliver-pipeline.js:1666 has no cmd field either. Grep for `cmd=` in templates, scripts and the workflow finds nothing relevant. (2) templates/pr-write.sh body-splice (lines ~130-142) runs a bare `gh pr edit --body-file` with no digest or stale-read check. It only restores the pre-body after a lossy post-write check, so an edit landing between read and write is overwritten. `grep stale-read` returns nothing. (3) pr-write.sh:71 reads markers with `gh \"$kind\" view --json comments`, which is limited to the first 100 comments. `grep paginate` returns nothing. (4) deliver-pipeline.js:1612 builds the status label with `name.split(' ').join('-')`, which only replaces spaces. SAFE_PROBE_TOKEN is `/^[A-Za-z0-9._-]+$/` (line 1668), so any other character fails isSafeProbeToken, which is the claimed silent throw. Baseline run: `bash templates/test-probe-run.sh` exits 0 (`[probe-run] status=ok passed=92 failed=0`), with none of the new cases (cmd=, cmd-mismatch, stale-read, 101-comment thread) present. The requested feature is coherent and buildable, and depends-on is none. Lane: purely engine/backend (templates and workflow), no user-visible surface, so Sam is the right lane. I did not run a live repro of the 101-comment or race behaviour. The checks above are a baseline test run plus greps. I did not post a design-step comment, since I found no classification mismatch.",
+      "laneOk": true,
+      "persistentStateSignal": true,
+      "authSecurityBoundarySignal": false,
+      "deployConfigSignal": false,
+      "immatureVendorApiSignal": false,
+      "designStepSignalEvidence": "persistentStateSignal: templates/pr-write.sh:136 rewrites the PR body via `gh pr edit` (read-modify-write on GitHub PR and issue comment state), and the issue changes the PROBE line wire format that the engine parses (one-way door per the issue). Other signals are false. No auth boundary change, no deploy config, and `gh --paginate` REST is already used in this codebase.",
+      "issueClassificationMismatch": false,
+      "requiredScout": "",
+      "actualCause": ""
+    },
+    "scout-issue-151-1": {
+      "decision": "GO",
+      "plan": "GROUNDING: verified. Plan #151 (full text in .pipeline/plans/issue-151-sam.md). Steps: (1) templates/probe-run.cjs:probeLine emits cmd=<sha256(record.cmd)>. (2) workflows/deliver-pipeline.js parser markers: PROBE_LINE requires cmd=, parseProbeLine returns cmd, add sanitizeProbeToken ([^A-Za-z0-9._-] -> '-') inside the markers (R1 regex counter unchanged). (3) pure-JS sha256Hex (UTF-8, no regex) between sha256Hex:start/end markers; probe() fails closed 'cmd-mismatch' when parsed.cmd or verified.cmd != sha256Hex(cmd). (4) updateStatus uses 'status-' + sanitizeProbeToken(name). (5) templates/pr-write.sh: comment_op paginates via gh api --paginate when 100 comments are returned; body_splice_op gains --expect-digest and a re-read right before gh pr edit, returning failed/stale-read on digest change (digest = same as pr-state.sh bodyDigest). (6) Migrate ~190 PROBE/VERIFY lines in 16 fixtures with a scratch (uncommitted) script that computes cmd sha from the prompt's --cmd; update fixtures/README.md. (7) New raw fixture fixtures/incidents/151-probe-cmd-mismatch.json (expect throws cmd-mismatch). (8) templates/test-probe-run.sh: update expected line, add 7 [151] checks (cmd=, sha256 parity, stale digest, mid-write edit, 101-comment issue and PR threads, sanitiser). No new status/agent()/hook/seam. patch-avoided: engine-wired --expect-digest, run-offline cmd= injection shim, always-REST reads, optional cmd=, sanitising inside probe().",
+      "planPath": ".pipeline/plans/issue-151-sam.md",
+      "targetFiles": [
+        "templates/probe-run.cjs",
+        "workflows/deliver-pipeline.js",
+        "templates/pr-write.sh",
+        "templates/test-probe-run.sh",
+        "fixtures/README.md",
+        "fixtures/smoke/auto-lgtm.json",
+        "fixtures/smoke/probe-only.json",
+        "fixtures/smoke/semi-plan-ready.json",
+        "fixtures/incidents/10-pr-write-probe.json",
+        "fixtures/incidents/14-pr-state-probe.json",
+        "fixtures/incidents/27-provision-sha-mismatch.json",
+        "fixtures/incidents/32-branch-check-probe.json",
+        "fixtures/incidents/40-provision-ffwd.json",
+        "fixtures/incidents/40-provision-stale-own-commits.json",
+        "fixtures/incidents/82-provision-no-attestation.json",
+        "fixtures/incidents/84-floor-without-since.json",
+        "fixtures/incidents/84-sig-before-after-round.json",
+        "fixtures/incidents/84-sig-no-op-gate.json",
+        "fixtures/incidents/99-gitdir-probe-prose.json",
+        "fixtures/incidents/107-checklist-only-blockers.json",
+        "fixtures/incidents/108-delivered-no-pr-push-command.json",
+        "fixtures/incidents/110-classifier-outage-exhausted.json",
+        "fixtures/incidents/110-classifier-outage-retry.json",
+        "fixtures/incidents/132-preflight-failed-check-log.json",
+        "fixtures/incidents/151-probe-cmd-mismatch.json"
+      ],
+      "acceptanceChecklist": "- [ ] `bash templates/test-probe-run.sh > \"$TMPDIR/o151.txt\" && grep -c '^PASS - \\[151\\]' \"$TMPDIR/o151.txt\"` exits 0 and prints 7 (cmd= in the PROBE line, engine sha256 parity, stale expected digest, mid-write edit, 101-comment issue thread, 101-comment PR thread, status label sanitiser)\n- [ ] `OFFLINE_STRICT=1 node scripts/run-offline.cjs --all fixtures > \"$TMPDIR/o151b.txt\" && grep -c '151-probe-cmd-mismatch' \"$TMPDIR/o151b.txt\"` exits 0 and prints 1 (every migrated fixture plus the new cmd-mismatch fixture pass)\n- [ ] `node scripts/run-flow-suite.cjs > \"$TMPDIR/o151d.txt\"; tail -n 1 \"$TMPDIR/o151d.txt\"` ends with `failed=0`\n- [ ] `node scripts/guards.cjs > \"$TMPDIR/o151c.txt\" && grep -c '^R1 .* ok$' \"$TMPDIR/o151c.txt\"` exits 0 and prints 3 (agent-calls, simulate-seams and agent-output-regex counters not above base)\n- [ ] `grep -c \"'status-' + sanitizeProbeToken(name)\" workflows/deliver-pipeline.js` prints 1",
+      "rationale": "All four gaps confirmed on base edd88e4. The fix is the smallest change that closes each cause: cmd= in the PROBE line checked by the engine, a re-read before the PR body edit, REST pagination for marker reads, and a label sanitiser. It adds no status, agent(), hook or seam. The biggest cost is migrating the roughly 190 static fixture lines, which is mechanical. Proof log is in the artifact: baselines are green and the new checks are red on base for the stated reason."
+    },
+    "scout-issue-151-2": {
+      "decision": "GO",
+      "plan": "Full plan is in .pipeline/plans/issue-151-sam.md (GROUNDING: verified, impact table, 8 anchored steps, patch-avoided, acceptance checklist, Proof log re-run this round in the worktree at base edd88e4).\n\nSummary: (1) templates/probe-run.cjs:probeLine emits cmd=<sha256(record.cmd)>. (2) workflows/deliver-pipeline.js parser block: PROBE_LINE requires cmd=, parseProbeLine returns cmd, add sanitizeProbeToken inside the guards:parser markers. (3) pure-JS sha256Hex helper (marker-delimited) and probe() fails closed with cmd-mismatch (+ PROBE_REASON_HINTS entry). (4) updateStatus builds label with 'status-' + sanitizeProbeToken(name). (5) templates/pr-write.sh: body-splice --expect-digest plus in-script re-read before gh pr edit (failed/stale-read); comment_op does a paginated REST read when the first read hits 100 comments. (6) fixtures (~190 static PROBE lines) migrated mechanically with a throwaway script; fixtures/README.md updated. (7) new raw fixture fixtures/incidents/151-probe-cmd-mismatch.json (R2). (8) 7 [151] checks in templates/test-probe-run.sh. No new status, agent(), hook, seam or simulate key; R1 counters unchanged; not a preflight-surface PR.\n\nProof log (run in worktree, base edd88e4):\n1. cd worktree && bash templates/test-probe-run.sh > $TMPDIR/o151.txt; tail -n 1 -> '[probe-run] status=ok passed=92 failed=0' (green baseline); grep -c '^PASS - \\[151\\]' -> '0', rc=1 (red: the 7 [151] checks do not exist yet).\n2. OFFLINE_STRICT=1 node scripts/run-offline.cjs --all fixtures; tail -n 1 -> '[offline] status=ok passed=23 failed=0' (green baseline); grep -c '151-probe-cmd-mismatch' -> '0', rc=1 (red: fixture not created yet).\n3. node scripts/run-flow-suite.cjs; tail -n 2 -> 'Results: 194/194 passed' / '[flow-suite] status=test-ok passed=194 failed=0' (green, preserved).\n4. node scripts/guards.cjs -> rc=0; 'R1 agent-calls base=1 branch=1 ok', 'R1 simulate-seams base=41 branch=41 ok', 'R1 agent-output-regex base=26 branch=26 ok'; grep -c '^R1 .* ok$' -> 3 (green, preserved).\n5. grep -c \"'status-' + sanitizeProbeToken(name)\" workflows/deliver-pipeline.js -> '0', rc=1 (red: call site still uses name.split(' ').join('-')).\n\npatch-avoided: engine-wired --expect-digest; harness shim in run-offline.cjs injecting cmd=; always-REST comment reads; optional cmd=; sanitising inside probe()/isSafeProbeToken.",
+      "planPath": ".pipeline/plans/issue-151-sam.md",
+      "targetFiles": [
+        "templates/probe-run.cjs",
+        "workflows/deliver-pipeline.js",
+        "templates/pr-write.sh",
+        "templates/test-probe-run.sh",
+        "fixtures/incidents/151-probe-cmd-mismatch.json",
+        "fixtures/README.md",
+        "fixtures/smoke/probe-only.json"
+      ],
+      "acceptanceChecklist": "- [ ] `bash templates/test-probe-run.sh > \"$TMPDIR/o151.txt\" && grep -c '^PASS - \\[151\\]' \"$TMPDIR/o151.txt\"` exits 0 and prints 7 (cmd= in the PROBE line, engine sha256 parity, stale expected digest, mid-write edit, 101-comment issue thread, 101-comment PR thread, status label sanitiser)\n- [ ] `OFFLINE_STRICT=1 node scripts/run-offline.cjs --all fixtures > \"$TMPDIR/o151b.txt\" && grep -c '151-probe-cmd-mismatch' \"$TMPDIR/o151b.txt\"` exits 0 and prints 1 (every migrated fixture plus the new cmd-mismatch fixture pass)\n- [ ] `node scripts/run-flow-suite.cjs > \"$TMPDIR/o151d.txt\"; tail -n 1 \"$TMPDIR/o151d.txt\"` ends with `failed=0`\n- [ ] `node scripts/guards.cjs > \"$TMPDIR/o151c.txt\" && grep -c '^R1 .* ok$' \"$TMPDIR/o151c.txt\"` exits 0 and prints 3 (agent-calls, simulate-seams and agent-output-regex counters not above base)\n- [ ] `grep -c \"'status-' + sanitizeProbeToken(name)\" workflows/deliver-pipeline.js` prints 1",
+      "rationale": "All four gaps confirmed present on base; fix is the smallest change at each cause, no new status/agent/hook/seam. Proof log re-executed in the worktree this round."
+    },
+    "probe-151-provision-provision-r0": {
+      "line": "PROBE name=provision exit=0 sha=0a0001500e6f649a575d2515664fed6807d2e283f35ade49abafa5cfd5ddcda7 cmd=7be4ef1daa1aa22fb13a23d0dbf342ab14f2bb040034fff1e86dfddf3fd57cba json={\"version\":2,\"linked\":[],\"missing\":[],\"skipped\":false}",
+      "verify": "VERIFY ok line=PROBE name=provision exit=0 sha=0a0001500e6f649a575d2515664fed6807d2e283f35ade49abafa5cfd5ddcda7 cmd=7be4ef1daa1aa22fb13a23d0dbf342ab14f2bb040034fff1e86dfddf3fd57cba json={\"version\":2,\"linked\":[],\"missing\":[],\"skipped\":false}"
+    },
+    "probe-151-provision-freshness-provision-freshness-r0": {
+      "line": "PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b cmd=aeedbb11a66e9abca86f7c808f52d0448e197b92ffa3334d359ce066bb3b003f json={\"state\":\"fresh\",\"behind\":0,\"own\":0}",
+      "verify": "VERIFY ok line=PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b cmd=aeedbb11a66e9abca86f7c808f52d0448e197b92ffa3334d359ce066bb3b003f json={\"state\":\"fresh\",\"behind\":0,\"own\":0}"
+    }
+  },
+  "expect": {
+    "status": "escalate",
+    "reason": "plan-not-conforming",
+    "logsInclude": [
+      "pointer"
+    ]
+  }
+}

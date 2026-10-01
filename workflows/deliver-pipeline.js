@@ -1410,7 +1410,8 @@ function simFixture(role, round = 0, prNum = null) {
   if (role === 'mia') return simulate.probes?.mia || { framing: '(simulated PM)' }
   if (role === 'sam') return {
     decision: simulate.probes?.sam === 'NO-GO' ? 'NO-GO' : 'GO',
-    plan: simulate.probes?.samPlan || '(simulated plan)',
+    // #153: the default simulated plan carries its checklist, as a compliant Sam's plan does.
+    plan: simulate.probes?.samPlan || ('(simulated plan)' + (simulate.probes?.samAcceptanceChecklist ? '\n' + simulate.probes.samAcceptanceChecklist : '')),
     planPath: simulate.probes?.samPlanPath || planPath,
     rationale: simulate.probes?.samRationale || '',
     debtIssue: simulate.probes?.debtIssue || '',
@@ -2079,6 +2080,13 @@ if (after('plan', entryStage)) {
 // regardless of which call site invokes this, fresh Plan-phase or Review-phase amendment.
 const SAM_LAYER_RULE = 'LAYER RULE: plan the smallest change that removes the cause class; never a `simulate.*` seam; say in the plan if the diff adds a status, an `agent()`, a hook or a seam; list `patch-avoided:` with the patches you rejected.'
 const ACCEPTANCE_PROOF_RULE = 'ACCEPTANCE PROOF RULE: (1) every acceptance item is a command you RAN in the provisioned worktree during planning; the plan carries a "Proof log" listing, per item, the command and its real output pasted verbatim (output on the base branch: green for state-preservation checks, red for the stated reason for a check the change must turn green); (2) a command you saw fail for any other reason, or could not run (missing gitignored directory, no network), is rewritten to run in the worktree or dropped, never inscribed as-is and never excused in Risks; (3) an item describes a verifiable state of the repo or branch only: never an external-world state (e.g. "no known advisory for pinned dependency X", a network service, a file present only outside the worktree) and never a negative universal claim ("no known X", "absence of Y") about anything outside the diff; write commands that run as-is from a plain bash script.'
+// #153: checklist lines (`- [ ]`) Sam returned in acceptanceChecklist that are absent from the
+// returned plan text. Pure string ops, no regex. Empty checklist => [] (nothing to compare).
+const planMissingChecklistLines = (plan, checklist) => {
+  const text = String(plan || '')
+  return String(checklist || '').split('\n').map((l) => l.trim())
+    .filter((l) => l.startsWith('- [ ]') && !text.includes(l))
+}
 const samScoutPrompt = ({ fixBlock = '', auditFixBlock = '', reviewFixBlock = '' } = {}) => {
   // B4: whenever the design-step trigger fired for this issue, the plan MUST
   // explicitly answer the split question. Recomputed here (not a captured outer const) so this
@@ -2106,7 +2114,7 @@ const samScoutPrompt = ({ fixBlock = '', auditFixBlock = '', reviewFixBlock = ''
     `POST IDEMPOTENTLY: write the index body to ".pipeline/issue-${issue}-comment.md", then look for an existing marked comment with ` +
     `\`gh api repos/{owner}/{repo}/issues/${issue}/comments --jq '.[]|select(.body|startswith("${planMarker}"))|.id'\` — if an id comes back, EDIT that comment in place with ` +
     `\`gh api -X PATCH repos/{owner}/{repo}/issues/comments/<id> -F body=@.pipeline/issue-${issue}-comment.md\`; otherwise create it with \`gh issue comment ${issue} --body-file .pipeline/issue-${issue}-comment.md\`. Reuse the id returned by the listing; never reconstruct it. Never stack a second plan comment on the issue. ` +
-    `Then return GO/NO-GO, the full plan text in the \`plan\` field, and the artifact path in \`planPath\` (use "${planPath}"), and \`targetFiles\`: the worktree-RELATIVE paths your steps modify, delete or create (repo-relative, no absolute path, no \`..\`; omit it if your plan touches no file). Return the acceptance checklist lines VERBATIM (\`- [ ] ...\` lines only, no markers, no prose) in \`acceptanceChecklist\`.\n\n` +
+    `Then return GO/NO-GO, the COMPLETE text of the artifact in the \`plan\` field (NEVER a summary or pointer to the artifact; the plan gate judges only this field and refuses a plan lacking the checklist lines you return in acceptanceChecklist), and the artifact path in \`planPath\` (use "${planPath}"), and \`targetFiles\`: the worktree-RELATIVE paths your steps modify, delete or create (repo-relative, no absolute path, no \`..\`; omit it if your plan touches no file). Return the acceptance checklist lines VERBATIM (\`- [ ] ...\` lines only, no markers, no prose) in \`acceptanceChecklist\`.\n\n` +
     `OUTPUT-SPEC GATE: if this is a human-facing deliverable (asset/render/copy/UI-visible), the plan MUST start from a concrete OUTPUT EXAMPLE with named content contracts, and MUST cite any existing corpus/asset spec (precedent: a similar prior deliverable, if one exists). If no spec exists, propose the contract for human validation — do not skip it.\n` +
     `OBSERVED-INTERFACES RULE: any step consuming an external interface MUST cite a REAL observed payload. REUSE a provided field (e.g. \`qr_url\`) over reconstructing it — reconstruction is a plan defect.\n` +
     `VERSION RULE: do NOT bump .claude-plugin/plugin.json or the BUILD line; the Lead's scripts/lead-merge.sh bumps at merge time.${designStepBlock}${fixBlock}${auditFixBlock}${reviewFixBlock}`
@@ -2182,7 +2190,18 @@ if (after('plan', entryStage)) {
       samTargetFiles = sam.targetFiles
       samAbsorbedIssues = safeAbsorbedIssues(sam.absorbedIssues, issue)
 
-      const planCheck = await callAgentSafe(
+      // #153: the gate judges only the returned text. A summary/pointer plan that lacks the checklist
+      // lines Sam also returned is refused here (no plan-check call) and looped back to Sam.
+      const missingChecklist = planMissingChecklistLines(sam.plan, sam.acceptanceChecklist)
+      if (missingChecklist.length > 0) {
+        log(`Plan-verification gate: returned plan lacks ${missingChecklist.length} acceptance checklist line(s) Sam also returned (summary/pointer plan) — refusing without a plan-check call`)
+      }
+      const planCheck = missingChecklist.length > 0
+        ? {
+            verdict: 'NOT_CONFORMING',
+            issues: [`The returned plan field is a summary/pointer, not the full plan: ${missingChecklist.length} acceptance checklist line(s) you returned are absent from it. Return the FULL artifact text from "${planPath}" in the plan field, including the acceptance checklist and the Proof log.`],
+          }
+        : await callAgentSafe(
         'planCheck',
         `You are a cheap, binary conformance gate on Sam's plan for issue #${issue} — verify it against the plan text below (authoritative; do NOT re-read the issue from GitHub).\n\n` +
           `PLAN:\n${samPlan}\n\n` +
