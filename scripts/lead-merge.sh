@@ -3,6 +3,10 @@
 # Run from a checkout of the PR head branch. Steps, each exit code checked:
 #   1. acceptance checklist via scripts/lib/acceptance-check.sh (same lib as the merge hook):
 #      any `- [ ]` between the acceptance markers, or missing markers, refuses.
+#   1a. review freshness (#157, scripts/lib/review-check.sh, same lib as the merge hook): the latest
+#      `<!-- pipeline-review-round pr=<N> sha=<40hex> -->` comment (Morgan's verdict; the squash note re-attests the
+#      squashed head) must name the PR head as the API reports it before any script commit; refuses `FAIL: review-stale`.
+#      A head holding only this script's own bump/merge commits after the reviewed sha (a re-run) is accepted.
 #   1b. declared exceptions (#122): each `exception: <what> — <why> — #N` line between the acceptance markers
 #      (optionally prefixed `- ` or `- [x] `; ` -- ` is accepted as separator too) must parse, name an OPEN issue
 #      #N labelled `tech-debt` (REST), and the PR diff (`git diff origin/main...HEAD`, added lines only) must hold a
@@ -14,7 +18,8 @@
 #      abort the merge and die. Exception: when only the version files (plugin.json, BUILD line)
 #      conflict (main bumped too), take main's copy; step 4 recomputes them. No `gh pr update-branch`:
 #      the local merge already makes the branch current, and bumping before it always conflicted.
-#   4. bump from the merged tree: patch+1 over max(branch, origin/main) in .claude-plugin/plugin.json
+#   4. bump from the merged tree: next version over max(branch, origin/main) (semver 2.0.0 precedence: X.Y.Z -> patch+1,
+#      X.Y.Z-beta.N -> X.Y.Z-beta.(N+1)) in .claude-plugin/plugin.json
 #      + BUILD line of workflows/deliver-pipeline.js (cutFrom = origin/main short sha), commit
 #      `chore: bump X (lead-merge)`. Idempotent: skipped when the branch is already above origin/main
 #      via such a bump commit. Consumer repos (#145): no .claude-plugin/plugin.json in the merged tree ->
@@ -35,8 +40,8 @@
 #   latest verdict comment, ticks the boxes it lists as proven, then RE-FETCHES the body and re-runs the step-1 gate,
 #   which still refuses any box left open. Without the flag nothing changes (step 1 refuses first).
 #   - Comment pick (REST `issues/<pr>/comments --paginate`): the LAST comment whose first line is exactly
-#     `<!-- pipeline-review-round pr=<N> -->` AND that has at least 2 non-empty lines after the marker (Nick's push-note
-#     reuses the marker but is one line, so it is skipped). None found: refused.
+#     `<!-- pipeline-review-round pr=<N> -->` (with or without ` sha=<40hex>`) AND that has at least 2 non-empty lines
+#     after the marker (Nick's push-note reuses the marker but is one line, so it is skipped). None found: refused.
 #   - Matching rule (exact, structured; Morgan's template line for a proven-untickable box):
 #       `- [ ] **<box text verbatim>** — verified, tick pending (permissions): <proof with a `command` and its output>`
 #     A box is ticked iff some line of that comment, after stripping the list prefix (`- `, `- [ ] `), `**` and backticks
@@ -57,6 +62,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib/acceptance-check.sh
 . "$SCRIPT_DIR/lib/acceptance-check.sh"
+# shellcheck source=lib/review-check.sh
+. "$SCRIPT_DIR/lib/review-check.sh"
 
 MANIFEST=".claude-plugin/plugin.json"
 WORKFLOW="workflows/deliver-pipeline.js"
@@ -96,6 +103,26 @@ if [ "$rc" -ne 0 ]; then
   fi
 fi
 
+# --- 1a. review freshness (#157) -------------------------------------------------
+# The latest review verdict must have been made on the PR head as it is NOW, i.e. before this script adds its own
+# merge-from-base and bump commits. Runs before the exceptions, the tick, and every fetch/merge/push. The comments read
+# here are the snapshot the tick step below picks its verdict from.
+lm_tmp="$(mktemp -d "${TMPDIR:-/tmp}/lead-merge.XXXXXX")"
+gh api "repos/$REPO/issues/$PR/comments" --paginate > "$lm_tmp/comments.json" || die "cannot read the comments of PR #$PR"
+pr_head="$(gh api "repos/$REPO/pulls/$PR" --jq .head.sha)" || die "cannot read the head sha of PR #$PR"
+rf="$(review_fresh_state "$PR" "$pr_head" < "$lm_tmp/comments.json")" || die "cannot parse the comments of PR #$PR"
+case "$rf" in
+  ok*) ;;
+  none) die "FAIL: review-stale: PR #$PR has no review marker carrying a head sha (first line '<!-- pipeline-review-round pr=$PR sha=<40hex> -->'); re-run the review; nothing bumped, nothing merged" ;;
+  *) reviewed="${rf#stale }"
+     # a re-run after a partial run: the head may hold this script's own bump/merge commits on top of the reviewed sha
+     hb="$(gh pr view "$PR" -R "$REPO" --json headRefName -q .headRefName)" || die "cannot read PR #$PR head branch"
+     git fetch origin "+refs/heads/$hb:refs/remotes/origin/$hb" "+refs/heads/main:refs/remotes/origin/main" >/dev/null 2>&1 || true
+     review_own_commits_only "$reviewed" "$pr_head" origin/main \
+       || die "FAIL: review-stale: the latest review was made on $reviewed but the PR head is $pr_head; re-review first; nothing bumped, nothing merged"
+     echo "lead-merge: head $pr_head only adds lead-merge's own commits to the reviewed $reviewed (a re-run)" ;;
+esac
+
 # --- 1b. declared exceptions (#122) -------------------------------------------
 # Format: `exception: <what> — <why> — #N` (em dash; ` -- ` also accepted). Only lines inside the acceptance markers.
 exc_fail() { echo "FAIL: declared-exception: $*" >&2; die "PR #$PR declared exception refused; nothing bumped, nothing merged"; }
@@ -133,21 +160,20 @@ fi
 
 # --- 1c. --tick-from-review (#9) -----------------------------------------------
 if [ "$TICK" -eq 1 ] && [ "$rc" -eq 1 ]; then
-  tick_tmp="$(mktemp -d "${TMPDIR:-/tmp}/lead-merge-tick.XXXXXX")"
-  gh api "repos/$REPO/issues/$PR/comments" --paginate > "$tick_tmp/comments.json" || die "cannot read the comments of PR #$PR"
+  tick_tmp="$lm_tmp"   # comments.json was read in step 1a: same snapshot as the freshness check
   pick_rc=0
   PR="$PR" python3 - "$tick_tmp/comments.json" "$tick_tmp/verdict_at.txt" > "$tick_tmp/review.txt" <<'PY' || pick_rc=$?
-import json, os, sys
+import json, os, re, sys
 raw, dec, i, comments = open(sys.argv[1]).read(), json.JSONDecoder(), 0, []
 while i < len(raw):
     if raw[i].isspace():
         i += 1; continue
     obj, i = dec.raw_decode(raw, i)
     comments.extend(obj if isinstance(obj, list) else [obj])
-marker = "<!-- pipeline-review-round pr=%s -->" % os.environ["PR"]
+marker = re.compile(r"<!-- pipeline-review-round pr=%s( sha=[0-9a-fA-F]{40})? -->" % os.environ["PR"])
 def marked(c):
     lines = (c.get("body") or "").replace("\r", "").split("\n")
-    return lines, bool(lines) and lines[0].strip() == marker
+    return lines, bool(lines) and bool(marker.fullmatch(lines[0].strip()))
 best = None
 for n, c in enumerate(comments):
     lines, is_marked = marked(c)
@@ -166,7 +192,7 @@ PY
     *) die "PR #$PR has no Morgan review comment (marker '<!-- pipeline-review-round pr=$PR -->' with a multi-line verdict); nothing ticked, nothing merged" ;;
   esac
   # the PR head must not be newer than the verdict (REST: pulls/<N> head sha -> commits/<sha> committer date)
-  head_sha="$(gh api "repos/$REPO/pulls/$PR" --jq .head.sha)" || die "cannot read the head sha of PR #$PR"
+  head_sha="$pr_head"
   head_date="$(gh api "repos/$REPO/commits/$head_sha" --jq .commit.committer.date)" || die "cannot read the commit date of $head_sha"
   verdict_at="$(cat "$tick_tmp/verdict_at.txt")"
   [ -n "$head_date" ] && [ -n "$verdict_at" ] || die "tick-from-review: cannot compare the head commit date with the verdict date; nothing ticked"
@@ -236,6 +262,8 @@ cur_branch="$(git rev-parse --abbrev-ref HEAD)"
 [ -z "$(git status --porcelain)" ] || die "working tree not clean"
 git fetch origin "+refs/heads/$head_branch:refs/remotes/origin/$head_branch" || die "git fetch origin $head_branch failed"
 local_sha="$(git rev-parse HEAD)"; remote_sha="$(git rev-parse "refs/remotes/origin/$head_branch")"
+# the head the review check (step 1a) read must be the head this script goes on with (a push in between = re-run)
+[ "$remote_sha" = "$pr_head" ] || die "FAIL: review-stale: the PR head moved to $remote_sha after the review check read $pr_head; re-run"
 if [ "$local_sha" != "$remote_sha" ]; then
   if git merge-base --is-ancestor "$local_sha" "$remote_sha"; then
     git merge --ff-only "origin/$head_branch" || die "fast-forward to origin/$head_branch failed"
@@ -262,13 +290,33 @@ if ! git merge --no-edit origin/main; then
 fi
 
 ver_of() { python3 -c "import json,sys; print(json.load(sys.stdin).get('version',''))"; }
-# semver_gt A B -> rc 0 iff A > B (numeric x.y.z)
-semver_gt() {
-  local IFS=.; set -- $1 $2
-  local a1=${1:-0} a2=${2:-0} a3=${3:-0} b1=${4:-0} b2=${5:-0} b3=${6:-0}
-  [ "$a1" -ne "$b1" ] && { [ "$a1" -gt "$b1" ]; return; }
-  [ "$a2" -ne "$b2" ] && { [ "$a2" -gt "$b2" ]; return; }
-  [ "$a3" -gt "$b3" ]
+# semver valid V | semver gt A B (rc 0 iff A > B) | semver next V (prints the next version); rc 2 = not a semver.
+# Semver 2.0.0 precedence (section 11): a prerelease sorts below its release, numeric identifiers compare as numbers,
+# build metadata is ignored. next: X.Y.Z -> X.Y.(Z+1); X.Y.Z-id.N -> X.Y.Z-id.(N+1); X.Y.Z-id (no numeric tail) -> X.Y.Z-id.1.
+semver() {
+  python3 - "$@" <<'PYSEMVER'
+import re, sys
+def parse(v):
+    m = re.match(r"^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z.-]+)?$", v)
+    if not m:
+        sys.exit(2)
+    return [int(m.group(1)), int(m.group(2)), int(m.group(3))], m.group(4).split(".") if m.group(4) else []
+def key(v):
+    core, pre = parse(v)
+    return (core, 0 if pre else 1, [(0, int(i), "") if i.isdigit() else (1, 0, i) for i in pre])
+op = sys.argv[1]
+if op == "valid":
+    parse(sys.argv[2])
+elif op == "gt":
+    sys.exit(0 if key(sys.argv[2]) > key(sys.argv[3]) else 1)
+elif op == "next":
+    core, pre = parse(sys.argv[2])
+    if not pre:
+        print("%d.%d.%d" % (core[0], core[1], core[2] + 1))
+    else:
+        pre = pre[:-1] + [str(int(pre[-1]) + 1)] if pre[-1].isdigit() else pre + ["1"]
+        print("%d.%d.%d-%s" % (core[0], core[1], core[2], ".".join(pre)))
+PYSEMVER
 }
 
 # --- 4. bump from the merged tree (idempotent; plugin repo only, #145) ----------
@@ -278,18 +326,16 @@ else
 main_ver="$(git show "origin/main:$MANIFEST" | ver_of)"
 branch_ver="$(ver_of < "$MANIFEST")"
 [ -n "$main_ver" ] && [ -n "$branch_ver" ] || die "cannot read versions (main='$main_ver' branch='$branch_ver')"
+{ semver valid "$main_ver" && semver valid "$branch_ver"; } || die "version is not semver (main='$main_ver' branch='$branch_ver')"
 have_build=0
 if [ -f "$WORKFLOW" ] && grep -q '^const BUILD' "$WORKFLOW"; then have_build=1; fi
 
-if semver_gt "$branch_ver" "$main_ver" && git log -n 50 --format=%s origin/main..HEAD | grep -qxF "chore: bump $branch_ver (lead-merge)"; then
+if semver gt "$branch_ver" "$main_ver" && git log -n 50 --format=%s origin/main..HEAD | grep -qxF "chore: bump $branch_ver (lead-merge)"; then
   echo "lead-merge: bump commit for $branch_ver already on the branch, skipping bump"
 else
   base_ver="$main_ver"
-  if semver_gt "$branch_ver" "$main_ver"; then base_ver="$branch_ver"; fi
-  IFS=. read -r v1 v2 v3 <<EOV
-$base_ver
-EOV
-  new_ver="$v1.$v2.$((v3 + 1))"
+  if semver gt "$branch_ver" "$main_ver"; then base_ver="$branch_ver"; fi
+  new_ver="$(semver next "$base_ver")" || die "cannot compute the next version of '$base_ver'"
   cut_from="$(git rev-parse --short origin/main)"
   NEW_VER="$new_ver" CUT_FROM="$cut_from" MANIFEST="$MANIFEST" WORKFLOW="$WORKFLOW" HAVE_BUILD="$have_build" python3 - <<'PY' || die "bump edit failed"
 import os, re, sys

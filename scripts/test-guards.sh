@@ -78,6 +78,36 @@ if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: version-floor'; then ok "low
 OUT="$(GUARDS_ONLY=version GUARDS_BASE_MANIFEST="$T/m-old.json" GUARDS_BRANCH_MANIFEST="$T/m-new.json" node scripts/guards.cjs 2>&1)"; RC=$?
 if [ "$RC" -eq 0 ]; then ok "higher version (0.8.10 > 0.8.5, numeric compare) -> ok"; else ko "higher version (rc=$RC) $OUT"; fi
 
+# version floor, semver 2.0.0 §11 precedence (prerelease channel 1.0.0-beta.N): <base> <branch> <ok|fail>
+while read -r vb vn want; do
+  printf '{"version":"%s"}\n' "$vb" > "$T/vf-base.json"; printf '{"version":"%s"}\n' "$vn" > "$T/vf-branch.json"
+  OUT="$(GUARDS_ONLY=version GUARDS_BASE_MANIFEST="$T/vf-base.json" GUARDS_BRANCH_MANIFEST="$T/vf-branch.json" node scripts/guards.cjs 2>&1)"; RC=$?
+  if [ "$want" = ok ] && [ "$RC" -eq 0 ]; then ok "version floor: branch $vn vs main $vb -> ok"
+  elif [ "$want" = fail ] && [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: version-floor'; then ok "version floor: branch $vn vs main $vb -> FAIL"
+  else ko "version floor: branch $vn vs main $vb expected $want (rc=$RC) $OUT"; fi
+done <<'EOF'
+0.8.113 1.0.0-beta.1 ok
+1.0.0-beta.1 1.0.0-beta.1 ok
+1.0.0-beta.1 1.0.0-beta.2 ok
+1.0.0-beta.2 1.0.0-beta.1 fail
+1.0.0-beta.2 1.0.0-beta.10 ok
+1.0.0-beta.10 1.0.0-beta.2 fail
+1.0.0-beta.9 1.0.0 ok
+1.0.0 1.0.0-beta.9 fail
+1.0.0-alpha.9 1.0.0-beta.1 ok
+1.0.0-beta.1 1.0.0-alpha.9 fail
+1.0.0-beta 1.0.0-beta.1 ok
+1.0.0-beta.1 1.0.0-beta fail
+1.0.0-1 1.0.0-beta ok
+1.0.0-beta 1.0.0-1 fail
+1.0.0+build.5 1.0.0 ok
+1.0.0 1.0.0+build.5 ok
+1.0.0 1.0.0garbage fail
+EOF
+printf '{"version":"1.0.0-beta.1"}\n' > "$T/vf-base.json"; printf '{"version":"1.0.0-beta.2"}\n' > "$T/vf-branch.json"
+OUT="$(GUARDS_ONLY=version GUARDS_BASE_MANIFEST="$T/vf-base.json" GUARDS_BRANCH_MANIFEST="$T/vf-branch.json" node scripts/guards.cjs 2>&1)"
+if [ "$OUT" = "PASS: version-floor: branch 1.0.0-beta.2 >= origin/main 1.0.0-beta.1" ]; then ok "version floor message names the full prerelease versions"; else ko "version floor message: $OUT"; fi
+
 # ---- R1: comments and multi-line calls ----
 # block comments are skipped by all three counters
 cp "$BASE" "$T/c1.js"
