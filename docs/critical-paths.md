@@ -5,6 +5,7 @@ by a test that runs in CI. Any change to this file by an agent is a one-way door
 at the design step until a human approves.
 
 Format: `- CP-<n> — <use case> — proof: <test id | fixture | script> — expects: <result>`.
+`critical-paths-proven` checks that the first proof a line names exists; the `expects:` column is not checked.
 
 - CP-1 — a labelled issue with a confirmed diagnosis and a GO plan reaches the plan gate — proof: `fixtures/smoke/semi-plan-ready.json` — expects: `plan-ready`
 - CP-2 — a PR whose every acceptance box Morgan proved reaches the merge queue — proof: `fixtures/smoke/auto-lgtm.json` — expects: `ready`
