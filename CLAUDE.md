@@ -1,26 +1,17 @@
 # CLAUDE.md — working on lgtmgate itself
 
+@VISION.md
+@ARCHITECTURE.md
+
 Runbook for the Lead (the session that changes this repo or dispatches its pipeline).
 - Launching and supervising a run: `commands/deliver.md`.
-- Design decisions: `DESIGN.md` (to come, #77).
-
-## Three rules (they bind the Lead, Sam, Nick and Morgan alike)
-
-- **R1, ratchet**: three counters never go up against `origin/main`: `await agent(` outside
-  `callAgent`, `simulate.*` seam keys, regex parsing of agent output outside markers.
-- **R2, a bug is a fixture**: an engine bug is fixed with a raw fixture replayed red on the base and
-  green on the branch; without it the issue stays open.
-- **R3, one raw stop signal**: a diff that adds a status, an `agent()` call, a hook or a seam stops
-  at the design step and goes to the maintainer.
-
-Default to the smallest change that removes the cause class; go structural only when the code
-requires it.
+- Default to the smallest change that removes the cause class; a shortcut is a declared exception, never a silent one.
+- A rule enters at its second occurrence, with its check; one that changed no result over 20 PRs is reviewed for removal.
 
 ## Merge
 
-- Only through `scripts/lead-merge.sh` once it exists (#74). Until then: every acceptance box
-  checked with its proof (command + output) in the PR body, then `gh pr merge <N> --merge` in a
-  separate call. Never `--auto`, never a squash on a shared branch, never a rebase.
+- Only through `scripts/lead-merge.sh`: every acceptance box checked with its proof (command +
+  output, or the artifact) in the PR body. Never `--auto`, never a squash on a shared branch, never a rebase.
 - After a merge on `main`, bring the other open PRs up to date (merge, not rebase) before merging.
 
 ## Escalation
@@ -28,3 +19,4 @@ requires it.
 - Capture first: copy the raw run data (`.pipeline/`) into a fixture before any decision on an
   `escalate` or `*-died` status, then decide.
 - Every real escalation ends as a replayed fixture in CI.
+- An escalation that trades off a `VISION.md` principle names it.

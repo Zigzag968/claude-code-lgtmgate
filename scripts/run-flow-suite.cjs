@@ -119,7 +119,11 @@ async function main() {
   const workflow = buildWorkflowMock(log)
   // fpSource: raw pipeline text for source-anchored cases (#214) — agentDeathRouting table and
   // STRUCTURED_OUTPUT_MANDATE are unreachable through simulate-mode workflow() runs.
-  const suiteArgs = { fpScriptPath: fpPath, fpSource: fs.readFileSync(fpPath, 'utf-8') }
+  // repoConfig: this repo's own `.claude/pipeline.config.json` (null if absent), for cases that pin the
+  // repo's declared `oneWayDoorPaths` and `oneWayDoorKinds` (T77b, T77f, T77m); the engine has no filesystem.
+  let repoConfig = null
+  try { repoConfig = JSON.parse(fs.readFileSync(path.resolve('.claude/pipeline.config.json'), 'utf-8')) } catch (_) { repoConfig = null }
+  const suiteArgs = { fpScriptPath: fpPath, fpSource: fs.readFileSync(fpPath, 'utf-8'), repoConfig }
 
   // eslint-disable-next-line no-new-func
   const suiteFn = new Function(

@@ -11,6 +11,12 @@
     "format": "echo 'no formatter configured'"
   },
   "ciChecks": ["guards", "smoke-install"],
+  "oneWayDoorKinds": ["status", "agent", "hook", "seam"],
+  "oneWayDoorPaths": [
+    "hooks/**",
+    "!hooks/test-*",
+    "docs/critical-paths.md"
+  ],
   "provision": {
     "extraLinks": []
   },

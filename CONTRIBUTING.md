@@ -5,6 +5,9 @@ please be patient with review times — see [GOVERNANCE](#maintainers--decisions
 
 By participating, you're expected to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 
+Before proposing a change, read [VISION.md](VISION.md) and [ARCHITECTURE.md](ARCHITECTURE.md); AI coding tools get the same
+pointer from [AGENTS.md](AGENTS.md).
+
 ## Ways to contribute
 
 - **Bug reports** — open an issue using the bug report template. Include your Claude Code version,

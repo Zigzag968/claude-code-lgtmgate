@@ -203,6 +203,7 @@ if (_gateProbe.status !== 'needs-revision') {
 // LOCAL: T54a/T54b/T54c/T54d agentType registry-gap harness signature replays (#54) — repo-local mechanism.
 // LOCAL: nick delivers with prNumber:0 + testsPass:true/false (no-PR terminal delivery) — repo-local mechanism.
 // LOCAL: T70a/T70b/T70c/T70d preflight.envSymlink gating (required/forbidden/ignore/invalid) — repo-local mechanism (#70).
+// LOCAL: T77b/T77f/T77m this repo's own oneWayDoorPaths / oneWayDoorKinds, read from SUITE_ARGS.repoConfig (passed only by this repo's scripts/run-flow-suite.cjs; absent = SKIP) — repo-local config (#77).
 // --- local-mechanism notes:end ---
 
 // 1. auto, sam:GO, morgan:[LGTM] → ready, full trace, no pause
@@ -2602,6 +2603,397 @@ await testCase('T97e no design-step signals (0/3, no immature API) → gate neve
   })
   const err = eq('status', r.status, 'plan-ready')
   return err ? err : { ok: true }
+})
+
+// T77 (#77, R3) — 5th design-step signal computed by the script from Sam's plan announcement and
+// targetFiles, against what the repo declares: `config.oneWayDoorKinds` (status|agent|hook|seam) and
+// `config.oneWayDoorPaths`, both default none. A declared kind announced, or a declared path targeted,
+// ends the run in design-step-required; a repo that declares nothing is never stopped nor asked.
+const T77_THEO = { confirmed: true, evidence: 'e', actualCause: '', persistentStateSignal: false, authSecurityBoundarySignal: false, deployConfigSignal: false, immatureVendorApiSignal: false }
+// #153: a plan returned by Sam must carry the checklist lines she also returns; a custom samPlan therefore
+// ends with the default simulated checklist, as the default simulated plan does.
+const T77_CK = '\n' + SIM_DEFAULTS.samAcceptanceChecklist
+// The four kinds the mechanism knows; T77a/T77d/T77k pin it with them explicitly, T77m pins that this
+// repo's own config still declares them.
+const T77_KINDS = ['status', 'agent', 'hook', 'seam']
+const T77_KCONFIG = { ...CONFIG, oneWayDoorKinds: T77_KINDS }
+// samOneWayDoorText / oneWayDoorKindsOf, extracted from the engine's pure `oneWayDoor` block (null when
+// the suite does not get the pipeline source).
+const t77Block = () => {
+  const src = SUITE_ARGS.fpSource
+  if (!src) return null
+  const block = extractBetween(src, '// --- oneWayDoor:start ---', '// --- oneWayDoor:end ---')
+  // eslint-disable-next-line no-new-func
+  return block ? new Function(block + '\nreturn { samOneWayDoorText, oneWayDoorKindsOf }')() : null
+}
+await testCase('T77a R3: a plan announcing a new status, kinds declared → design-step-required with a <=10-line summary', async () => {
+  const r = await run({
+    mode: 'semi',
+    config: T77_KCONFIG,
+    simulate: { theo: T77_THEO, sam: 'GO', samPlan: '## Plan\n1. add it\none-way-door: status — new `foo-blocked` terminal status\n' + T77_CK },
+  })
+  const e1 = eq('status', r.status, 'design-step-required')
+  const e2 = eq('oneWayDoorHits', JSON.stringify(r.oneWayDoorHits), JSON.stringify(['status']))
+  const e3 = String(r.reason || '').split('\n').length <= 10 && String(r.reason).includes('foo-blocked')
+    ? null : { ok: false, msg: `bad summary: ${JSON.stringify(r.reason)}` }
+  const err = e1 || e2 || e3
+  return err ? err : { ok: true }
+})
+
+// T77b / T77f / T77m use this repo's own declared paths and kinds (SUITE_ARGS.repoConfig, passed by
+// scripts/run-flow-suite.cjs): the engine knows no path and no kind by itself.
+const OWD_REPO_PATHS = Array.isArray(SUITE_ARGS.repoConfig?.oneWayDoorPaths) ? SUITE_ARGS.repoConfig.oneWayDoorPaths : null
+await testCase('T77b R3: targetFiles touching hooks/plugin-hooks.json with this repo\'s oneWayDoorPaths → design-step-required (path)', async () => {
+  if (!OWD_REPO_PATHS) {
+    log('SKIP — T77b: SUITE_ARGS.repoConfig.oneWayDoorPaths absent (suite not run via scripts/run-flow-suite.cjs from the repo root)')
+    return { ok: true }
+  }
+  for (const file of ['hooks/plugin-hooks.json', 'hooks/SessionStart/inject_stub.py', 'hooks/lib-worktree-root.sh']) {
+    const r = await run({
+      mode: 'semi',
+      config: { ...CONFIG, oneWayDoorPaths: OWD_REPO_PATHS },
+      simulate: { theo: T77_THEO, sam: 'GO', samPlan: 'plan\none-way-door: none' + T77_CK, samTargetFiles: [file] },
+    })
+    const err = eq(`status for ${file}`, r.status, 'design-step-required') || eq(`hits for ${file}`, JSON.stringify(r.oneWayDoorHits), JSON.stringify(['path']))
+    if (err) return err
+  }
+  return { ok: true }
+})
+
+await testCase('T77c R3 negative: no announcement (`one-way-door: none`, ordinary targets, test scripts under hooks/) → plan-ready, R3 does not trigger', async () => {
+  const r = await run({
+    mode: 'semi',
+    config: { ...T77_KCONFIG, oneWayDoorPaths: OWD_REPO_PATHS || [] },
+    simulate: { theo: T77_THEO, sam: 'GO', samPlan: 'plan\none-way-door: none' + T77_CK, samTargetFiles: ['workflows/deliver-pipeline.js', 'hooks/test-block-merge-unchecked.sh'] },
+  })
+  const err = eq('status', r.status, 'plan-ready')
+  return err ? err : { ok: true }
+})
+
+await testCase('T77d R3 + architectureDecisionApproved:true → an announced declared kind no longer stops the run', async () => {
+  const r = await run({
+    mode: 'semi',
+    config: T77_KCONFIG,
+    architectureDecisionApproved: true,
+    simulate: { theo: T77_THEO, sam: 'GO', samPlan: 'one-way-door: agent — new reviewer agent' + T77_CK },
+  })
+  const err = eq('status', r.status, 'plan-ready')
+  return err ? err : { ok: true }
+})
+
+// T77e (#77) — the product-direction line goes to Sam and Morgan only: Nick's prompt carries none, and no
+// prompt of the engine names docs/codemap.md. The engine imports no doc: agents receive each repo's own
+// instructions natively. The rules themselves live in the repo's docs, never in the prompt (no DEBT marker).
+await testCase('T77e Nick prompt carries no product-direction line and names no doc; Sam and Morgan get the tool-neutral line', async () => {
+  const r = await run({
+    entryStage: 'dev',
+    mode: 'auto',
+    simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] },
+  })
+  const p = String(r.nickPromptPreview || '')
+  if (!p) return { ok: false, msg: 'nickPromptPreview empty' }
+  if (p.includes('PRODUCT DIRECTION')) return { ok: false, msg: 'nickPromptPreview carries the product-direction line; it is for Sam and Morgan only' }
+  if (p.includes('docs/codemap.md')) return { ok: false, msg: 'nickPromptPreview names docs/codemap.md; no agent prompt gets it' }
+  if (p.includes('DEBT(#')) return { ok: false, msg: 'nickPromptPreview carries DEBT marker syntax; the rule belongs to the repo docs' }
+  const src = SUITE_ARGS.fpSource
+  if (!src) {
+    log('SKIP — T77e source checks: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  if (src.includes('docs/codemap.md')) return { ok: false, msg: 'workflow source names docs/codemap.md; no agent prompt gets it' }
+  if (src.includes('ARCH_IMPORT_')) return { ok: false, msg: 'an ARCH_IMPORT_* read instruction is still present; the engine imports no doc' }
+  for (const use of ['${SAM_ONE_WAY_DOOR}${SAM_PRODUCT_DIRECTION}', '`${MORGAN_PRODUCT_DIRECTION}`']) {
+    if (!src.includes(use)) return { ok: false, msg: `workflow source lacks ${use}` }
+  }
+  return { ok: true }
+})
+
+// T77f (#77) — docs/critical-paths.md is a one-way door of this repo (its oneWayDoorPaths): a plan targeting
+// it stops at the design step, detected from targetFiles alone (no announcement needed).
+await testCase('T77f R3: targetFiles touching docs/critical-paths.md with this repo\'s oneWayDoorPaths → design-step-required (path)', async () => {
+  if (!OWD_REPO_PATHS) {
+    log('SKIP — T77f: SUITE_ARGS.repoConfig.oneWayDoorPaths absent (suite not run via scripts/run-flow-suite.cjs from the repo root)')
+    return { ok: true }
+  }
+  const r = await run({
+    mode: 'semi',
+    config: { ...CONFIG, oneWayDoorPaths: OWD_REPO_PATHS },
+    simulate: { theo: T77_THEO, sam: 'GO', samPlan: 'plan\none-way-door: none' + T77_CK, samTargetFiles: ['docs/critical-paths.md'] },
+  })
+  const err = eq('status', r.status, 'design-step-required') || eq('hits', JSON.stringify(r.oneWayDoorHits), JSON.stringify(['path']))
+  return err ? err : { ok: true }
+})
+
+// T77h (#77, consumer neutrality) — the one-way-door PATHS are per-project config (`oneWayDoorPaths`), never
+// engine knowledge: a consumer config without the key (or with `[]`) is not stopped by a plan that touches
+// hooks/ scripts or docs/critical-paths.md, whatever Sam targets.
+await testCase('T77h R3 consumer: no oneWayDoorPaths in config, plan touches hooks/foo.sh + docs/critical-paths.md → no design-step stop', async () => {
+  for (const config of [CONFIG, { ...CONFIG, oneWayDoorPaths: [] }]) {
+    const r = await run({
+      mode: 'semi',
+      config,
+      simulate: { theo: T77_THEO, sam: 'GO', samPlan: 'plan\none-way-door: none' + T77_CK, samTargetFiles: ['hooks/foo.sh', 'hooks/plugin-hooks.json', 'docs/critical-paths.md'] },
+    })
+    const err = eq('status', r.status, 'plan-ready') || eq('oneWayDoorHits', r.oneWayDoorHits, undefined)
+    if (err) return err
+  }
+  return { ok: true }
+})
+
+await testCase('T77i R3: oneWayDoorPaths set to hooks/*.sh + docs/critical-paths.md, same plan → design-step-required (path), summary names the file', async () => {
+  const r = await run({
+    mode: 'semi',
+    config: { ...CONFIG, oneWayDoorPaths: ['hooks/*.sh', 'docs/critical-paths.md'] },
+    simulate: { theo: T77_THEO, sam: 'GO', samPlan: 'plan\none-way-door: none' + T77_CK, samTargetFiles: ['hooks/foo.sh', 'docs/critical-paths.md'] },
+  })
+  const e1 = eq('status', r.status, 'design-step-required') || eq('hits', JSON.stringify(r.oneWayDoorHits), JSON.stringify(['path']))
+  if (e1) return e1
+  const lines = String(r.reason || '').split('\n')
+  return lines.length <= 10 && String(r.reason).includes('hooks/foo.sh') && String(r.reason).includes('oneWayDoorPaths: hooks/*.sh')
+    ? { ok: true } : { ok: false, msg: `bad summary: ${JSON.stringify(r.reason)}` }
+})
+
+// T77j — matching style of an entry: `<dir>/` prefix, `*` within a segment, `**` across segments, `?` one
+// character, `!<entry>` exclusion that wins over any other entry, anything else an exact path.
+await testCase('T77j R3 path entries: prefix, *, **, ?, ! exclusion and exact path match as documented', async () => {
+  const config = { ...CONFIG, oneWayDoorPaths: ['hooks/*.sh', '!hooks/test-*', 'docs/', 'src/**.gen.ts', 'lib/v?.js', 'Makefile'] }
+  const stops = async (file) => {
+    const r = await run({
+      mode: 'semi',
+      config,
+      simulate: { theo: T77_THEO, sam: 'GO', samPlan: 'plan\none-way-door: none' + T77_CK, samTargetFiles: [file] },
+    })
+    return r.status === 'design-step-required'
+  }
+  const expectations = [
+    ['hooks/a.sh', true], ['hooks/test-a.sh', false], ['hooks/sub/a.sh', false], ['hooks/a.py', false],
+    ['docs/x/y.md', true], ['documents/x.md', false],
+    ['src/a/b/c.gen.ts', true], ['src/c.gen.ts', true], ['src/c.ts', false],
+    ['lib/v1.js', true], ['lib/v10.js', false], ['lib/v/.js', false],
+    ['Makefile', true], ['sub/Makefile', false],
+  ]
+  for (const [file, want] of expectations) {
+    const got = await stops(file)
+    if (got !== want) return { ok: false, msg: `oneWayDoorPaths vs ${file}: stops=${got}, expected ${want}` }
+  }
+  return { ok: true }
+})
+
+// T77k — with the four kinds declared, each announced kind stops the run; `none`, a placeholder and any
+// other word (`guard`, `rule`, `migration`) have no effect, alone or next to a real kind.
+await testCase('T77k R3 announcement, four kinds declared: only status|agent|hook|seam stop the run; none, a placeholder and any other word do not', async () => {
+  const runPlan = async (planText) => run({
+    mode: 'semi',
+    config: T77_KCONFIG,
+    simulate: { theo: T77_THEO, sam: 'GO', samPlan: `plan\n${planText}` + T77_CK },
+  })
+  for (const kind of T77_KINDS) {
+    const r = await runPlan(`one-way-door: ${kind} — new ${kind}`)
+    const err = eq(`status for kind ${kind}`, r.status, 'design-step-required') || eq(`hits for ${kind}`, JSON.stringify(r.oneWayDoorHits), JSON.stringify([kind]))
+    if (err) return err
+  }
+  for (const line of ['one-way-door: none', 'one-way-door: none — nothing here', 'announce with `one-way-door: <kind> — <what>`',
+    'one-way-door: guard — new guard', 'one-way-door: rule — new rule', 'one-way-door: migration — add the users table']) {
+    const r = await runPlan(line)
+    const err = eq(`status for ${JSON.stringify(line)}`, r.status, 'plan-ready') || eq(`hits for ${JSON.stringify(line)}`, r.oneWayDoorHits, undefined)
+    if (err) return err
+  }
+  const mixed = await runPlan('one-way-door: guard — new guard\none-way-door: hook — new hook')
+  return eq('status for guard + hook', mixed.status, 'design-step-required') || eq('hits for guard + hook', JSON.stringify(mixed.oneWayDoorHits), JSON.stringify(['hook'])) || { ok: true }
+})
+
+// T77l (#77, consumer neutrality) — the one-way-door KINDS are per-project config too: a consumer config
+// without `oneWayDoorKinds` (or with `[]`) gives Sam no kind question at all, and an announced
+// `one-way-door: hook` (an application webhook, say) does not stop the run.
+await testCase('T77l R3 consumer: no oneWayDoorKinds in config → no kind question for Sam, `one-way-door: hook` does not stop the run', async () => {
+  for (const config of [CONFIG, { ...CONFIG, oneWayDoorKinds: [] }]) {
+    const r = await run({
+      mode: 'semi',
+      config,
+      simulate: { theo: T77_THEO, sam: 'GO', samPlan: 'plan\none-way-door: hook — new webhook handler\none-way-door: status — new order status' + T77_CK },
+    })
+    const err = eq('status', r.status, 'plan-ready') || eq('oneWayDoorHits', r.oneWayDoorHits, undefined)
+    if (err) return err
+    if ((r.trace || []).some(t => String(t).startsWith('one-way-door:'))) return { ok: false, msg: `one-way-door trace on a consumer run: ${JSON.stringify(r.trace)}` }
+  }
+  const src = SUITE_ARGS.fpSource
+  if (!src) {
+    log('SKIP — T77l prompt checks: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  if (!src.split('\n').includes('const SAM_ONE_WAY_DOOR = samOneWayDoorText(config.oneWayDoorKinds)')) {
+    return { ok: false, msg: 'SAM_ONE_WAY_DOOR is not built from config.oneWayDoorKinds' }
+  }
+  const fns = t77Block()
+  if (!fns) return { ok: false, msg: 'oneWayDoor:start/:end markers not found in pipeline source' }
+  for (const raw of [undefined, null, [], ['bogus'], 'hook']) {
+    const text = fns.samOneWayDoorText(raw)
+    if (text !== '') return { ok: false, msg: `samOneWayDoorText(${JSON.stringify(raw)}) asks Sam about kinds: ${JSON.stringify(text)}` }
+  }
+  return { ok: true }
+})
+
+// T77m (#77) — this repo still declares the four kinds (its own `.claude/pipeline.config.json`): each one
+// announced stops the run, and Sam is asked about all four.
+await testCase('T77m R3 this repo: its oneWayDoorKinds declare status, agent, hook, seam and each stops the run', async () => {
+  if (!SUITE_ARGS.repoConfig) {
+    log('SKIP — T77m: SUITE_ARGS.repoConfig absent (suite not run via scripts/run-flow-suite.cjs from the repo root)')
+    return { ok: true }
+  }
+  const kinds = SUITE_ARGS.repoConfig.oneWayDoorKinds
+  const e0 = eq('repo oneWayDoorKinds', JSON.stringify(kinds), JSON.stringify(T77_KINDS))
+  if (e0) return e0
+  const config = { ...CONFIG, oneWayDoorKinds: kinds, oneWayDoorPaths: OWD_REPO_PATHS || [] }
+  for (const kind of T77_KINDS) {
+    const r = await run({
+      mode: 'semi',
+      config,
+      simulate: { theo: T77_THEO, sam: 'GO', samPlan: `plan\none-way-door: ${kind} — new ${kind}` + T77_CK, samTargetFiles: ['workflows/deliver-pipeline.js'] },
+    })
+    const err = eq(`status for ${kind}`, r.status, 'design-step-required') || eq(`hits for ${kind}`, JSON.stringify(r.oneWayDoorHits), JSON.stringify([kind]))
+    if (err) return err
+  }
+  const fns = t77Block()
+  if (!fns) {
+    log('SKIP — T77m prompt checks: oneWayDoor block not available (SUITE_ARGS.fpSource absent)')
+    return { ok: true }
+  }
+  const text = fns.samOneWayDoorText(kinds)
+  for (const kind of [...T77_KINDS, 'none']) {
+    if (!text.includes(`\`one-way-door: ${kind}`)) return { ok: false, msg: `this repo's Sam is not asked to announce \`one-way-door: ${kind}\`: ${JSON.stringify(text)}` }
+  }
+  return { ok: true }
+})
+
+// T77o (#77) — a non-empty list declares exactly what is asked and what stops: a repo declaring only `hook`
+// asks Sam about `hook` alone and is stopped by `one-way-door: hook`, never by `one-way-door: status`.
+await testCase('T77o R3 subset: oneWayDoorKinds ["hook"] → only hook is asked and stops the run', async () => {
+  const config = { ...CONFIG, oneWayDoorKinds: ['HOOK', 'bogus', 'hook', 7] }
+  const runPlan = (line) => run({ mode: 'semi', config, simulate: { theo: T77_THEO, sam: 'GO', samPlan: `plan\n${line}` + T77_CK } })
+  const rs = await runPlan('one-way-door: status — new status')
+  const e1 = eq('status for an undeclared kind', rs.status, 'plan-ready') || eq('hits for an undeclared kind', rs.oneWayDoorHits, undefined)
+  if (e1) return e1
+  const rh = await runPlan('one-way-door: hook — new hook')
+  const e2 = eq('status for the declared kind', rh.status, 'design-step-required') || eq('hits for the declared kind', JSON.stringify(rh.oneWayDoorHits), JSON.stringify(['hook']))
+  if (e2) return e2
+  const fns = t77Block()
+  if (!fns) {
+    log('SKIP — T77o prompt checks: oneWayDoor block not available (SUITE_ARGS.fpSource absent)')
+    return { ok: true }
+  }
+  const e3 = eq('normalized kinds', JSON.stringify(fns.oneWayDoorKindsOf(config.oneWayDoorKinds)), JSON.stringify(['hook']))
+  if (e3) return e3
+  const text = fns.samOneWayDoorText(config.oneWayDoorKinds)
+  if (!text.includes('`one-way-door: hook — <what>`') || !text.includes('`one-way-door: none`')) return { ok: false, msg: `hook question missing: ${JSON.stringify(text)}` }
+  for (const other of ['status', 'agent', 'seam']) {
+    if (text.includes(`one-way-door: ${other}`)) return { ok: false, msg: `undeclared kind ${other} asked: ${JSON.stringify(text)}` }
+  }
+  return { ok: true }
+})
+
+// T77n (#77) — the repo's stated product direction is advisory for Morgan: her line (both review prompts)
+// signals a conflict, never blocks on it, and keeps blocking to the acceptance checklist and the CI; Sam's
+// names the direction or principle a plan trades off, only if the project instructions state one.
+// Source-anchored: the engine reads no file in simulate mode.
+await testCase('T77n product direction is advisory for Morgan (signalled, never blocking); Sam names the principle traded off', async () => {
+  const src = SUITE_ARGS.fpSource
+  if (!src) {
+    log('SKIP — T77n: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const lines = src.split('\n')
+  const morgan = lines.find(l => l.startsWith('const MORGAN_PRODUCT_DIRECTION = ')) || ''
+  const sam = lines.find(l => l.startsWith('const SAM_PRODUCT_DIRECTION = ')) || ''
+  if (!morgan || !sam) return { ok: false, msg: 'MORGAN_PRODUCT_DIRECTION or SAM_PRODUCT_DIRECTION missing' }
+  for (const must of ["signal a conflict with the repo's stated product direction, never block on it",
+    "block on the acceptance checklist, the CI, the repo's conventions rule and the regression guard", 'never in `items`']) {
+    if (!morgan.includes(must)) return { ok: false, msg: `MORGAN_PRODUCT_DIRECTION lacks: ${must}` }
+  }
+  // No sentence ties the product direction to a blocking verdict.
+  for (const sentence of morgan.split('. ')) {
+    for (const blocking of ['FAIL', 'REQUIRED_CHANGES', 'REGRESSION_DETECTED']) {
+      if (sentence.includes(blocking)) return { ok: false, msg: `MORGAN_PRODUCT_DIRECTION ties the direction to ${blocking}: ${sentence.slice(0, 160)}` }
+    }
+  }
+  const morganUses = src.split('`${MORGAN_PRODUCT_DIRECTION}`').length - 1
+  if (morganUses !== 2) return { ok: false, msg: `MORGAN_PRODUCT_DIRECTION used in ${morganUses} review prompt(s), expected 2 (first review + re-review)` }
+  if (!sam.includes('if your project instructions state a product direction or principles, name the one your plan trades off')) {
+    return { ok: false, msg: 'SAM_PRODUCT_DIRECTION does not ask Sam, conditionally, to name the principle a plan trades off' }
+  }
+  const samUses = src.split('${SAM_PRODUCT_DIRECTION}').length - 1
+  if (samUses !== 1) return { ok: false, msg: `SAM_PRODUCT_DIRECTION used ${samUses} time(s), expected 1 (the scout prompt)` }
+  return { ok: true }
+})
+
+// T77g (#77, consumer neutrality) — a product direction is the TARGET repo's own, stated in its own
+// instructions, or absent. A run on a repo that states none behaves as it did before: the two
+// product-direction lines are conditional or advisory, carry no rule text of this repo, and require no read.
+// Source-anchored: the engine reads no file in simulate mode.
+await testCase('T77g consumer neutrality: a repo stating no product direction → same run; the product-direction lines name no rule of this repo', async () => {
+  const r = await run({
+    mode: 'auto',
+    simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] },
+  })
+  const e1 = eq('status', r.status, 'ready')
+  if (e1) return e1
+  const src = SUITE_ARGS.fpSource
+  if (!src) {
+    log('SKIP — T77g source checks: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const lines = src.split('\n')
+  for (const name of ['SAM_PRODUCT_DIRECTION', 'MORGAN_PRODUCT_DIRECTION']) {
+    const line = lines.find(l => l.startsWith(`const ${name} = `)) || ''
+    if (!line) return { ok: false, msg: `workflow source lacks const ${name}` }
+    for (const banned of ['callAgent', 'simulate', 'DEBT', 'R1', 'R2', 'R3', 'ratchet', 'lgtmgate', 'critical-paths', 'codemap', 'one-way',
+      'Never list', 'exception:', '.md', 'Read ', 'repo root']) {
+      if (line.includes(banned)) return { ok: false, msg: `${name} injects rule text of this repo or a required read (${banned}) into a consumer prompt` }
+    }
+  }
+  // The one-way-door announcement Sam gets is built from the repo's declared kinds only: with the four kinds
+  // it names exactly them and `none` (no arbitrary <kind>), and it carries no rule text of this repo.
+  if (!lines.includes('const SAM_ONE_WAY_DOOR = samOneWayDoorText(config.oneWayDoorKinds)')) return { ok: false, msg: 'SAM_ONE_WAY_DOOR is not built from config.oneWayDoorKinds' }
+  const fns = t77Block()
+  if (!fns) return { ok: false, msg: 'oneWayDoor:start/:end markers not found in pipeline source' }
+  const owd = fns.samOneWayDoorText(T77_KINDS)
+  for (const kind of [...T77_KINDS, 'none']) {
+    if (!owd.includes(`\`one-way-door: ${kind}`)) return { ok: false, msg: `samOneWayDoorText(four kinds) does not announce \`one-way-door: ${kind}\`` }
+  }
+  if (owd.includes('<kind>')) return { ok: false, msg: 'samOneWayDoorText names an arbitrary <kind>: only declared kinds and none are parsed' }
+  for (const banned of ['callAgent', 'simulate', 'DEBT', 'R1', 'R2', 'R3', 'ratchet', 'lgtmgate', 'critical-paths', 'codemap', 'ARCHITECTURE.md', 'VISION.md']) {
+    if (owd.includes(banned)) return { ok: false, msg: `samOneWayDoorText injects rule text of this repo (${banned}) into a prompt` }
+  }
+  return { ok: true }
+})
+
+// T77p (#77, consumer neutrality) — the engine imposes no file name on a consumer: agents receive each
+// repo's own instructions natively, so no prompt of the engine names VISION.md, ARCHITECTURE.md or
+// AGENTS.md. Every prompt is built from the engine source, so the source naming none of them (comments
+// included) proves it; the prompt previews of a full run and of a plan-gate run are checked too.
+await testCase('T77p consumer neutrality: no engine prompt names VISION.md, ARCHITECTURE.md or AGENTS.md', async () => {
+  const names = ['VISION.md', 'ARCHITECTURE.md', 'AGENTS.md']
+  const runs = [
+    await run({ mode: 'auto', simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] } }),
+    await run({ mode: 'semi', config: T77_KCONFIG, simulate: { theo: T77_THEO, sam: 'GO', samPlan: 'plan\none-way-door: none' + T77_CK } }),
+  ]
+  const e1 = eq('full run status', runs[0].status, 'ready') || eq('plan-gate run status', runs[1].status, 'plan-ready')
+  if (e1) return e1
+  if (!String(runs[0].nickPromptPreview || '')) return { ok: false, msg: 'nickPromptPreview empty on the full run' }
+  for (const r of runs) {
+    const out = JSON.stringify(r)
+    const hit = names.find(n => out.includes(n))
+    if (hit) return { ok: false, msg: `run result (prompt previews included) names ${hit}` }
+  }
+  const src = SUITE_ARGS.fpSource
+  if (!src) {
+    log('SKIP — T77p source checks: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  for (const n of names) {
+    const line = src.split('\n').find(l => l.includes(n))
+    if (line !== undefined) return { ok: false, msg: `engine source names ${n}: ${line.trim().slice(0, 120)}` }
+  }
+  return { ok: true }
 })
 
 // T98a (#103, advisory default) — a plan target moved upstream → note+trace+return fields carry

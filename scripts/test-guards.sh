@@ -4,7 +4,9 @@
 # GUARDS_ONLY) with throwaway files under $TMPDIR — never mutates tracked files.
 # Cases: positive (same counts), 3 negative R1 counters, parser markers not counted/balanced,
 # block comments, multi-line agent calls, missing base, all-tests-wired (wired/unwired/comment-only),
-# version floor. Ends with `[test-guards] status=<ok|fail> passed=<n> failed=<n>`.
+# version floor, sam-parity, doc-budgets (at budget / over / missing / per-line cap, through GUARDS_ROOT),
+# instructions-wired (imports outside code, once each, no @AGENTS.md, AGENTS.md names both, omitClaudeMd).
+# Ends with `[test-guards] status=<ok|fail> passed=<n> failed=<n>`.
 set -u
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT" || exit 1
@@ -202,6 +204,71 @@ if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: sam-parity:.*LAYER RULE sent
 printf '%s\nlist patch-avoided: x\nroot-cause: y\n' "$LR" > "$T/sam-rc.md"
 run_parity "$T/sam-rc.md" "$T/sam-ok.md"
 if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: sam-parity:.*root-cause:'; then ok "sam-parity: root-cause: present -> FAIL"; else ko "sam-parity root-cause (rc=$RC) $OUT"; fi
+
+# ---- doc-budgets (#77) ----
+# mkdocs <dir> <vision lines> <architecture lines>: fake repo root holding the two docs (0 = absent)
+mkdocs() {
+  mkdir -p "$1"
+  [ "$2" -gt 0 ] && seq 1 "$2" | sed 's/^/line /' > "$1/VISION.md"
+  [ "$3" -gt 0 ] && seq 1 "$3" | sed 's/^/line /' > "$1/ARCHITECTURE.md"
+  return 0
+}
+run_budgets() { OUT="$(GUARDS_ROOT="$1" GUARDS_ONLY=budgets node scripts/guards.cjs 2>&1)"; RC=$?; }
+mkdocs "$T/d1" 20 20; run_budgets "$T/d1"
+if [ "$RC" -eq 0 ] && echo "$OUT" | grep -q '^PASS: doc-budgets: VISION.md 20/20 lines, longest 7/160 chars; ARCHITECTURE.md 20/20 lines, longest 7/160 chars$'; then ok "doc-budgets: exactly at budget (20/20) -> PASS"; else ko "doc-budgets at budget (rc=$RC) $OUT"; fi
+mkdocs "$T/d2" 21 20; run_budgets "$T/d2"
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: doc-budgets: VISION.md has 21 lines, budget 20'; then ok "doc-budgets: VISION.md 21 lines -> FAIL"; else ko "doc-budgets vision over (rc=$RC) $OUT"; fi
+mkdocs "$T/d3" 20 21; run_budgets "$T/d3"
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: doc-budgets: ARCHITECTURE.md has 21 lines, budget 20'; then ok "doc-budgets: ARCHITECTURE.md 21 lines -> FAIL"; else ko "doc-budgets architecture over (rc=$RC) $OUT"; fi
+mkdocs "$T/d4" 0 10; run_budgets "$T/d4"
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: doc-budgets: VISION.md missing'; then ok "doc-budgets: VISION.md absent -> FAIL"; else ko "doc-budgets missing (rc=$RC) $OUT"; fi
+mkdir -p "$T/d5"; printf 'a\nb' > "$T/d5/VISION.md"; seq 1 20 > "$T/d5/ARCHITECTURE.md"; printf 'x\n' >> "$T/d5/ARCHITECTURE.md"
+run_budgets "$T/d5"
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q 'ARCHITECTURE.md has 21 lines' && ! echo "$OUT" | grep -q 'VISION.md has'; then ok "doc-budgets: last line without newline counted, 21st appended line -> FAIL"; else ko "doc-budgets newline edge (rc=$RC) $OUT"; fi
+# per-line cap (160 characters): a long line cannot dodge the line budget
+mkdocs "$T/d6" 5 5; printf '%s\n' "$(printf 'x%.0s' $(seq 1 160))" >> "$T/d6/VISION.md"; printf '%s\n' "$(printf '\342\200\224%.0s' $(seq 1 160))" >> "$T/d6/ARCHITECTURE.md"
+run_budgets "$T/d6"
+if [ "$RC" -eq 0 ] && echo "$OUT" | grep -q '^PASS: doc-budgets: VISION.md 6/20 lines, longest 160/160 chars; ARCHITECTURE.md 6/20 lines, longest 160/160 chars$'; then ok "doc-budgets: lines of exactly 160 characters (ASCII, multi-byte) -> PASS"; else ko "doc-budgets line at cap (rc=$RC) $OUT"; fi
+mkdocs "$T/d7" 5 5; printf '%s\n' "$(printf 'x%.0s' $(seq 1 161))" >> "$T/d7/VISION.md"
+run_budgets "$T/d7"
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: doc-budgets: VISION.md line 6 has 161 characters, cap 160' && ! echo "$OUT" | grep -q 'ARCHITECTURE.md line'; then ok "doc-budgets: VISION.md line of 161 characters -> FAIL naming the line"; else ko "doc-budgets vision long line (rc=$RC) $OUT"; fi
+mkdocs "$T/d8" 5 5; for _ in 1 2; do printf '%s\n' "$(printf 'y%.0s' $(seq 1 200))" >> "$T/d8/ARCHITECTURE.md"; done
+run_budgets "$T/d8"
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q 'ARCHITECTURE.md line 6 has 200 characters, cap 160 (+1 more)'; then ok "doc-budgets: two long ARCHITECTURE.md lines -> FAIL, first named, count of the rest"; else ko "doc-budgets architecture long lines (rc=$RC) $OUT"; fi
+
+# ---- instructions-wired (#77) ----
+# mkinst <dir> [no-agents-md]: fake repo root wired as this repo is (CLAUDE.md imports, AGENTS.md, one agent with a
+# frontmatter that does not skip the project instructions); each case then breaks one thing.
+mkinst() {
+  mkdir -p "$1/agents"
+  printf '# CLAUDE.md\n\n@VISION.md\n@ARCHITECTURE.md\n\n- An escalation that trades off a `VISION.md` principle names it.\n' > "$1/CLAUDE.md"
+  [ "${2:-}" = no-agents-md ] || printf '# AGENTS.md\n\nRead `VISION.md` and `ARCHITECTURE.md` first.\n' > "$1/AGENTS.md"
+  printf -- '---\nname: A\nomitClaudeMd: false\n---\nBody mentions omitClaudeMd: true outside the frontmatter.\n' > "$1/agents/a.md"
+}
+run_inst() { OUT="$(GUARDS_ROOT="$1" GUARDS_ONLY=instructions node scripts/guards.cjs 2>&1)"; RC=$?; }
+inst_fail() { # <label> <dir> <expected FAIL substring>
+  run_inst "$2"
+  if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: instructions-wired: ' && echo "$OUT" | grep -qF "$3"; then ok "$1"; else ko "$1 (rc=$RC) $OUT"; fi
+}
+mkinst "$T/i1"; run_inst "$T/i1"
+if [ "$RC" -eq 0 ] && echo "$OUT" | grep -q '^PASS: instructions-wired: CLAUDE.md imports @VISION.md and @ARCHITECTURE.md once each; AGENTS.md names both; 1 agents/\*.md, none sets omitClaudeMd: true$'; then ok "instructions-wired: imports, AGENTS.md, omitClaudeMd false (and only in the body) -> PASS"; else ko "instructions-wired positive (rc=$RC) $OUT"; fi
+mkinst "$T/i2"; printf '# CLAUDE.md\n\n@VISION.md\n- Technical constraints: `ARCHITECTURE.md`.\n' > "$T/i2/CLAUDE.md"
+inst_fail "instructions-wired: ARCHITECTURE.md only named in a code span -> FAIL" "$T/i2" 'CLAUDE.md has no line `@ARCHITECTURE.md` outside code'
+mkinst "$T/i3"; printf '# CLAUDE.md\n\n```\n@VISION.md\n```\n@ARCHITECTURE.md\n' > "$T/i3/CLAUDE.md"
+inst_fail "instructions-wired: @VISION.md only inside a fenced block -> FAIL" "$T/i3" 'CLAUDE.md has no line `@VISION.md` outside code'
+mkinst "$T/i4"; printf '# CLAUDE.md\n\n`@VISION.md`\n  @ARCHITECTURE.md\n' > "$T/i4/CLAUDE.md"
+run_inst "$T/i4"
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -qF 'no line `@VISION.md`' && echo "$OUT" | grep -qF 'no line `@ARCHITECTURE.md`'; then ok "instructions-wired: import in a code span, indented import line -> FAIL for both"; else ko "instructions-wired code span / indent (rc=$RC) $OUT"; fi
+mkinst "$T/i5"; printf '# CLAUDE.md\n\n@VISION.md\n@ARCHITECTURE.md\n- Product vision, read by every agent: @VISION.md\n' > "$T/i5/CLAUDE.md"
+inst_fail "instructions-wired: a second, inline @VISION.md import -> FAIL" "$T/i5" 'CLAUDE.md imports VISION.md 2 times, keep exactly one `@VISION.md` line'
+mkinst "$T/i6"; printf '# CLAUDE.md\n\n@VISION.md\n@ARCHITECTURE.md\n@AGENTS.md\n' > "$T/i6/CLAUDE.md"
+inst_fail "instructions-wired: CLAUDE.md imports AGENTS.md -> FAIL" "$T/i6" 'CLAUDE.md imports AGENTS.md, which loads the docs twice'
+mkinst "$T/i7" no-agents-md
+inst_fail "instructions-wired: AGENTS.md absent -> FAIL" "$T/i7" 'AGENTS.md missing'
+mkinst "$T/i8"; printf '# AGENTS.md\n\nRead `VISION.md` first.\n' > "$T/i8/AGENTS.md"
+inst_fail "instructions-wired: AGENTS.md does not name ARCHITECTURE.md -> FAIL" "$T/i8" 'AGENTS.md does not name ARCHITECTURE.md'
+mkinst "$T/i9"; printf -- '---\nname: B\nomitClaudeMd: true\n---\nbody\n' > "$T/i9/agents/b.md"
+inst_fail "instructions-wired: agents/b.md frontmatter omitClaudeMd: true -> FAIL" "$T/i9" 'agents/b.md sets omitClaudeMd: true'
 
 STATUS=ok; [ "$FAIL_N" -eq 0 ] || STATUS=fail
 echo "[test-guards] status=${STATUS} passed=${PASS_N} failed=${FAIL_N}"

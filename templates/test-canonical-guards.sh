@@ -32,7 +32,8 @@
 # 12 blocked-by-signal, 13 single-export, 14 project-item-lookup, 15 bash-3.2-floor,
 # 16 backlog-bump-required, 17 backlog-marketplace-pin, 18 backlog-suite, 19 no-private-refs,
 # 20 reviewer-window-scan-bounded, 21 gitdir-probe-no-rm, 22 no-destructive-checkout,
-# 23 guards-cjs (scripts/guards.cjs: R1 ratchet, 25 all-tests-wired, 1-relaxed version floor).
+# 23 guards-cjs (scripts/guards.cjs: R1 ratchet, 25 all-tests-wired, 1-relaxed version floor,
+# sam-parity, doc-budgets, instructions-wired), 24 critical-paths-proven.
 #
 # Enforcement note (#54 MANDATORY 2, human decision 2026-08-23): this repo is PRIVATE on a
 # plan where branch protection and rulesets are both unavailable (verified this session:
@@ -851,6 +852,40 @@ if [ -f scripts/guards.cjs ]; then
   fi
 else
   fail "guards-cjs" "scripts/guards.cjs missing"
+fi
+
+# =============================================================================
+# Invariant 24 — critical-paths-proven
+# =============================================================================
+# docs/critical-paths.md (#77): every `- CP-<n>` line names a proof that exists — a flow-suite test
+# id present in templates/test-deliver-pipeline.js, or a fixture/script path present in the repo.
+# A declared critical path without its proof is a FAIL; the file itself is a one-way door (R3).
+CP_FILE="docs/critical-paths.md"
+if [ -f "$CP_FILE" ]; then
+  CP_MISSING=""
+  CP_COUNT=0
+  while IFS= read -r cp_line; do
+    CP_COUNT=$((CP_COUNT + 1))
+    cp_proof="$(printf '%s\n' "$cp_line" | sed -nE 's/.*proof: `([^`]+)`.*/\1/p')"
+    if [ -z "$cp_proof" ]; then
+      CP_MISSING="$CP_MISSING $(printf '%s' "$cp_line" | cut -d' ' -f2)(no-proof)"
+    elif [ -e "$cp_proof" ]; then
+      :
+    elif grep -qF "testCase('$cp_proof " templates/test-deliver-pipeline.js 2>/dev/null; then
+      :
+    else
+      CP_MISSING="$CP_MISSING $(printf '%s' "$cp_line" | cut -d' ' -f2)($cp_proof)"
+    fi
+  done < <(grep -E '^- CP-[0-9]+ ' "$CP_FILE")
+  if [ "$CP_COUNT" -eq 0 ]; then
+    fail "critical-paths-proven" "$CP_FILE declares no '- CP-<n>' line"
+  elif [ -n "$CP_MISSING" ]; then
+    fail "critical-paths-proven" "proof missing for:$CP_MISSING"
+  else
+    pass "critical-paths-proven: $CP_COUNT critical paths, every proof exists"
+  fi
+else
+  fail "critical-paths-proven" "$CP_FILE missing"
 fi
 
 # =============================================================================
