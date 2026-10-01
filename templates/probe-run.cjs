@@ -15,6 +15,9 @@
 // replay (record.cmd === --cmd AND record.exit === 0). A different --cmd, or a stored failure
 // (exit != 0), is rebuilt and overwritten: a Lead who fixes the cause and relaunches on the same
 // worktree must never get the old failed record back.
+// --no-reuse (#83): never reuse a stored record, always re-execute and overwrite. For probes of LIVE
+// state (preflight reads: git-dir writable, plan-stale list, open sub-issues, branchPrefix) where a
+// stored exit-0 record from an earlier launch would be a stale read. Default behaviour is unchanged.
 // Output (exactly one line, exit 0 whenever it is printed):
 //   PROBE name=<parser> exit=<cmd exit> sha=<sha256 of record.stdout> json=<compact JSON>
 // Exit 2 + usage on stderr for an invalid invocation. No network, nothing read outside --out.
@@ -23,7 +26,15 @@
 //   --attest /abs/probe-attest.jsonl
 // Does NOT re-run the command. Prints ONE line (exit 0):
 //   VERIFY ok line=<PROBE line>                      the record exists and the attestation file
-//                                                    holds an entry equal to that recomputed line
+//                                                    holds an entry equal to that recomputed line,
+//                                                    attested for the SAME label and round (#83)
+//   Binding to the agent (#83): when the matching entries carry an agent_id, the MOST RECENT entry
+//   (file order) for this label/round must equal the recomputed line AND have ts >= the record's ts
+//   (floored to the second: the hook stamps whole seconds), i.e. it was written after this call's own
+//   execution. Bound: this call's attestation is the latest one and postdates the record, so an
+//   attestation left by an earlier run/agent cannot satisfy it. NOT bound: WHICH agent wrote it (any
+//   lgtmgate:probe agent_id passes; ids are not given to the engine), nor entries without agent_id
+//   (legacy files: any equal entry counts). Failure reason: stale-attestation.
 //   VERIFY fail reason=no-record|no-attestation|sha-mismatch
 // The engine has no filesystem, so this is how it learns the copied PROBE line is the one the
 // script printed (hooks/PostToolUse-probe-attest.sh wrote the attestation).
@@ -36,7 +47,7 @@ const { spawnSync } = require('child_process')
 const MAX_BYTES = 65536
 const TOKEN = /^[A-Za-z0-9._-]+$/
 const USAGE =
-  "usage: node probe-run.cjs --label L --round N --out /abs/dir --parser NAME [--model M] --cmd '<shell cmd>'\n" +
+  "usage: node probe-run.cjs --label L --round N --out /abs/dir --parser NAME [--model M] [--no-reuse] --cmd '<shell cmd>'\n" +
   '       node probe-run.cjs --verify --label L --round N --out /abs/dir --parser NAME --attest /abs/file.jsonl\n'
 
 // ---- pure PARSERS: (stdout, stderr, exit) -> JSON-able value ----------------------------------
@@ -84,6 +95,28 @@ const PARSERS = {
     }
     return { error: 'bad-freshness' }
   },
+  // preflight.sh output (E2.4, #83): ONE JSON object, mode dev|branch. Fields that could not be read are
+  // null; a malformed field is normalised to null, never trusted. No regex.
+  preflight(stdout) {
+    let v
+    try { v = JSON.parse(String(stdout)) } catch (_) { return { error: 'bad-json' } }
+    if (v === null || typeof v !== 'object' || Array.isArray(v)) return { error: 'bad-json' }
+    const strArr = (x) => (Array.isArray(x) && x.every((i) => typeof i === 'string') ? x : null)
+    const str = (x) => (typeof x === 'string' && x.length > 0 ? x : null)
+    if (v.mode === 'dev') {
+      return {
+        mode: 'dev',
+        planStale: strArr(v.planStale),
+        openSubIssues: strArr(v.openSubIssues),
+        gitDir: str(v.gitDir),
+        writable: typeof v.writable === 'boolean' ? v.writable : null,
+      }
+    }
+    if (v.mode === 'branch') {
+      return { mode: 'branch', headRef: str(v.headRef), branchPrefix: typeof v.branchPrefix === 'string' ? v.branchPrefix : null }
+    }
+    return { error: 'bad-mode' }
+  },
 }
 
 const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex')
@@ -115,14 +148,25 @@ function probeLine(parser, record) {
   return `PROBE name=${parser} exit=${record.exit} sha=${sha256(record.stdout)} json=${JSON.stringify(json)}`
 }
 
-// Pure: record (or null) + attestation entries [{line}] -> {ok:true,line} | {ok:false,reason} (#82).
-function verifyRecord(parser, record, entries) {
+// Pure: record (or null) + attestation entries [{line,label,round}] (+ optional bind {label,round})
+// -> {ok:true,line} | {ok:false,reason} (#82). With bind, only entries attested for the same call
+// (same label and round) count (#83).
+function verifyRecord(parser, record, entries, bind) {
   if (!record) return { ok: false, reason: 'no-record' }
   const prefix = `PROBE name=${parser} `
-  const mine = (entries || []).filter((e) => e && typeof e.line === 'string' && e.line.startsWith(prefix))
+  const mine = (entries || []).filter((e) => e && typeof e.line === 'string' && e.line.startsWith(prefix) &&
+    (!bind || (e.label === bind.label && e.round === bind.round)))
   if (mine.length === 0) return { ok: false, reason: 'no-attestation' }
   const line = probeLine(parser, record)
-  return mine.some((e) => e.line === line) ? { ok: true, line } : { ok: false, reason: 'sha-mismatch' }
+  const withAgent = mine.filter((e) => typeof e.agent_id === 'string' && e.agent_id !== '')
+  if (withAgent.length === 0) return mine.some((e) => e.line === line) ? { ok: true, line } : { ok: false, reason: 'sha-mismatch' }
+  // #83: bind to the call — the latest entry must match and postdate the record (second resolution).
+  const last = withAgent[withAgent.length - 1]
+  if (last.line !== line) return { ok: false, reason: 'sha-mismatch' }
+  const floor = Math.floor(Date.parse(record.ts) / 1000) * 1000
+  const at = Date.parse(last.ts)
+  if (!Number.isFinite(floor) || !Number.isFinite(at) || at < floor) return { ok: false, reason: 'stale-attestation' }
+  return { ok: true, line }
 }
 
 function readJsonl(file) {
@@ -141,6 +185,7 @@ function parseArgs(argv) {
   for (let i = 0; i < argv.length; i++) {
     const k = argv[i]
     if (k === '--verify') out.verify = true
+    else if (k === '--no-reuse') out.noReuse = true
     else if (['--label', '--round', '--out', '--parser', '--model', '--cmd', '--attest'].includes(k) && i + 1 < argv.length) {
       out[k.slice(2)] = argv[++i]
     } else return null
@@ -162,19 +207,19 @@ function main() {
   const a = parseArgs(process.argv.slice(2))
   const common = a && a.label && a.parser && a.out && a.round !== undefined &&
     TOKEN.test(a.label) && TOKEN.test(a.parser) && /^\d+$/.test(a.round) && path.isAbsolute(a.out)
-  const bad = !common || (a.verify ? (!a.attest || !path.isAbsolute(a.attest) || a.cmd !== undefined) : a.cmd === undefined)
+  const bad = !common || (a.verify ? (!a.attest || !path.isAbsolute(a.attest) || a.cmd !== undefined || a.noReuse) : a.cmd === undefined)
   if (bad) {
     process.stderr.write(USAGE)
     process.exit(2)
   }
   const file = path.join(a.out, `${a.label}-r${Number(a.round)}.json`)
   if (a.verify) {
-    const v = verifyRecord(a.parser, readRecord(file), readJsonl(a.attest))
+    const v = verifyRecord(a.parser, readRecord(file), readJsonl(a.attest), { label: a.label, round: Number(a.round) })
     process.stdout.write((v.ok ? `VERIFY ok line=${v.line}` : `VERIFY fail reason=${v.reason}`) + '\n')
     process.exit(0)
   }
   let record = readRecord(file)
-  if (!canReuse(record, a.cmd)) {
+  if (a.noReuse || !canReuse(record, a.cmd)) {
     record = buildRecord({ label: a.label, cmd: a.cmd, model: a.model })
     fs.mkdirSync(a.out, { recursive: true })
     const tmp = `${file}.${process.pid}.tmp`
