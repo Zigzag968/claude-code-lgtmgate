@@ -44,11 +44,15 @@ check "at least 2 fixtures per parser (found $n_raw .raw files)" "$ok"
 # (b) e2e: one PROBE line, exit=0, known sha, record with 8 keys
 OUT1="$WORK/b"
 LINE="$(node "$PR" --label t --round 0 --out "$OUT1" --parser lines --cmd "printf 'hi\n'")"
+CMD_SHA="$(node -e 'process.stdout.write(require("crypto").createHash("sha256").update(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).cmd).digest("hex"))' "$OUT1/t-r0.json")"
 RC=$?
 ok=0
 [ "$RC" -eq 0 ] && [ "$(printf '%s\n' "$LINE" | wc -l | tr -d ' ')" = "1" ] &&
-  [ "$LINE" = "PROBE name=lines exit=0 sha=$HI_SHA json={\"lines\":[\"hi\"]}" ] && ok=1
+  [ "$LINE" = "PROBE name=lines exit=0 sha=$HI_SHA cmd=$CMD_SHA json={\"lines\":[\"hi\"]}" ] && ok=1
 check "e2e printf hi: single PROBE line with expected sha" "$ok"
+ok=0
+[ "$CMD_SHA" = "$(node -e 'process.stdout.write(require("crypto").createHash("sha256").update("printf '"'"'hi\\n'"'"'").digest("hex"))')" ] && case "$LINE" in *" cmd=$CMD_SHA json="*) ok=1 ;; esac
+check "[151] PROBE line carries cmd= equal to the sha256 of the executed command" "$ok"
 ok=0
 [ "$(node -e 'const r=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));console.log(Object.keys(r).length)' "$OUT1/t-r0.json")" = "8" ] && ok=1
 check "record has 8 keys" "$ok"
@@ -353,7 +357,10 @@ case "$*" in
 esac
 [ -n "${GH_READ_FAIL:-}" ] && exit 1
 case "$*" in
-  *"pr view"*"--json body"*) cat "$GH_BODY_FILE" ;;
+  *"pr view"*"--json body"*)
+    cat "$GH_BODY_FILE"
+    if [ -n "${GH_MUTATE_AFTER_READ:-}" ] && [ ! -f "$GH_BODY_FILE.mut" ]; then : > "$GH_BODY_FILE.mut"; printf 'edited by someone else\n' >> "$GH_BODY_FILE"; fi ;;
+  *"api "*"/comments"*) printf '%s\n' "${GH_PAGINATED:-}" ;;
   *"--json comments"*) d='{"comments":[]}'; printf '%s\n' "${GH_COMMENTS:-$d}" ;;
   *"node(id"*) printf '%s\n' "${GH_MINIMIZED:-false}" ;;
   *projectItems*) printf '%s\n' "${GH_STATUS:-}" ;;
@@ -395,6 +402,18 @@ text")"
     ok=0; [ "$(res "$OUT")" = "failed/read-failed" ] && [ "$(no_call "$kind comment")" = 1 ] && ok=1
     check "pr-write.sh $kind-comment: read failure writes nothing" "$ok"
   done
+
+  # [151] marker lookup past the 100-comment cap: the view serves 100 marker-less comments, REST serves 101
+  C100="$(node -e 'console.log(JSON.stringify({comments:Array.from({length:100},(_, i)=>({body:"c"+i}))}))')"
+  PAG="$(node -e 'const a=Array.from({length:100},(_, i)=>({body:"c"+i}));a.push({body:process.argv[1]+"\ntext"});a.forEach(o=>console.log(JSON.stringify(o)))' "$MK")"
+  OUT="$(GH_COMMENTS="$C100" GH_PAGINATED="$PAG" run_pw issue-comment --number 501 --marker "$MK" --body "$MK
+text")"
+  ok=0; [ "$(res "$OUT")" = "skipped/marker-present" ] && [ "$(no_call 'issue comment')" = 1 ] && [ -n "$(first_line 'api repos/o/r/issues/501/comments')" ] && ok=1
+  check "[151] pr-write.sh issue-comment: marker only in the 101st comment is found (paginated), no comment call" "$ok"
+  OUT="$(GH_COMMENTS="$C100" GH_PAGINATED="$PAG" run_pw pr-comment --pr 501 --marker "$MK" --body "$MK
+text")"
+  ok=0; [ "$(res "$OUT")" = "skipped/marker-present" ] && [ "$(no_call 'pr comment')" = 1 ] && [ -n "$(first_line 'api repos/o/r/issues/501/comments')" ] && ok=1
+  check "[151] pr-write.sh pr-comment: marker only in the 101st comment is found (paginated), no comment call" "$ok"
 
   # minimize
   OUT="$(GH_MINIMIZED=false run_pw minimize --id IC_1)"
@@ -460,6 +479,14 @@ text")"
   OUT="$(GH_EDIT_TRUNCATE=1 run_pw body-splice --pr 9 --mode decision-log --text "$DL")"
   ok=0; [ "$(res "$OUT")" = "failed/guard-failed-restored" ] && [ "$(cat "$PWD_/body.md")" = "$PRE_BODY" ] && ok=1
   check "pr-write.sh body-splice: a lossy write trips the guard and the pre body is restored" "$ok"
+  printf '%s\n' "$PRE_BODY" > "$PWD_/body.md"
+  OUT="$(run_pw body-splice --pr 9 --mode decision-log --text "$DL" --expect-digest 000000000000)"
+  ok=0; [ "$(res "$OUT")" = "failed/stale-read" ] && [ "$(no_call 'pr edit')" = 1 ] && [ "$(cat "$PWD_/body.md")" = "$PRE_BODY" ] && ok=1
+  check "[151] pr-write.sh body-splice: a stale --expect-digest fails stale-read, no edit" "$ok"
+  printf '%s\n' "$PRE_BODY" > "$PWD_/body.md"
+  OUT="$(GH_MUTATE_AFTER_READ=1 run_pw body-splice --pr 9 --mode decision-log --text "$DL")"
+  ok=0; [ "$(res "$OUT")" = "failed/stale-read" ] && [ "$(no_call 'pr edit')" = 1 ] && grep -q 'edited by someone else' "$PWD_/body.md" && ok=1
+  check "[151] pr-write.sh body-splice: body changed between the first read and the edit fails stale-read, no edit" "$ok"
 
   # parser round trip and the engine/helper block parity
   OUT="$(GH_MINIMIZED=true run_pw minimize --id IC_1)"
@@ -477,6 +504,21 @@ fi
 BLK='/^\/\/ --- prBodySplice:start ---/,/^\/\/ --- prBodySplice:end ---/p'
 [ -n "$(sed -n "$BLK" "$ROOT/workflows/deliver-pipeline.js")" ] && [ "$(sed -n "$BLK" "$ROOT/workflows/deliver-pipeline.js")" = "$(sed -n "$BLK" "$SCRIPT_DIR/pr-body-splice.cjs")" ] && ok=1 || ok=0
 check "pr-body-splice.cjs: source identical to the engine block" "$ok"
+
+SHA_BLK="$(sed -n '/^\/\/ --- sha256Hex:start ---/,/^\/\/ --- sha256Hex:end ---/p' "$ROOT/workflows/deliver-pipeline.js")"
+ok=0
+[ -n "$SHA_BLK" ] && node -e '
+  const assert = require("assert"), crypto = require("crypto")
+  const sha = new Function(process.argv[1] + "\nreturn sha256Hex")()
+  for (const s of ["", "printf '"'"'hi\\n'"'"'", "abc", "x".repeat(200), "caf\u00e9 \u20ac \ud83d\ude00 \u65e5\u672c"]) {
+    assert.strictEqual(sha(s), crypto.createHash("sha256").update(s, "utf8").digest("hex"))
+  }
+' "$SHA_BLK" 2>/dev/null && ok=1
+check "[151] engine sha256Hex equals crypto sha256 (empty, ASCII, 200 bytes, non-ASCII)" "$ok"
+SAN_LINE="$(grep -m1 '^const sanitizeProbeToken' "$ROOT/workflows/deliver-pipeline.js")"
+ok=0
+[ -n "$SAN_LINE" ] && [ "$(node -e 'const f = new Function(process.argv[1] + "; return sanitizeProbeToken")(); process.stdout.write(f("PR Ready/Merged:x"))' "$SAN_LINE" 2>/dev/null)" = "PR-Ready-Merged-x" ] && ok=1
+check "[151] sanitizeProbeToken maps 'PR Ready/Merged:x' to 'PR-Ready-Merged-x'" "$ok"
 
 # (g) agents/probe.md tools: lists exactly Bash
 TOOLS="$(awk '/^---$/{f++; next} f==1 && /^tools:/{t=1; next} f==1 && t && /^  - /{sub(/^  - /,""); print; next} f==1 && t{t=0}' "$ROOT/agents/probe.md" | tr '\n' ',')"

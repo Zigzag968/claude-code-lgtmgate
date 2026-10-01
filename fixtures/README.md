@@ -16,7 +16,7 @@ before it is committed, and the `no-private-refs` invariant scans the whole trac
   "name": "auto-lgtm",
   "args": { "issue": 1, "mode": "auto", "...": "never `simulate`" },
   "calls": {
-    "probe-1-provision-provision-r0": { "line": "PROBE name=provision exit=0 sha=... json={...}", "verify": "VERIFY ok line=PROBE name=provision ..." },
+    "probe-1-provision-provision-r0": { "line": "PROBE name=provision exit=0 sha=... cmd=... json={...}", "verify": "VERIFY ok line=PROBE name=provision ..." },
     "scout-issue-1-1": { "decision": "GO", "plan": "..." },
     "morgan-pr-123-42-r0": [ { "verdict": "LGTM", "items": [] } ]
   },
@@ -36,6 +36,7 @@ before it is committed, and the `no-private-refs` invariant scans the whole trac
   (`probeReason: no-attestation`, see `82-provision-no-attestation`). The VERIFY line is attested by the same hook as
   the PROBE line (bound to the call's label and round), and the probe agent may not stop without the pair (#83). The persona fallback (agent type not found) has no fixture (the harness
   cannot throw); the flow suite pins its wiring (T273).
+- A scout `plan` must contain its `acceptanceChecklist` lines: the engine refuses a pointer/summary plan before plan-check (see `153-plan-pointer-return`).
 - A label missing from `calls` throws with the label and the prompt head, **and fails the fixture even
   when the engine swallows the error** (fail-open probes, agent-death routing). Nothing is defaulted:
   the harness only proves what the fixture actually feeds.

@@ -20,7 +20,7 @@
 // (#84): head sha, body digest, mergeability, commit count, review comments, open issues) where a
 // stored exit-0 record from an earlier launch would be a stale read. Default behaviour is unchanged.
 // Output (exactly one line, exit 0 whenever it is printed):
-//   PROBE name=<parser> exit=<cmd exit> sha=<sha256 of record.stdout> json=<compact JSON>
+//   PROBE name=<parser> exit=<cmd exit> sha=<sha256 of record.stdout> cmd=<sha256 of the executed --cmd> json=<compact JSON>
 // Exit 2 + usage on stderr for an invalid invocation. No network, nothing read outside --out.
 //
 // Verify mode (#82): node probe-run.cjs --verify --label L --round N --out /abs/dir --parser NAME
@@ -192,7 +192,7 @@ function buildRecord({ label, cmd, model }) {
 function probeLine(parser, record) {
   const fn = Object.prototype.hasOwnProperty.call(PARSERS, parser) ? PARSERS[parser] : null
   const json = fn ? fn(record.stdout, record.stderr, record.exit) : { error: 'unknown-parser' }
-  return `PROBE name=${parser} exit=${record.exit} sha=${sha256(record.stdout)} json=${JSON.stringify(json)}`
+  return `PROBE name=${parser} exit=${record.exit} sha=${sha256(record.stdout)} cmd=${sha256(String(record.cmd))} json=${JSON.stringify(json)}`
 }
 
 // Pure: record (or null) + attestation entries [{line,label,round}] (+ optional bind {label,round})

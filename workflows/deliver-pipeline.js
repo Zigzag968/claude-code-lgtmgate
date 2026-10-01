@@ -216,7 +216,7 @@ export const meta = {
 // `version`, checked against plugin.json by templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '0.8.106', cutFrom: '01ca333' }
+const BUILD = { plugin: 'lgtmgate', version: '0.8.108', cutFrom: '19b33f2' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -1410,7 +1410,8 @@ function simFixture(role, round = 0, prNum = null) {
   if (role === 'mia') return simulate.probes?.mia || { framing: '(simulated PM)' }
   if (role === 'sam') return {
     decision: simulate.probes?.sam === 'NO-GO' ? 'NO-GO' : 'GO',
-    plan: simulate.probes?.samPlan || '(simulated plan)',
+    // #153: the default simulated plan carries its checklist, as a compliant Sam's plan does.
+    plan: simulate.probes?.samPlan || ('(simulated plan)' + (simulate.probes?.samAcceptanceChecklist ? '\n' + simulate.probes.samAcceptanceChecklist : '')),
     planPath: simulate.probes?.samPlanPath || planPath,
     rationale: simulate.probes?.samRationale || '',
     debtIssue: simulate.probes?.debtIssue || '',
@@ -1609,7 +1610,7 @@ async function updateStatus(name) {
   if (simulate) return
   // pr-write.sh reads the issue's own project items (never a board scan), skips a missing item or an
   // option already set, and never edits with an empty id (#85).
-  await prWrite('status', 'status-' + name.split(' ').join('-'), 0,
+  await prWrite('status', 'status-' + sanitizeProbeToken(name), 0,
     ['--issue', issue, '--project-number', ghProject.projectNumber, '--project-id', ghProject.projectId,
       '--field-id', ghProject.fieldId, '--option-id', optionId])
 }
@@ -1649,6 +1650,7 @@ const PROBE_PERSONA =
 const PROBE_REASON_HINTS = {
   'no-attestation': 'the PROBE line was never attested: the plugin hooks (hooks/PostToolUse-probe-attest.sh) must be enabled ' +
     'and the lgtmgate:probe agent type must be resolvable; fix the plugin install/session and relaunch',
+  'cmd-mismatch': 'the copied PROBE line belongs to a different command than the engine composed (the copier altered the command); relaunch',
   'probe-run-not-found': 'no probe-run.cjs location: pass args.pluginRoot (absolute plugin root) or config.probeRunPath and relaunch',
 }
 
@@ -1662,7 +1664,8 @@ const PROBE_SCHEMA = {
 }
 
 // guards:parser-begin
-const PROBE_LINE = /^PROBE name=(\S+) exit=(-?\d+) sha=([0-9a-f]{64}) json=(.*)$/
+const PROBE_LINE = /^PROBE name=(\S+) exit=(-?\d+) sha=([0-9a-f]{64}) cmd=([0-9a-f]{64}) json=(.*)$/
+const sanitizeProbeToken = (s) => String(s).replace(/[^A-Za-z0-9._-]/g, '-')
 const VERIFY_OK = /^VERIFY ok line=(PROBE .*)$/
 const VERIFY_FAIL = /^VERIFY fail reason=([a-z-]+)$/
 const SAFE_PROBE_TOKEN = /^[A-Za-z0-9._-]+$/
@@ -1671,8 +1674,8 @@ function parseProbeLine(line) {
   const m = line.trim().match(PROBE_LINE)
   if (!m) return null
   let json
-  try { json = JSON.parse(m[4]) } catch (_) { return null }
-  return { name: m[1], exit: Number(m[2]), sha: m[3], json }
+  try { json = JSON.parse(m[5]) } catch (_) { return null }
+  return { name: m[1], exit: Number(m[2]), sha: m[3], cmd: m[4], json }
 }
 function parseVerifyLine(line) {
   if (typeof line !== 'string') return null
@@ -1686,6 +1689,57 @@ const isSafeProbeToken = (s) => typeof s === 'string' && SAFE_PROBE_TOKEN.test(s
 // guards:parser-end
 
 const shellSingleQuote = (s) => `'${String(s).split("'").join("'\\''")}'`
+
+// --- sha256Hex:start --- (pure & self-contained: SHA-256 of the UTF-8 bytes, lowercase hex; must equal probe-run.cjs sha256)
+function sha256Hex(str) {
+  const bytes = []
+  for (const ch of String(str)) {
+    const c = ch.codePointAt(0)
+    if (c < 0x80) bytes.push(c)
+    else if (c < 0x800) bytes.push(0xc0 | (c >> 6), 0x80 | (c & 63))
+    else if (c < 0x10000) bytes.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63))
+    else bytes.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63))
+  }
+  const K = [
+    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+    0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+    0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+    0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+    0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+  ]
+  const H = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19]
+  const bitLen = bytes.length * 8
+  bytes.push(0x80)
+  while (bytes.length % 64 !== 56) bytes.push(0)
+  const hi = Math.floor(bitLen / 0x100000000)
+  const lo = bitLen >>> 0
+  bytes.push((hi >>> 24) & 255, (hi >>> 16) & 255, (hi >>> 8) & 255, hi & 255, (lo >>> 24) & 255, (lo >>> 16) & 255, (lo >>> 8) & 255, lo & 255)
+  const rotr = (x, n) => (x >>> n) | (x << (32 - n))
+  for (let off = 0; off < bytes.length; off += 64) {
+    const w = new Array(64)
+    for (let i = 0; i < 16; i++) w[i] = ((bytes[off + 4 * i] << 24) | (bytes[off + 4 * i + 1] << 16) | (bytes[off + 4 * i + 2] << 8) | bytes[off + 4 * i + 3]) | 0
+    for (let i = 16; i < 64; i++) {
+      const s0 = rotr(w[i - 15], 7) ^ rotr(w[i - 15], 18) ^ (w[i - 15] >>> 3)
+      const s1 = rotr(w[i - 2], 17) ^ rotr(w[i - 2], 19) ^ (w[i - 2] >>> 10)
+      w[i] = (w[i - 16] + s0 + w[i - 7] + s1) | 0
+    }
+    let [a, b, c, d, e, f, g, h] = H
+    for (let i = 0; i < 64; i++) {
+      const S1 = rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25)
+      const t1 = (h + S1 + ((e & f) ^ (~e & g)) + K[i] + w[i]) | 0
+      const S0 = rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22)
+      const t2 = (S0 + ((a & b) ^ (a & c) ^ (b & c))) | 0
+      h = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0
+    }
+    H[0] = (H[0] + a) | 0; H[1] = (H[1] + b) | 0; H[2] = (H[2] + c) | 0; H[3] = (H[3] + d) | 0
+    H[4] = (H[4] + e) | 0; H[5] = (H[5] + f) | 0; H[6] = (H[6] + g) | 0; H[7] = (H[7] + h) | 0
+  }
+  return H.map((x) => (x >>> 0).toString(16).padStart(8, '0')).join('')
+}
+// --- sha256Hex:end ---
 
 // --- probeCommands:start --- (pure & self-contained — keep extractable by the consuming project's tests)
 // The two commands the probe agent runs, in order (#82). Both start with `cd '<wtPath>' && node '<script>'`
@@ -1727,11 +1781,14 @@ async function probe(name, cmd, { label, round = 0, onFail, noReuse = false } = 
   const parsed = parseProbeLine(res && res.line)
   if (!parsed) return fail('unparseable-line')
   if (parsed.name !== name) return fail('name-mismatch')
+  const want = sha256Hex(cmd)
+  if (parsed.cmd !== want) return fail('cmd-mismatch')
   const verified = parseVerifyLine(res && res.verify)
   if (!verified) return fail('unparseable-verify')
   if (!verified.ok) return fail(verified.reason === 'no-attestation' ? 'no-attestation' : `verify-${verified.reason}`)
   const vp = parseProbeLine(verified.line)
   if (!vp || vp.sha !== parsed.sha) return fail('sha-mismatch')
+  if (vp.cmd !== want) return fail('cmd-mismatch')
   if (verified.line !== String(res.line).trim()) return fail('line-mismatch')
   return parsed
 }
@@ -2023,6 +2080,13 @@ if (after('plan', entryStage)) {
 // regardless of which call site invokes this, fresh Plan-phase or Review-phase amendment.
 const SAM_LAYER_RULE = 'LAYER RULE: plan the smallest change that removes the cause class; never a `simulate.*` seam; say in the plan if the diff adds a status, an `agent()`, a hook or a seam; list `patch-avoided:` with the patches you rejected.'
 const ACCEPTANCE_PROOF_RULE = 'ACCEPTANCE PROOF RULE: (1) every acceptance item is a command you RAN in the provisioned worktree during planning; the plan carries a "Proof log" listing, per item, the command and its real output pasted verbatim (output on the base branch: green for state-preservation checks, red for the stated reason for a check the change must turn green); (2) a command you saw fail for any other reason, or could not run (missing gitignored directory, no network), is rewritten to run in the worktree or dropped, never inscribed as-is and never excused in Risks; (3) an item describes a verifiable state of the repo or branch only: never an external-world state (e.g. "no known advisory for pinned dependency X", a network service, a file present only outside the worktree) and never a negative universal claim ("no known X", "absence of Y") about anything outside the diff; write commands that run as-is from a plain bash script.'
+// #153: checklist lines (`- [ ]`) Sam returned in acceptanceChecklist that are absent from the
+// returned plan text. Pure string ops, no regex. Empty checklist => [] (nothing to compare).
+const planMissingChecklistLines = (plan, checklist) => {
+  const text = String(plan || '')
+  return String(checklist || '').split('\n').map((l) => l.trim())
+    .filter((l) => l.startsWith('- [ ]') && !text.includes(l))
+}
 const samScoutPrompt = ({ fixBlock = '', auditFixBlock = '', reviewFixBlock = '' } = {}) => {
   // B4: whenever the design-step trigger fired for this issue, the plan MUST
   // explicitly answer the split question. Recomputed here (not a captured outer const) so this
@@ -2050,7 +2114,7 @@ const samScoutPrompt = ({ fixBlock = '', auditFixBlock = '', reviewFixBlock = ''
     `POST IDEMPOTENTLY: write the index body to ".pipeline/issue-${issue}-comment.md", then look for an existing marked comment with ` +
     `\`gh api repos/{owner}/{repo}/issues/${issue}/comments --jq '.[]|select(.body|startswith("${planMarker}"))|.id'\` — if an id comes back, EDIT that comment in place with ` +
     `\`gh api -X PATCH repos/{owner}/{repo}/issues/comments/<id> -F body=@.pipeline/issue-${issue}-comment.md\`; otherwise create it with \`gh issue comment ${issue} --body-file .pipeline/issue-${issue}-comment.md\`. Reuse the id returned by the listing; never reconstruct it. Never stack a second plan comment on the issue. ` +
-    `Then return GO/NO-GO, the full plan text in the \`plan\` field, and the artifact path in \`planPath\` (use "${planPath}"), and \`targetFiles\`: the worktree-RELATIVE paths your steps modify, delete or create (repo-relative, no absolute path, no \`..\`; omit it if your plan touches no file). Return the acceptance checklist lines VERBATIM (\`- [ ] ...\` lines only, no markers, no prose) in \`acceptanceChecklist\`.\n\n` +
+    `Then return GO/NO-GO, the COMPLETE text of the artifact in the \`plan\` field (NEVER a summary or pointer to the artifact; the plan gate judges only this field and refuses a plan lacking the checklist lines you return in acceptanceChecklist), and the artifact path in \`planPath\` (use "${planPath}"), and \`targetFiles\`: the worktree-RELATIVE paths your steps modify, delete or create (repo-relative, no absolute path, no \`..\`; omit it if your plan touches no file). Return the acceptance checklist lines VERBATIM (\`- [ ] ...\` lines only, no markers, no prose) in \`acceptanceChecklist\`.\n\n` +
     `OUTPUT-SPEC GATE: if this is a human-facing deliverable (asset/render/copy/UI-visible), the plan MUST start from a concrete OUTPUT EXAMPLE with named content contracts, and MUST cite any existing corpus/asset spec (precedent: a similar prior deliverable, if one exists). If no spec exists, propose the contract for human validation — do not skip it.\n` +
     `OBSERVED-INTERFACES RULE: any step consuming an external interface MUST cite a REAL observed payload. REUSE a provided field (e.g. \`qr_url\`) over reconstructing it — reconstruction is a plan defect.\n` +
     `VERSION RULE: do NOT bump .claude-plugin/plugin.json or the BUILD line; the Lead's scripts/lead-merge.sh bumps at merge time.${designStepBlock}${fixBlock}${auditFixBlock}${reviewFixBlock}`
@@ -2126,7 +2190,18 @@ if (after('plan', entryStage)) {
       samTargetFiles = sam.targetFiles
       samAbsorbedIssues = safeAbsorbedIssues(sam.absorbedIssues, issue)
 
-      const planCheck = await callAgentSafe(
+      // #153: the gate judges only the returned text. A summary/pointer plan that lacks the checklist
+      // lines Sam also returned is refused here (no plan-check call) and looped back to Sam.
+      const missingChecklist = planMissingChecklistLines(sam.plan, sam.acceptanceChecklist)
+      if (missingChecklist.length > 0) {
+        log(`Plan-verification gate: returned plan lacks ${missingChecklist.length} acceptance checklist line(s) Sam also returned (summary/pointer plan) — refusing without a plan-check call`)
+      }
+      const planCheck = missingChecklist.length > 0
+        ? {
+            verdict: 'NOT_CONFORMING',
+            issues: [`The returned plan field is a summary/pointer, not the full plan: ${missingChecklist.length} acceptance checklist line(s) you returned are absent from it. Return the FULL artifact text from "${planPath}" in the plan field, including the acceptance checklist and the Proof log.`],
+          }
+        : await callAgentSafe(
         'planCheck',
         `You are a cheap, binary conformance gate on Sam's plan for issue #${issue} — verify it against the plan text below (authoritative; do NOT re-read the issue from GitHub).\n\n` +
           `PLAN:\n${samPlan}\n\n` +
