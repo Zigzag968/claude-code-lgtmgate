@@ -9,7 +9,6 @@ Sam (plan), Nick (code and PR) and Morgan (review) in the issue's worktree and r
 - Stays here: `VISION.md`, this file, `CLAUDE.md`, `.claude/`, `docs/`, `fixtures/`, `evals/`, the rest of `scripts/`.
 - Neutrality: a config without the optional keys runs as before them; T77g (doc reads conditional), T77h (paths), T77l (kinds).
 ## Invariants and what each check verifies
-A rule enters at its second occurrence, with its check; a rule that changed no result is removed.
 1. R1, the ratchet (`scripts/guards.cjs`): three engine counters never rise against `origin/main` (never a fixed threshold):
    `await agent(` outside `callAgent`; distinct `simulate.<key>` keys (a seam); regex applications outside parser markers.
 2. `hooks/block-merge-unchecked.sh` refuses a `- [ ]` between the acceptance markers, and a bare `gh pr merge` on a stale review.
@@ -17,12 +16,8 @@ A rule enters at its second occurrence, with its check; a rule that changed no r
 4. A proof is a command with its expected output, or an artifact Morgan inspects (`.claude/rules/pr-acceptance.md`): Morgan's review.
 5. `staleArtifactBlockers` overturns an LGTM whose declared artifact is absent, empty or older than the last commit; artifacts only.
 6. R2, a bug is a fixture: for a `bug` touching `workflows/`, Nick's prompt gets the fixture item; CI replays `run-offline.cjs --all`.
-7. `all-tests-wired` (`scripts/guards.cjs`): every `test-*` suite is named in a `run:` step of `.github/workflows/guards.yml`.
-8. `sam-parity`: `agents/sam.md` and Sam's engine prompt carry the same LAYER RULE sentence and `patch-avoided:`, no `root-cause:`.
-9. `version-floor`: `.claude-plugin/plugin.json` is never below `origin/main`.
-10. `critical-paths-proven` (`templates/test-canonical-guards.sh`): each `docs/critical-paths.md` line names an existing proof.
-11. `doc-budgets` (`scripts/guards.cjs`): `VISION.md` <= 20 lines, this file <= 60, every line of both <= 160 characters.
-The other canonical guards (stamp parity, PR body structure, no private refs, ...): header of `templates/test-canonical-guards.sh`.
+7. The CI gates enforce the rest (suites wired, Sam's prompt parity, version floor, critical paths, doc budgets, canonical guards):
+   run `node scripts/guards.cjs` and `bash templates/test-canonical-guards.sh`; a failure names its rule.
 ## Design decisions (state; rejected alternative)
 1. One gate to the world. In transition, epic #66: `templates/probe-run.cjs` runs provision, preflight, PR state and PR writes;
    other reads still ask an agent. Rejected: one model call per read or write, an agent re-typing stdout.
@@ -53,7 +48,7 @@ The other canonical guards (stamp parity, PR body structure, no private refs, ..
 - An R2 waiver is declared as an `exception:` line: #174.
 - A `[human-gate]` item only where no command can prove it: #169.
 ## Not used on purpose / cross-cutting
-- Not used: ADR files, dependency-injection frameworks, a plugin system in the engine, retries hidden in helpers.
+- Not used: ADR files, dependency-injection frameworks, a plugin system in the engine, unbounded retries (`callAgent`'s are bounded).
 - Not used: a hand-written file-by-file map; a generated one is tracked by #128.
 - `.claude/pipeline.config.json` keys change additively only; a new key's default keeps the old behaviour.
 - Channels: `stable` (pinned) and `beta` (`main`), see `MAINTAINING.md`.

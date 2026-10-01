@@ -5,6 +5,7 @@ Runbook for the Lead (the session that changes this repo or dispatches its pipel
 - Product vision and doctrine, read by every agent: @VISION.md
 - Technical constraints, R1-R3, one-way doors and declared exceptions, with their checks: `ARCHITECTURE.md`.
 - Default to the smallest change that removes the cause class; a shortcut is a declared exception, never a silent one.
+- A rule enters at its second occurrence, with its check; one that changed no result over 20 PRs is reviewed for removal.
 
 ## Merge
 
