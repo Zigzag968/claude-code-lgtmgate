@@ -31,13 +31,19 @@
 //      precedence, prerelease included: 1.0.0-beta.2 > 1.0.0-beta.1, 1.0.0-beta.9 < 1.0.0).
 //      Since #74 (scripts/lead-merge.sh bumps at merge; bump-required is retired) this floor is
 //      the only version check besides stamp-parity in templates/test-canonical-guards.sh.
-//   doc-budgets (#77): the agent-read docs stay within the maintainer's budgets — VISION.md
-//      (imported for every agent through `@VISION.md` in CLAUDE.md) <= 20 lines, ARCHITECTURE.md
-//      (read by Sam and Morgan on a prompt instruction) <= 20 lines, and every line of both <= 160
-//      characters, so a long line cannot dodge the line budget. A missing file FAILS.
+//   doc-budgets (#77): the agent-read docs stay within the maintainer's budgets — VISION.md and
+//      ARCHITECTURE.md (both imported for every agent through CLAUDE.md, see instructions-wired)
+//      <= 20 lines each, and every line of both <= 160 characters, so a long line cannot dodge the
+//      line budget. A missing file FAILS.
+//   instructions-wired (#77): agents receive the two docs natively, never through an engine prompt.
+//      FAILS unless CLAUDE.md holds exactly one line `@VISION.md` and one line `@ARCHITECTURE.md`
+//      (outside fenced code blocks and code spans; no second import of either, no `@AGENTS.md`
+//      import, which would load the docs twice); unless AGENTS.md (the agents.md pointer for other
+//      tools) exists and names both files; or if any agents/*.md frontmatter sets
+//      `omitClaudeMd: true` (a subagent that would skip the project instructions).
 //
 // Env (test seams, all optional)
-//   GUARDS_ONLY            comma list among r1,wired,version,parity,budgets (default: all)
+//   GUARDS_ONLY            comma list among r1,wired,version,parity,budgets,instructions (default: all)
 //   GUARDS_BASE_FILE       workflow file used as the base for R1 (default: git show origin/main:<file>)
 //   GUARDS_BRANCH_FILE     workflow file used as the branch for R1 (default: workflows/deliver-pipeline.js)
 //   GUARDS_BASE_MANIFEST   base plugin.json path for the version floor (default: git show origin/main:...)
@@ -54,7 +60,7 @@ const ROOT = process.env.GUARDS_ROOT || path.resolve(__dirname, '..')
 const WORKFLOW = 'workflows/deliver-pipeline.js'
 const MANIFEST = '.claude-plugin/plugin.json'
 const GUARDS_YML = '.github/workflows/guards.yml'
-const ONLY = process.env.GUARDS_ONLY ? process.env.GUARDS_ONLY.split(',') : ['r1', 'wired', 'version', 'parity', 'budgets']
+const ONLY = process.env.GUARDS_ONLY ? process.env.GUARDS_ONLY.split(',') : ['r1', 'wired', 'version', 'parity', 'budgets', 'instructions']
 
 // Suites that are NOT named in guards.yml, each with its reason. Add a suite here only if it is
 // red on main (report it, do not wire it) or is run through another runner.
@@ -314,6 +320,61 @@ function checkSamParity() {
   else out('PASS: sam-parity: patch-avoided: and the LAYER RULE sentence on both sides, no root-cause: field')
 }
 
+// ---- instructions-wired (#77) ------------------------------------------------------------------
+// Claude Code loads CLAUDE.md and its `@path` imports for the session and its subagents; other tools
+// read AGENTS.md. An import inside a fenced code block or a code span is inert, so both are skipped.
+const IMPORTED_DOCS = ['VISION.md', 'ARCHITECTURE.md']
+// The lines of a Markdown text outside fenced code blocks, with inline code spans removed.
+function proseLines(txt) {
+  const lines = []
+  let fence = null
+  for (const raw of txt.split('\n')) {
+    const l = raw.replace(/\r$/, '')
+    const open = /^ {0,3}(`{3,}|~{3,})/.exec(l)
+    if (fence) {
+      const close = /^ {0,3}(`{3,}|~{3,})[ \t]*$/.exec(l)
+      if (close && close[1][0] === fence[0] && close[1].length >= fence.length) fence = null
+      continue
+    }
+    if (open) { fence = open[1]; continue }
+    lines.push(l.replace(/(`+).*?\1/g, ''))
+  }
+  return lines
+}
+// Import references to `name` (`@name` at a line start or after whitespace) in prose lines.
+const importRefs = (lines, name) => lines.reduce((n, l) =>
+  n + (l.match(new RegExp(`(?:^|\\s)@${name.replace(/\./g, '\\.')}(?![\\w./-])`, 'g')) || []).length, 0)
+function checkInstructionsWired() {
+  const problems = []
+  const claude = readOr(path.join(ROOT, 'CLAUDE.md'))
+  if (claude === null) problems.push('CLAUDE.md missing')
+  else {
+    const lines = proseLines(claude)
+    for (const doc of IMPORTED_DOCS) {
+      const own = lines.filter((l) => l.replace(/[ \t]+$/, '') === `@${doc}`).length
+      const refs = importRefs(lines, doc)
+      if (own === 0) problems.push(`CLAUDE.md has no line \`@${doc}\` outside code`)
+      else if (refs > 1) problems.push(`CLAUDE.md imports ${doc} ${refs} times, keep exactly one \`@${doc}\` line`)
+    }
+    if (importRefs(lines, 'AGENTS.md') > 0) problems.push('CLAUDE.md imports AGENTS.md, which loads the docs twice')
+  }
+  const agentsMd = readOr(path.join(ROOT, 'AGENTS.md'))
+  if (agentsMd === null) problems.push('AGENTS.md missing')
+  else {
+    const unnamed = IMPORTED_DOCS.filter((doc) => !agentsMd.includes(doc))
+    if (unnamed.length) problems.push(`AGENTS.md does not name ${unnamed.join(', ')}`)
+  }
+  const agentsDir = path.join(ROOT, 'agents')
+  const personas = fs.existsSync(agentsDir) ? fs.readdirSync(agentsDir).filter((f) => f.endsWith('.md')).sort() : []
+  for (const f of personas) {
+    const txt = fs.readFileSync(path.join(agentsDir, f), 'utf8').replace(/^\uFEFF/, '')
+    const fm = /^---\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/.exec(txt)
+    if (fm && /^omitClaudeMd[ \t]*:[ \t]*["']?true["']?[ \t]*(?:#.*)?$/im.test(fm[1])) problems.push(`agents/${f} sets omitClaudeMd: true`)
+  }
+  if (problems.length) bad(`FAIL: instructions-wired: ${problems.join('; ')}`)
+  else out(`PASS: instructions-wired: CLAUDE.md imports ${IMPORTED_DOCS.map((d) => `@${d}`).join(' and ')} once each; AGENTS.md names both; ${personas.length} agents/*.md, none sets omitClaudeMd: true`)
+}
+
 // ---- doc-budgets (#77) --------------------------------------------------------------------------
 const DOC_BUDGETS = [['VISION.md', 20], ['ARCHITECTURE.md', 20]]
 // Per-line cap, so a long line cannot dodge the line budget. Counted in characters (code points).
@@ -343,4 +404,5 @@ if (ONLY.includes('wired')) checkWired()
 if (ONLY.includes('version')) checkVersion()
 if (ONLY.includes('parity')) checkSamParity()
 if (ONLY.includes('budgets')) checkDocBudgets()
+if (ONLY.includes('instructions')) checkInstructionsWired()
 process.exit(failed ? 1 : 0)

@@ -2681,10 +2681,10 @@ await testCase('T77d R3 + architectureDecisionApproved:true → an announced dec
   return err ? err : { ok: true }
 })
 
-// T77e (#77, doc budgets) — ARCHITECTURE.md is read by Sam and Morgan only: Nick's prompt carries no
-// architecture or codemap read, and no prompt of the engine names docs/codemap.md.
-// The rules themselves live in the doc, never in the prompt (no DEBT marker syntax in the engine).
-await testCase('T77e Nick prompt imports neither ARCHITECTURE.md nor docs/codemap.md; Sam and Morgan import ARCHITECTURE.md', async () => {
+// T77e (#77) — the product-direction line goes to Sam and Morgan only: Nick's prompt carries none, and no
+// prompt of the engine names docs/codemap.md. The engine imports no doc: agents receive each repo's own
+// instructions natively. The rules themselves live in the repo's docs, never in the prompt (no DEBT marker).
+await testCase('T77e Nick prompt carries no product-direction line and names no doc; Sam and Morgan get the tool-neutral line', async () => {
   const r = await run({
     entryStage: 'dev',
     mode: 'auto',
@@ -2692,17 +2692,17 @@ await testCase('T77e Nick prompt imports neither ARCHITECTURE.md nor docs/codema
   })
   const p = String(r.nickPromptPreview || '')
   if (!p) return { ok: false, msg: 'nickPromptPreview empty' }
-  if (p.includes('ARCHITECTURE.md')) return { ok: false, msg: 'nickPromptPreview imports ARCHITECTURE.md; it is for Sam and Morgan only' }
+  if (p.includes('PRODUCT DIRECTION')) return { ok: false, msg: 'nickPromptPreview carries the product-direction line; it is for Sam and Morgan only' }
   if (p.includes('docs/codemap.md')) return { ok: false, msg: 'nickPromptPreview names docs/codemap.md; no agent prompt gets it' }
-  if (p.includes('DEBT(#')) return { ok: false, msg: 'nickPromptPreview carries DEBT marker syntax; the rule belongs to ARCHITECTURE.md' }
+  if (p.includes('DEBT(#')) return { ok: false, msg: 'nickPromptPreview carries DEBT marker syntax; the rule belongs to the repo docs' }
   const src = SUITE_ARGS.fpSource
   if (!src) {
     log('SKIP — T77e source checks: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
     return { ok: true }
   }
   if (src.includes('docs/codemap.md')) return { ok: false, msg: 'workflow source names docs/codemap.md; no agent prompt gets it' }
-  if (src.includes('ARCH_IMPORT_NICK')) return { ok: false, msg: 'ARCH_IMPORT_NICK still present; Nick gets no architecture import' }
-  for (const use of ['${SAM_ONE_WAY_DOOR}${ARCH_IMPORT_SAM}', '`${ARCH_IMPORT_MORGAN}`']) {
+  if (src.includes('ARCH_IMPORT_')) return { ok: false, msg: 'an ARCH_IMPORT_* read instruction is still present; the engine imports no doc' }
+  for (const use of ['${SAM_ONE_WAY_DOOR}${SAM_PRODUCT_DIRECTION}', '`${MORGAN_PRODUCT_DIRECTION}`']) {
     if (!src.includes(use)) return { ok: false, msg: `workflow source lacks ${use}` }
   }
   return { ok: true }
@@ -2891,67 +2891,65 @@ await testCase('T77o R3 subset: oneWayDoorKinds ["hook"] → only hook is asked 
   return { ok: true }
 })
 
-// T77n (#77) — VISION.md is advisory, ARCHITECTURE.md may block: Morgan's read instruction (both review
-// prompts) signals a VISION conflict in the posted comment, never as a FAIL nor in `items`; Sam's names the
-// VISION principle a plan trades off. Source-anchored: the engine reads no file in simulate mode.
-await testCase('T77n VISION is advisory for Morgan (signalled, never a FAIL), ARCHITECTURE may block; Sam names the principle traded off', async () => {
+// T77n (#77) — the repo's stated product direction is advisory for Morgan: her line (both review prompts)
+// signals a conflict, never blocks on it, and keeps blocking to the acceptance checklist and the CI; Sam's
+// names the direction or principle a plan trades off, only if the project instructions state one.
+// Source-anchored: the engine reads no file in simulate mode.
+await testCase('T77n product direction is advisory for Morgan (signalled, never blocking); Sam names the principle traded off', async () => {
   const src = SUITE_ARGS.fpSource
   if (!src) {
     log('SKIP — T77n: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
     return { ok: true }
   }
   const lines = src.split('\n')
-  const morgan = lines.find(l => l.startsWith('const ARCH_IMPORT_MORGAN = ')) || ''
-  const sam = lines.find(l => l.startsWith('const ARCH_IMPORT_SAM = ')) || ''
-  if (!morgan || !sam) return { ok: false, msg: 'ARCH_IMPORT_MORGAN or ARCH_IMPORT_SAM missing' }
-  for (const must of ['`VISION.md` is advisory', 'never a FAIL', 'never goes into `items`', 'VISION (advisory): <principle> — <conflict>',
-    'keep the verdict you would give without it', 'breaks a constraint `ARCHITECTURE.md` states is a FAIL']) {
-    if (!morgan.includes(must)) return { ok: false, msg: `ARCH_IMPORT_MORGAN lacks: ${must}` }
+  const morgan = lines.find(l => l.startsWith('const MORGAN_PRODUCT_DIRECTION = ')) || ''
+  const sam = lines.find(l => l.startsWith('const SAM_PRODUCT_DIRECTION = ')) || ''
+  if (!morgan || !sam) return { ok: false, msg: 'MORGAN_PRODUCT_DIRECTION or SAM_PRODUCT_DIRECTION missing' }
+  for (const must of ["signal a conflict with the repo's stated product direction, never block on it",
+    'block only on what the acceptance checklist and the CI check', 'never in `items`']) {
+    if (!morgan.includes(must)) return { ok: false, msg: `MORGAN_PRODUCT_DIRECTION lacks: ${must}` }
   }
-  // Every sentence that names VISION and FAIL negates the FAIL; no sentence makes a VISION conflict blocking.
+  // No sentence ties the product direction to a blocking verdict.
   for (const sentence of morgan.split('. ')) {
-    if (sentence.includes('VISION') && sentence.includes('FAIL') && !sentence.includes('never a FAIL')) {
-      return { ok: false, msg: `ARCH_IMPORT_MORGAN makes VISION blocking: ${sentence.slice(0, 160)}` }
+    for (const blocking of ['FAIL', 'REQUIRED_CHANGES', 'REGRESSION_DETECTED']) {
+      if (sentence.includes(blocking)) return { ok: false, msg: `MORGAN_PRODUCT_DIRECTION ties the direction to ${blocking}: ${sentence.slice(0, 160)}` }
     }
-    if (sentence.includes('VISION') && sentence.includes('REQUIRED_CHANGES')) return { ok: false, msg: `ARCH_IMPORT_MORGAN ties VISION to REQUIRED_CHANGES: ${sentence.slice(0, 160)}` }
   }
-  const morganUses = src.split('`${ARCH_IMPORT_MORGAN}`').length - 1
-  if (morganUses !== 2) return { ok: false, msg: `ARCH_IMPORT_MORGAN used in ${morganUses} review prompt(s), expected 2 (first review + re-review)` }
-  if (!sam.includes('trades off a principle `VISION.md` states, name that principle')) return { ok: false, msg: 'ARCH_IMPORT_SAM does not ask Sam to name the VISION principle a plan trades off' }
+  const morganUses = src.split('`${MORGAN_PRODUCT_DIRECTION}`').length - 1
+  if (morganUses !== 2) return { ok: false, msg: `MORGAN_PRODUCT_DIRECTION used in ${morganUses} review prompt(s), expected 2 (first review + re-review)` }
+  if (!sam.includes('if your project instructions state a product direction or principles, name the one your plan trades off')) {
+    return { ok: false, msg: 'SAM_PRODUCT_DIRECTION does not ask Sam, conditionally, to name the principle a plan trades off' }
+  }
+  const samUses = src.split('${SAM_PRODUCT_DIRECTION}').length - 1
+  if (samUses !== 1) return { ok: false, msg: `SAM_PRODUCT_DIRECTION used ${samUses} time(s), expected 1 (the scout prompt)` }
   return { ok: true }
 })
 
-// T77g (#77, consumer neutrality) — VISION.md and ARCHITECTURE.md are the documents of the TARGET repo,
-// each consumer free to have its own or none. A run on a worktree without them behaves as it did
-// before these docs existed: the two engine read instructions are conditional ("if it exists", skip
-// silently), carry no rule text of this repo, and no other line of the engine names either file (no gate,
-// no preflight, no required read). Source-anchored: the engine reads no file in simulate mode.
-await testCase('T77g consumer neutrality: no VISION.md/ARCHITECTURE.md in the target repo → same run; the imports are conditional and name no rule of this repo', async () => {
+// T77g (#77, consumer neutrality) — a product direction is the TARGET repo's own, stated in its own
+// instructions, or absent. A run on a repo that states none behaves as it did before: the two
+// product-direction lines are conditional or advisory, carry no rule text of this repo, and require no read.
+// Source-anchored: the engine reads no file in simulate mode.
+await testCase('T77g consumer neutrality: a repo stating no product direction → same run; the product-direction lines name no rule of this repo', async () => {
   const r = await run({
     mode: 'auto',
     simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] },
   })
   const e1 = eq('status', r.status, 'ready')
   if (e1) return e1
-  const out = JSON.stringify(r)
-  if (out.includes('ARCHITECTURE.md') || out.includes('VISION.md')) return { ok: false, msg: 'run result names VISION.md/ARCHITECTURE.md although the target repo has neither' }
   const src = SUITE_ARGS.fpSource
   if (!src) {
     log('SKIP — T77g source checks: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
     return { ok: true }
   }
   const lines = src.split('\n')
-  const importLines = { ARCH_IMPORT_SAM: '', ARCH_IMPORT_MORGAN: '' }
-  for (const name of Object.keys(importLines)) {
-    importLines[name] = lines.find(l => l.startsWith(`const ${name} = `)) || ''
-    if (!importLines[name]) return { ok: false, msg: `workflow source lacks const ${name}` }
-    if (!importLines[name].includes('only if it exists')) return { ok: false, msg: `${name} does not read the file only "if it exists"` }
-    if (!importLines[name].includes('skip silently any')) return { ok: false, msg: `${name} does not skip silently when a file is absent` }
-    for (const banned of ['callAgent', 'simulate', 'DEBT', 'R1', 'R2', 'R3', 'ratchet', 'lgtmgate', 'critical-paths', 'codemap', 'one-way', 'Never list', 'exception:']) {
-      if (importLines[name].includes(banned)) return { ok: false, msg: `${name} injects rule text of this repo (${banned}) into a consumer prompt` }
+  for (const name of ['SAM_PRODUCT_DIRECTION', 'MORGAN_PRODUCT_DIRECTION']) {
+    const line = lines.find(l => l.startsWith(`const ${name} = `)) || ''
+    if (!line) return { ok: false, msg: `workflow source lacks const ${name}` }
+    for (const banned of ['callAgent', 'simulate', 'DEBT', 'R1', 'R2', 'R3', 'ratchet', 'lgtmgate', 'critical-paths', 'codemap', 'one-way',
+      'Never list', 'exception:', '.md', 'Read ', 'repo root']) {
+      if (line.includes(banned)) return { ok: false, msg: `${name} injects rule text of this repo or a required read (${banned}) into a consumer prompt` }
     }
   }
-  if (!importLines.ARCH_IMPORT_MORGAN.includes("per that repo's `ARCHITECTURE.md`")) return { ok: false, msg: "ARCH_IMPORT_MORGAN must phrase the declared-exception rule as \"per that repo's `ARCHITECTURE.md`\"" }
   // The one-way-door announcement Sam gets is built from the repo's declared kinds only: with the four kinds
   // it names exactly them and `none` (no arbitrary <kind>), and it carries no rule text of this repo.
   if (!lines.includes('const SAM_ONE_WAY_DOOR = samOneWayDoorText(config.oneWayDoorKinds)')) return { ok: false, msg: 'SAM_ONE_WAY_DOOR is not built from config.oneWayDoorKinds' }
@@ -2965,9 +2963,36 @@ await testCase('T77g consumer neutrality: no VISION.md/ARCHITECTURE.md in the ta
   for (const banned of ['callAgent', 'simulate', 'DEBT', 'R1', 'R2', 'R3', 'ratchet', 'lgtmgate', 'critical-paths', 'codemap', 'ARCHITECTURE.md', 'VISION.md']) {
     if (owd.includes(banned)) return { ok: false, msg: `samOneWayDoorText injects rule text of this repo (${banned}) into a prompt` }
   }
-  const stray = lines.filter(l => (l.includes('ARCHITECTURE.md') || l.includes('VISION.md'))
-    && !l.trimStart().startsWith('//') && !l.startsWith('const ARCH_IMPORT_SAM = ') && !l.startsWith('const ARCH_IMPORT_MORGAN = '))
-  if (stray.length) return { ok: false, msg: `engine names VISION.md/ARCHITECTURE.md outside the two conditional imports: ${stray[0].slice(0, 120)}` }
+  return { ok: true }
+})
+
+// T77p (#77, consumer neutrality) — the engine imposes no file name on a consumer: agents receive each
+// repo's own instructions natively, so no prompt of the engine names VISION.md, ARCHITECTURE.md or
+// AGENTS.md. Every prompt is built from the engine source, so the source naming none of them (comments
+// included) proves it; the prompt previews of a full run and of a plan-gate run are checked too.
+await testCase('T77p consumer neutrality: no engine prompt names VISION.md, ARCHITECTURE.md or AGENTS.md', async () => {
+  const names = ['VISION.md', 'ARCHITECTURE.md', 'AGENTS.md']
+  const runs = [
+    await run({ mode: 'auto', simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] } }),
+    await run({ mode: 'semi', config: T77_KCONFIG, simulate: { theo: T77_THEO, sam: 'GO', samPlan: 'plan\none-way-door: none' + T77_CK } }),
+  ]
+  const e1 = eq('full run status', runs[0].status, 'ready') || eq('plan-gate run status', runs[1].status, 'plan-ready')
+  if (e1) return e1
+  if (!String(runs[0].nickPromptPreview || '')) return { ok: false, msg: 'nickPromptPreview empty on the full run' }
+  for (const r of runs) {
+    const out = JSON.stringify(r)
+    const hit = names.find(n => out.includes(n))
+    if (hit) return { ok: false, msg: `run result (prompt previews included) names ${hit}` }
+  }
+  const src = SUITE_ARGS.fpSource
+  if (!src) {
+    log('SKIP — T77p source checks: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  for (const n of names) {
+    const line = src.split('\n').find(l => l.includes(n))
+    if (line !== undefined) return { ok: false, msg: `engine source names ${n}: ${line.trim().slice(0, 120)}` }
+  }
   return { ok: true }
 })
 

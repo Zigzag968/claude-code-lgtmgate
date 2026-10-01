@@ -2163,14 +2163,12 @@ if (after('plan', entryStage)) {
 // Reads `pm`/`diag` (top-level, see above) by closure — both are still null/populated correctly
 // regardless of which call site invokes this, fresh Plan-phase or Review-phase amendment.
 const SAM_LAYER_RULE = 'LAYER RULE: plan the smallest change that removes the cause class; never a `simulate.*` seam; say in the plan if the diff adds a status, an `agent()`, a hook or a seam; list `patch-avoided:` with the patches you rejected.'
-// #77 — read instructions for the target repo's own docs, Sam + Morgan prompts only (agents/sam.md stays
-// untouched). Each repo is free to have its own VISION.md / ARCHITECTURE.md, or none: both instructions are
-// conditional on the file existing there (skip silently otherwise) and carry no rule text of this repo.
-// ARCHITECTURE.md states constraints (Morgan may block on them); VISION.md states product principles
-// (Sam names the one a plan trades off; Morgan signals a conflict, never blocks on it).
-// Pinned by flow tests T77g and T77n.
-const ARCH_IMPORT_SAM = 'Read `ARCHITECTURE.md` and `VISION.md` at the repo root, each only if it exists; skip silently any that does not exist. Plan within the constraints `ARCHITECTURE.md` states. When the plan trades off a principle `VISION.md` states, name that principle and the trade-off in the plan. '
-const ARCH_IMPORT_MORGAN = "Read `ARCHITECTURE.md` and `VISION.md` at the repo root, each only if it exists; skip silently any file that does not exist. A diff that breaks a constraint `ARCHITECTURE.md` states is a FAIL; per that repo's `ARCHITECTURE.md`, if it defines a declared-exception rule, apply it exactly as that file words it (an exception it does not allow, or that lacks what it requires, is a FAIL). `VISION.md` is advisory: a conflict with one of its principles is never a FAIL and never goes into `items`; name the principle and the conflict on a line `VISION (advisory): <principle> — <conflict>` in your posted comment, and keep the verdict you would give without it.\n"
+// #77 — product direction, Sam + Morgan prompts only, tool-neutral: agents receive each repo's own
+// instructions natively (Claude Code loads the project's CLAUDE.md and its imports), so the engine names no
+// file and imposes no doc on a consumer; a repo that states no direction gets the same run.
+// Pinned by flow tests T77g, T77n and T77p.
+const SAM_PRODUCT_DIRECTION = 'PRODUCT DIRECTION: if your project instructions state a product direction or principles, name the one your plan trades off. '
+const MORGAN_PRODUCT_DIRECTION = "PRODUCT DIRECTION: signal a conflict with the repo's stated product direction, never block on it; block only on what the acceptance checklist and the CI check. Signal it in your posted comment, never in `items`.\n"
 // R3 (#77): Sam's announcement instruction for the kinds this repo declares (config.oneWayDoorKinds);
 // '' when it declares none, so a consumer Sam is never asked about engine kinds. Pinned by T77g, T77l.
 const SAM_ONE_WAY_DOOR = samOneWayDoorText(config.oneWayDoorKinds)
@@ -2202,7 +2200,7 @@ const samScoutPrompt = ({ fixBlock = '', auditFixBlock = '', reviewFixBlock = ''
     `The durable history lives in the issue/PR thread and in git commits, never inside the plan (the artifact itself is gitignored build output). ` +
     `An amended plan is about the size of a fresh plan for the current scope — usually SMALLER than the previous revision, never monotonically larger. ` +
     `${SAM_LAYER_RULE} ` +
-    `${SAM_ONE_WAY_DOOR}${ARCH_IMPORT_SAM}` +
+    `${SAM_ONE_WAY_DOOR}${SAM_PRODUCT_DIRECTION}` +
     `Author the acceptance checklist against ${conventionsRule} — in particular its Format-status and Test-status acceptance-item sections: never assert a whole-repo clean state the base branch cannot satisfy. ` +
     `${ACCEPTANCE_PROOF_RULE} ` +
     `Then post an INDEX comment on issue #${issue} — never the full plan, whatever its size. The index comment is exactly: ${planMarker} alone on its first line, a condensed summary (~15 lines max), the acceptance checklist VERBATIM, and a pointer to the canonical artifact "${planPath}" in the shared worktree. ` +
@@ -3297,7 +3295,7 @@ if (after('review', entryStage)) {
   let v = await callMorganGuarded(
     `Work in the shared worktree "${wtPath}". Review PR #${pr}.\n\n` +
       `${planBlock}\n\n` +
-      `${ARCH_IMPORT_MORGAN}` +
+      `${MORGAN_PRODUCT_DIRECTION}` +
       `Gate on the acceptance checklist FROM THAT PLAN, review against ${conventionsRule}, ` +
       `${regressionGuardStep}` +
       `For asset/render/human-facing lanes, BEFORE any verdict, execute the real-case live run yourself (the exact command the plan names, deps included) and machine-verify the output contract from the plan (e.g. the exact pixel/asset dimensions and named visual elements the plan calls for, screenshot non-empty, named fields written). Units mock the other side, so seam errors pass with the mock; only a taste judgment then remains for the human-gate. ` +
@@ -3429,7 +3427,7 @@ if (after('review', entryStage)) {
 
     v = await callMorganGuarded(
       `Work in the shared worktree "${wtPath}". Re-review PR #${pr} after Nick's fixes, against the SAME plan and acceptance checklist below. ` +
-        `${ARCH_IMPORT_MORGAN}` +
+        `${MORGAN_PRODUCT_DIRECTION}` +
         `Re-run the regression guard the same way: ${regressionGuardStep}` +
         `For asset/render/human-facing lanes, BEFORE any verdict, execute the real-case live run yourself (the exact command the plan names, deps included) and machine-verify the output contract from the plan (e.g. the exact pixel/asset dimensions and named visual elements the plan calls for, screenshot non-empty, named fields written). Units mock the other side, so seam errors pass with the mock; only a taste judgment then remains for the human-gate. ` +
         `${artifactProofStep}` +

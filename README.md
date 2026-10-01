@@ -249,6 +249,7 @@ Any orchestrator built on this plugin is expected to persist per-run state (`.pi
 
 ## Contributing & learn more
 
+- **Direction**: [VISION.md](VISION.md) (product direction and doctrine) and [ARCHITECTURE.md](ARCHITECTURE.md) (engine direction, technical doctrine, one-way doors).
 - **Contributing**: see [CONTRIBUTING.md](CONTRIBUTING.md) for the dev loop, conventions, and PR expectations.
 - **Maintaining / releasing**: see [MAINTAINING.md](MAINTAINING.md) for the `--plugin-dir` dev loop, naming (`lgtmgate:deliver-pipeline`), the release/rollback runbook, and the trust-root of the marketplace pin.
 - **Security**: see [SECURITY.md](SECURITY.md) for the threat model and how to report a vulnerability privately.

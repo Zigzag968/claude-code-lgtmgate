@@ -5,9 +5,8 @@
 - The checklist is data: acceptance items carry ids, are rendered and ticked by the engine, proven per id.
 - Repo-neutral: the engine knows no stack, path or rule of its own; each repo's config and docs say what matters there.
 ## Today
-- The Lead runs `/lgtmgate:deliver`; the workflow drives Theo, Sam, Nick and Morgan in the issue's worktree and returns one status.
+- The Lead runs `/lgtmgate:deliver` (four agents, issue's worktree, one status); consumers get the engine, `agents/`, `commands/`, `hooks/` and init templates.
 - The workflow runtime has no filesystem or shell: it only launches agents; every git, gh or file access runs as a script through a probe.
-- Consumers receive the engine, `agents/`, `commands/`, `hooks/` and the init templates.
 ## Technical doctrine, ranked (the higher one wins a conflict)
 1. Determinism over judgment: a script does the mechanical work; a model only judges.
 2. Proof over trust: every claim is a command output or an artifact; an engine bug ships with a replayed fixture.

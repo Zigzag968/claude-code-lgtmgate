@@ -4,7 +4,8 @@
 # GUARDS_ONLY) with throwaway files under $TMPDIR — never mutates tracked files.
 # Cases: positive (same counts), 3 negative R1 counters, parser markers not counted/balanced,
 # block comments, multi-line agent calls, missing base, all-tests-wired (wired/unwired/comment-only),
-# version floor, sam-parity, doc-budgets (at budget / over / missing / per-line cap, through GUARDS_ROOT).
+# version floor, sam-parity, doc-budgets (at budget / over / missing / per-line cap, through GUARDS_ROOT),
+# instructions-wired (imports outside code, once each, no @AGENTS.md, AGENTS.md names both, omitClaudeMd).
 # Ends with `[test-guards] status=<ok|fail> passed=<n> failed=<n>`.
 set -u
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -234,6 +235,40 @@ if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: doc-budgets: VISION.md line 
 mkdocs "$T/d8" 5 5; for _ in 1 2; do printf '%s\n' "$(printf 'y%.0s' $(seq 1 200))" >> "$T/d8/ARCHITECTURE.md"; done
 run_budgets "$T/d8"
 if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q 'ARCHITECTURE.md line 6 has 200 characters, cap 160 (+1 more)'; then ok "doc-budgets: two long ARCHITECTURE.md lines -> FAIL, first named, count of the rest"; else ko "doc-budgets architecture long lines (rc=$RC) $OUT"; fi
+
+# ---- instructions-wired (#77) ----
+# mkinst <dir> [no-agents-md]: fake repo root wired as this repo is (CLAUDE.md imports, AGENTS.md, one agent with a
+# frontmatter that does not skip the project instructions); each case then breaks one thing.
+mkinst() {
+  mkdir -p "$1/agents"
+  printf '# CLAUDE.md\n\n@VISION.md\n@ARCHITECTURE.md\n\n- An escalation that trades off a `VISION.md` principle names it.\n' > "$1/CLAUDE.md"
+  [ "${2:-}" = no-agents-md ] || printf '# AGENTS.md\n\nRead `VISION.md` and `ARCHITECTURE.md` first.\n' > "$1/AGENTS.md"
+  printf -- '---\nname: A\nomitClaudeMd: false\n---\nBody mentions omitClaudeMd: true outside the frontmatter.\n' > "$1/agents/a.md"
+}
+run_inst() { OUT="$(GUARDS_ROOT="$1" GUARDS_ONLY=instructions node scripts/guards.cjs 2>&1)"; RC=$?; }
+inst_fail() { # <label> <dir> <expected FAIL substring>
+  run_inst "$2"
+  if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: instructions-wired: ' && echo "$OUT" | grep -qF "$3"; then ok "$1"; else ko "$1 (rc=$RC) $OUT"; fi
+}
+mkinst "$T/i1"; run_inst "$T/i1"
+if [ "$RC" -eq 0 ] && echo "$OUT" | grep -q '^PASS: instructions-wired: CLAUDE.md imports @VISION.md and @ARCHITECTURE.md once each; AGENTS.md names both; 1 agents/\*.md, none sets omitClaudeMd: true$'; then ok "instructions-wired: imports, AGENTS.md, omitClaudeMd false (and only in the body) -> PASS"; else ko "instructions-wired positive (rc=$RC) $OUT"; fi
+mkinst "$T/i2"; printf '# CLAUDE.md\n\n@VISION.md\n- Technical constraints: `ARCHITECTURE.md`.\n' > "$T/i2/CLAUDE.md"
+inst_fail "instructions-wired: ARCHITECTURE.md only named in a code span -> FAIL" "$T/i2" 'CLAUDE.md has no line `@ARCHITECTURE.md` outside code'
+mkinst "$T/i3"; printf '# CLAUDE.md\n\n```\n@VISION.md\n```\n@ARCHITECTURE.md\n' > "$T/i3/CLAUDE.md"
+inst_fail "instructions-wired: @VISION.md only inside a fenced block -> FAIL" "$T/i3" 'CLAUDE.md has no line `@VISION.md` outside code'
+mkinst "$T/i4"; printf '# CLAUDE.md\n\n`@VISION.md`\n  @ARCHITECTURE.md\n' > "$T/i4/CLAUDE.md"
+run_inst "$T/i4"
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -qF 'no line `@VISION.md`' && echo "$OUT" | grep -qF 'no line `@ARCHITECTURE.md`'; then ok "instructions-wired: import in a code span, indented import line -> FAIL for both"; else ko "instructions-wired code span / indent (rc=$RC) $OUT"; fi
+mkinst "$T/i5"; printf '# CLAUDE.md\n\n@VISION.md\n@ARCHITECTURE.md\n- Product vision, read by every agent: @VISION.md\n' > "$T/i5/CLAUDE.md"
+inst_fail "instructions-wired: a second, inline @VISION.md import -> FAIL" "$T/i5" 'CLAUDE.md imports VISION.md 2 times, keep exactly one `@VISION.md` line'
+mkinst "$T/i6"; printf '# CLAUDE.md\n\n@VISION.md\n@ARCHITECTURE.md\n@AGENTS.md\n' > "$T/i6/CLAUDE.md"
+inst_fail "instructions-wired: CLAUDE.md imports AGENTS.md -> FAIL" "$T/i6" 'CLAUDE.md imports AGENTS.md, which loads the docs twice'
+mkinst "$T/i7" no-agents-md
+inst_fail "instructions-wired: AGENTS.md absent -> FAIL" "$T/i7" 'AGENTS.md missing'
+mkinst "$T/i8"; printf '# AGENTS.md\n\nRead `VISION.md` first.\n' > "$T/i8/AGENTS.md"
+inst_fail "instructions-wired: AGENTS.md does not name ARCHITECTURE.md -> FAIL" "$T/i8" 'AGENTS.md does not name ARCHITECTURE.md'
+mkinst "$T/i9"; printf -- '---\nname: B\nomitClaudeMd: true\n---\nbody\n' > "$T/i9/agents/b.md"
+inst_fail "instructions-wired: agents/b.md frontmatter omitClaudeMd: true -> FAIL" "$T/i9" 'agents/b.md sets omitClaudeMd: true'
 
 STATUS=ok; [ "$FAIL_N" -eq 0 ] || STATUS=fail
 echo "[test-guards] status=${STATUS} passed=${PASS_N} failed=${FAIL_N}"
