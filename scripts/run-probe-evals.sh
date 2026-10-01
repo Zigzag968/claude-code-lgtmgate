@@ -16,16 +16,21 @@
 # Automated runs (macOS)
 #   - A LaunchAgent outside any Claude session runs the Docker eval and reads the token from the Keychain.
 #     The Claude session never sees the token; it only drops a trigger file and reads the results.
+#   - The eval runs on the PUSHED state of a branch: the job clones it fresh (shallow) per trigger, then deletes the clone.
+#     Push before triggering; unpushed local changes are not evaluated.
+#   - Why a clone and a boot-disk spool: macOS TCC blocks a launchd job from reading an external volume
+#     (/Volumes/..., "Operation not permitted"), so nothing the job touches may live there. No TCC grant is needed.
 #   - One-time install (human, once):
-#     - bash scripts/eval-runner/install.sh <spool-dir> <allowed-root>   (writes files, loads nothing)
+#     - bash scripts/eval-runner/install.sh /tmp/claude/lgtmgate-eval-spool   (writes files, loads nothing; refuses a /Volumes/ spool)
 #     - claude setup-token
 #     - security add-generic-password -a "$USER" -s lgtmgate-eval-token -T /usr/bin/security -w   (prompts for the token)
 #     - launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/dev.lgtmgate.eval-runner.plist
-#   - Trigger (session): LGTMGATE_EVAL_SPOOL=<spool-dir> bash scripts/eval-runner/trigger.sh [--wait <s>] <worktree> [cases...]
+#   - Trigger (session): LGTMGATE_EVAL_SPOOL=/tmp/claude/lgtmgate-eval-spool bash scripts/eval-runner/trigger.sh [--wait <s>] <branch> [cases...]
 #     - prints the id; --wait polls every 10 s, prints the summary, exits with the eval rc (124 on timeout)
-#   - Results: <spool-dir>/done/<id>.{log,rc,summary,trigger}; launchd output in ~/Library/Logs/lgtmgate-eval-runner.log (boot disk: launchd refuses a log path on an external volume, exit 78)
-#     - rc: 0 ok, 64 trigger refused (path outside <allowed-root>, not a git worktree, bad case name),
-#       65 Keychain item missing or locked, 66 docker missing
+#   - Results: <spool-dir>/done/<id>.{log,rc,summary,trigger}; the first log line is "== commit <sha> branch <branch>"
+#     - launchd output in ~/Library/Logs/lgtmgate-eval-runner.log (boot disk: launchd refuses a log path on an external volume, exit 78)
+#     - rc: 0 ok, 64 trigger refused (bad branch or case name, eval script missing on the branch),
+#       65 Keychain item missing or locked, 66 docker missing, 67 git clone failed (branch not pushed?)
 #   - Uninstall: bash scripts/eval-runner/install.sh --uninstall
 #     - then optionally: security delete-generic-password -a "$USER" -s lgtmgate-eval-token
 #   - Risks:

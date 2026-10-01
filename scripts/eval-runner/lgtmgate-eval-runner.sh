@@ -1,16 +1,20 @@
 #!/bin/bash
 # lgtmgate eval runner: LaunchAgent job body (#81). bash 3.2 safe. Run by launchd on WatchPaths, never by a Claude session.
-# - Env (set by the plist): SPOOL, ALLOWED_ROOT.
+# - Env (set by the plist): SPOOL, REPO_URL (default: the public repo). Optional: WORK_DIR (default ~/Library/Caches/lgtmgate/eval-work).
+# - Everything the job touches lives on the boot disk: macOS TCC blocks a launchd job from reading /Volumes/*.
 # - Spool: inbox/<id>.trigger -> running/ -> done/<id>.{trigger,log,rc,summary}.
-# - Trigger = ONE line: absolute worktree path, then optional space-separated case names. Untrusted data.
-# - rc: 0 ok, 64 refused trigger, 65 Keychain read failed, 66 docker missing, other = eval exit code.
+# - Trigger = ONE line: a git branch name of the repo, then optional space-separated case names. Untrusted data.
+# - Each trigger: fresh shallow clone of the branch into WORK_DIR/<id>, eval runs there, clone deleted after.
+# - rc: 0 ok, 64 refused trigger, 65 Keychain read failed, 66 docker missing, 67 clone failed, other = eval exit code.
 set -u
 set +x
 
-if [ -z "${SPOOL:-}" ] || [ -z "${ALLOWED_ROOT:-}" ]; then
-  echo "lgtmgate-eval-runner: SPOOL and ALLOWED_ROOT must be set (see scripts/eval-runner/install.sh)" >&2
+if [ -z "${SPOOL:-}" ]; then
+  echo "lgtmgate-eval-runner: SPOOL must be set (see scripts/eval-runner/install.sh)" >&2
   exit 2
 fi
+REPO_URL="${REPO_URL:-https://github.com/Zigzag968/claude-code-lgtmgate.git}"
+WORK_DIR="${WORK_DIR:-$HOME/Library/Caches/lgtmgate/eval-work}"
 
 PATH="/usr/local/bin:/opt/homebrew/bin:$HOME/.docker/bin:/Applications/Docker.app/Contents/Resources/bin:$PATH"
 export PATH
@@ -44,25 +48,31 @@ refuse() { # refuse <id> <rc> <reason>
   finish "$1" "$2"
 }
 
+valid_branch() { # valid_branch <name>: charset, no "..", no leading "-", <= 100 chars
+  case "$1" in
+    ""|-*|*..*|*[!A-Za-z0-9._/-]*) return 1 ;;
+  esac
+  [ "${#1}" -le 100 ]
+}
+
+# remove_clone <dir>: only a non-empty id directly under WORK_DIR
+remove_clone() {
+  case "$1" in
+    "$WORK_DIR"/?*) rm -rf "$1" ;;
+  esac
+}
+
 process() {
-  local f="$1" id line wt real allowed cases token rc
+  local f="$1" id line branch cases token rc clone sha
   id="$(basename "$f" .trigger)"
   mv "$f" "$SPOOL/running/$id.trigger" || return 0
   line=""
   IFS= read -r line < "$SPOOL/running/$id.trigger" || true
-  wt="${line%% *}"
+  branch="${line%% *}"
   cases=""
   case "$line" in *" "*) cases="${line#* }" ;; esac
 
-  [ -n "$wt" ] && [ -d "$wt" ] || { refuse "$id" 64 "worktree path missing or not a directory"; return 0; }
-  real="$(cd -P "$wt" 2>/dev/null && pwd -P)" || { refuse "$id" 64 "cannot resolve worktree path"; return 0; }
-  allowed="$(cd -P "$ALLOWED_ROOT" 2>/dev/null && pwd -P)" || { refuse "$id" 64 "ALLOWED_ROOT not resolvable"; return 0; }
-  case "$real/" in
-    "$allowed"/?*) ;;
-    *) refuse "$id" 64 "worktree is not under ALLOWED_ROOT"; return 0 ;;
-  esac
-  git -C "$real" rev-parse --is-inside-work-tree >/dev/null 2>&1 || { refuse "$id" 64 "not a git worktree"; return 0; }
-  [ -f "$real/scripts/run-probe-evals-docker.sh" ] || { refuse "$id" 64 "scripts/run-probe-evals-docker.sh missing"; return 0; }
+  valid_branch "$branch" || { refuse "$id" 64 "invalid branch name"; return 0; }
 
   # case names: strict charset, then word-split without globbing
   set -f
@@ -75,17 +85,34 @@ process() {
     esac
   done
 
-  command -v docker >/dev/null 2>&1 || { refuse "$id" 66 "docker not found on PATH"; return 0; }
+  clone="$WORK_DIR/$id"
+  mkdir -p "$WORK_DIR" || { refuse "$id" 67 "cannot create WORK_DIR"; return 0; }
+  remove_clone "$clone"
+  if ! git clone --quiet --depth 1 --branch "$branch" "$REPO_URL" "$clone" > "$SPOOL/running/$id.clone.err" 2>&1; then
+    { echo "lgtmgate-eval-runner: refused: git clone failed for branch $branch"; cat "$SPOOL/running/$id.clone.err"; } > "$SPOOL/done/$id.log"
+    rm -f "$SPOOL/running/$id.clone.err"
+    remove_clone "$clone"
+    finish "$id" 67
+    return 0
+  fi
+  rm -f "$SPOOL/running/$id.clone.err"
+  sha="$(git -C "$clone" rev-parse HEAD 2>/dev/null || echo unknown)"
+
+  [ -f "$clone/scripts/run-probe-evals-docker.sh" ] || { remove_clone "$clone"; refuse "$id" 64 "scripts/run-probe-evals-docker.sh missing on branch $branch"; return 0; }
+  command -v docker >/dev/null 2>&1 || { remove_clone "$clone"; refuse "$id" 66 "docker not found on PATH"; return 0; }
 
   token="$(security find-generic-password -a "${USER:-$(id -un)}" -s lgtmgate-eval-token -w 2>/dev/null)" || token=""
   if [ -z "$token" ]; then
+    remove_clone "$clone"
     refuse "$id" 65 "Keychain item lgtmgate-eval-token not found or locked; see docs (header of scripts/run-probe-evals.sh)"
     return 0
   fi
 
-  ( cd "$real" && CLAUDE_CODE_OAUTH_TOKEN="$token" bash scripts/run-probe-evals-docker.sh "$@" ) > "$SPOOL/done/$id.log" 2>&1
+  echo "== commit $sha branch $branch" > "$SPOOL/done/$id.log"
+  ( cd "$clone" && CLAUDE_CODE_OAUTH_TOKEN="$token" bash scripts/run-probe-evals-docker.sh "$@" ) >> "$SPOOL/done/$id.log" 2>&1
   rc=$?
   token=""
+  remove_clone "$clone"
   finish "$id" "$rc"
 }
 

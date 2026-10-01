@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
 # Installs the eval runner LaunchAgent files (#81). Run once by the human. bash 3.2 safe.
-# Usage: install.sh [--dry-run] <spool-dir> <allowed-root>   |   install.sh --uninstall
+# Usage: install.sh [--dry-run] <spool-dir>   |   install.sh --uninstall
 # - Writes the plist and a copy of the runner; does NOT load the job and does NOT touch the Keychain.
+# - The spool must be on the boot disk: macOS TCC blocks a launchd job from reading /Volumes/*. Suggested: /tmp/claude/lgtmgate-eval-spool
+# - Env LGTMGATE_REPO_URL overrides the clone URL written to the plist.
 # - --dry-run prints the plist to stdout and writes nothing.
 set -u
 
 LABEL="dev.lgtmgate.eval-runner"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 RUNNER_DST="$HOME/Library/Application Support/lgtmgate/eval-runner.sh"
+REPO_URL="${LGTMGATE_REPO_URL:-https://github.com/Zigzag968/claude-code-lgtmgate.git}"
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lgtmgate-eval-runner.sh"
 
 mode="install"
@@ -26,10 +29,15 @@ if [ "$mode" = "uninstall" ]; then
   exit 0
 fi
 
-if [ $# -ne 2 ]; then echo "usage: install.sh [--dry-run] <spool-dir> <allowed-root> | --uninstall" >&2; exit 2; fi
+if [ $# -ne 1 ]; then echo "usage: install.sh [--dry-run] <spool-dir> | --uninstall" >&2; exit 2; fi
 case "$1" in /*) ;; *) echo "install: spool-dir must be absolute" >&2; exit 2 ;; esac
-case "$2" in /*) ;; *) echo "install: allowed-root must be absolute" >&2; exit 2 ;; esac
-spool="${1%/}"; allowed="${2%/}"
+case "$1" in
+  /Volumes/*)
+    echo "install: refused: a launchd job cannot read an external volume (macOS TCC: 'Operation not permitted')." >&2
+    echo "install: pick a spool on the boot disk, e.g. /tmp/claude/lgtmgate-eval-spool" >&2
+    exit 2 ;;
+esac
+spool="${1%/}"
 
 xml() { printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'; }
 
@@ -54,8 +62,8 @@ plist() {
   <dict>
     <key>SPOOL</key>
     <string>$(xml "$spool")</string>
-    <key>ALLOWED_ROOT</key>
-    <string>$(xml "$allowed")</string>
+    <key>REPO_URL</key>
+    <string>$(xml "$REPO_URL")</string>
     <key>PATH</key>
     <string>$(xml "/usr/local/bin:/opt/homebrew/bin:$HOME/.docker/bin:/Applications/Docker.app/Contents/Resources/bin:/usr/bin:/bin:/usr/sbin:/sbin")</string>
   </dict>
@@ -78,7 +86,7 @@ plist > "$PLIST" || exit 1
 cat <<MSG
 Installed (not loaded): $PLIST
 Runner copy: $RUNNER_DST
-Spool: $spool   Allowed root: $allowed
+Spool: $spool   Repo: $REPO_URL
 
 Next, run these yourself:
   1. claude setup-token
@@ -86,5 +94,6 @@ Next, run these yourself:
      (prompts for the token, so it never lands in shell history)
   3. launchctl bootstrap gui/\$(id -u) $PLIST
 
-The session then runs: LGTMGATE_EVAL_SPOOL=$spool bash scripts/eval-runner/trigger.sh --wait 1800 <worktree>
+The eval runs on the PUSHED state of <branch> (fresh clone per trigger).
+The session then runs: LGTMGATE_EVAL_SPOOL=$spool bash scripts/eval-runner/trigger.sh --wait 1800 <branch>
 MSG
