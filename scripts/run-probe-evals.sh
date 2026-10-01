@@ -10,6 +10,28 @@
 # (Docker Desktop symlinks, anthropics/claude-code#94308) and its Bash sandbox needs bubblewrap + socat.
 #   - claude setup-token ; export CLAUDE_CODE_OAUTH_TOKEN=<token>
 #   - bash scripts/run-probe-evals-docker.sh   (image: .devcontainer/, runs this script inside)
+#
+# Usage: run-probe-evals.sh [case...]   (default: probe-provision probe-pr-state probe-pr-write)
+#
+# Automated runs (macOS)
+#   - A LaunchAgent outside any Claude session runs the Docker eval and reads the token from the Keychain.
+#     The Claude session never sees the token; it only drops a trigger file and reads the results.
+#   - One-time install (human, once):
+#     - bash scripts/eval-runner/install.sh <spool-dir> <allowed-root>   (writes files, loads nothing)
+#     - claude setup-token
+#     - security add-generic-password -a "$USER" -s lgtmgate-eval-token -T /usr/bin/security -w   (prompts for the token)
+#     - launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/dev.lgtmgate.eval-runner.plist
+#   - Trigger (session): LGTMGATE_EVAL_SPOOL=<spool-dir> bash scripts/eval-runner/trigger.sh [--wait <s>] <worktree> [cases...]
+#     - prints the id; --wait polls every 10 s, prints the summary, exits with the eval rc (124 on timeout)
+#   - Results: <spool-dir>/done/<id>.{log,rc,summary,trigger}; launchd output in <spool-dir>/launchd.log
+#     - rc: 0 ok, 64 trigger refused (path outside <allowed-root>, not a git worktree, bad case name),
+#       65 Keychain item missing or locked, 66 docker missing
+#   - Uninstall: bash scripts/eval-runner/install.sh --uninstall
+#     - then optionally: security delete-generic-password -a "$USER" -s lgtmgate-eval-token
+#   - Risks:
+#     - the container runs with seccomp=unconfined (bubblewrap needs user namespaces)
+#     - the token is a 1-year subscription credential: if leaked, revoke it at claude.ai and run setup-token again
+#     - the job runs only while a GUI session is logged in (LaunchAgent), and needs Docker Desktop running
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -25,7 +47,8 @@ export CLAUDE_PLUGIN_ROOT="$ROOT"
 MAX_COST="${PROBE_EVALS_MAX_COST_USD:-3}"
 
 fail=0
-for c in probe-provision probe-pr-state probe-pr-write; do
+[ "$#" -gt 0 ] || set -- probe-provision probe-pr-state probe-pr-write
+for c in "$@"; do
   claude plugin eval . --case "$c" --runs 10 --max-cost-usd "$MAX_COST" --no-publish \
     --allow-tools Bash --ablation none --threshold 0.95 --trust-plugin --output-dir "$ROOT/evals/results/$c"
   rc=$?

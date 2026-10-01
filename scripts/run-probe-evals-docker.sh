@@ -3,7 +3,7 @@
 # where `claude plugin eval` cannot run natively (anthropics/claude-code#94308). Local only, spends tokens.
 # Why seccomp=unconfined: Docker's default profile blocks the user namespaces bubblewrap needs.
 # Needs: Docker, and CLAUDE_CODE_OAUTH_TOKEN (`claude setup-token`) or ANTHROPIC_API_KEY exported on the host.
-# Extra args are forwarded to run-probe-evals.sh (it currently takes none). bash 3.2 safe.
+# Extra args are forwarded to run-probe-evals.sh (optional case names). bash 3.2 safe.
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
