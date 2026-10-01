@@ -149,11 +149,16 @@ function countAgentCalls(rawSrc) {
 }
 
 function countSimulateSeams(rawSrc) {
+  // One seam = one distinct key: `simulate.<key>` (key != probes) or `simulate.probes.<key>` /
+  // `simulate.probes['key']` / `simulate?.probes?.<key>`. A dynamic `simulate.probes[role]` is not a key.
   const keys = new Set()
   for (const line of stripComments(rawSrc).split('\n')) {
-    const re = /simulate\??\.([A-Za-z_][A-Za-z0-9_]*)/g
+    const re = /simulate\??\.([A-Za-z_][A-Za-z0-9_]*)(?:\??\.([A-Za-z_][A-Za-z0-9_]*)|\??\.?\[\s*(['"])([A-Za-z_][A-Za-z0-9_]*)\3\s*\])?/g
     let m
-    while ((m = re.exec(line))) keys.add(m[1])
+    while ((m = re.exec(line))) {
+      if (m[1] !== 'probes') keys.add(m[1])
+      else if (m[2] || m[4]) keys.add('probes.' + (m[2] || m[4]))
+    }
   }
   return keys.size
 }
