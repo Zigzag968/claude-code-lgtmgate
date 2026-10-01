@@ -17,7 +17,8 @@
 #   4. bump from the merged tree: patch+1 over max(branch, origin/main) in .claude-plugin/plugin.json
 #      + BUILD line of workflows/deliver-pipeline.js (cutFrom = origin/main short sha), commit
 #      `chore: bump X (lead-merge)`. Idempotent: skipped when the branch is already above origin/main
-#      via such a bump commit.
+#      via such a bump commit. Consumer repos (#145): no .claude-plugin/plugin.json in the merged tree ->
+#      log `no plugin manifest, version bump skipped` and continue; BUILD line edited only when present.
 #   5. push once (only when local HEAD differs from the remote head).
 #   6. wait until the PR reports the pushed sha with at least one check (bounded poll, cli/cli#7401),
 #      then gh pr checks --watch --fail-fast (--required when supported).
@@ -267,11 +268,16 @@ semver_gt() {
   [ "$a3" -gt "$b3" ]
 }
 
+# --- 4. bump from the merged tree (idempotent; plugin repo only, #145) ----------
+if [ ! -f "$MANIFEST" ]; then
+  echo "lead-merge: no plugin manifest, version bump skipped"
+else
 main_ver="$(git show "origin/main:$MANIFEST" | ver_of)"
 branch_ver="$(ver_of < "$MANIFEST")"
 [ -n "$main_ver" ] && [ -n "$branch_ver" ] || die "cannot read versions (main='$main_ver' branch='$branch_ver')"
+have_build=0
+if [ -f "$WORKFLOW" ] && grep -q '^const BUILD' "$WORKFLOW"; then have_build=1; fi
 
-# --- 4. bump from the merged tree (idempotent) ---------------------------------
 if semver_gt "$branch_ver" "$main_ver" && git log -n 50 --format=%s origin/main..HEAD | grep -qxF "chore: bump $branch_ver (lead-merge)"; then
   echo "lead-merge: bump commit for $branch_ver already on the branch, skipping bump"
 else
@@ -282,7 +288,7 @@ $base_ver
 EOV
   new_ver="$v1.$v2.$((v3 + 1))"
   cut_from="$(git rev-parse --short origin/main)"
-  NEW_VER="$new_ver" CUT_FROM="$cut_from" MANIFEST="$MANIFEST" WORKFLOW="$WORKFLOW" python3 - <<'PY' || die "bump edit failed"
+  NEW_VER="$new_ver" CUT_FROM="$cut_from" MANIFEST="$MANIFEST" WORKFLOW="$WORKFLOW" HAVE_BUILD="$have_build" python3 - <<'PY' || die "bump edit failed"
 import os, re, sys
 v, cut = os.environ["NEW_VER"], os.environ["CUT_FROM"]
 def edit(path, pat, repl):
@@ -292,12 +298,15 @@ def edit(path, pat, repl):
         sys.exit("pattern not found in " + path)
     open(path, "w").write(out)
 edit(os.environ["MANIFEST"], r'("version"\s*:\s*")[^"]*(")', lambda m: m.group(1) + v + m.group(2))
-edit(os.environ["WORKFLOW"], r"const BUILD = \{[^}]*\}",
-     "const BUILD = { plugin: 'lgtmgate', version: '%s', cutFrom: '%s' }" % (v, cut))
+if os.environ["HAVE_BUILD"] == "1":
+    edit(os.environ["WORKFLOW"], r"const BUILD = \{[^}]*\}",
+         "const BUILD = { plugin: 'lgtmgate', version: '%s', cutFrom: '%s' }" % (v, cut))
 PY
-  git add "$MANIFEST" "$WORKFLOW"
+  git add "$MANIFEST"
+  if [ "$have_build" = 1 ]; then git add "$WORKFLOW"; fi
   git commit -m "chore: bump $new_ver (lead-merge)" || die "bump commit failed"
   echo "lead-merge: bumped $base_ver -> $new_ver"
+fi
 fi
 
 # --- 5. push once --------------------------------------------------------------
