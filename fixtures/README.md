@@ -33,8 +33,8 @@ before it is committed, and the `no-private-refs` invariant scans the whole trac
 - Probe fixtures need `args.pluginRoot` (any absolute string, e.g. `/plugin`) or `config.probeRunPath`; without it
   the run fails closed before any agent call (`probeReason: probe-run-not-found`, see `82-provision-no-probe-run-path`).
   A `verify` answer of `VERIFY fail reason=no-attestation` reproduces a session whose attest hook is not enabled
-  (`probeReason: no-attestation`, see `82-provision-no-attestation`). The VERIFY line is produced by the probe agent,
-  not attested by the engine (follow-up #83). The persona fallback (agent type not found) has no fixture (the harness
+  (`probeReason: no-attestation`, see `82-provision-no-attestation`). The VERIFY line is attested by the same hook as
+  the PROBE line (bound to the call's label and round), and the probe agent may not stop without the pair (#83). The persona fallback (agent type not found) has no fixture (the harness
   cannot throw); the flow suite pins its wiring (T273).
 - A label missing from `calls` throws with the label and the prompt head, **and fails the fixture even
   when the engine swallows the error** (fail-open probes, agent-death routing). Nothing is defaulted:
@@ -62,6 +62,6 @@ Once E2.2 lands, `probe-run` writes every raw probe output under `.pipeline/prob
 ## Honesty note on `smoke/`
 
 `smoke/auto-lgtm.json` is **synthetic-raw**: the strings are the exact shapes the engine's
-prompts request (`PROBE` / `VERIFY ok` line pairs built with `probeLine()` from `templates/probe-run.cjs`, `WRITABLE|<git-dir>`, `<sha> <digest>`, JSON arrays), not a
+prompts request (`PROBE` / `VERIFY ok` line pairs built with `probeLine()` from `templates/probe-run.cjs`, `preflight` probe pairs (`probe-<issue>-preflight-dev-r0` / `-branch-r0`), `<sha> <digest>`, JSON arrays), not a
 captured transcript. It exercises the real parsers on the nominal path; it does not prove the
 model returns those shapes. The first canary run replaces it with a captured one.
