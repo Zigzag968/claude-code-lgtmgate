@@ -149,6 +149,21 @@ const PARSERS = {
       openIssuesTruncated: typeof v.openIssuesTruncated === 'boolean' ? v.openIssuesTruncated : false,
     }
   },
+  // pr-write.sh output (E2.6a, #85): ONE JSON object {op, result, reason, bytes}. result must be one of
+  // written|skipped|failed, anything else is an error; a malformed op/reason/bytes is normalised to null. No regex.
+  'pr-write'(stdout) {
+    let v
+    try { v = JSON.parse(String(stdout)) } catch (_) { return { error: 'bad-json' } }
+    if (v === null || typeof v !== 'object' || Array.isArray(v)) return { error: 'bad-json' }
+    if (v.result !== 'written' && v.result !== 'skipped' && v.result !== 'failed') return { error: 'bad-result' }
+    const str = (x) => (typeof x === 'string' && x.length > 0 ? x : null)
+    return {
+      op: str(v.op),
+      result: v.result,
+      reason: str(v.reason),
+      bytes: Number.isInteger(v.bytes) && v.bytes >= 0 ? v.bytes : null,
+    }
+  },
 }
 
 const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex')

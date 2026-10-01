@@ -3512,7 +3512,8 @@ await testCase('T130 run identity: first log is deliver #<issue>, Setup phase fi
     if (!(order[k - 1][1] < order[k][1])) return { ok: false, msg: `expected ${order[k - 1][0]} before ${order[k][0]}` }
   }
   const e2 = eq('old status label gone', src.includes('label: `status:'), false)
-  const e3 = eq('status label carries issue', src.includes('status-${issue}:'), true)
+  // The status write is a pr-write probe (#85): its agent label is probe-${issue}-pr-write-status-<name>-r0.
+  const e3 = eq('status write goes through prWrite', src.includes("prWrite('status'"), true)
   // probe() call sites (#82) pass a bare `label` + `onFail`; probe() itself builds the agent label
   // `probe-${issue}-<name>-<label>-r<round>`, so the issue number is still in every agent label.
   const bad = src.split('\n').filter(l => l.includes('label:') && !l.includes('${issue}') && !l.includes('onFail'))

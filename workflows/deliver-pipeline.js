@@ -611,6 +611,7 @@ const reviewerWindowCandidates = (issues, windowStart, windowEnd) =>
   (issues || []).filter(i => i && i.createdAt && i.createdAt >= windowStart && i.createdAt <= windowEnd)
 
 // Decision log — durable counterpart to the comment-collapse pass above. Pure body composer.
+// --- prBodySplice:start --- (pure & self-contained: templates/pr-body-splice.cjs carries a byte-identical copy, parity-tested)
 const DECISION_LOG_START = '<!-- decision-log:start -->'
 const DECISION_LOG_END = '<!-- decision-log:end -->'
 // Line-anchored (column 0 only) so an INDENTED/fenced illustrative copy of the markers — e.g.
@@ -698,6 +699,7 @@ function bodyWriteGuardOk(preLen, newBody) {
   if (!b.includes('<!-- acceptance:end -->')) return false
   return true
 }
+// --- prBodySplice:end ---
 
 // ---------------------------------------------------------------------------
 // GH Project config (IDs supplied by the project — see config.ghProject)
@@ -1617,22 +1619,11 @@ async function updateStatus(name) {
   }
   trace.push(name)
   if (simulate) return
-  try {
-    await agent(
-      `Best-effort (if any step fails, log and continue — NEVER throw):\n` +
-      (repo
-        ? `0) OWNER="${String(repo).split('/')[0]}"; NAME="${String(repo).split('/')[1]}" (from config.repo).\n`
-        : `0) cd into "${wtPath}"; OWNER=$(gh repo view --json owner -q .owner.login); NAME=$(gh repo view --json name -q .name).\n`) +
-      `1) item id — query the ISSUE's own project items, NEVER scan the board with gh's ` +
-      `"project item-list" (it defaults to 30 items and returns NOTHING for an issue past the first page):\n` +
-      `gh api graphql -f query='query($owner:String!,$repo:String!,$number:Int!){repository(owner:$owner,name:$repo){issue(number:$number){projectItems(first:20){nodes{id project{number}}}}}}' ` +
-      `-f owner="$OWNER" -f repo="$NAME" -F number=${issue} ` +
-      `--jq '.data.repository.issue.projectItems.nodes[]|select(.project.number==${ghProject.projectNumber})|.id'\n` +
-      `2) gh project item-edit --id <ITEM_ID> --field-id ${ghProject.fieldId} --project-id ${ghProject.projectId} --single-select-option-id ${optionId}\n` +
-      `If step 1 prints nothing, issue #${issue} is not on project ${ghProject.projectNumber} — log that and STOP; never run step 2 with an empty id.`,
-      { label: `status-${issue}:${name}`, model: 'haiku' },
-    )
-  } catch (e) { log(`updateStatus ${name} failed: ${e.message}, continuing`) }
+  // pr-write.sh reads the issue's own project items (never a board scan), skips a missing item or an
+  // option already set, and never edits with an empty id (#85).
+  await prWrite('status', 'status-' + name.split(' ').join('-'), 0,
+    ['--issue', issue, '--project-number', ghProject.projectNumber, '--project-id', ghProject.projectId,
+      '--field-id', ghProject.fieldId, '--option-id', optionId])
 }
 
 // ---------------------------------------------------------------------------
@@ -1771,6 +1762,32 @@ async function preflightProbe(mode, label, argv) {
     log(`preflight probe (${mode}) failed (${e.message}) — fail-open`)
     return null
   }
+}
+
+// prWrite (E2.6a, #85): every PR/issue/project WRITE of the review phase as ONE probe (templates/pr-write.sh,
+// parser `pr-write`). The script reads before it writes and never writes after a failed read; a write is
+// never reused from a stored record (noReuse). Returns the parsed {op, result, reason, bytes} or null on any
+// failure (fail-open, like the best-effort sites it replaces: a failed write logs and the run continues).
+// The result line is always logged so fixtures can assert on it.
+async function prWrite(op, label, round, argv) {
+  let out = null
+  try {
+    const script = probeScriptPath('pr-write.sh')
+    const args = [...argv, '--wt', wtPath, ...(repo ? ['--repo', repo] : [])]
+    const cmd = 'bash ' + shellSingleQuote(script) + ' ' + op + ' ' + args.map((a) => shellSingleQuote(String(a))).join(' ')
+    const r = await probe('pr-write', cmd, {
+      label,
+      round,
+      noReuse: true,   // a write is never replayed from a stored record (#85)
+      onFail: (reason) => { log(`pr-write ${op} (${label}, round ${round}): probe failed (${reason}) — fail-open`); return null },
+    })
+    if (r && r.json && !r.json.error) out = r.json
+    else if (r) log(`pr-write ${op} (${label}, round ${round}): unusable result (${r.json && r.json.error}) — fail-open`)
+  } catch (e) {
+    log(`pr-write ${op} (${label}, round ${round}): failed (${e.message}) — fail-open`)
+  }
+  if (out) log(`pr-write ${op} (${label}, round ${round}): ${out.result}${out.reason ? ' — ' + out.reason : ''}`)
+  return out
 }
 
 // probeOnly (#80): reach probe() from a run-offline fixture while no call site exists yet.
@@ -2629,43 +2646,32 @@ if (after('review', entryStage)) {
       trace.push(`reviewer-window-issue-flagged:${num}`)
       flagged.push({ number: num, url: it && it.url ? it.url : null })
       if (simulate) continue
-      try {
-        // Non-destructive by design (see the header note above): a single comment on the
-        // candidate itself, no copied title/body, and never a close-the-issue call — closing an
-        // unattributed issue is exactly the defect this replaces.
-        await agent(
-          `Run EXACTLY this shell script, as ONE Bash tool call, in the worktree "${wtPath}". ` +
-          `Reply with ONLY a short OK/FAIL token.\n\n` +
-          `cd "${wtPath}" && mkdir -p .pipeline\n` +
-          `printf '<!-- pipeline-reviewer-window pr=${pr} -->\\n` +
-          `Opened during the reviewer (Morgan) window of PR #${pr} (${windowStart} .. ${windowEnd}).\\n` +
-          `If this is a review finding, it belongs on that PR, not on a new issue\\n` +
-          `(see .claude/rules/pr-acceptance.md). If it is unrelated, ignore this comment.\\n` +
-          `This issue was NOT closed.\\n' > .pipeline/reviewer-window-${num}.md\n` +
-          `gh issue comment ${num}${prFlag} --body-file .pipeline/reviewer-window-${num}.md\n` +
-          `echo OK`,
-          { label: `reviewer-window-flag-${issue}-${num}`, model: 'haiku' },
-        )
-      } catch (e) {
-        log(`flagReviewerWindowIssues round ${round}: failed to flag issue #${num} (${e.message}), continuing`)
-      }
+      // Non-destructive by design (see the header note above): a single comment on the
+      // candidate itself, no copied title/body, and never a close-the-issue call — closing an
+      // unattributed issue is exactly the defect this replaces. pr-write.sh skips it when a comment
+      // carrying the marker is already there (idempotent across a re-run of the same round).
+      await prWrite('issue-comment', 'rw-flag-' + num, round, [
+        '--number', num,
+        '--marker', `<!-- pipeline-reviewer-window pr=${pr} -->`,
+        '--body',
+        `<!-- pipeline-reviewer-window pr=${pr} -->\n` +
+        `Opened during the reviewer (Morgan) window of PR #${pr} (${windowStart} .. ${windowEnd}).\n` +
+        `If this is a review finding, it belongs on that PR, not on a new issue\n` +
+        `(see .claude/rules/pr-acceptance.md). If it is unrelated, ignore this comment.\n` +
+        `This issue was NOT closed.`,
+      ])
     }
     if (!simulate && flagged.length > 0) {
-      try {
-        const lines = flagged.map(f => `- #${f.number}${f.url ? ` (${f.url})` : ''}`).join('\\n')
-        await agent(
-          `Run EXACTLY this shell script, as ONE Bash tool call, in the worktree "${wtPath}". ` +
-          `Reply with ONLY a short OK/FAIL token.\n\n` +
-          `cd "${wtPath}" && mkdir -p .pipeline\n` +
-          `printf 'Reviewer-window issues flagged — opened during this review round, ` +
-          `NOT closed (see .claude/rules/pr-acceptance.md):\\n\\n${lines}\\n' > .pipeline/reviewer-window-rollup-${issue}-${pr}-${round}.md\n` +
-          `gh pr comment ${pr}${prFlag} --body-file .pipeline/reviewer-window-rollup-${issue}-${pr}-${round}.md\n` +
-          `echo OK`,
-          { label: `reviewer-window-rollup-${issue}-${pr}-${round}`, model: 'haiku' },
-        )
-      } catch (e) {
-        log(`flagReviewerWindowIssues round ${round}: roll-up comment failed (${e.message}), continuing`)
-      }
+      const lines = flagged.map(f => `- #${f.number}${f.url ? ` (${f.url})` : ''}`).join('\n')
+      const rollupMarker = `<!-- pipeline-reviewer-window-rollup pr=${pr} round=${round} -->`
+      await prWrite('pr-comment', 'rw-rollup', round, [
+        '--pr', pr,
+        '--marker', rollupMarker,
+        '--body',
+        `${rollupMarker}\n` +
+        `Reviewer-window issues flagged — opened during this review round, ` +
+        `NOT closed (see .claude/rules/pr-acceptance.md):\n\n${lines}`,
+      ])
     }
   }
 
@@ -2696,17 +2702,13 @@ if (after('review', entryStage)) {
         return
       }
     }
+    let index = 0
     for (const id of ids) {
       trace.push(`review-comment-minimized:${id}`)
       if (simulate) continue
-      try {
-        await agent(
-          `gh api graphql -f query='mutation($id:ID!){minimizeComment(input:{subjectId:$id,classifier:OUTDATED}){minimizedComment{isMinimized}}}' -F id=${id}`,
-          { label: `review-comment-minimize-${issue}-${id}`, model: 'haiku' },
-        )
-      } catch (e) {
-        log(`minimizeSupersededReviewComments round ${round}: failed to minimize comment ${id} (${e.message}), continuing`)
-      }
+      // Index label: GraphQL node ids are not guaranteed label-safe. pr-write.sh reads isMinimized first.
+      await prWrite('minimize', 'minimize-' + index, round, ['--id', id])
+      index += 1
     }
   }
 
@@ -2739,7 +2741,9 @@ if (after('review', entryStage)) {
       v = null
     }
     // ONE pr-state probe per Morgan round serves the window end, the issue scan and the artifact floor.
-    const endState = simulate || !windowStart ? null : await prState('window-end', round, { since: windowStart })
+    // Without a window start (its probe failed) it carries no `since`, so lastCommitDate still feeds
+    // artifactFloorIso; flagReviewerWindowIssues skips on its own when windowStart is falsy (#85).
+    const endState = simulate ? null : await prState('window-end', round, windowStart ? { since: windowStart } : {})
     await flagReviewerWindowIssues(windowStart, round, endState)
     if (v === null) return v
     const proofs = Array.isArray(v.artifactProofs) ? v.artifactProofs : []
@@ -2989,64 +2993,13 @@ if (after('review', entryStage)) {
       prBodyPreview = upsertDecisionLog(simulate.prBody, decisionLog)
       return
     }
-    // issue #87 — the PR body content (routinely 5-30 KB) must NEVER transit through the
-    // model's own chat reply (a haiku agent asked to relay a large command's stdout silently
-    // summarizes it, corrupting the acceptance checklist + <details> block). Read, splice and
-    // write happen in ONE deterministic shell chain the subagent runs via a single Bash tool
-    // call; content moves only through shell redirection (`>`) and file I/O, never through the
-    // model's answer channel. The chain embeds the REAL spliceDecisionLogBlock/bodyWriteGuardOk
-    // SOURCE (via .toString()) as its single source of truth — no hand-duplicated copy.
-    const block = composeDecisionLogBlock(decisionLog)
-    const nodeScript =
-      `'use strict'\n` +
-      `const fs = require('fs')\n` +
-      `const DECISION_LOG_END = ${JSON.stringify(DECISION_LOG_END)}\n` +
-      `const DECISION_LOG_START_RE = /${DECISION_LOG_START_RE.source}/${DECISION_LOG_START_RE.flags}\n` +
-      `const DECISION_LOG_END_RE = /${DECISION_LOG_END_RE.source}/${DECISION_LOG_END_RE.flags}\n` +
-      `${spliceDecisionLogBlock.toString()}\n` +
-      `${bodyWriteGuardOk.toString()}\n` +
-      `const mode = process.argv[2]\n` +
-      `if (mode === 'splice') {\n` +
-      `  const preBody = fs.readFileSync(process.argv[3], 'utf8')\n` +
-      `  const blockText = fs.readFileSync(process.argv[4], 'utf8').replace(/\\n$/, '')\n` +
-      `  fs.writeFileSync(process.argv[5], spliceDecisionLogBlock(preBody, blockText))\n` +
-      `  process.exit(0)\n` +
-      `} else if (mode === 'guard') {\n` +
-      `  const preLen = Number(process.argv[3])\n` +
-      `  const newBody = fs.readFileSync(process.argv[4], 'utf8')\n` +
-      `  process.exit(bodyWriteGuardOk(preLen, newBody) ? 0 : 1)\n` +
-      `} else {\n` +
-      `  process.exit(2)\n` +
-      `}\n`
-    let syncReply
-    try {
-      syncReply = await agent(
-        `Run EXACTLY this shell script, as ONE Bash tool call, in the worktree "${wtPath}". ` +
-        `Your final reply must be ONLY the last printed line (\`OK bytes=...\`, or one of ` +
-        `\`READ_FAIL\`/\`SPLICE_FAIL\`/\`WRITE_FAIL\`/\`GUARD_FAIL ...\`) — never repeat, quote, ` +
-        `paraphrase or summarize any part of the PR body content in your reply.\n\n` +
-        `cd "${wtPath}" && mkdir -p .pipeline\n` +
-        `cat > .pipeline/pr-body-sync-${issue}-${pr}.cjs <<'PIPELINE_SYNC_EOF'\n${nodeScript}\nPIPELINE_SYNC_EOF\n` +
-        `gh pr view ${pr}${prFlag} --json body -q .body > .pipeline/pr-body-${pr}.pre.md\n` +
-        `if [ $? -ne 0 ]; then echo "READ_FAIL"; exit 0; fi\n` +
-        `PRE_LEN=$(wc -c < .pipeline/pr-body-${pr}.pre.md)\n` +
-        `cat > .pipeline/pr-body-${pr}.block.md <<'PIPELINE_BLOCK_EOF'\n${block}\nPIPELINE_BLOCK_EOF\n` +
-        `node .pipeline/pr-body-sync-${issue}-${pr}.cjs splice .pipeline/pr-body-${pr}.pre.md .pipeline/pr-body-${pr}.block.md .pipeline/pr-body-${pr}.md\n` +
-        `if [ $? -ne 0 ]; then echo "SPLICE_FAIL"; exit 0; fi\n` +
-        `gh pr edit ${pr}${prFlag} --body-file .pipeline/pr-body-${pr}.md\n` +
-        `if [ $? -ne 0 ]; then echo "WRITE_FAIL"; exit 0; fi\n` +
-        `gh pr view ${pr}${prFlag} --json body -q .body > .pipeline/pr-body-${pr}.post.md\n` +
-        `POST_LEN=$(wc -c < .pipeline/pr-body-${pr}.post.md)\n` +
-        `node .pipeline/pr-body-sync-${issue}-${pr}.cjs guard "$PRE_LEN" .pipeline/pr-body-${pr}.post.md\n` +
-        `if [ $? -eq 0 ]; then echo "OK bytes=$POST_LEN"; else gh pr edit ${pr}${prFlag} --body-file .pipeline/pr-body-${pr}.pre.md; echo "GUARD_FAIL restored=true pre=$PRE_LEN post=$POST_LEN"; fi\n`,
-        { label: `pr-body-sync-${issue}-${pr}-${r}`, model: 'haiku' })
-    } catch (e) { log(`recordDecision round ${r}: sync failed (${e.message}), skipping`); return }
-    const replyLine = String(syncReply ?? '').trim()
-    if (replyLine.startsWith('GUARD_FAIL')) {
-      log(`recordDecision round ${r}: ${replyLine}`)
-    } else if (!replyLine.startsWith('OK')) {
-      log(`recordDecision round ${r}: unexpected sync reply "${replyLine.slice(0, 200)}"`)
-    }
+    // issue #87 — the PR body content (routinely 5-30 KB) must NEVER transit through the model's own
+    // chat reply. #85: read, splice, write, re-read, guard and restore run in templates/pr-write.sh
+    // (op body-splice); the agent only copies a PROBE line, and the block text is the only content that
+    // passes through the probe command.
+    const res = await prWrite('body-splice', 'decision-log', r, ['--pr', pr, '--mode', 'decision-log', '--text', composeDecisionLogBlock(decisionLog)])
+    if (!res) { log(`recordDecision round ${r}: sync failed (probe unavailable), skipping`); return }
+    if (res.result === 'failed') log(`recordDecision round ${r}: ${res.reason || 'failed'}`)
   }
 
   // reviewParkedTerminal(v, round) (issue #228) — Morgan PROVED every remaining box but could not tick it
@@ -3085,57 +3038,12 @@ if (after('review', entryStage)) {
       if (out !== null) prBodyPreview = out
       return out !== null
     }
-    const nodeScript =
-      `'use strict'\n` +
-      `const fs = require('fs')\n` +
-      `const ACCEPTANCE_START_RE = /${ACCEPTANCE_START_RE.source}/${ACCEPTANCE_START_RE.flags}\n` +
-      `const ACCEPTANCE_END_RE = /${ACCEPTANCE_END_RE.source}/${ACCEPTANCE_END_RE.flags}\n` +
-      `const ACCEPTANCE_START = ${JSON.stringify(ACCEPTANCE_START)}\n` +
-      `${spliceAcceptanceBlock.toString()}\n` +
-      `${bodyWriteGuardOk.toString()}\n` +
-      `const mode = process.argv[2]\n` +
-      `if (mode === 'splice') {\n` +
-      `  const preBody = fs.readFileSync(process.argv[3], 'utf8')\n` +
-      `  const checklistText = fs.readFileSync(process.argv[4], 'utf8').replace(/\\n$/, '')\n` +
-      `  const out = spliceAcceptanceBlock(preBody, checklistText)\n` +
-      `  if (out === null) { process.exit(3) }\n` +
-      `  fs.writeFileSync(process.argv[5], out)\n` +
-      `  process.exit(0)\n` +
-      `} else if (mode === 'guard') {\n` +
-      `  const preLen = Number(process.argv[3])\n` +
-      `  const newBody = fs.readFileSync(process.argv[4], 'utf8')\n` +
-      `  process.exit(bodyWriteGuardOk(preLen, newBody) ? 0 : 1)\n` +
-      `} else {\n` +
-      `  process.exit(2)\n` +
-      `}\n`
-    let syncReply
-    try {
-      syncReply = await agent(
-        `Run EXACTLY this shell script, as ONE Bash tool call, in the worktree "${wtPath}". ` +
-        `Your final reply must be ONLY the last printed line (\`OK bytes=...\`, or one of ` +
-        `\`READ_FAIL\`/\`NO_MARKERS\`/\`SPLICE_FAIL\`/\`WRITE_FAIL\`/\`GUARD_FAIL ...\`) — never repeat, quote, ` +
-        `paraphrase or summarize any part of the PR body content in your reply.\n\n` +
-        `cd "${wtPath}" && mkdir -p .pipeline\n` +
-        `cat > .pipeline/pr-acceptance-sync-${issue}-${pr}.cjs <<'PIPELINE_ACC_EOF'\n${nodeScript}\nPIPELINE_ACC_EOF\n` +
-        `gh pr view ${pr}${prFlag} --json body -q .body > .pipeline/pr-body-${pr}.pre.md\n` +
-        `if [ $? -ne 0 ]; then echo "READ_FAIL"; exit 0; fi\n` +
-        `PRE_LEN=$(wc -c < .pipeline/pr-body-${pr}.pre.md)\n` +
-        `cat > .pipeline/pr-acceptance-${pr}.checklist.md <<'PIPELINE_ACC_LIST_EOF'\n${list}\nPIPELINE_ACC_LIST_EOF\n` +
-        `node .pipeline/pr-acceptance-sync-${issue}-${pr}.cjs splice .pipeline/pr-body-${pr}.pre.md .pipeline/pr-acceptance-${pr}.checklist.md .pipeline/pr-body-${pr}.md\n` +
-        `RC=$?\n` +
-        `if [ $RC -eq 3 ]; then echo "NO_MARKERS"; exit 0; fi\n` +
-        `if [ $RC -ne 0 ]; then echo "SPLICE_FAIL"; exit 0; fi\n` +
-        `gh pr edit ${pr}${prFlag} --body-file .pipeline/pr-body-${pr}.md\n` +
-        `if [ $? -ne 0 ]; then echo "WRITE_FAIL"; exit 0; fi\n` +
-        `gh pr view ${pr}${prFlag} --json body -q .body > .pipeline/pr-body-${pr}.post.md\n` +
-        `POST_LEN=$(wc -c < .pipeline/pr-body-${pr}.post.md)\n` +
-        `node .pipeline/pr-acceptance-sync-${issue}-${pr}.cjs guard "$PRE_LEN" .pipeline/pr-body-${pr}.post.md\n` +
-        `if [ $? -eq 0 ]; then echo "OK bytes=$POST_LEN"; else gh pr edit ${pr}${prFlag} --body-file .pipeline/pr-body-${pr}.pre.md; echo "GUARD_FAIL restored=true pre=$PRE_LEN post=$POST_LEN"; fi\n`,
-        { label: `pr-acceptance-sync-${issue}-${pr}-${r}`, model: 'haiku' })
-    } catch (e) { log(`syncAcceptanceBlock round ${r}: sync failed (${e.message})`); return false }
-    const replyLine = String(syncReply ?? '').trim()
-    if (replyLine.startsWith('OK')) { trace.push(`acceptance-synced:${r}`); return true }
-    log(`syncAcceptanceBlock round ${r}: ${replyLine || '(empty reply)'}`)
+    // #85: the chain (read, splice, write, re-read, guard, restore) lives in templates/pr-write.sh; the
+    // checklist never transits a model reply, the agent only copies a PROBE line. Never appends: absent
+    // markers come back as failed/no-markers.
+    const res = await prWrite('body-splice', 'acceptance-sync', r, ['--pr', pr, '--mode', 'acceptance', '--text', list])
+    if (res && (res.result === 'written' || res.result === 'skipped')) { trace.push(`acceptance-synced:${r}`); return true }
+    log(`syncAcceptanceBlock round ${r}: ${res ? (res.reason || res.result) : 'probe unavailable'}`)
     return false
   }
 
