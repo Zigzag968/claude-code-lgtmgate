@@ -342,8 +342,9 @@ function proseLines(txt) {
   return lines
 }
 // Import references to `name` (`@name` at a line start or after whitespace) in prose lines.
+const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 const importRefs = (lines, name) => lines.reduce((n, l) =>
-  n + (l.match(new RegExp(`(?:^|\\s)@${name.replace(/\./g, '\\.')}(?![\\w./-])`, 'g')) || []).length, 0)
+  n + (l.match(new RegExp(`(?:^|\\s)@${escapeRegExp(name)}(?![\\w./-])`, 'g')) || []).length, 0)
 function checkInstructionsWired() {
   const problems = []
   const claude = readOr(path.join(ROOT, 'CLAUDE.md'))
