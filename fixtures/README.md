@@ -36,6 +36,7 @@ before it is committed, and the `no-private-refs` invariant scans the whole trac
   (`probeReason: no-attestation`, see `82-provision-no-attestation`). The VERIFY line is attested by the same hook as
   the PROBE line (bound to the call's label and round), and the probe agent may not stop without the pair (#83). The persona fallback (agent type not found) has no fixture (the harness
   cannot throw); the flow suite pins its wiring (T273).
+- A scout `plan` must contain its `acceptanceChecklist` lines: the engine refuses a pointer/summary plan before plan-check (see `153-plan-pointer-return`).
 - A label missing from `calls` throws with the label and the prompt head, **and fails the fixture even
   when the engine swallows the error** (fail-open probes, agent-death routing). Nothing is defaulted:
   the harness only proves what the fixture actually feeds.
