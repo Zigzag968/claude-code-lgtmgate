@@ -24,9 +24,11 @@
 //      plugins/backlog/tests (test-*.sh|cjs|js), plus scripts/run-offline.cjs, appears inside a
 //      `run:` step (single-line or `run: |` body) of .github/workflows/guards.yml, YAML comments
 //      excluded, except the documented exemptions below.
-//   sam-parity (#75): agents/sam.md and samScoutPrompt (workflows/deliver-pipeline.js) both carry
-//      the token `patch-avoided:` and the byte-identical LAYER_RULE sentence (defined once below),
-//      and neither carries a `root-cause:` field (doctrine v3 has no LLM-filled field).
+//   sam-parity (#75, #163): agents/sam.md and samScoutPrompt (workflows/deliver-pipeline.js) both carry
+//      the token `patch-avoided:` and the byte-identical neutral PLAN_RULE sentence (defined once below),
+//      and neither carries a `root-cause:` field (doctrine v3 has no LLM-filled field). The engine's own
+//      LAYER_RULE sentence lives in the workflow only (emitted for engineRepo:true); agents/sam.md, shipped
+//      to every consumer, carries none of the engine vocabulary (ENGINE_WORDS_RE).
 //   Invariant 1 (relaxed) version floor: .claude-plugin/plugin.json version >= origin/main's (semver 2.0.0
 //      precedence, prerelease included: 1.0.0-beta.2 > 1.0.0-beta.1, 1.0.0-beta.9 < 1.0.0).
 //      Since #74 (scripts/lead-merge.sh bumps at merge; bump-required is retired) this floor is
@@ -69,11 +71,16 @@ const EXEMPT = {
 }
 // plugins/backlog/tests/*.py are python unittest modules run by discovery: never matched here.
 
-// The one Sam mandate sentence, byte-identical in agents/sam.md and in samScoutPrompt.
+// The neutral Sam mandate sentence, byte-identical in agents/sam.md and in the workflow (every consumer gets it).
+const PLAN_RULE = 'PLAN RULE: plan the smallest change that removes the cause class; list `patch-avoided:` with the patches you rejected.'
+// The engine's own variant, in the workflow only (emitted when the project's config sets engineRepo:true).
 const LAYER_RULE = 'LAYER RULE: plan the smallest change that removes the cause class; never a `simulate.*` seam; say in the plan if the diff adds a status, an `agent()`, a hook or a seam; list `patch-avoided:` with the patches you rejected.'
 
+// Engine-only vocabulary a consumer-facing persona must not carry.
+const ENGINE_WORDS_RE = /\bsimulate\b|\bseam\b|agent\(\)|fixtures\/incidents/
+
 let failed = 0
-const out = (s) => console.log(s)
+const out =(s) => console.log(s)
 const bad = (s) => { failed++; out(s) }
 
 function gitShow(rel) {
@@ -303,21 +310,26 @@ function checkVersion() {
   else out(`PASS: version-floor: branch ${nv.str} >= origin/main ${bv.str}`)
 }
 
-// ---- sam-parity (#75) ---------------------------------------------------------------------------
+// ---- sam-parity (#75, #163) ---------------------------------------------------------------------
 function checkSamParity() {
   const sites = [
-    ['agents/sam.md', readOr(process.env.GUARDS_SAM_FILE || path.join(ROOT, 'agents/sam.md'))],
-    [WORKFLOW, readOr(process.env.GUARDS_SAM_JS_FILE || path.join(ROOT, WORKFLOW))],
+    ['agents/sam.md', readOr(process.env.GUARDS_SAM_FILE || path.join(ROOT, 'agents/sam.md')), false],
+    [WORKFLOW, readOr(process.env.GUARDS_SAM_JS_FILE || path.join(ROOT, WORKFLOW)), true],
   ]
   const problems = []
-  for (const [name, txt] of sites) {
+  for (const [name, txt, isWorkflow] of sites) {
     if (txt === null) { problems.push(`${name} unreadable`); continue }
     if (!txt.includes('patch-avoided:')) problems.push(`${name} lacks the token patch-avoided:`)
-    if (!txt.includes(LAYER_RULE)) problems.push(`${name} lacks the LAYER RULE sentence`)
+    if (!txt.includes(PLAN_RULE)) problems.push(`${name} lacks the PLAN RULE sentence`)
+    if (isWorkflow && !txt.includes(LAYER_RULE)) problems.push(`${name} lacks the LAYER RULE sentence`)
+    if (!isWorkflow) {
+      const engine = ENGINE_WORDS_RE.exec(txt)
+      if (engine) problems.push(`${name} carries engine vocabulary (${engine[0]})`)
+    }
     if (txt.includes('root-cause:')) problems.push(`${name} carries a root-cause: field`)
   }
   if (problems.length) bad(`FAIL: sam-parity: ${problems.join('; ')}`)
-  else out('PASS: sam-parity: patch-avoided: and the LAYER RULE sentence on both sides, no root-cause: field')
+  else out('PASS: sam-parity: patch-avoided: and the PLAN RULE sentence on both sides, the LAYER RULE sentence in the workflow, no engine vocabulary in the persona, no root-cause: field')
 }
 
 // ---- instructions-wired (#77) ------------------------------------------------------------------
