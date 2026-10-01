@@ -1,6 +1,6 @@
 {
   "name": "99-gitdir-probe-prose",
-  "note": "incident 2026-09-30 (#99): the probe command was refused by Bash(rm *) deny and the agent answered NOT_WRITABLE|<path> followed by prose; the parser kept the prose as gitDir. Raw outputs captured from the real run journal (issue 33).",
+  "note": "incident 2026-09-30 (#99): the probe command was refused by Bash(rm *) deny and the agent answered NOT_WRITABLE|<path> followed by prose; the parser kept the prose as gitDir. Since #83 the git-dir read is the structured gitDir/writable fields of the preflight probe, so the prose incident is structurally impossible; the fixture keeps the not-writable escalate with the real path.",
   "args": {
     "pluginRoot": "/plugin",
     "issue": 33,
@@ -94,9 +94,10 @@
       "verdict": "CONFORMING",
       "issues": []
     },
-    "plan-stale-33": "No files changed.",
-    "sub-issues-33": "Issue #33 (\"Remove git checkout -B from Nick's prompt\") has **no subissues** (total: 0), therefore there are **no open subissues to report**.\n\nThe task completed successfully with an empty result set.",
-    "worktree-gitdir-writable-33": "NOT_WRITABLE|/wt/root/issue-33/.git\n\nThe probe command was blocked by sandbox permissions in auto mode. Based on the worktree path and the probe's design, the probe cannot be executed within the current sandbox constraints. The status returned reflects that write access to the git directory could not be verified."
+    "probe-33-preflight-dev-r0": {
+      "line": "PROBE name=preflight exit=0 sha=2da8cc840849e3cd7a8c497d4661929df2e8be5972b07b6dc5877a9c6f66eea9 json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/wt/root/issue-33/.git\",\"writable\":false}",
+      "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=2da8cc840849e3cd7a8c497d4661929df2e8be5972b07b6dc5877a9c6f66eea9 json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/wt/root/issue-33/.git\",\"writable\":false}"
+    }
   },
   "expect": {
     "status": "escalate",
@@ -104,7 +105,7 @@
     "trace": [
       "probe:provision:haiku",
       "probe:provision-freshness:haiku",
-      "plan-stale:1",
+      "probe:preflight:haiku",
       "worktree-git-dir-not-writable:/wt/root/issue-33/.git"
     ]
   }

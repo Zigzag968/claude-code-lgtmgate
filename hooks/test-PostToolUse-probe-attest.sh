@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Regression test for hooks/PostToolUse-probe-attest.sh and hooks/SubagentStop-probe.sh (#80).
+# Regression test for hooks/PostToolUse-probe-attest.sh and hooks/SubagentStop-probe.sh (#80, #83).
 # Temp dir under $TMPDIR only, no network. Needs jq (skips with a PASS-less note otherwise).
 set -uo pipefail
 
@@ -146,9 +146,15 @@ mk lgtmgate:probe "cd $CWD && node /abs/plugin/templates/probe-run.cjs --label x
 check "cd-prefix: dir equal to cwd -> attested once" "$ok"
 
 fresh
-mk lgtmgate:probe "cd $CWD && node /abs/plugin/templates/probe-run.cjs --verify --label x" "VERIFY ok line=$PLINE" | bash "$ATTEST"
-[ "$(attest_lines)" = "0" ] && ok=1 || ok=0
-check "cd-prefix: a VERIFY line is never attested" "$ok"
+mk lgtmgate:probe "cd $CWD && node /abs/plugin/templates/probe-run.cjs --verify --label x --round 2 --out /o --parser lines --attest /a" "VERIFY ok line=$PLINE" | bash "$ATTEST"
+[ "$(attest_lines)" = "1" ] &&
+  [ "$(jq -r '[.kind, .label, (.round|tostring), .line] | join("|")' "$CWD/.pipeline/probe-attest.jsonl")" = "verify|x|2|VERIFY ok line=$PLINE" ] && ok=1 || ok=0
+check "verify: a VERIFY line is attested with kind, label and round" "$ok"
+
+fresh
+mk lgtmgate:probe "node templates/probe-run.cjs --label y --round 1 --out /o --parser lines --cmd 'true'" | bash "$ATTEST"
+[ "$(jq -r '[.kind, .label, (.round|tostring)] | join("|")' "$CWD/.pipeline/probe-attest.jsonl")" = "probe|y|1" ] && ok=1 || ok=0
+check "probe entry carries kind, label and round" "$ok"
 
 # (g) garbage stdin -> exit 0
 printf 'not json at all' | bash "$ATTEST"; RC=$?
@@ -169,16 +175,60 @@ ERR="$(stop_in lgtmgate:probe false | bash "$STOP" 2>&1 >/dev/null)"; RC=$?
 [ "$RC" -eq 2 ] && [ -n "$ERR" ] && ok=1 || ok=0
 check "stop: probe without attestation -> exit 2 + reason on stderr" "$ok"
 
+# entry <agent> <kind> <label> <round> <line> -> one attest jsonl line
+entry() {
+  jq -cn --arg a "$1" --arg k "$2" --arg l "$3" --argjson r "$4" --arg ln "$5" \
+    '{agent_id:$a, tool_use_id:"x", kind:$k, label:$l, round:$r, line:$ln, ts:"t"}'
+}
+VLINE="VERIFY ok line=$PLINE"
+
 mkdir -p "$CWD/.pipeline"
-printf '{"agent_id":"someone-else","tool_use_id":"x","line":"PROBE","ts":"t"}\n' > "$CWD/.pipeline/probe-attest.jsonl"
+entry someone-else probe L 0 "$PLINE" > "$CWD/.pipeline/probe-attest.jsonl"
 stop_in lgtmgate:probe false | bash "$STOP" >/dev/null 2>&1; RC=$?
 [ "$RC" -eq 2 ] && ok=1 || ok=0
 check "stop: attestation of ANOTHER agent does not count -> exit 2" "$ok"
 
-printf '{"agent_id":"agent-1","tool_use_id":"x","line":"PROBE","ts":"t"}\n' >> "$CWD/.pipeline/probe-attest.jsonl"
+fresh
+mkdir -p "$CWD/.pipeline"
+entry agent-1 probe L 0 "$PLINE" > "$CWD/.pipeline/probe-attest.jsonl"
+stop_in lgtmgate:probe false | bash "$STOP" >/dev/null 2>&1; RC=$?
+[ "$RC" -eq 2 ] && ok=1 || ok=0
+check "stop: PROBE entry without a VERIFY entry -> exit 2" "$ok"
+
+fresh
+mkdir -p "$CWD/.pipeline"
+{ entry other probe L 0 "$PLINE"; entry other verify L 0 "$VLINE"; entry agent-1 probe L 0 "$PLINE"; } > "$CWD/.pipeline/probe-attest.jsonl"
+stop_in lgtmgate:probe false | bash "$STOP" >/dev/null 2>&1; RC=$?
+[ "$RC" -eq 2 ] && ok=1 || ok=0
+check "stop: PROBE+VERIFY entries of ANOTHER agent id do not satisfy the call -> exit 2" "$ok"
+
+fresh
+mkdir -p "$CWD/.pipeline"
+{ entry agent-1 probe L 0 "$PLINE"; entry agent-1 verify M 0 "$VLINE"; entry agent-1 verify L 1 "$VLINE"; } > "$CWD/.pipeline/probe-attest.jsonl"
+stop_in lgtmgate:probe false | bash "$STOP" >/dev/null 2>&1; RC=$?
+[ "$RC" -eq 2 ] && ok=1 || ok=0
+check "stop: VERIFY entry of another label or round does not satisfy the call -> exit 2" "$ok"
+
+fresh
+mkdir -p "$CWD/.pipeline"
+{ entry agent-1 probe L 0 "$PLINE"; entry agent-1 verify L 0 "VERIFY ok line=PROBE name=lines exit=0 sha=ff json={}"; } > "$CWD/.pipeline/probe-attest.jsonl"
+stop_in lgtmgate:probe false | bash "$STOP" >/dev/null 2>&1; RC=$?
+[ "$RC" -eq 2 ] && ok=1 || ok=0
+check "stop: VERIFY ok line that differs from the PROBE line -> exit 2" "$ok"
+
+fresh
+mkdir -p "$CWD/.pipeline"
+{ entry agent-1 probe L 0 "$PLINE"; entry agent-1 verify L 0 "$VLINE"; } > "$CWD/.pipeline/probe-attest.jsonl"
 stop_in lgtmgate:probe false | bash "$STOP" >/dev/null 2>&1; RC=$?
 [ "$RC" -eq 0 ] && ok=1 || ok=0
-check "stop: attestation present -> exit 0" "$ok"
+check "stop: attested PROBE+VERIFY pair for the agent, label and round -> exit 0" "$ok"
+
+fresh
+mkdir -p "$CWD/.pipeline"
+{ entry agent-1 probe L 0 "$PLINE"; entry agent-1 verify L 0 "VERIFY fail reason=no-attestation"; } > "$CWD/.pipeline/probe-attest.jsonl"
+stop_in lgtmgate:probe false | bash "$STOP" >/dev/null 2>&1; RC=$?
+[ "$RC" -eq 0 ] && ok=1 || ok=0
+check "stop: a failing VERIFY line is still attested (agent copied what it printed) -> exit 0" "$ok"
 
 fresh
 stop_in lgtmgate:probe true | bash "$STOP" >/dev/null 2>&1; RC=$?

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Regression test for templates/probe-run.cjs (E2.2, #80): pure parsers replayed against
+# Regression test for templates/probe-run.cjs (E2.2, #80) and templates/preflight.sh (#83): pure parsers replayed against
 # fixtures/probes/*.raw, plus end-to-end runs of the CLI in a temp dir. No network. bash 3.2 safe.
 set -uo pipefail
 
@@ -125,10 +125,19 @@ VOUT="$(node "$PR" --verify --label vt --round 0 --out "$VD" --parser lines --at
 ok=0; [ "$VOUT" = "VERIFY fail reason=no-attestation" ] && ok=1
 check "verify no-attestation: no attest file" "$ok"
 
-node -e 'console.log(JSON.stringify({agent_id:"a",tool_use_id:"t",line:process.argv[1],ts:"x"}))' "$VLINE" > "$ATT"
+node -e 'console.log(JSON.stringify({agent_id:"a",tool_use_id:"t",kind:"probe",label:"vt",round:0,line:process.argv[1],ts:new Date().toISOString()}))' "$VLINE" > "$ATT"
 VOUT="$(node "$PR" --verify --label vt --round 0 --out "$VD" --parser lines --attest "$ATT")"
 ok=0; [ "$VOUT" = "VERIFY ok line=$VLINE" ] && ok=1
-check "verify ok: attested line equals the recomputed one" "$ok"
+check "verify ok: attested line equals the recomputed one (entry bound to label and round)" "$ok"
+
+# the attestation is bound to the call (#83): the same line attested for another label or round does not verify
+cp "$VD/vt-r0.json" "$VD/vt-r1.json"; cp "$VD/vt-r0.json" "$VD/other-r0.json"
+VOUT="$(node "$PR" --verify --label vt --round 1 --out "$VD" --parser lines --attest "$ATT")"
+ok=0; [ "$VOUT" = "VERIFY fail reason=no-attestation" ] && ok=1
+check "verify no-attestation: entry attested for another round" "$ok"
+VOUT="$(node "$PR" --verify --label other --round 0 --out "$VD" --parser lines --attest "$ATT")"
+ok=0; [ "$VOUT" = "VERIFY fail reason=no-attestation" ] && ok=1
+check "verify no-attestation: entry attested for another label" "$ok"
 
 VOUT="$(node "$PR" --verify --label nope --round 0 --out "$VD" --parser lines --attest "$ATT")"
 ok=0; [ "$VOUT" = "VERIFY fail reason=no-record" ] && ok=1
@@ -147,6 +156,101 @@ node "$PR" --verify --label vt --round 0 --out "$VD" --parser lines --attest rel
 RC=$?
 [ "$RC" -eq 2 ] && ok=1 || ok=0
 check "verify relative --attest exits 2" "$ok"
+
+# --no-reuse (#83): a live-state probe re-executes even with an identical cmd and a stored exit-0 record
+NR="$WORK/nr"
+NRC="printf '%s\\n' \"\$(cat $WORK/nr-prefix)\""
+printf 'a/' > "$WORK/nr-prefix"
+node "$PR" --label nr --round 0 --out "$NR" --parser lines --cmd "$NRC" >/dev/null
+printf 'b/' > "$WORK/nr-prefix"
+O1="$(node "$PR" --label nr --round 0 --out "$NR" --parser lines --cmd "$NRC")"
+case "$O1" in *'"a/"'*) ok=1 ;; *) ok=0 ;; esac
+check "default: identical cmd + exit 0 is reused (still a/)" "$ok"
+O2="$(node "$PR" --label nr --round 0 --out "$NR" --parser lines --no-reuse --cmd "$NRC")"
+case "$O2" in *'"b/"'*) ok=1 ;; *) ok=0 ;; esac
+check "--no-reuse: same cmd re-executes (b/)" "$ok"
+node "$PR" --verify --label nr --round 0 --out "$NR" --parser lines --no-reuse --attest "$WORK/nr-a.jsonl" >/dev/null 2>&1
+[ "$?" -eq 2 ] && ok=1 || ok=0
+check "--no-reuse with --verify exits 2" "$ok"
+
+# VERIFY needs an attestation newer than the record, and the latest one for the call (#83)
+SD="$WORK/sv"; SA="$WORK/sv-attest.jsonl"
+SL="$(node "$PR" --label sv --round 0 --out "$SD" --parser lines --cmd "printf 'x\\n'")"
+node -e 'const l=process.argv[1];const e=(ts,line)=>JSON.stringify({agent_id:"a",tool_use_id:"t",kind:"probe",label:"sv",round:0,line,ts});console.log(e("2000-01-01T00:00:00Z",l))' "$SL" > "$SA"
+SOUT="$(node "$PR" --verify --label sv --round 0 --out "$SD" --parser lines --attest "$SA")"
+ok=0; [ "$SOUT" = "VERIFY fail reason=stale-attestation" ] && ok=1
+check "verify: an attestation older than the record does not satisfy VERIFY" "$ok"
+node -e 'const l=process.argv[1];const e=(ts,line)=>JSON.stringify({agent_id:"a",tool_use_id:"t",kind:"probe",label:"sv",round:0,line,ts});console.log(e("2000-01-01T00:00:00Z",l));console.log(e(new Date().toISOString(),l))' "$SL" > "$SA"
+SOUT="$(node "$PR" --verify --label sv --round 0 --out "$SD" --parser lines --attest "$SA")"
+ok=0; [ "$SOUT" = "VERIFY ok line=$SL" ] && ok=1
+check "verify: a fresh latest attestation after an old one passes" "$ok"
+node -e 'const l=process.argv[1];const e=(ts,line)=>JSON.stringify({agent_id:"a",tool_use_id:"t",kind:"probe",label:"sv",round:0,line,ts});console.log(e(new Date().toISOString(),l));console.log(e(new Date().toISOString(),"PROBE name=lines exit=0 sha=0 json={}"))' "$SL" > "$SA"
+SOUT="$(node "$PR" --verify --label sv --round 0 --out "$SD" --parser lines --attest "$SA")"
+ok=0; [ "$SOUT" = "VERIFY fail reason=sha-mismatch" ] && ok=1
+check "verify: the latest entry for the call must match (older matching entry is not enough)" "$ok"
+
+# (i) preflight.sh end to end (#83): stub gh first on PATH, temp git repo with a local bare origin. No network.
+PF="$SCRIPT_DIR/preflight.sh"
+if command -v jq >/dev/null 2>&1 && command -v git >/dev/null 2>&1; then
+  PFD="$WORK/pf"; mkdir -p "$PFD/bin" "$PFD/wt/.claude"
+  cat > "$PFD/bin/gh" <<'GHEOF'
+#!/usr/bin/env bash
+case "$*" in
+  *"pr view"*) [ -n "${GH_FAIL:-}" ] && exit 1; echo "feat/issue-83" ;;
+  *"issue view"*) [ -n "${GH_FAIL:-}" ] && exit 1; echo "${GH_TOTAL:-0}" ;;
+  *"sub_issues"*) printf '12\n15\n' ;;
+  *) exit 1 ;;
+esac
+GHEOF
+  chmod +x "$PFD/bin/gh"
+  echo '{"branchPrefix":"feat/"}' > "$PFD/wt/.claude/pipeline.config.json"
+
+  OUT="$(PATH="$PFD/bin:$PATH" bash "$PF" branch --wt "$PFD/wt" --pr 7 --repo o/r --stamp 1)"
+  ok=0; [ "$OUT" = '{"mode":"branch","headRef":"feat/issue-83","branchPrefix":"feat/"}' ] && ok=1
+  check "preflight.sh branch: head ref and branch prefix in one JSON line" "$ok"
+
+  OUT="$(GH_FAIL=1 PATH="$PFD/bin:$PATH" bash "$PF" branch --wt "$PFD/nowt" --pr 7)"; RC=$?
+  ok=0; [ "$RC" -eq 0 ] && [ "$OUT" = '{"mode":"branch","headRef":null,"branchPrefix":null}' ] && ok=1
+  check "preflight.sh branch: failing gh and missing config -> nulls, exit 0, one line" "$ok"
+
+  echo '{}' > "$PFD/wt/.claude/pipeline.config.json"
+  OUT="$(PATH="$PFD/bin:$PATH" bash "$PF" branch --wt "$PFD/wt" --pr '')"
+  ok=0; [ "$OUT" = '{"mode":"branch","headRef":null,"branchPrefix":""}' ] && ok=1
+  check "preflight.sh branch: no PR number, key absent -> headRef null, branchPrefix empty string" "$ok"
+
+  # dev: temp repo, local bare origin with one target changed upstream
+  git init -q --bare "$PFD/origin.git" 2>/dev/null
+  git init -q -b main "$PFD/repo" 2>/dev/null
+  git -C "$PFD/repo" config user.email t@t; git -C "$PFD/repo" config user.name t
+  echo a > "$PFD/repo/a.txt"; echo b > "$PFD/repo/b.txt"
+  git -C "$PFD/repo" add . >/dev/null; git -C "$PFD/repo" commit -q -m base
+  git -C "$PFD/repo" remote add origin "$PFD/origin.git"; git -C "$PFD/repo" push -q origin main 2>/dev/null
+  echo a2 > "$PFD/repo/a.txt"; git -C "$PFD/repo" commit -q -am upstream; git -C "$PFD/repo" push -q origin main 2>/dev/null
+  git -C "$PFD/repo" reset -q --hard HEAD~1 2>/dev/null
+
+  OUT="$(PATH="$PFD/bin:$PATH" GH_TOTAL=0 bash "$PF" dev --wt "$PFD/repo" --issue 83 --base main --repo o/r --targets 'a.txt b.txt')"
+  ok=0
+  [ "$(printf '%s' "$OUT" | jq -c '[.mode, .planStale, .openSubIssues, .writable]')" = '["dev",["a.txt"],[],true]' ] && ok=1
+  check "preflight.sh dev: changed plan target listed, sub-issues total 0 -> [], git dir writable" "$ok"
+  ok=0
+  [ "$(printf '%s' "$OUT" | jq -r '.gitDir')" = "$(git -C "$PFD/repo" rev-parse --absolute-git-dir)" ] && ok=1
+  check "preflight.sh dev: gitDir is the absolute git dir of the worktree" "$ok"
+
+  OUT="$(PATH="$PFD/bin:$PATH" GH_TOTAL=2 bash "$PF" dev --wt "$PFD/repo" --issue 83 --base main --repo o/r --targets '')"
+  ok=0
+  [ "$(printf '%s' "$OUT" | jq -c '[.planStale, .openSubIssues]')" = '[null,["12","15"]]' ] && ok=1
+  check "preflight.sh dev: empty targets -> planStale null, open sub-issues listed" "$ok"
+
+  OUT="$(GH_FAIL=1 PATH="$PFD/bin:$PATH" bash "$PF" dev --wt "$PFD/repo" --issue 83 --base main --repo o/r --targets 'a.txt')"
+  ok=0
+  [ "$(printf '%s' "$OUT" | jq -c '.openSubIssues')" = "null" ] && [ "$(printf '%s\n' "$OUT" | wc -l | tr -d ' ')" = "1" ] && ok=1
+  check "preflight.sh dev: failing gh -> openSubIssues null, still exactly one line" "$ok"
+
+  OUT="$(bash "$PF" bogus)"; ok=0; [ "$(printf '%s' "$OUT" | jq -c '.mode')" = "null" ] && ok=1
+  check "preflight.sh unknown mode -> mode null (parser reports bad-mode)" "$ok"
+else
+  echo "SKIP - preflight.sh e2e needs jq and git"
+fi
 
 # (g) agents/probe.md tools: lists exactly Bash
 TOOLS="$(awk '/^---$/{f++; next} f==1 && /^tools:/{t=1; next} f==1 && t && /^  - /{sub(/^  - /,""); print; next} f==1 && t{t=0}' "$ROOT/agents/probe.md" | tr '\n' ',')"

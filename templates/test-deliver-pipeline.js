@@ -1969,6 +1969,10 @@ await testCase('T272 probeCommands() extracted from source markers (#82)', async
     eq('config.probeRunPath wins over pluginRoot', cfgWins.run.includes("node '/cfg/probe-run.cjs' "), true),
     eq('fallback is the worktree copy', fallback.run.includes("node '/wt/issue-7/templates/probe-run.cjs' "), true),
     eq('same out dir in both', withRoot.run.includes("--out '/wt/issue-7/.pipeline/probes/issue-7'") && withRoot.verify.includes("--out '/wt/issue-7/.pipeline/probes/issue-7'"), true),
+    eq('default run has no --no-reuse (provision record rule unchanged)', withRoot.run.includes('--no-reuse'), false),
+    eq('noReuse run carries --no-reuse before --cmd (#83)', /--no-reuse --cmd /.test(pc({ ...base, pluginRoot: '/plug', noReuse: true }).run), true),
+    eq('noReuse never reaches the verify command', pc({ ...base, pluginRoot: '/plug', noReuse: true }).verify.includes('--no-reuse'), false),
+    eq('preflightProbe passes noReuse: true to probe() (live state, #83)', /async function preflightProbe[\s\S]*?probe\('preflight', cmd, \{[\s\S]*?noReuse: true/.test(src), true),
   ]
   return checks.find(c => c) || { ok: true }
 })

@@ -47,9 +47,10 @@
       "verdict": "CONFORMING",
       "issues": []
     },
-    "plan-stale-123": "",
-    "sub-issues-123": "",
-    "worktree-gitdir-writable-123": "WRITABLE|/wt/root/.git/worktrees/issue-123\n",
+    "probe-123-preflight-dev-r0": {
+      "line": "PROBE name=preflight exit=0 sha=0acd6243a89b98b4bb2d70cb70c8f020921b3ba8feae419783c1e32c54be75dd json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/wt/root/.git/worktrees/issue-123\",\"writable\":true}",
+      "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=0acd6243a89b98b4bb2d70cb70c8f020921b3ba8feae419783c1e32c54be75dd json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/wt/root/.git/worktrees/issue-123\",\"writable\":true}"
+    },
     "nick-issue-123": [
       "Auto mode classifier returned no safety verdict (10 consecutive); ending the turn. Classifier temporarily unavailable.",
       {
@@ -59,7 +60,10 @@
         "summary": "opened PR #42"
       }
     ],
-    "branch-check-123": "features/issue-123\n",
+    "probe-123-preflight-branch-r0": {
+      "line": "PROBE name=preflight exit=0 sha=5fbfdf840750936170ea0caa2986e56765751306cca75f230cff37f141b42cdc json={\"mode\":\"branch\",\"headRef\":\"features/issue-123\",\"branchPrefix\":\"\"}",
+      "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=5fbfdf840750936170ea0caa2986e56765751306cca75f230cff37f141b42cdc json={\"mode\":\"branch\",\"headRef\":\"features/issue-123\",\"branchPrefix\":\"\"}"
+    },
     "probe-123-git-rev-list-count-worktree-behind-42-r0": {
       "line": "PROBE name=git-rev-list-count exit=0 sha=9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa json={\"count\":0}",
       "verify": "VERIFY ok line=PROBE name=git-rev-list-count exit=0 sha=9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa json={\"count\":0}"
