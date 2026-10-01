@@ -5,6 +5,11 @@
 # CI only validates the cases offline (scripts/test-probe-evals.sh). bash 3.2 safe.
 # --trust-plugin: this script evaluates this repository's own plugin, launched on purpose by the Lead;
 # without it a non-interactive run (cloud session, no TTY) refuses to start.
+#
+# On macOS, run it in a Linux container instead: `claude plugin eval` refuses to run on the host
+# (Docker Desktop symlinks, anthropics/claude-code#94308) and its Bash sandbox needs bubblewrap + socat.
+#   - claude setup-token ; export CLAUDE_CODE_OAUTH_TOKEN=<token>
+#   - bash scripts/run-probe-evals-docker.sh   (image: .devcontainer/, runs this script inside)
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
