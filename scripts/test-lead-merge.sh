@@ -307,5 +307,28 @@ D="$(setup tk-stale-date)"; mkc "$D" "$BASE/rv1.md"; FAKE_HEAD_DATE="2026-01-03T
 [ "$rc" -ne 0 ] && [ ! -e "$D/log.patch" ] && ! grep -qE 'pr merge|pr checks' "$D/log" \
   && grep -qF "FAIL: tick-from-review: a push followed Morgan's verdict; re-review first" "$D/out" && ok "head commit newer than the verdict: refused, nothing ticked" || bad "stale date (rc=$rc): $(tail -3 "$D/out")"
 
+# 16. consumer repo (#145): no plugin manifest in the merged tree -> bump skipped, the rest of the gesture runs
+rm_files() { # <dir> <clone> <branch> <files...>: remove tracked files in a clone and push the branch
+  local d="$1" clone="$2" br="$3"; shift 3
+  [ -d "$d/$clone" ] || git clone -q "$d/origin.git" "$d/$clone" 2>/dev/null
+  ( cd "$d/$clone" && git config user.email t@t && git config user.name t && git checkout -q "$br" \
+    && git rm -q -- "$@" && git commit -qm "drop plugin files" && git push -q origin "$br" ) >/dev/null 2>&1
+}
+D="$(setup consumer)"
+rm_files "$D" work feat/x .claude-plugin/plugin.json workflows/deliver-pipeline.js
+rm_files "$D" other main .claude-plugin/plugin.json workflows/deliver-pipeline.js
+run "$D" "$BASE/close.md"; rc=$?
+[ "$rc" -eq 0 ] && ok "consumer repo without manifest: rc=0" || bad "consumer repo rc=$rc: $(tail -3 "$D/out")"
+grep -qF 'lead-merge: no plugin manifest, version bump skipped' "$D/out" && ok "consumer repo: skip line logged" || bad "consumer repo: no skip line"
+[ "$(git -C "$D/work" log --format=%s | grep -c 'chore: bump')" = 0 ] && ok "consumer repo: no bump commit" || bad "consumer repo: bump commit created"
+grep -q 'pr merge 7 -R o/r --merge' "$D/log" && grep -qE 'gh api -X PATCH repos/o/r/issues/5 -f state=closed' "$D/log" \
+  && ok "consumer repo: merged and issue closed" || bad "consumer repo: merge/close missing: $(cat "$D/log")"
+D="$(setup consumer-nobuild)"
+rm_files "$D" work feat/x workflows/deliver-pipeline.js
+rm_files "$D" other main workflows/deliver-pipeline.js
+run "$D" "$BASE/close.md"; rc=$?
+[ "$rc" -eq 0 ] && grep -q '"version": "0.8.81"' "$D/work/.claude-plugin/plugin.json" \
+  && ok "consumer with manifest but no BUILD line: plugin.json bumped, rc=0" || bad "consumer nobuild (rc=$rc): $(tail -3 "$D/out")"
+
 echo "[lead-merge test] passed=$PASS failed=$FAIL"
 [ "$FAIL" -eq 0 ]
