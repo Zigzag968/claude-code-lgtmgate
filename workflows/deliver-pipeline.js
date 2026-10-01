@@ -1755,6 +1755,25 @@ async function probe(name, cmd, { label, round = 0, onFail } = {}) {
   return parsed
 }
 
+// preflightProbe (#83): the pre-Dev / branch-guard reads as ONE probe (templates/preflight.sh, parser
+// `preflight`). mode 'dev' | 'branch'; returns the parsed object, or null on any failure (fail-open,
+// like the reads it replaces). The script sits next to probe-run.cjs.
+async function preflightProbe(mode, label, argv) {
+  try {
+    const runPath = config.probeRunPath ?? (pluginRoot ? pluginRoot + '/templates/probe-run.cjs' : wtPath + '/templates/probe-run.cjs')
+    const script = runPath.slice(0, runPath.lastIndexOf('/') + 1) + 'preflight.sh'
+    const cmd = 'bash ' + shellSingleQuote(script) + ' ' + mode + ' ' + argv.map(shellSingleQuote).join(' ')
+    const r = await probe('preflight', cmd, {
+      label,
+      onFail: (reason) => { log(`preflight probe (${mode}): ${reason} — fail-open`); return null },
+    })
+    return r && r.json && !r.json.error && r.json.mode === mode ? r.json : null
+  } catch (e) {
+    log(`preflight probe (${mode}) failed (${e.message}) — fail-open`)
+    return null
+  }
+}
+
 // probeOnly (#80): reach probe() from a run-offline fixture while no call site exists yet.
 if (probeOnly) {
   const r = await probe(probeOnly.name, probeOnly.cmd, { ...probeOnly })
@@ -2311,20 +2330,21 @@ const assertBranchConformance = async (prNum, nickBranchFallback) => {
   const expectedBranch = `${expectedBranchName}`
   let headRef = nickBranchFallback ?? null
   let rawHeadRef = null
+  let branchPf = null   // one preflight 'branch' probe per guard call, shared by the head-ref and prefix reads
+  let branchPfDone = false
+  const branchProbe = async () => {
+    if (!branchPfDone) {
+      branchPfDone = true
+      branchPf = await preflightProbe('branch', 'branch', ['--wt', wtPath, '--pr', prNum ? String(prNum) : '', '--repo', repo || '', '--stamp', String(stamp ?? '')])
+    }
+    return branchPf
+  }
   if (simulate) {
     if (simulate.branchCheckRaw !== undefined) rawHeadRef = simulate.branchCheckRaw
   } else if (prNum) {
-    try {
-      rawHeadRef = await agent(
-        `Run EXACTLY this command: gh pr view ${prNum}${prFlag} --json headRefName --jq '.headRefName'. ` +
-        `Your answer MUST be that command's stdout VERBATIM — a bare branch name and nothing else: ` +
-        `no sentence, no quotes, no backticks, no markdown, no explanation. ` +
-        `If the command itself fails, answer exactly ERROR.`,
-        { label: `branch-check-${issue}`, model: 'haiku' },
-      )
-    } catch (e) {
-      log(`Branch guard: gh pr view failed (${e.message}) — falling back to nick.branch`)
-    }
+    const pf = await branchProbe()
+    if (pf) rawHeadRef = pf.headRef ?? ''
+    else log(`Branch guard: preflight branch probe unavailable — falling back to nick.branch`)
   }
   if (rawHeadRef !== null) {
     const parsed = parseHeadRef(rawHeadRef, expectedBranch)
@@ -2346,17 +2366,9 @@ const assertBranchConformance = async (prNum, nickBranchFallback) => {
     } else if (simulate) {
       if (simulate.configBranchPrefixRaw !== undefined) realBranchPrefixRaw = simulate.configBranchPrefixRaw
     } else {
-      try {
-        realBranchPrefixRaw = await agent(
-          `Run EXACTLY this command: jq -r '.branchPrefix // empty' "${wtPath}/.claude/pipeline.config.json" 2>/dev/null. ` +
-          `Your answer MUST be that command's stdout VERBATIM — a bare string (or nothing) and nothing else: ` +
-          `no sentence, no quotes, no backticks, no markdown, no explanation. ` +
-          `If the command itself fails, answer exactly ERROR.`,
-          { label: `branch-prefix-recheck-${issue}`, model: 'haiku' },
-        )
-      } catch (e) {
-        log(`Branch guard: pipeline.config.json re-check failed (${e.message}) — escalating as before`)
-      }
+      const pf = await branchProbe()
+      if (pf) realBranchPrefixRaw = pf.branchPrefix
+      else log(`Branch guard: preflight branch probe unavailable — escalating as before`)
     }
     const reconciled = branchOverrideName !== null ? null : reconcileStaleBranchPrefix(headRef, issue, realBranchPrefixRaw)
     if (reconciled) {
@@ -2390,20 +2402,20 @@ if (after('dev', entryStage)) {
   // Nick ever opens a doomed PR. Mirrors worktreeBehindCount's shape/fail-open contract exactly.
   const planTargets = safePlanTargets(samTargetFiles)
   planTargetsChecked = planTargets.length
+  // #83: the three pre-Dev reads (plan freshness, open sub-issues, git-dir writable) are ONE probe.
+  // null = probe unavailable -> each read below takes its existing fail-open skip.
+  const preflightDev = simulate ? null : await preflightProbe('dev', 'dev', [
+    '--wt', wtPath, '--issue', String(issue), '--base', baseBranch, '--repo', repo || '',
+    '--targets', planTargets.join(' '), '--stamp', String(stamp ?? ''),
+  ])
   if (planFreshnessMode !== 'off' && planTargets.length > 0) {
     const planStaleFilesProbe = async () => {
       if (simulate) return simulate.planStaleFiles ?? []
-      try {
-        const pathArgs = planTargets.map(p => `"${p}"`).join(' ')
-        const out = await agent(
-          `cd "${wtPath}" && git fetch origin ${baseBranch} -q 2>/dev/null; git diff --name-only HEAD...origin/${baseBranch} -- ${pathArgs}`,
-          { label: `plan-stale-${issue}`, model: 'haiku' },
-        )
-        return String(out ?? '').split('\n').map(s => s.trim()).filter(Boolean)
-      } catch (e) {
-        log(`planStaleFilesProbe: probe failed (${e.message}), skipping plan-freshness check`)
+      if (!preflightDev || !Array.isArray(preflightDev.planStale)) {
+        log(`planStaleFilesProbe: no preflight result, skipping plan-freshness check`)
         return null
       }
+      return preflightDev.planStale
     }
     planStaleFiles = await planStaleFilesProbe()
     if (Array.isArray(planStaleFiles) && planStaleFiles.length > 0) {
@@ -2418,20 +2430,11 @@ if (after('dev', entryStage)) {
 
   const openSubIssuesProbe = async () => {
     if (simulate) return simulate.openSubIssues ?? []
-    try {
-      const repoResolve = repo
-        ? `REPO="${repo}"`
-        : `cd "${wtPath}" && REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)`
-      const out = await agent(
-        `${repoResolve} && TOTAL=$(gh issue view ${issue} -R "$REPO" --json subIssuesSummary --jq '.subIssuesSummary.total // 0') && ` +
-        `if [ "$TOTAL" = "0" ]; then exit 0; fi; gh api repos/$REPO/issues/${issue}/sub_issues --jq '.[] | select(.state=="open") | .number'`,
-        { label: `sub-issues-${issue}`, model: 'haiku' },
-      )
-      return String(out ?? '').split('\n').map(s => s.trim()).filter(Boolean)
-    } catch (e) {
-      log(`openSubIssuesProbe: probe failed (${e.message}), skipping sub-issues gate (fail-open, mirrors planStaleFilesProbe)`)
+    if (!preflightDev || !Array.isArray(preflightDev.openSubIssues)) {
+      log(`openSubIssuesProbe: no preflight result, skipping sub-issues gate (fail-open, mirrors planStaleFilesProbe)`)
       return null
     }
+    return preflightDev.openSubIssues
   }
   openSubIssues = await openSubIssuesProbe()
   const subGate = Array.isArray(openSubIssues)
@@ -2451,24 +2454,11 @@ if (after('dev', entryStage)) {
   // above): a resumed run can hit the same external sandbox-grant gap as a fresh one.
   const gitDirWritableProbe = async () => {
     if (simulate) return simulate.gitDirWritable ?? { writable: true, gitDir: null }
-    try {
-      const out = await agent(
-        `cd "${wtPath}" && GITDIR=$(git rev-parse --absolute-git-dir 2>/dev/null) && PROBE="$GITDIR/.pipeline-write-probe-${issue}-$$" && ` +
-        `if (touch "$PROBE" 2>/dev/null && unlink "$PROBE" 2>/dev/null); then echo "WRITABLE|$GITDIR"; else echo "NOT_WRITABLE|$GITDIR"; fi`,
-        { label: `worktree-gitdir-writable-${issue}`, model: 'haiku' },
-      )
-      const s = String(out ?? '').trim().split('\n')[0].trim()
-      const sep = s.indexOf('|')
-      const status = sep === -1 ? s : s.slice(0, sep)
-      const gitDir = sep === -1 ? null : s.slice(sep + 1)
-      if (status === 'WRITABLE') return { writable: true, gitDir }
-      if (status === 'NOT_WRITABLE') return { writable: false, gitDir }
-      log(`gitDirWritableProbe: unparseable probe output "${s.slice(0, 120)}" — skipping (fail-open)`)
-      return null
-    } catch (e) {
-      log(`gitDirWritableProbe: probe failed (${e.message}), skipping worktree write-access preflight (fail-open)`)
+    if (!preflightDev || typeof preflightDev.writable !== 'boolean') {
+      log(`gitDirWritableProbe: no preflight result, skipping worktree write-access preflight (fail-open)`)
       return null
     }
+    return { writable: preflightDev.writable, gitDir: preflightDev.gitDir }
   }
   const gitDirProbe = await gitDirWritableProbe()
   if (gitDirProbe && gitDirProbe.writable === false) {
