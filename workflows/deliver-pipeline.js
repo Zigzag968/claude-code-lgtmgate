@@ -46,7 +46,7 @@ export const meta = {
 // | `maxAuditRoundsOverrideReason` | required non-empty string whenever maxAuditRounds > 2; ignored (trimmed to '') otherwise. See "HARD CEILING" above. |
 // | `architectureDecisionApproved` | asserts the design-step-trigger's architecture-only pass (see Theo's design-step signals below) already happened and was approved, so the design-step gate does not require proceedThrough:'plan' on this launch. |
 // | `maxPlanAmendRounds` | optional, DEFAULT 0 (issue #97): dark-launch kill-switch for routing a Morgan-classified PLAN defect (as opposed to a code defect) back to Sam for a plan amendment instead of forever re-dispatching Nick against a frozen, unfixable plan. 0 (the shipped default) is SHADOW MODE — Morgan's itemOwners classification is still computed and traced (`plan-route-shadow:<round>`), but every item is still routed to Nick as a code defect, so the off-path behaviour is byte-for-bit identical to before #97. Must be a non-negative integer; a non-integer or negative value throws. Flipped by the human only after observing shadow-mode `trace` evidence that the classification is trustworthy. |
-// | `simulate` | test fixture object; the only key the engine reads is `simulate.probes`, a map keyed by seam name (agent mocks sam/mia/nick/morgan/theo/audit/planCheck/preflight/alreadyDoneCheck, parsed-value probes such as headSha/prBody/mergeState/behindCount, agentTypeUnresolved, branchCheckRaw, ...). When set, no real agent is spawned and the trace is still recorded. The translation from the suite's flat keys to `probes` and every default live in run() of the flow suite (scripts/run-flow-suite.cjs runs it); the engine carries no `??` default on a seam. `simulate.probes[<role>] = 'DIE'` (the literal string) is the plain-death lever for a role, since `null` is nullish. |
+// | `simulate` | test fixture object; the only key the engine reads is `simulate.probes`, a map keyed by seam name (agent mocks sam/mia/nick/morgan/theo/audit/planCheck/preflight/alreadyDoneCheck, parsed-value probes such as headSha/prBody/mergeState/behindCount, agentTypeUnresolved, branchCheckRaw, ...). When set, no real agent is spawned and the trace is still recorded. The translation from the suite's flat keys to `probes` and every default live in run() of the flow suite (scripts/run-flow-suite.cjs runs it); the engine carries no `??` default on a seam. `simulate.probes[<role>] = 'DIE'` (the literal string) is the plain-death lever for a role, since `null` is nullish. An object value of `sam` is a per-attempt map of partial Sam returns (the plan-verification attempt, or the review round of a plan amendment), keyed like `planCheck`'s (#182). |
 // | `stamp` | optional epoch ms of the run (the harness bans an argless `new Date()`, which breaks resume): read by the already-done guard's future-merged check, the artifact-floor fallback and the preflight probes' `--stamp`; absent -> each degrades gracefully. |
 //
 // config.commitHygiene — OFF by default: { squashBeforeHandoff: bool, maxCommits: int }.
@@ -131,7 +131,7 @@ export const meta = {
 // `version`, checked against plugin.json by templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '1.0.0-beta.4', cutFrom: '6e301a6' }
+const BUILD = { plugin: 'lgtmgate', version: '1.0.0-beta.6', cutFrom: '48e40f2' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -152,6 +152,9 @@ let provisionCmdPreview = null
 // #110: set by callAgent when an agent call stayed cut off by a classifier outage past its retry
 // bound; finish() then names the cause on the resulting `*-died` status.
 let classifierOutageDeath = false
+// #182: Morgan's `boxes` mapped by id to the rendered acceptance items (set in callMorganGuarded); finish() carries
+// them as `boxes`. Declared before `const finish`: the dryRun return calls finish before the later `let`s run.
+let boxesMapped = null
 // Status registry (#180) — every outcome a run can return, one entry per status, in pipeline order.
 // finish(def, extra) is the only way out of the run, so no status reaches a return as a string
 // literal; `resumable` belongs to the status (a `*-died` run, or one parked for the Lead, resumes
@@ -184,6 +187,7 @@ const STATUS = Object.freeze({
   'ready': { status: 'ready' },
 })
 const finish = (def, extra = {}) => ({ buildStamp: BUILD_STAMP, ...(simulate ? { nickPromptPreview, provisionCmdPreview, preflightFixPromptPreview } : {}),
+  ...(boxesMapped ? { boxes: boxesMapped } : {}),
   ...(classifierOutageDeath && def.status.endsWith('-died')
     ? { reason: 'classifier-outage: resume with resumeFromRunId' } : {}), ...def, ...extra })
 
@@ -476,6 +480,12 @@ let samTargetFiles = null  // populated by Sam (#103) — worktree-relative path
 let samAbsorbedIssues = []  // populated by Sam (#174) — sanitized issue numbers this PR fully closes
                              // alongside #<issue>. Defaults to [] (never null) so the Dev-phase
                              // closesLine composer never needs an extra Array.isArray guard.
+let samAcceptanceItems = null  // populated by Sam (#182) — her validated, numbered acceptance items
+                                // [{ id, text, humanGate }]; on a resume at entryStage dev/review, rebuilt from the
+                                // id-bearing lines of `planText` (itemsFromPlan). null = she returned the legacy
+                                // checklist string, or the resumed plan carries no id (or no planText was given).
+let acceptanceBlock = ''       // renderChecklist(samAcceptanceItems): the lines Nick pastes and Morgan quotes;
+                                // '' when samAcceptanceItems is null, so a legacy run's prompts stay byte-identical.
 
 // ---------------------------------------------------------------------------
 // Stage helpers
@@ -632,6 +642,144 @@ function bodyWriteGuardOk(preLen, newBody) {
 }
 // --- prBodySplice:end ---
 
+// --- acceptanceItems:start --- (pure & self-contained — keep extractable by the consuming project's tests)
+// The acceptance checklist as data (#182). Sam returns `acceptanceItems` [{ text, humanGate, command? }]; the script
+// validates them (validateAcceptanceItems), numbers them (numberItems: id = 1-based position), renders them
+// (renderChecklist) and reads a body back (parseChecklist: ids optional, so a body opened before #182 still parses).
+// `command` exists only for the validator, it is not part of an item. A human-gate item is written with the literal
+// [human-gate] tag after its id: the tag stays the wire form that scripts/lead-merge.sh and the prompts read until
+// ids replace text detection. String operations only, no regex, so the R1 regex counter is untouched.
+const AC_TAG = '[human-gate]'
+const AC_ID_OPEN = '<!-- ac:'
+const AC_BLOCK_START = '<!-- acceptance:start -->'
+const AC_BLOCK_END = '<!-- acceptance:end -->'
+// Sam's validated entries -> items { id, text, humanGate }. Key order is part of the contract (JSON-compared).
+function numberItems(entries) {
+  return entries.map((e, i) => ({ id: i + 1, text: e.text.trim(), humanGate: e.humanGate === true }))
+}
+function renderLine(item, withId = true) {
+  return `- [ ] ${withId ? `${AC_ID_OPEN}${item.id} --> ` : ''}${item.humanGate ? `${AC_TAG} ` : ''}${item.text}`
+}
+// The lines to put between the acceptance markers (the markers stay the body's own).
+function renderChecklist(items) {
+  return items.map((item) => renderLine(item)).join('\n')
+}
+// Items of a body, or of a bare checklist: the checkbox lines (`- [ ]`, `- [x]`) of the LAST complete marker pair when
+// the text has markers (a fenced example pair earlier in the body is ignored, as spliceAcceptanceBlock does), else of the
+// whole text. A line with an `<!-- ac:N -->` id keeps N, any other line takes its 1-based position.
+function parseChecklist(text) {
+  const lines = String(text ?? '').split('\n').map((l) => (l.endsWith('\r') ? l.slice(0, -1) : l))
+  let from = -1
+  let to = -1
+  lines.forEach((l, i) => {
+    const t = l.trimEnd()
+    if (t === AC_BLOCK_START) { from = i; to = -1 } else if (t === AC_BLOCK_END && from >= 0 && to < 0) to = i
+  })
+  const scope = from < 0 ? lines : (to > from ? lines.slice(from + 1, to) : [])
+  const items = []
+  for (const l of scope) {
+    const t = l.trimStart()
+    if (!(t.startsWith('- [ ]') || t.startsWith('- [x]') || t.startsWith('- [X]'))) continue
+    let rest = t.slice(5).trim()
+    if (rest === '') continue
+    const id = leadingId(rest)
+    if (id !== null) rest = rest.slice(rest.indexOf('-->') + 3).trim()
+    const g = rest.toLowerCase().indexOf(AC_TAG)
+    const humanGate = g >= 0
+    if (humanGate) rest = (rest.slice(0, g).trimEnd() + ' ' + rest.slice(g + AC_TAG.length).trimStart()).trim()
+    items.push({ id: id === null ? items.length + 1 : id, text: rest, humanGate })
+  }
+  return items
+}
+// The id N of a box text that starts with a well-formed `<!-- ac:N -->` comment (N a positive integer), else null.
+function leadingId(rest) {
+  if (!rest.startsWith(AC_ID_OPEN)) return null
+  const end = rest.indexOf('-->')
+  const digits = end > 0 ? rest.slice(AC_ID_OPEN.length, end).trim() : ''
+  return digits !== '' && [...digits].every((c) => c >= '0' && c <= '9') && Number(digits) >= 1 ? Number(digits) : null
+}
+// The items of a plan handed to a resumed run (entryStage dev/review, PR #190 review). The checklist is every run of
+// consecutive checkbox lines of `plan` that holds an `<!-- ac:N -->` id (a task list without ids is not the checklist),
+// each run normalised by parseChecklist to its { id, text, humanGate } sequence. One sequence, written once or the very
+// same one several times (artifact + index copy), is the checklist; two runs that differ in any way (an example block,
+// a stale copy) give null, the engine never guesses which one is real. All or nothing too: a line of a run without a
+// valid id, or ids that are not exactly 1..N in order (ids are positions), give null, never a partial list that would
+// drop an item from the block Nick pastes. null as well when no line carries an id (a plan written before #182): the
+// resumed run then keeps no items and its prompts stay byte-identical.
+function itemsFromPlan(plan) {
+  const isBox = (t) => t.startsWith('- [ ]') || t.startsWith('- [x]') || t.startsWith('- [X]')
+  const hasId = (t) => leadingId(t.slice(5).trim()) !== null
+  const runs = [[]]
+  for (const l of String(plan ?? '').split('\n')) {
+    const t = l.trimStart()
+    if (isBox(t)) runs[runs.length - 1].push(t)
+    else if (runs[runs.length - 1].length > 0) runs.push([])
+  }
+  const checklists = runs.filter((run) => run.some(hasId))
+  if (checklists.some((run) => !run.every(hasId))) return null
+  const sequences = checklists.map((run) => parseChecklist(run.join('\n')))
+  if (sequences.length === 0 || sequences.some((seq) => JSON.stringify(seq) !== JSON.stringify(sequences[0]))) return null
+  const items = sequences[0]
+  return items.length > 0 && items.every((item, i) => item.id === i + 1) ? items : null
+}
+// The deterministic plan-check for Sam's `acceptanceItems` (#182, #169): [] when the entries are valid, else one
+// sentence per problem, appended to Sam's next prompt by the plan-verification loop. It checks STRUCTURE only: a
+// human-gate item is refused for a non-empty `command` field; a command written in its text is the plan-check model's to
+// judge (HUMAN_GATE_CHECK_NOTE). The engine parses no prose and knows no program name (neutrality).
+function validateAcceptanceItems(entries) {
+  if (!Array.isArray(entries) || entries.length === 0) return ['acceptanceItems must be a non-empty array: one entry per acceptance item']
+  const issues = []
+  entries.forEach((e, i) => {
+    const n = i + 1
+    if (!e || typeof e !== 'object' || typeof e.text !== 'string') { issues.push(`item ${n}: must be an object with a string text`); return }
+    const text = e.text.trim()
+    if (text === '' || text.includes('\n') || text.includes('\r')) { issues.push(`item ${n}: text must be one non-empty line`); return }
+    if (text.startsWith('- [') || text.includes(AC_ID_OPEN) || text.toLowerCase().includes(AC_TAG)) {
+      issues.push(`item ${n}: text must not carry the "- [ ]" prefix, an "<!-- ac:N -->" id or the ${AC_TAG} tag (the workflow renders those): write the bare text and set humanGate instead`)
+      return
+    }
+    if (e.humanGate !== undefined && typeof e.humanGate !== 'boolean') { issues.push(`item ${n}: humanGate must be true or false`); return }
+    if (e.command !== undefined && typeof e.command !== 'string') { issues.push(`item ${n}: command must be a string`); return }
+    const command = typeof e.command === 'string' ? e.command.trim() : ''
+    if (e.humanGate === true && command) {
+      issues.push(`item ${n}: flagged humanGate but carries the command \`${command}\`; a command can decide it, so it is not a human gate. Drop humanGate and prove the item with that command, or drop the command if only a person can judge it`)
+    }
+  })
+  return issues
+}
+// The rendered lines of `items` that the plan text holds neither with their id comment nor without it (the plan gate
+// of #153, now per item). Empty items -> [].
+function planLacksItems(plan, items) {
+  const text = String(plan ?? '')
+  return items.filter((item) => !text.includes(renderLine(item)) && !text.includes(renderLine(item, false))).map((item) => renderLine(item))
+}
+// Morgan's `boxes` [{ id, proven, proof }] mapped by id to the rendered items: { boxes: [{ id, text, humanGate, proven,
+// proof }] in item order, unknown: ids no item carries (dropped), missing: item ids Morgan returned no box for }.
+function mapBoxes(items, boxes) {
+  const byId = new Map(items.map((item) => [item.id, item]))
+  const seen = new Map()
+  const unknown = []
+  for (const b of Array.isArray(boxes) ? boxes : []) {
+    const item = b && Number.isInteger(b.id) ? byId.get(b.id) : undefined
+    if (!item) { unknown.push(b && b.id !== undefined ? String(b.id) : '?'); continue }
+    if (seen.has(b.id)) continue
+    seen.set(b.id, { id: item.id, text: item.text, humanGate: item.humanGate, proven: b.proven === true, proof: typeof b.proof === 'string' ? b.proof : '' })
+  }
+  return { boxes: items.filter((item) => seen.has(item.id)).map((item) => seen.get(item.id)), unknown, missing: items.filter((item) => !seen.has(item.id)).map((item) => item.id) }
+}
+// The two prompt notes carrying the rendered block; '' without a block so a legacy run's prompts stay byte-identical.
+function nickBlockNote(block) {
+  if (!block) return ''
+  return 'The workflow rendered the acceptance checklist from Sam\'s items: paste exactly these lines between the markers, ids and tags included, never reworded, reordered or renumbered (a line this brief tells you to append goes after them):\n' + block + '\n'
+}
+function morganBoxesNote(block) {
+  if (!block) return ''
+  return 'ACCEPTANCE BOXES BY ID: the workflow rendered the checklist into the PR body as these lines (the id of a box is the n of its <!-- ac:n --> comment):\n' + block + '\n' +
+    'Quote a box line exactly as it stands in the PR body, its <!-- ac:n --> comment included, wherever you quote one (items, itemOwners, a tick-pending line). ' +
+    'Besides items, return boxes: one { id, proven, proof } per box above; proven is true only when you ran its verification and it passed (a [human-gate] box is never proven); proof is the command and its verbatim output. '
+}
+// --- acceptanceItems:end ---
+
 // ---------------------------------------------------------------------------
 // GH Project config (IDs supplied by the project — see config.ghProject)
 // ---------------------------------------------------------------------------
@@ -666,9 +814,22 @@ const SAM = {
     },
     acceptanceChecklist: {
       type: 'string',
-      description: 'Issue #97, plan-amendment rounds only: the FULL amended acceptance checklist ' +
-        'as verbatim `- [ ] ...` lines (no markers, no prose) — replaces the PR body\'s acceptance ' +
-        'block in place.',
+      description: 'Legacy form (issue #97 amendment rounds, personas older than #182): verbatim ' +
+        '`- [ ] ...` lines. Ignored when acceptanceItems is returned.',
+    },
+    acceptanceItems: {
+      type: 'array',
+      description: 'Issue #182: the acceptance checklist as data, one entry per item in checklist order ' +
+        '(the FULL list again on a plan-amendment round). The workflow validates, numbers and renders them.',
+      items: {
+        type: 'object',
+        required: ['text'],
+        properties: {
+          text: { type: 'string', description: 'ONE line: no `- [ ]` prefix, no `<!-- ac:N -->` id, no `[human-gate]` tag (the workflow adds them).' },
+          humanGate: { type: 'boolean', description: 'true only when no command can decide the item (a judgement, an external system out of reach, a product decision); never together with a command.' },
+          command: { type: 'string', description: 'The command that proves the item, when there is one.' },
+        },
+      },
     },
   },
 }
@@ -694,6 +855,20 @@ const MORGAN = {
   properties: {
     verdict: { enum: ['LGTM', 'REQUIRED_CHANGES', 'REGRESSION_DETECTED'] },
     items: { type: 'array', items: { type: 'string' } },
+    boxes: {
+      type: 'array',
+      description: 'Issue #182: one entry per acceptance box the task prompt lists with an `<!-- ac:n -->` id. ' +
+        'id = that n; proven is true only when you ran the box\'s verification and it passed (never for a ' +
+        '`[human-gate]` box); proof = the command and its verbatim output. Omit when the prompt lists no ids.',
+      items: {
+        type: 'object',
+        properties: {
+          id: { type: 'number' },
+          proven: { type: 'boolean' },
+          proof: { type: 'string' },
+        },
+      },
+    },
     ciGreen: { type: 'boolean' },
     artifactProofs: {
       type: 'array',
@@ -1383,8 +1558,8 @@ function composeReviewFixBlock(routes) {
     'ONE consolidated amendment round from a Morgan review — she classified these acceptance ' +
     'items as PLAN defects (a plan-checklist wording/scope problem), not code defects. Rewrite ' +
     'the affected step/line IN PLACE (REWRITE IN PLACE — accretion is the defect); never re-scope ' +
-    'beyond what each item names. Return the amended acceptance-checklist lines (verbatim ' +
-    '`- [ ] ...` lines only, no markers, no prose) in `acceptanceChecklist`.'
+    'beyond what each item names. Return the FULL amended checklist in `acceptanceItems` (same ' +
+    'contract as above) and write the amended lines in the artifact.'
   const entries = list.map((r, i) => `${i + 1}. ${r.item}\nMorgan's proof: ${r.proof}`)
   return `${header}\n\n${entries.join('\n\n')}`
 }
@@ -1444,6 +1619,10 @@ function agentDeathRouting(role, attempt, maxAttempts = 2) {
 // Seams — agent calls and status updates
 // ---------------------------------------------------------------------------
 
+// #182: an OBJECT value of simulate.probes.sam is a per-attempt map of partial Sam returns, keyed like planCheck's: the
+// plan-verification attempt, or the review round of a plan amendment. GO / NO-GO / DIE keep their meaning; no new key.
+const samAttemptFixture = (round) => { const fx = simulate.probes?.sam; return (fx !== null && typeof fx === 'object' && fx[round]) || {} }
+
 function simFixture(role, round = 0, prNum = null) {
   if (!simulate) return null
   if (role === 'mia') return simulate.probes?.mia || { framing: '(simulated PM)' }
@@ -1459,6 +1638,7 @@ function simFixture(role, round = 0, prNum = null) {
     // #97 — without this, a simulated plan-amendment round would return an empty checklist,
     // fail syncAcceptanceBlock's empty-checklist guard, and escalate as acceptance-sync-failed.
     acceptanceChecklist: simulate.probes?.samAcceptanceChecklist,
+    ...samAttemptFixture(round),
   }
   if (role === 'nick') {
     const nickFx = simulate.probes?.nick || {}
@@ -1481,6 +1661,7 @@ function simFixture(role, round = 0, prNum = null) {
     return {
       verdict: m ? m.verdict : 'LGTM',
       items: m ? (m.items || []) : [],
+      boxes: m?.boxes,
       ciGreen: m ? m.ciGreen !== false : true,
       artifactProofs: m?.artifactProofs ?? [],
       itemOwners: m?.itemOwners ?? [],
@@ -2129,6 +2310,12 @@ const MORGAN_PRODUCT_DIRECTION = "PRODUCT DIRECTION: signal a conflict with the 
 // '' when it declares none, so a consumer Sam is never asked about engine kinds. Pinned by T77g, T77l.
 const SAM_ONE_WAY_DOOR = samOneWayDoorText(config.oneWayDoorKinds)
 const ACCEPTANCE_PROOF_RULE = 'ACCEPTANCE PROOF RULE: (1) every acceptance item is a command you RAN in the provisioned worktree during planning; the plan carries a "Proof log" listing, per item, the command and its real output pasted verbatim (output on the base branch: green for state-preservation checks, red for the stated reason for a check the change must turn green); (2) a command you saw fail for any other reason, or could not run (missing gitignored directory, no network), is rewritten to run in the worktree or dropped, never inscribed as-is and never excused in Risks; (3) an item describes a verifiable state of the repo or branch only: never an external-world state (e.g. "no known advisory for pinned dependency X", a network service, a file present only outside the worktree) and never a negative universal claim ("no known X", "absence of Y") about anything outside the diff; write commands that run as-is from a plain bash script.'
+// #169: appended to the plan-check and plan-audit proof checks. The script refuses a human-gate item that carries a
+// `command` field (validateAcceptanceItems, structure only); this sentence leaves the text to the model: a command written
+// in a gate item's text, and a gate that restates another item.
+const HUMAN_GATE_CHECK_NOTE = 'A `[human-gate]` item (a judgement no command can decide) is exempt from the executed-command requirement. It is NOT conforming when its text contains a command that could decide it (that command belongs in a proven item), or when it restates the expected output of another item of the checklist, which already proves it; a judgement about wording, layout or taste is conforming, even when it quotes UI copy or a heading.'
+// #182: Sam's instruction for the checklist as data; ends the scout prompt (see validateAcceptanceItems for the refusals).
+const ACCEPTANCE_ITEMS_RULE = 'ACCEPTANCE ITEMS RULE: return the acceptance checklist as data in `acceptanceItems`, one entry per item in checklist order: `{ text, humanGate, command? }`. `text` is ONE line: no `- [ ]` prefix, no `<!-- ac:N -->` id, no `[human-gate]` tag (the workflow adds them). `humanGate` is true only when no command can decide the item (a judgement, an external system out of reach, a product decision); that is the one kind of item that needs no Proof log entry. A human-gate item carries no `command` (the plan is refused and sent back to you); a command written in its text is judged by the plan check. `command` is the command that proves the item, when there is one. Write the same items in the artifact and in the index comment as `- [ ] <!-- ac:N --> <text>` lines (N = the 1-based position; a `humanGate` item as `- [ ] <!-- ac:N --> [human-gate] <text>`); the plan gate refuses a plan whose text lacks an item\'s line. Do not return `acceptanceChecklist`.'
 // #153: checklist lines (`- [ ]`) Sam returned in acceptanceChecklist that are absent from the
 // returned plan text. Pure string ops, no regex. Empty checklist => [] (nothing to compare).
 const planMissingChecklistLines = (plan, checklist) => {
@@ -2164,7 +2351,7 @@ const samScoutPrompt = ({ fixBlock = '', auditFixBlock = '', reviewFixBlock = ''
     `POST IDEMPOTENTLY: write the index body to ".pipeline/issue-${issue}-comment.md", then look for an existing marked comment with ` +
     `\`gh api repos/{owner}/{repo}/issues/${issue}/comments --jq '.[]|select(.body|startswith("${planMarker}"))|.id'\` — if an id comes back, EDIT that comment in place with ` +
     `\`gh api -X PATCH repos/{owner}/{repo}/issues/comments/<id> -F body=@.pipeline/issue-${issue}-comment.md\`; otherwise create it with \`gh issue comment ${issue} --body-file .pipeline/issue-${issue}-comment.md\`. Reuse the id returned by the listing; never reconstruct it. Never stack a second plan comment on the issue. ` +
-    `Then return GO/NO-GO, the COMPLETE text of the artifact in the \`plan\` field (NEVER a summary or pointer to the artifact; the plan gate judges only this field and refuses a plan lacking the checklist lines you return in acceptanceChecklist), and the artifact path in \`planPath\` (use "${planPath}"), and \`targetFiles\`: the worktree-RELATIVE paths your steps modify, delete or create (repo-relative, no absolute path, no \`..\`; omit it if your plan touches no file). Return the acceptance checklist lines VERBATIM (\`- [ ] ...\` lines only, no markers, no prose) in \`acceptanceChecklist\`.\n\n` +
+    `Then return GO/NO-GO, the COMPLETE text of the artifact in the \`plan\` field (NEVER a summary or pointer to the artifact; the plan gate judges only this field and refuses a plan lacking an acceptance item's line, see the ACCEPTANCE ITEMS RULE below), and the artifact path in \`planPath\` (use "${planPath}"), and \`targetFiles\`: the worktree-RELATIVE paths your steps modify, delete or create (repo-relative, no absolute path, no \`..\`; omit it if your plan touches no file). ${ACCEPTANCE_ITEMS_RULE}\n\n` +
     `OUTPUT-SPEC GATE: if this is a human-facing deliverable (asset/render/copy/UI-visible), the plan MUST start from a concrete OUTPUT EXAMPLE with named content contracts, and MUST cite any existing corpus/asset spec (precedent: a similar prior deliverable, if one exists). If no spec exists, propose the contract for human validation — do not skip it.\n` +
     `OBSERVED-INTERFACES RULE: any step consuming an external interface MUST cite a REAL observed payload. REUSE a provided field (e.g. \`qr_url\`) over reconstructing it — reconstruction is a plan defect.\n` +
     `VERSION RULE: do NOT bump .claude-plugin/plugin.json or the BUILD line; the Lead's scripts/lead-merge.sh bumps at merge time.${designStepBlock}${fixBlock}${auditFixBlock}${reviewFixBlock}`
@@ -2224,6 +2411,7 @@ if (after('plan', entryStage)) {
         'sam',
         samScoutPrompt({ fixBlock, auditFixBlock }),
         { agentType: scoutAgent, phase: 'Plan', schema: SAM, label: `scout-issue-${issue}-${planPass}`, model: scoutModel },
+        planPass,
       )
       if (isAgentDeath(sam)) {
         return finish(STATUS['plan-died'], { issue, planPath, trace })
@@ -2240,16 +2428,35 @@ if (after('plan', entryStage)) {
       samTargetFiles = sam.targetFiles
       samAbsorbedIssues = safeAbsorbedIssues(sam.absorbedIssues, issue)
 
+      // #182: the checklist as data. Sam's `acceptanceItems` are checked by the script, never by the plan-check model: a
+      // refusal (a human-gate item that carries a command, a malformed item) goes through this same NOT_CONFORMING loop.
+      // Valid items are numbered and rendered (ids = positions) for Nick and Morgan below.
+      const itemEntries = Array.isArray(sam.acceptanceItems) ? sam.acceptanceItems : null
+      const itemIssues = itemEntries ? validateAcceptanceItems(itemEntries) : []
+      samAcceptanceItems = itemEntries && itemIssues.length === 0 ? numberItems(itemEntries) : null
+      acceptanceBlock = samAcceptanceItems ? renderChecklist(samAcceptanceItems) : ''
+      if (itemIssues.length > 0) {
+        trace.push(`acceptance-items-refused:${planPass}`)
+        log(`Plan-verification gate: ${itemIssues.length} acceptance item problem(s) found by the script — refusing without a plan-check call`)
+      }
       // #153: the gate judges only the returned text. A summary/pointer plan that lacks the checklist
-      // lines Sam also returned is refused here (no plan-check call) and looped back to Sam.
-      const missingChecklist = planMissingChecklistLines(sam.plan, sam.acceptanceChecklist)
-      if (missingChecklist.length > 0) {
+      // lines Sam also returned is refused here (no plan-check call) and looped back to Sam. With items (#182) the
+      // lines are the rendered ones, accepted with or without their id comment.
+      const missingChecklist = samAcceptanceItems
+        ? planLacksItems(sam.plan, samAcceptanceItems)
+        : planMissingChecklistLines(sam.plan, sam.acceptanceChecklist)
+      if (itemIssues.length === 0 && missingChecklist.length > 0) {
         log(`Plan-verification gate: returned plan lacks ${missingChecklist.length} acceptance checklist line(s) Sam also returned (summary/pointer plan) — refusing without a plan-check call`)
       }
-      const planCheck = missingChecklist.length > 0
+      const planCheck = itemIssues.length > 0
+        ? { verdict: 'NOT_CONFORMING', issues: itemIssues }
+        : missingChecklist.length > 0
         ? {
             verdict: 'NOT_CONFORMING',
-            issues: [`The returned plan field is a summary/pointer, not the full plan: ${missingChecklist.length} acceptance checklist line(s) you returned are absent from it. Return the FULL artifact text from "${planPath}" in the plan field, including the acceptance checklist and the Proof log.`],
+            issues: [
+              `The returned plan field is a summary/pointer, not the full plan: ${missingChecklist.length} acceptance checklist line(s) you returned are absent from it. Return the FULL artifact text from "${planPath}" in the plan field, including the acceptance checklist and the Proof log.`,
+              ...(samAcceptanceItems ? missingChecklist.map((l) => `Write this line in the artifact exactly (the id comment is optional): ${l}`) : []),
+            ],
           }
         : await callAgentSafe(
         'planCheck',
@@ -2257,7 +2464,7 @@ if (after('plan', entryStage)) {
           `PLAN:\n${samPlan}\n\n` +
           `Verify: (1) a corpus/asset spec is cited when one exists, for human-facing/asset lanes; (2) any external interface is cited from a REAL observed payload, never reconstructed; (3) human-facing/asset lanes have a written output example + named content contracts. Lanes with no human-facing/asset deliverable (pure backend/mechanical) auto-pass item (3) as N/A.\n` +
           `(4) CONFORMANCE COMPLETENESS: the plan MUST contain an acceptance-checklist section. A criterion is an ORPHAN only when it names a concrete deliverable or behavior that no plan step addresses => NOT_CONFORMING (list each orphan in issues). Standard boilerplate verification criteria — full regression/test suite green, lint clean, format-check clean, scope-guard/diff-stat checks — are gate-level (satisfied by the project's own build/test/format commands, never authored as a dedicated plan step) and are EXEMPT from this check; never flag them as orphans. No acceptance-checklist section at all => NOT_CONFORMING.\n` +
-          `(5) ACCEPTANCE PROOF CHECK: NOT_CONFORMING (list each offending item in issues) when an acceptance item has no executed command with its verbatim quoted output in the plan (Proof log), or is phrased as an external-world state or a "no known X" / "absence of Y" claim about anything outside the diff.\n` +
+          `(5) ACCEPTANCE PROOF CHECK: NOT_CONFORMING (list each offending item in issues) when an acceptance item has no executed command with its verbatim quoted output in the plan (Proof log), or is phrased as an external-world state or a "no known X" / "absence of Y" claim about anything outside the diff. ${HUMAN_GATE_CHECK_NOTE}\n` +
           `Return { verdict: 'CONFORMING'|'NOT_CONFORMING', issues: string[] } — issues empty when CONFORMING.`,
         { schema: PLAN_CHECK, label: `plan-check-${issue}-${planPass}`, model: 'haiku' },
         planPass,
@@ -2297,7 +2504,7 @@ if (after('plan', entryStage)) {
       `AXIS 2 — IDIOMACY vs the CURRENT version of the stack.\n\n` +
       `AXIS 3 — DEBT: classify every non-idiomatic choice as fenced-debt (acceptable, plan must name the exit) / accidental-debt (free to avoid) / structural-mistake (redesign now).\n\n` +
       `NEVER-FROM-MEMORY RULE (hard): any claim about a library, framework, API, version or best practice — including the OWASP Top 10 category list itself — MUST be verified this session against current documentation (context7, else WebSearch) and cited in sources; an unverifiable claim is stated as unverified, never as fact.\n\n` +
-      `ACCEPTANCE PROOF CHECK: an acceptance item lacking an executed command with quoted output, or phrased as an external-world / "no known X" state, is a blocking finding (severity 'blocking', fix = rewrite the item to a command run in the worktree with its output logged).\n` +
+      `ACCEPTANCE PROOF CHECK: an acceptance item lacking an executed command with quoted output, or phrased as an external-world / "no known X" state, is a blocking finding (severity 'blocking', fix = rewrite the item to a command run in the worktree with its output logged). ${HUMAN_GATE_CHECK_NOTE}\n` +
       `FINDINGS: ranked most-damaging first; each carries a concrete rewrite mandate as fix, never a hint. severity:'blocking' = the plan must change before dev; 'note' = worth doing, not a blocker; when in doubt, blocking.\n` +
       `VERDICT GRID: SOUND (nothing to change) / SOUND-WITH-NOTES (approach holds, findings still fold in) / NOT_SOUND (approach itself is wrong).\n\n` +
       `Return { verdict: 'SOUND'|'SOUND-WITH-NOTES'|'NOT_SOUND', findings: [{severity, area, title, finding, fix, debtClass?, sources}], stackVerified: string }.`
@@ -2391,6 +2598,15 @@ if (samPlan === null && (after('dev', entryStage) || after('review', entryStage)
     planFromArtifact = true
     log(`Resume at entryStage='${entryStage}' without planText — Nick/Morgan will re-read the plan artifact at ${planPath}.`)
   }
+}
+
+// #182 — a resume at entryStage dev/review ran no Plan phase in this process: Sam's items are rebuilt from the
+// `<!-- ac:N -->` lines of `planText` (simulate included: the arg alone decides), so Nick still gets the rendered block
+// and Morgan is still asked for `boxes` by id. A plan without ids keeps today's legacy path (items null, block '').
+if (samAcceptanceItems === null && (entryStage === 'dev' || entryStage === 'review')) {
+  samAcceptanceItems = itemsFromPlan(planText)
+  acceptanceBlock = samAcceptanceItems ? renderChecklist(samAcceptanceItems) : ''
+  if (samAcceptanceItems) log(`Resume at entryStage='${entryStage}': ${samAcceptanceItems.length} acceptance item(s) rebuilt from the ids of planText.`)
 }
 
 // Plan reference block inlined into every downstream prompt (advisory.js style):
@@ -2639,7 +2855,7 @@ if (after('dev', entryStage)) {
       `If that push fails because the SSH remote is unreachable in the sandbox (\`ssh_dispatch_run_fatal\`, \`Broken pipe\`, \`Connection refused\`, \`Could not resolve hostname\`; CC issues #30619, #33300), retry ONCE over HTTPS through the gh credential helper (github.com:443 is reachable, SSH is not): \`${httpsPushCmdFor(expectedBranchName)}\` (explicit refspec, no upstream flag, no sandbox bypass). If the HTTPS push fails too, do not bypass the sandbox and do not open a PR: stop, return prNumber 0 with a summary that quotes the failing command and its error. ` +
       `Open a PR (draft) with EXPLICIT refs — gh resolves HEAD from the invoking cwd, not the worktree branch: \`gh pr create --draft${prFlag} --base ${baseBranch} --head ${expectedBranchName} ...\`. ` +
       `${r2Note}` +
-      `Compose the PR body in this order (artifact-first structure): first line \`${closesLine}\` — one \`Closes #N\` per fully-resolved issue (the epic plus every issue Sam's plan explicitly named as fully resolved by this bundle; never for an issue flagged partial/residual in the plan — that one stays open, with a forward-reference comment on the child issue instead, as already practiced); ${subIssuesGateNote(subIssuesUncovered, issue)}then a \`## What this ships\` H2 with a bullet summary of the diff; then, ONLY IF the acceptance checklist below contains a \`[human-gate]\` item, an optional \`## <Human> — N gestures\` H2 listing those manual human actions (omit this H2 entirely when no \`[human-gate]\` item exists — never ship an empty stub section); then a \`## Acceptance checklist\` H2. Copy the acceptance checklist into the PR body between \`<!-- acceptance:start -->\`/\`<!-- acceptance:end -->\`. Leave an EMPTY \`<!-- decision-log:start -->\`/\`<!-- decision-log:end -->\` marker pair right after the acceptance block — workflow-owned, never hand-fill it. Close with a \`<details><summary>Technical detail</summary>\` fold holding the test plan / feature flag / risk notes. Post a comment on issue #${issue} linking the PR, then idle.`
+      `Compose the PR body in this order (artifact-first structure): first line \`${closesLine}\` — one \`Closes #N\` per fully-resolved issue (the epic plus every issue Sam's plan explicitly named as fully resolved by this bundle; never for an issue flagged partial/residual in the plan — that one stays open, with a forward-reference comment on the child issue instead, as already practiced); ${subIssuesGateNote(subIssuesUncovered, issue)}then a \`## What this ships\` H2 with a bullet summary of the diff; then, ONLY IF the acceptance checklist below contains a \`[human-gate]\` item, an optional \`## <Human> — N gestures\` H2 listing those manual human actions (omit this H2 entirely when no \`[human-gate]\` item exists — never ship an empty stub section); then a \`## Acceptance checklist\` H2. Copy the acceptance checklist into the PR body between \`<!-- acceptance:start -->\`/\`<!-- acceptance:end -->\`. ${nickBlockNote(acceptanceBlock)}Leave an EMPTY \`<!-- decision-log:start -->\`/\`<!-- decision-log:end -->\` marker pair right after the acceptance block — workflow-owned, never hand-fill it. Close with a \`<details><summary>Technical detail</summary>\` fold holding the test plan / feature flag / risk notes. Post a comment on issue #${issue} linking the PR, then idle.`
   )
   if (simulate) nickPromptPreview = nickPrompt
   nick = await callAgentSafe(
@@ -2891,6 +3107,16 @@ if (after('review', entryStage)) {
     const endState = simulate ? null : await prState('window-end', round, windowStart ? { since: windowStart } : {})
     await flagReviewerWindowIssues(windowStart, round, endState)
     if (v === null) return v
+    // #182: Morgan's boxes mapped by id to the rendered items (finish() then carries them as `boxes`; a round whose
+    // verdict has none clears the previous round's). An id no item carries is dropped and traced, so is an item she
+    // returned no box for. Nothing else reads them before the tick-by-id slice.
+    boxesMapped = null
+    if (samAcceptanceItems && Array.isArray(v.boxes)) {
+      const mapped = mapBoxes(samAcceptanceItems, v.boxes)
+      boxesMapped = mapped.boxes
+      for (const id of mapped.unknown) trace.push(`boxes-unknown-id:${id}`)
+      for (const id of mapped.missing) trace.push(`boxes-missing:${id}`)
+    }
     const proofs = Array.isArray(v.artifactProofs) ? v.artifactProofs : []
     if (proofs.length === 0) return v
     const floorIso = await artifactFloorIso(round, endState)
@@ -3253,6 +3479,7 @@ if (after('review', entryStage)) {
       `For asset/render/human-facing lanes, BEFORE any verdict, execute the real-case live run yourself (the exact command the plan names, deps included) and machine-verify the output contract from the plan (e.g. the exact pixel/asset dimensions and named visual elements the plan calls for, screenshot non-empty, named fields written). Units mock the other side, so seam errors pass with the mock; only a taste judgment then remains for the human-gate. ` +
       `${artifactProofStep}` +
       `${freshnessStep}` +
+      `${morganBoxesNote(acceptanceBlock)}` +
       `${subIssuesUncovered.length > 0
         ? `Note (lgtmgate#193): this run's dev phase found ${subIssuesUncovered.length} open sub-issue(s) of #${issue} not covered by this bundle — the PR's first line intentionally does NOT close #${issue}; do not treat #${issue}/the epic as fully resolved in your verdict. `
         : ''}` +
@@ -3325,7 +3552,15 @@ if (after('review', entryStage)) {
       }
       samPlan = samAmend.plan
       refreshPlanBlock()
-      const acceptanceSynced = await syncAcceptanceBlock(samAmend.acceptanceChecklist, round)
+      // #182: the amended checklist as items, checked and rendered like the first one; the legacy string is the fallback.
+      const amendEntries = Array.isArray(samAmend.acceptanceItems) ? samAmend.acceptanceItems : null
+      const amendIssues = amendEntries ? validateAcceptanceItems(amendEntries) : []
+      if (amendEntries && amendIssues.length === 0) {
+        samAcceptanceItems = numberItems(amendEntries)
+        acceptanceBlock = renderChecklist(samAcceptanceItems)
+      }
+      if (amendIssues.length > 0) log(`Round ${round}: the amended acceptance items are refused by the script (${amendIssues.join(' | ')}) — not synced`)
+      const acceptanceSynced = amendIssues.length === 0 && await syncAcceptanceBlock(amendEntries ? acceptanceBlock : samAmend.acceptanceChecklist, round)
       if (!acceptanceSynced) {
         await updateStatus('Blocked')
         return finish(STATUS['escalate'], { reason: 'acceptance-sync-failed', pr, issue, round, trace })
@@ -3384,6 +3619,7 @@ if (after('review', entryStage)) {
         `For asset/render/human-facing lanes, BEFORE any verdict, execute the real-case live run yourself (the exact command the plan names, deps included) and machine-verify the output contract from the plan (e.g. the exact pixel/asset dimensions and named visual elements the plan calls for, screenshot non-empty, named fields written). Units mock the other side, so seam errors pass with the mock; only a taste judgment then remains for the human-gate. ` +
         `${artifactProofStep}` +
         `${freshnessStep}` +
+        `${morganBoxesNote(acceptanceBlock)}` +
         `Then post the new verdict (LGTM | REQUIRED_CHANGES | REGRESSION_DETECTED) as a comment on the PR. Prefix that posted comment EXACTLY with the pipeline-review-round marker \`${reviewVerdictMarker}\` as its own first line${reviewShaRule} (hidden HTML marker; do NOT let it leak into \`items\`). ` +
         `For each remaining unticked acceptance box, put in \`items\` the **verbatim checklist line** it blocks on (copy the box text exactly — do NOT paraphrase — so a persistent blocker reads identically across rounds). Any box whose line contains the tag \`[human-gate]\` is a **human-only** item: you cannot verify it and MUST NOT tick it or ask Nick to fix it — copy its line verbatim into \`items\` (tag preserved) and treat it as a human gate, not a code defect. Emit \`REQUIRED_CHANGES\` whenever any box is unticked (human-gate or not). ` +
         `For each item in \`items\`, ALSO classify it in \`itemOwners\` ({item, itemOwner, proof}): 'code-defect' is the DEFAULT whenever you are uncertain — a plan owner ('plan-defect'|'checklist-wording-defect') REQUIRES a concrete \`proof\` quoting the exact contradiction between the plan/checklist and reality, and NEVER excuses unfinished code. If a box's verification PASSED but ticking it (\`gh pr edit\`) is denied by permissions, do NOT retry, do NOT work around the denial and do NOT post "Ready to merge": leave the box \`- [ ]\`, copy its verbatim line into \`items\`, and classify it in \`itemOwners\` as 'proven-untickable' with \`proof\` = the command you ran and its verbatim output. ${UNTICKABLE_LINE_RULE}${ACCEPTANCE_PRESENCE_RULE}A box whose verification failed or was not run stays 'code-defect'. A [human-gate] box is NEVER 'proven-untickable'.\n\n${planBlock}`,

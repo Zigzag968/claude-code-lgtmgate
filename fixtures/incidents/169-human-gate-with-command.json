@@ -1,0 +1,94 @@
+{
+  "name": "169-human-gate-with-command",
+  "note": "Synthetic shape built from the incident in issue 169 (the original run data was not retained). Sam first returns a human-gate item that also carries the command deciding it in its structured command field (the node -e render of the incident); the base plan check accepts it, the engine must refuse it before any plan-check call and loop back to Sam, whose second answer drops the human gate. A command written only in an item text is judged by the plan-check model, not by the engine, so it is not replayed here. Sam answers hold both the legacy plan text with its checklist lines and the acceptanceItems entries, so the same fixture is valid for the base engine and the branch. plan-check-169-1 is answered CONFORMING on purpose: the base reaches it, the branch never does.",
+  "args": {
+    "pluginRoot": "/plugin",
+    "issue": 169,
+    "brief": "a human-gate item must not carry a command",
+    "wtPath": "/wt/root/issue-169",
+    "config": {},
+    "mode": "semi"
+  },
+  "calls": {
+    "probe-169-provision-provision-r0": {
+      "line": "PROBE name=provision exit=0 sha=30ad404e7bf922808eeb13427c66400303e810a9392f80082fb0abe2fc6fc271 cmd=cea92c945afc95e0778a89d85e724d60292b31a5dfd04432c31566367a30f1ec json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}",
+      "verify": "VERIFY ok line=PROBE name=provision exit=0 sha=30ad404e7bf922808eeb13427c66400303e810a9392f80082fb0abe2fc6fc271 cmd=cea92c945afc95e0778a89d85e724d60292b31a5dfd04432c31566367a30f1ec json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}"
+    },
+    "probe-169-provision-freshness-provision-freshness-r0": {
+      "line": "PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b cmd=315140ea0786ea8027eaa6e38de037df6a1cf9ad5d65fb3e15c87b70054966c7 json={\"state\":\"fresh\",\"behind\":0,\"own\":0}",
+      "verify": "VERIFY ok line=PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b cmd=315140ea0786ea8027eaa6e38de037df6a1cf9ad5d65fb3e15c87b70054966c7 json={\"state\":\"fresh\",\"behind\":0,\"own\":0}"
+    },
+    "diagnose-issue-169": {
+      "confirmed": true,
+      "evidence": "reproduced: the plan check accepts a human-gate item holding a node -e invocation",
+      "actualCause": "plan check does not inspect human-gate item text",
+      "laneOk": true,
+      "persistentStateSignal": false,
+      "authSecurityBoundarySignal": false,
+      "deployConfigSignal": false,
+      "immatureVendorApiSignal": false
+    },
+    "scout-issue-169-1": {
+      "decision": "GO",
+      "plan": "## Plan\n1. src/render.js: format the label per locale\n\n## Acceptance checklist\n- [ ] <!-- ac:1 --> `node scripts/guards.cjs; echo $?` prints `0` as its last line\n- [ ] <!-- ac:2 --> [human-gate] Visual check: the PR body pastes verbatim the output of the fr-FR locale render and the human confirms both\n",
+      "rationale": "",
+      "targetFiles": [
+        "src/render.js"
+      ],
+      "absorbedIssues": [],
+      "acceptanceChecklist": "- [ ] <!-- ac:1 --> `node scripts/guards.cjs; echo $?` prints `0` as its last line\n- [ ] <!-- ac:2 --> [human-gate] Visual check: the PR body pastes verbatim the output of the fr-FR locale render and the human confirms both",
+      "acceptanceItems": [
+        {
+          "text": "`node scripts/guards.cjs; echo $?` prints `0` as its last line",
+          "humanGate": false
+        },
+        {
+          "text": "Visual check: the PR body pastes verbatim the output of the fr-FR locale render and the human confirms both",
+          "humanGate": true,
+          "command": "node -e '…render(…, { locale: \"fr-FR\" })'"
+        }
+      ]
+    },
+    "scout-issue-169-2": {
+      "decision": "GO",
+      "plan": "## Plan\n1. src/render.js: format the label per locale\n\n## Acceptance checklist\n- [ ] <!-- ac:1 --> `node scripts/guards.cjs; echo $?` prints `0` as its last line\n- [ ] <!-- ac:2 --> [human-gate] the maintainer confirms the rendered label reads well to a third party\n",
+      "rationale": "",
+      "targetFiles": [
+        "src/render.js"
+      ],
+      "absorbedIssues": [],
+      "acceptanceChecklist": "- [ ] <!-- ac:1 --> `node scripts/guards.cjs; echo $?` prints `0` as its last line\n- [ ] <!-- ac:2 --> [human-gate] the maintainer confirms the rendered label reads well to a third party",
+      "acceptanceItems": [
+        {
+          "text": "`node scripts/guards.cjs; echo $?` prints `0` as its last line",
+          "humanGate": false
+        },
+        {
+          "text": "the maintainer confirms the rendered label reads well to a third party",
+          "humanGate": true
+        }
+      ]
+    },
+    "plan-check-169-1": {
+      "verdict": "CONFORMING",
+      "issues": []
+    },
+    "plan-check-169-2": {
+      "verdict": "CONFORMING",
+      "issues": []
+    }
+  },
+  "expect": {
+    "status": "plan-ready",
+    "trace": [
+      "branch-prefix-fallback-default",
+      "probe:provision:haiku",
+      "probe:provision-freshness:haiku",
+      "acceptance-items-refused:1"
+    ],
+    "logsInclude": [
+      "acceptance item problem(s) found by the script",
+      "looping back to Sam"
+    ]
+  }
+}

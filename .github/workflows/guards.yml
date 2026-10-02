@@ -48,6 +48,8 @@ jobs:
         run: bash scripts/test-run-offline.sh
       - name: capture-incident self-test
         run: bash scripts/test-capture-incident.sh
+      - name: redact-fixture self-test
+        run: bash scripts/test-redact-fixture.sh
       - name: Stop-supervise watchdog regression test
         run: bash hooks/test-Stop-supervise-runs.sh
       - name: deny-destructive-git hook regression test
