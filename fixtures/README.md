@@ -78,12 +78,12 @@ cause and writes nothing.
 - Every string value of `args` and `calls` is replaced by a typed neutral token (zeros for a hash, `1` for
   a number, `_` otherwise), and a replacement is kept only if the replay outcome is identical. The outcome is: status,
   reason, exact trace, the ordered `agent()` call labels, the engine's ordered log and phase call sites, the FORM of the
-  rest of the result (keys, array lengths, numbers, booleans and nulls exactly; a string only as empty or not, or exactly
-  when it equals a token of the engine's own vocabulary) and the number of log lines. Free text of the result is outside
-  the oracle. Every `agent()` call resolves to one engine site (`callAgent`), so the ordered labels carry the order of the
+  rest of the result (keys, array lengths, numbers, booleans and nulls exactly; a string only as empty or not) and the
+  number of log lines. Free text of the result is outside the oracle. Every `agent()` call resolves to one engine site (`callAgent`), so the ordered labels carry the order of the
   agents and the log and phase sites carry the path through the engine. The baseline is replayed three times and must agree.
-- A string that is exactly a token of the engine's own vocabulary (a single-word literal of `workflows/deliver-pipeline.js`:
-  `GO`, `LGTM`, `ready`...) is public and is not neutralized.
+- A single-word value is neutralized like any other string: a first name, a short password or a one-word branch name can equal
+  a literal of `workflows/deliver-pipeline.js`, so the engine's own words get no exemption (a value the engine switches on
+  stays, because replacing it changes the outcome).
 - Protected args (`mode`, `entryStage`, `proceedThrough`, `issueType`, `resumeReason`, `planFreshness`,
   `config.planFreshness`, `config.preflight.envSymlink`, `config.oneWayDoorKinds`, `config.oneWayDoorPaths`,
   `probeOnly.name`; a path protects its whole subtree) are never neutralized.

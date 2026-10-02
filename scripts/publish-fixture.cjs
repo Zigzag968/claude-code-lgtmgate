@@ -21,14 +21,14 @@
 //   2. BASELINE: the capture is replayed three times in process against the real engine. The OUTCOME it must keep
 //      is the status, the reason, the full trace, the ordered agent() call labels, the ordered engine call SITES
 //      (every log(), phase() and agent() call, by line and column of the engine body), the FORM of the rest of the
-//      result (its keys, array lengths, numbers, booleans and nulls exactly; a string only as empty or not, or exactly
-//      when it is a token of the engine's own vocabulary) and the number of log lines. Free text of the result stays
+//      result (its keys, array lengths, numbers, booleans and nulls exactly; a string only as empty or not) and the
+//      number of log lines. Free text of the result stays
 //      out of the oracle (nothing could be neutralized otherwise). The three replays must agree.
 //   3. MINIMIZE: every string value of args and calls is replaced by a typed neutral token (zeros for a hash, `1`
 //      for a number, `_` otherwise), one at a time in JSON order, and the replacement is kept only if the outcome
 //      stays identical. Then, for a multi-line string that is still not neutral, each line to `_`. Passes repeat
-//      to a fixpoint (3 at most). PROTECTED_ARGS and a value that is exactly a token of the engine's own vocabulary
-//      (a single-word literal of the engine file) are never neutralized. A weak oracle (status plus trace) silently
+//      to a fixpoint (3 at most). PROTECTED_ARGS are never neutralized; nothing else is exempt, a single-word value
+//      included (a private first name or password can equal a literal of the engine file). A weak oracle (status plus trace) silently
 //      drops behaviour (probes became placeholders and the engine took fail-open paths), hence the strict one.
 //      The sites and the ordered labels pin the engine's path: every agent() call resolves to one site (callAgent),
 //      so the labels carry the order of the agents, and the log and phase sites carry the path through the engine.
@@ -133,26 +133,16 @@ function loadCapture(file) {
 
 // ---- result shape ------------------------------------------------------------------------------
 
-// The engine's own vocabulary: single-word string literals of the engine file (`'GO'`, `'LGTM'`, `'ready'`...).
-// A result string equal to one is a token the engine chose, pinned exactly; any other string is free text.
-function vocabularyOf(src) {
-  const out = new Set()
-  const re = /(['"`])([A-Za-z0-9_.:-]{1,40})\1/g
-  let m
-  while ((m = re.exec(src)) !== null) out.add(m[2])
-  return out
-}
-
 // The FORM of a value, with no free text: keys, array lengths, numbers, booleans and null exactly; a string only
-// as empty / non-empty, or exactly when it is a token of the engine's vocabulary.
-function shapeOf(v, vocab) {
+// as empty / non-empty.
+function shapeOf(v) {
   if (v === null) return ['0']
   if (v === undefined) return ['u']
-  if (typeof v === 'string') return v === '' ? ['s', ''] : vocab.has(v) ? ['s', '=', v] : ['s', '~']
+  if (typeof v === 'string') return v === '' ? ['s', ''] : ['s', '~']
   if (typeof v === 'number') return ['n', String(v)]
   if (typeof v === 'boolean') return ['b', v]
-  if (Array.isArray(v)) return ['a', v.map((x) => shapeOf(x, vocab))]
-  if (isObj(v)) return ['o', Object.keys(v).sort().map((k) => [k, shapeOf(v[k], vocab)])]
+  if (Array.isArray(v)) return ['a', v.map((x) => shapeOf(x))]
+  if (isObj(v)) return ['o', Object.keys(v).sort().map((k) => [k, shapeOf(v[k])])]
   return ['?', typeof v]
 }
 
@@ -229,9 +219,6 @@ async function main() {
   let run
   try { run = buildPipelineRunner(stripExports(fs.readFileSync(fp, 'utf8'))) } catch (e) { refuse(`cannot load the engine file (${(e && e.code) || 'error'})`) }
 
-  let engineSrc
-  try { engineSrc = fs.readFileSync(fp, 'utf8') } catch (e) { refuse(`cannot load the engine file (${(e && e.code) || 'error'})`) }
-  const vocab = vocabularyOf(engineSrc)
   let replays = 0
   const replay = async (fx) => {
     if (++replays > MAX_REPLAYS) refuse(`replay budget of ${MAX_REPLAYS} exhausted before the minimization settled`)
@@ -249,7 +236,7 @@ async function main() {
       Array.isArray(r.result.trace) ? r.result.trace : [],
       r.calls.map((c) => c.label),
       r.sites,
-      shapeOf(rest, vocab),
+      shapeOf(rest),
       r.logs.length,
     ])
   }
@@ -348,7 +335,7 @@ async function main() {
     for (const l of leaves) {
       if (isProtected(l.segs)) continue
       const v = l.parent[l.key]
-      if (isNeutral(v) || vocab.has(v)) continue // a token of the engine's own vocabulary (`GO`, `LGTM`...) is public
+      if (isNeutral(v)) continue
       for (const t of [...new Set([neutralOf(v), '_'])]) {
         if (t === v) continue
         if (await tryChange(l.parent, l.key, t)) break

@@ -57,6 +57,13 @@ if (variant === 'nogo') {
   f.calls['scout-issue-123-1'].rationale = 'adds ZQCUSTOMERSTATUS for Acme'
   f.expect.status = 'no-go'
 }
+if (variant === 'oneword') {
+  // single-word private values, each one also a literal of the engine file (agent names, branch names, a decision)
+  f.args.brief = 'Sam'
+  f.args.config = { customer: 'Nick', pw: 'security', codeword: 'hook', owner: 'Mia' }
+  f.args.repo = 'release'
+  f.args.branchName = 'develop'
+}
 if (variant === 'badstatus') f.expect.status = 'escalate'
 if (variant === 'note') f.note = 'free text'
 fs.writeFileSync(out, JSON.stringify(f, null, 2) + '\n')
@@ -404,15 +411,28 @@ else
   bad "sites oracle: rc=$RC p=$(jsf "$D20/131-sites.json" 'f.args.p' 2>/dev/null) err=$ERR"
 fi
 
-# the oracle compares the form of the result: a string equal to a token of the engine's vocabulary is pinned, other free text is not
+# a single-word value is not public because the engine file happens to contain the same word as a literal: it is neutralized like
+# any other string (the engine file holds `zqvocabtoken` here, and the result carries it)
 printf '%s\n' "const T = 'zqvocabtoken'" "return { status: 'a', tag: String(args.p).split(',')[0], free: args.q }" > "$TMP/stub-vocab.js"
-mkcap "$RAWD/132-vocab.json" '{"p":"zqvocabtoken,zqfreetextx9","q":"zqfreetextx9"}'
+mkcap "$RAWD/132-vocab.json" '{"p":"zqvocabtoken,zqfreetextx9","q":"zqfreetextx9","w":"zqvocabtoken"}'
 D21="$(newdir out-vocab)"
 pub "$RAWD/132-vocab.json" --fp "$TMP/stub-vocab.js" --out-dir "$D21"
-if [ "$RC" -eq 0 ] && [ "$(jsf "$D21/132-vocab.json" 'f.args.p+"|"+f.args.q')" = '"zqvocabtoken,zqfreetextx9|_"' ]; then
-  ok "a result string that is a token of the engine's vocabulary is pinned and other free text is neutralized"
+if [ "$RC" -eq 0 ] && [ "$(jsf "$D21/132-vocab.json" 'f.args.p+"|"+f.args.q+"|"+f.args.w')" = '"_|_|_"' ] && ! grep -q 'zqvocabtoken' "$D21/132-vocab.json"; then
+  ok "a single-word value equal to a literal of the engine file is neutralized like any other string"
 else
   bad "vocabulary: rc=$RC args=$(jsf "$D21/132-vocab.json" 'JSON.stringify(f.args)' 2>/dev/null) err=$ERR"
+fi
+# the real engine: single-word private values that are literals of the engine file (agent names, branch names, a decision) go too
+ONERAW="$RAWD/139-oneword.json"
+node "$TMP/gen.cjs" "$ONERAW" oneword
+D40="$(newdir out-oneword)"
+pub "$ONERAW" 139-oneword --out-dir "$D40"
+owv=$(jsf "$D40/139-oneword.json" '[f.args.brief, f.args.config, f.args.repo, f.args.branchName, f.calls["scout-issue-123-1"].decision]' 2>/dev/null)
+if [ "$RC" -eq 0 ] && [ "$owv" = '["_",{"customer":"_","pw":"_","codeword":"_","owner":"_"},"_","_","_"]' ] \
+   && [ "$(node scripts/run-offline.cjs "$D40/139-oneword.json" 2>&1 | tail -n 1)" = "[offline] status=ok passed=1 failed=0" ]; then
+  ok "single-word private values and the scout decision are neutralized and the fixture still replays"
+else
+  bad "single-word values: rc=$RC values=$owv err=$ERR"
 fi
 # an emptiness change is a shape change: an empty string stays empty, a non-empty one stays non-empty
 printf '%s\n' "return { status: 'a', e: args.e, n: args.n }" > "$TMP/stub-empty.js"
