@@ -16,126 +16,38 @@ export const meta = {
 // up. A parser wrapped between the comment lines `// guards:parser-begin` and
 // `// guards:parser-end` is not counted by agent-output-regex, so moving one inside markers lowers it.
 //
-// Args:
-//   issue       — GitHub issue number (required)
-//   brief       — one-line description of the change (required)
-//   wtPath      — shared worktree absolute path (required)
-//   config      — project-specific configuration (stack-agnostic; see pipeline.config.template.json)
-//                 worktreeRoot resolution order: LGTMGATE_WORKTREE_ROOT env var -> configLocal.worktreeRoot
-//                 -> config.worktreeRoot -> wtPath's parent dir (see resolveWorktreeRoot below).
-//                 { ghProject, baseBranch, branchPrefix, worktreeRoot, conventionsRule,
-//                   commands:{build,test,format}, ciChecks:[], regressionGuard:{testGlob,testFnPattern,baselineCmd},
-//                   provision:{extraLinks:[{src,dst}]}, preflight:{canonicalStringBan:[]},
-//                   commitHygiene:{squashBeforeHandoff,maxCommits}, commentHygiene:bool,
-//                   oneWayDoorPaths:[] (optional; R3 path globs/prefixes, default none; see oneWayDoorSignals),
-//                   oneWayDoorKinds:[] (optional; R3 kinds among status|agent|hook|seam, default none),
-//                   engineRepo:true (optional; marks the repo that IS this plugin: engine-only rules, default absent = consumer; see engineRules),
-//                   repo:'owner/repo' }  // repo: code repo for cross-repo runs; absent -> cwd-resolved
-//   config      — REQUIRED object: the parsed `.claude/pipeline.config.json`, supplied by the Lead. Absent or
-//                 not an object (e.g. a JSON string) -> throws before any agent call (#13, #12).
-//   configLocal — parsed `.claude/pipeline.config.local.json`, supplied by the Lead (the workflow
-//                 sandbox has no filesystem — see resolveWorktreeRoot below); only `worktreeRoot` is
-//                 read today (#61). Gitignored, machine-local, never versioned. Absent/garbage -> {}.
-//   pmReview    — run Mia before Sam (default false)
-//   issueType   — the issue's type, from its `type:*` label (e.g. 'bug', 'feature', 'chore'); optional,
-//                 absent = not a bug. With 'bug' AND a Sam target under `workflows/` AND config.engineRepo
-//                 is true, the R2 fixture acceptance item is injected into Nick's prompt (#76, #163). A launch arg, not a simulate key.
-//   scoutAgent  — agent type for the scout/plan stage (default 'Sam'). Lets the consuming
-//                 project route to a different scout than Sam — e.g. a domain-specific
-//                 planner it registers itself — while keeping the same plan contract
-//                 (artifact + SAM schema) whoever fills the slot. Any agent name outside
-//                 the built-in set (Mia/Sam/Nick/Morgan) passes through normalizeAgentType
-//                 unchanged, so the consuming project can supply an already-namespaced
-//                 agentType or a custom agent it registered itself.
-//   branchOverride — exact branch name used verbatim instead of <branchPrefix>issue-<N> (#232; rebase-without-force-push,
-//                 numbered slices). Arg, else config.branchOverride. Empty = unset; chars limited to [A-Za-z0-9._/-].
-//                 Skips the config-prefix reconcile so a config-prefix branch is never accepted.
-//   branchPrefix — top-level arg is IGNORED (config.branchPrefix wins); a differing value logs a warning +
-//                 trace 'branch-prefix-arg-ignored' (#232). Use branchOverride to force a branch.
-//                 config.branchPrefix absent/blank -> falls back to 'features/' and traces
-//                 'branch-prefix-fallback-default' (#267), so a caller that fails to thread the
-//                 project's own branchPrefix through config is diagnosable, not silent.
-//   prNumber    — existing PR number; required when entryStage='review'
-//   mode        — 'auto' | 'semi' (default) | 'manual'
-//   entryStage  — 'plan' (default) | 'dev' | 'review'  (skip completed phases on crash-resume)
-//   proceedThrough — last stage the Lead authorized to RUN on resume ('plan'|'dev'|'review'|null).
-//                    The pipeline PAUSES before any stage beyond it. proceedThrough='plan' stops at plan-ready.
-//   planText    — Sam's plan text, supplied on resume (entryStage='dev'|'review') so the
-//                 hand-off survives a crash without re-reading GitHub. If absent on resume,
-//                 the plan is re-materialized from the artifact file (see planPath below).
-//   resumeReason — optional, null by default. Set by the Lead on an entryStage:'dev' relaunch
-//                  that follows a status:'escalate', reason:'mergeable-conflicting' result
-//                  (#170), to thread WHY the resume happens into Nick's prompt (#183) —
-//                  otherwise Nick reasons only from branch/plan content. Allow-list deliberately
-//                  narrow (one value today): a branch-mismatch or plan-stale escalate doesn't
-//                  resolve by relaunching Nick with this same message.
-//   dryRun      — if true, validate args and return immediately (no agents spawned)
-//   probeOnly   — optional { name, cmd, label, round }: run ONE probe() (probe-run gate, #80) and return
-//                 status 'dry-run-ok' reason 'probe-only'. Lets a run-offline fixture reach probe()
-//                 while no engine call site is migrated yet. Not a simulate key.
-//   pluginRoot  — optional absolute path of the plugin root (#82). The Lead passes
-//                 ${CLAUDE_PLUGIN_ROOT} for the plugin component and omits it for a local copy; the
-//                 probe layer resolves templates/probe-run.cjs from it (the workflow has no
-//                 filesystem or env). config.probeRunPath wins; fallback <wtPath>/templates/probe-run.cjs.
-//   models      — optional per-role model override: { scout?, planAudit?, morgan? }. Resolution
-//                 order per role is `models.<role> ?? config.models?.<role> ?? 'sonnet'` (same `??`
-//                 idiom as planAudit above — arg wins per-run over the project default). Default is
-//                 'sonnet' for all three roles (lgtmgate#161: the plan-phase loop could spawn
-//                 up to 4 opus scout attempts per issue with planAudit on, the dominant cost driver);
-//                 pass e.g. `models: { scout: 'opus' }` per-run when an issue is dense/dangerous
-//                 enough to warrant it — opus stays fully reachable, just no longer the default. Not
-//                 a general cost-control knob: Theo and Nick are NOT overridable by this key, always
-//                 'sonnet' (out of scope per the issue — their calls are unconditional literals).
-//   maxPlanAttempts — bound on the plan-verification gate loop between Sam and Nick
-//                 (default 2; mirrors advisory.js's `maxAttempts = 2`). On the
-//                 maxPlanAttempts-th NOT_CONFORMING verdict, escalate instead of looping again.
-//   planAudit   — optional, DEFAULT OFF: once Sam's plan clears the planCheck gate,
-//                 run an independent, adversarial plan-soundness audit (persona-in-prompt,
-//                 no agentType — independence holds by construction) before Dev ever starts.
-//                 Resolved `planAudit ?? config.planAudit ?? false` — arg wins per-run over the
-//                 project default, an explicit `false` beats a `true` config. Placement: Plan
-//                 phase only — never re-runs on entryStage='dev'|'review' (resume). Spawn-cost
-//                 bound (~70k session tokens/spawn): OFF unchanged; ON typical +1 opus audit
-//                 (SOUND) or +1 audit +1 scout +1 planCheck (one amendment); ON worst case per
-//                 Plan phase = maxAuditRounds × maxPlanAttempts = 4 opus scout spawns + 4 haiku
-//                 planChecks + 2 opus audits (defaults).
-//   planFreshness — optional, default 'advisory' (#103): before Dev, diff Sam's declared
-//                 `targetFiles` against origin/<baseBranch> so a plan whose premise moved
-//                 upstream since the worktree's frozen base is caught before Nick opens a PR.
-//                 Resolution order: this arg, then config.planFreshness, then the 'advisory'
-//                 fallback (arg wins per-run over the project default); a value outside
-//                 'advisory'|'gate'|'off' throws.
-//                 'advisory' warns Nick + traces `plan-stale:<n>`, no routing change. 'gate'
-//                 escalates (reason:'plan-stale') before Nick is spawned. 'off' skips the probe.
-//   maxAuditRounds — bound on the auditor <-> scout amendment loop (default 2, mirrors
-//                 maxPlanAttempts). Must be a positive integer; a non-integer or < 1 throws.
-//                 HARD CEILING: values above AUDIT_ROUNDS_CEILING (2) throw
-//                 unless maxAuditRoundsOverrideReason is a non-empty string naming the risk class
-//                 that justifies the extra round(s) — never config-reachable, arg-only, on every
-//                 launch. The reason is echoed in the dryRun/escalate/plan-ready returns and
-//                 pushed onto `trace` as `audit-budget-override:<n>`.
-//   maxAuditRoundsOverrideReason — required non-empty string whenever maxAuditRounds > 2; ignored
-//                 (trimmed to '') otherwise. See "HARD CEILING" above.
-//   architectureDecisionApproved — asserts the design-step-trigger's architecture-only pass (see
-//                 Theo's design-step signals below) already happened and was approved, so the
-//                 design-step gate does not require proceedThrough:'plan' on this launch.
-//   maxPlanAmendRounds — optional, DEFAULT 0 (issue #97): dark-launch kill-switch for routing a
-//                 Morgan-classified PLAN defect (as opposed to a code defect) back to Sam for a
-//                 plan amendment instead of forever re-dispatching Nick against a frozen,
-//                 unfixable plan. 0 (the shipped default) is SHADOW MODE — Morgan's itemOwners
-//                 classification is still computed and traced (`plan-route-shadow:<round>`), but
-//                 every item is still routed to Nick as a code defect, so the off-path behaviour
-//                 is byte-for-bit identical to before #97. Must be a non-negative integer; a
-//                 non-integer or negative value throws. Flipped by the human only after
-//                 observing shadow-mode `trace` evidence that the classification is trustworthy.
-//   simulate    — test fixture object; the only key the engine reads is `simulate.probes`, a map keyed
-//                 by seam name (agent mocks sam/mia/nick/morgan/theo/audit/planCheck/preflight/
-//                 alreadyDoneCheck, parsed-value probes such as headSha/prBody/mergeState/behindCount,
-//                 agentTypeUnresolved, branchCheckRaw, ...). When set, no real agent is spawned and the
-//                 trace is still recorded. The translation from the suite's flat keys to `probes` and
-//                 every default live in run() of the flow suite (scripts/run-flow-suite.cjs runs it);
-//                 the engine carries no `??` default on a seam. `simulate.probes[<role>] = 'DIE'` (the
-//                 literal string) is the plain-death lever for a role, since `null` is nullish.
+// Args — one row per arg (the `config.*` keys that are not args follow the table):
+// | Arg | Doc |
+// |---|---|
+// | `issue` | GitHub issue number (required) |
+// | `brief` | one-line description of the change (required) |
+// | `wtPath` | shared worktree absolute path (required) |
+// | `config` | REQUIRED object: the parsed `.claude/pipeline.config.json`, supplied by the Lead. Absent or not an object (e.g. a JSON string) -> throws before any agent call (#13, #12). Project-specific configuration (stack-agnostic; see pipeline.config.template.json): `{ ghProject, baseBranch, branchPrefix, worktreeRoot, conventionsRule, commands:{build,test,format}, ciChecks:[], regressionGuard:{testGlob,testFnPattern,baselineCmd}, provision:{extraLinks:[{src,dst}]}, preflight:{canonicalStringBan:[]}, commitHygiene:{squashBeforeHandoff,maxCommits}, commentHygiene:bool, oneWayDoorPaths:[] (optional; R3 path globs/prefixes, default none; see oneWayDoorSignals), oneWayDoorKinds:[] (optional; R3 kinds among status\|agent\|hook\|seam, default none), engineRepo:true (optional; marks the repo that IS this plugin: engine-only rules, default absent = consumer; see engineRules), repo:'owner/repo' }` — repo: code repo for cross-repo runs; absent -> cwd-resolved. worktreeRoot resolution order: LGTMGATE_WORKTREE_ROOT env var -> configLocal.worktreeRoot -> config.worktreeRoot -> wtPath's parent dir (see resolveWorktreeRoot below). |
+// | `configLocal` | parsed `.claude/pipeline.config.local.json`, supplied by the Lead (the workflow sandbox has no filesystem — see resolveWorktreeRoot below); only `worktreeRoot` is read today (#61). Gitignored, machine-local, never versioned. Absent/garbage -> {}. |
+// | `pmReview` | run Mia before Sam (default false) |
+// | `issueType` | the issue's type, from its `type:*` label (e.g. 'bug', 'feature', 'chore'); optional, absent = not a bug. With 'bug' AND a Sam target under `workflows/` AND config.engineRepo is true, the R2 fixture acceptance item is injected into Nick's prompt (#76, #163). A launch arg, not a simulate key. |
+// | `scoutAgent` | agent type for the scout/plan stage (default 'Sam'). Lets the consuming project route to a different scout than Sam — e.g. a domain-specific planner it registers itself — while keeping the same plan contract (artifact + SAM schema) whoever fills the slot. Any agent name outside the built-in set (Mia/Sam/Nick/Morgan) passes through normalizeAgentType unchanged, so the consuming project can supply an already-namespaced agentType or a custom agent it registered itself. |
+// | `branchOverride` | exact branch name used verbatim instead of <branchPrefix>issue-<N> (#232; rebase-without-force-push, numbered slices). Arg, else config.branchOverride. Empty = unset; chars limited to [A-Za-z0-9._/-]. Skips the config-prefix reconcile so a config-prefix branch is never accepted. |
+// | `branchPrefix` | top-level arg is IGNORED (config.branchPrefix wins); a differing value logs a warning + trace 'branch-prefix-arg-ignored' (#232). Use branchOverride to force a branch. config.branchPrefix absent/blank -> falls back to 'features/' and traces 'branch-prefix-fallback-default' (#267), so a caller that fails to thread the project's own branchPrefix through config is diagnosable, not silent. |
+// | `prNumber` | existing PR number; required when entryStage='review' |
+// | `mode` | 'auto' \| 'semi' (default) \| 'manual' |
+// | `entryStage` | 'plan' (default) \| 'dev' \| 'review' (skip completed phases on crash-resume) |
+// | `proceedThrough` | last stage the Lead authorized to RUN on resume ('plan'\|'dev'\|'review'\|null). The pipeline PAUSES before any stage beyond it. proceedThrough='plan' stops at plan-ready. |
+// | `planText` | Sam's plan text, supplied on resume (entryStage='dev'\|'review') so the hand-off survives a crash without re-reading GitHub. If absent on resume, the plan is re-materialized from the artifact file (see planPath below). |
+// | `resumeReason` | optional, null by default. Set by the Lead on an entryStage:'dev' relaunch that follows a status:'escalate', reason:'mergeable-conflicting' result (#170), to thread WHY the resume happens into Nick's prompt (#183) — otherwise Nick reasons only from branch/plan content. Allow-list deliberately narrow (one value today): a branch-mismatch or plan-stale escalate doesn't resolve by relaunching Nick with this same message. |
+// | `dryRun` | if true, validate args and return immediately (no agents spawned) |
+// | `probeOnly` | optional { name, cmd, label, round }: run ONE probe() (probe-run gate, #80) and return status 'dry-run-ok' reason 'probe-only'. Lets a run-offline fixture reach probe() while no engine call site is migrated yet. Not a simulate key. |
+// | `pluginRoot` | optional absolute path of the plugin root (#82). The Lead passes ${CLAUDE_PLUGIN_ROOT} for the plugin component and omits it for a local copy; the probe layer resolves templates/probe-run.cjs from it (the workflow has no filesystem or env). config.probeRunPath wins; fallback <wtPath>/templates/probe-run.cjs. |
+// | `models` | optional per-role model override: { scout?, planAudit?, morgan? }. Resolution order per role is `models.<role> ?? config.models?.<role> ?? 'sonnet'` (same `??` idiom as planAudit above — arg wins per-run over the project default). Default is 'sonnet' for all three roles (lgtmgate#161: the plan-phase loop could spawn up to 4 opus scout attempts per issue with planAudit on, the dominant cost driver); pass e.g. `models: { scout: 'opus' }` per-run when an issue is dense/dangerous enough to warrant it — opus stays fully reachable, just no longer the default. Not a general cost-control knob: Theo and Nick are NOT overridable by this key, always 'sonnet' (out of scope per the issue — their calls are unconditional literals). |
+// | `maxPlanAttempts` | bound on the plan-verification gate loop between Sam and Nick (default 2; mirrors advisory.js's `maxAttempts = 2`). On the maxPlanAttempts-th NOT_CONFORMING verdict, escalate instead of looping again. |
+// | `planAudit` | optional, DEFAULT OFF: once Sam's plan clears the planCheck gate, run an independent, adversarial plan-soundness audit (persona-in-prompt, no agentType — independence holds by construction) before Dev ever starts. Resolved `planAudit ?? config.planAudit ?? false` — arg wins per-run over the project default, an explicit `false` beats a `true` config. Placement: Plan phase only — never re-runs on entryStage='dev'\|'review' (resume). Spawn-cost bound (~70k session tokens/spawn): OFF unchanged; ON typical +1 opus audit (SOUND) or +1 audit +1 scout +1 planCheck (one amendment); ON worst case per Plan phase = maxAuditRounds × maxPlanAttempts = 4 opus scout spawns + 4 haiku planChecks + 2 opus audits (defaults). |
+// | `planFreshness` | optional, default 'advisory' (#103): before Dev, diff Sam's declared `targetFiles` against origin/<baseBranch> so a plan whose premise moved upstream since the worktree's frozen base is caught before Nick opens a PR. Resolution order: this arg, then config.planFreshness, then the 'advisory' fallback (arg wins per-run over the project default); a value outside 'advisory'\|'gate'\|'off' throws. 'advisory' warns Nick + traces `plan-stale:<n>`, no routing change. 'gate' escalates (reason:'plan-stale') before Nick is spawned. 'off' skips the probe. |
+// | `maxAuditRounds` | bound on the auditor <-> scout amendment loop (default 2, mirrors maxPlanAttempts). Must be a positive integer; a non-integer or < 1 throws. HARD CEILING: values above AUDIT_ROUNDS_CEILING (2) throw unless maxAuditRoundsOverrideReason is a non-empty string naming the risk class that justifies the extra round(s) — never config-reachable, arg-only, on every launch. The reason is echoed in the dryRun/escalate/plan-ready returns and pushed onto `trace` as `audit-budget-override:<n>`. |
+// | `maxAuditRoundsOverrideReason` | required non-empty string whenever maxAuditRounds > 2; ignored (trimmed to '') otherwise. See "HARD CEILING" above. |
+// | `architectureDecisionApproved` | asserts the design-step-trigger's architecture-only pass (see Theo's design-step signals below) already happened and was approved, so the design-step gate does not require proceedThrough:'plan' on this launch. |
+// | `maxPlanAmendRounds` | optional, DEFAULT 0 (issue #97): dark-launch kill-switch for routing a Morgan-classified PLAN defect (as opposed to a code defect) back to Sam for a plan amendment instead of forever re-dispatching Nick against a frozen, unfixable plan. 0 (the shipped default) is SHADOW MODE — Morgan's itemOwners classification is still computed and traced (`plan-route-shadow:<round>`), but every item is still routed to Nick as a code defect, so the off-path behaviour is byte-for-bit identical to before #97. Must be a non-negative integer; a non-integer or negative value throws. Flipped by the human only after observing shadow-mode `trace` evidence that the classification is trustworthy. |
+// | `simulate` | test fixture object; the only key the engine reads is `simulate.probes`, a map keyed by seam name (agent mocks sam/mia/nick/morgan/theo/audit/planCheck/preflight/alreadyDoneCheck, parsed-value probes such as headSha/prBody/mergeState/behindCount, agentTypeUnresolved, branchCheckRaw, ...). When set, no real agent is spawned and the trace is still recorded. The translation from the suite's flat keys to `probes` and every default live in run() of the flow suite (scripts/run-flow-suite.cjs runs it); the engine carries no `??` default on a seam. `simulate.probes[<role>] = 'DIE'` (the literal string) is the plain-death lever for a role, since `null` is nullish. |
+// | `stamp` | optional epoch ms of the run (the harness bans an argless `new Date()`, which breaks resume): read by the already-done guard's future-merged check, the artifact-floor fallback and the preflight probes' `--stamp`; absent -> each degrades gracefully. |
 //
 // config.commitHygiene — OFF by default: { squashBeforeHandoff: bool, maxCommits: int }.
 // squashBeforeHandoff=true makes the pipeline soft-reset a >maxCommits branch to 2-3 logical
