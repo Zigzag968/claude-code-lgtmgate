@@ -12,6 +12,11 @@
 #      #N labelled `tech-debt` (REST), and the PR diff (`git diff origin/main...HEAD`, added lines only) must hold a
 #      `DEBT(#N)` marker. Any failure prints one `FAIL: declared-exception: <reason>` line and exits before any
 #      fetch-merge, bump, push, checks or merge.
+#      The `git fetch origin main` of this step is unconditional (the next step needs it too).
+#   1b2. R2 waivers (#174): in an engine repo (`engineRepo: true` in .claude/pipeline.config.json on origin/main, never the
+#      PR's copy), a PR whose header names (Closes/Fixes/Resolves/Refs #N) a `type:bug` issue and whose diff touches
+#      `workflows/` must add `fixtures/incidents/<N>-*.json`, unless a valid `exception:` line (1b) declares the waiver.
+#      Otherwise one `FAIL: r2-waiver: <reason>` line and exit before any fetch-merge, bump, push, checks or merge.
 #   2. sync: refuse unless on the PR head branch with a clean tree; fetch the head branch and
 #      fast-forward when the remote is ahead (a previous partial run), refuse when diverged.
 #   3. bring the base in LOCALLY: fetch origin/main, `git merge --no-edit origin/main`. On conflict:
@@ -92,6 +97,28 @@ fi
 
 # --- 1. acceptance checklist -------------------------------------------------
 body="$(gh pr view "$PR" -R "$REPO" --json body -q .body)" || die "cannot read PR #$PR body"
+# header_issue_refs <keyword alternation>: the same-repo issue numbers named by `<keyword> #N` in the body's header block
+# ONLY (#119): the lines before the first `## ` line (the PR body order puts `Closes #N` first); fenced code blocks and
+# inline `code` spans are stripped before matching, so proofs quoting `Closes #N` in the acceptance section never count.
+# owner/repo#N never matches, case-insensitive, deduplicated. Used by the R2 waiver gate (1b2) and the issue closing (8).
+header_issue_refs() {
+  printf '%s\n' "$body" | KW="$1" python3 -c '
+import os, re, sys
+head, fenced = [], False
+for line in sys.stdin.read().splitlines():
+    if not fenced and line.startswith("## "):
+        break
+    if re.match(r"\s*(```|~~~)", line):
+        fenced = not fenced
+        continue
+    if not fenced:
+        head.append(re.sub(r"`[^`]*`", " ", line))
+seen = []
+for m in re.finditer(r"(?<![\w/])(?:" + os.environ["KW"] + r")\s*:?\s+#(\d+)\b", "\n".join(head), re.I):
+    if m.group(1) not in seen:
+        seen.append(m.group(1))
+print("\n".join(seen))'
+}
 rc=0
 printf '%s\n' "$body" | acceptance_check_body || rc=$?
 if [ "$rc" -ne 0 ]; then
@@ -142,8 +169,8 @@ for line in sys.stdin.read().splitlines():
                 print("BAD\t" + line.strip())
     if re.search(r"<!--\s*acceptance:start\s*-->", line):
         inb = True')" || die "cannot parse declared exceptions"
+git fetch origin "+refs/heads/main:refs/remotes/origin/main" || die "git fetch origin main failed"
 if [ -n "$exc_lines" ]; then
-  git fetch origin "+refs/heads/main:refs/remotes/origin/main" || die "git fetch origin main failed"
   exc_diff="$(git diff origin/main...HEAD | grep -E '^\+' | grep -vE '^\+\+\+ ' || true)"
   while IFS="$(printf '\t')" read -r kind val; do
     [ -n "$kind" ] || continue
@@ -156,6 +183,34 @@ if [ -n "$exc_lines" ]; then
   done <<EOX
 $exc_lines
 EOX
+fi
+
+# --- 1b2. R2 waivers must be declared (#174) -----------------------------------
+# R2 scope = engine repo (`engineRepo: true` in .claude/pipeline.config.json ON origin/main, never the PR's own copy, so a PR
+# cannot switch the rule off) + an issue named by Closes/Fixes/Resolves/Refs #N in the header block labelled `type:bug` +
+# a diff touching workflows/. Such a PR must add fixtures/incidents/<N>-*.json, or carry a valid declared exception (an
+# `exception:` line already validated by 1b above). Local tests first: no gh call unless engine AND scope hold.
+r2_fail() { echo "FAIL: r2-waiver: $*" >&2; die "PR #$PR R2 waiver not declared; nothing bumped, nothing merged"; }
+if [ -z "$exc_lines" ]; then
+  r2_engine=0
+  if git show origin/main:.claude/pipeline.config.json > "$lm_tmp/base-config.json" 2>/dev/null \
+     && python3 -c 'import json,sys; sys.exit(0 if json.load(open(sys.argv[1])).get("engineRepo") is True else 1)' "$lm_tmp/base-config.json" 2>/dev/null; then
+    r2_engine=1
+  fi
+  if [ "$r2_engine" -eq 1 ]; then
+    r2_changed="$(git diff --name-only origin/main...HEAD)" || die "cannot diff the PR against origin/main"
+    r2_added="$(git diff --name-only --diff-filter=A origin/main...HEAD)" || die "cannot diff the PR against origin/main"
+    if [ "$(printf '%s\n' "$r2_changed" | grep -c '^workflows/' || true)" -gt 0 ]; then
+      r2_refs="$(header_issue_refs 'close[sd]?|fix(?:e[sd])?|resolve[sd]?|refs?')" || die "cannot parse issue references"
+      for n in $r2_refs; do
+        info="$(gh api "repos/$REPO/issues/$n" --jq '.state + " " + ([.labels[].name] | join(","))')" || r2_fail "cannot read issue #$n"
+        case ",${info#* }," in *,type:bug,*) ;; *) continue ;; esac
+        [ "$(printf '%s\n' "$r2_added" | grep -cE "^fixtures/incidents/$n-[^/]+\.json\$" || true)" -eq 0 ] \
+          || continue
+        r2_fail "issue #$n is type:bug and the PR changes workflows/ but adds no fixtures/incidents/$n-*.json; add the fixture (replayed red on base, green on the branch) or declare the waiver with 'exception: <what> — <why> — #M' in the acceptance block (#M an open tech-debt issue, DEBT(#M) marker in the diff)"
+      done
+    fi
+  fi
 fi
 
 # --- 1c. --tick-from-review (#9) -----------------------------------------------
@@ -485,26 +540,8 @@ merged="$(gh api "repos/$REPO/pulls/$PR" --jq .merged)" || die "cannot read PR #
 merged_at="$(gh api "repos/$REPO/pulls/$PR" --jq .merged_at)" || die "cannot read PR #$PR merged_at; no issue closed"
 { [ "$merged" = "true" ] && [ -n "$merged_at" ] && [ "$merged_at" != "null" ]; } \
   || die "PR #$PR is not merged (merged=$merged merged_at=$merged_at); no issue closed"
-# Closing keywords in the header block ONLY (#119): the lines before the first `## ` line (the PR body order puts
-# `Closes #N` first); fenced code blocks and inline `code` spans are stripped before matching, so proofs quoting
-# `Closes #N` in the acceptance section never close anything. Same-repo #N only (owner/repo#N never matches),
-# case-insensitive, deduplicated; `Refs #N` never matches.
-closing_issues="$(printf '%s\n' "$body" | python3 -c '
-import re, sys
-head, fenced = [], False
-for line in sys.stdin.read().splitlines():
-    if not fenced and line.startswith("## "):
-        break
-    if re.match(r"\s*(```|~~~)", line):
-        fenced = not fenced
-        continue
-    if not fenced:
-        head.append(re.sub(r"`[^`]*`", " ", line))
-seen = []
-for m in re.finditer(r"(?<![\w/])(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s+#(\d+)\b", "\n".join(head), re.I):
-    if m.group(1) not in seen:
-        seen.append(m.group(1))
-print("\n".join(seen))')" || die "cannot parse closing references; PR #$PR is merged, close issues by hand"
+# Closing keywords in the header block ONLY (#119, see header_issue_refs); `Refs #N` never matches.
+closing_issues="$(header_issue_refs 'close[sd]?|fix(?:e[sd])?|resolve[sd]?')" || die "cannot parse closing references; PR #$PR is merged, close issues by hand"
 close_failed=0
 for issue in $closing_issues; do
   state="$(gh api "repos/$REPO/issues/$issue" --jq .state)" || { echo "lead-merge: cannot read issue #$issue state" >&2; close_failed=1; continue; }
