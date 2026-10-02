@@ -576,6 +576,35 @@ $R2L"
   OUT="$(run_pw body-splice --pr 9 --mode tick --text "$TK_TXT" --ids 1,3 --keep 2)"
   ok=0; [ "$(res "$OUT")" = "skipped/unchanged" ] && [ "$(no_call 'pr edit')" = 1 ] && ok=1
   check "[183] pr-write.sh tick again over the kept line: skipped/unchanged, no edit" "$ok"
+  # [183] second review round (G1): the tick replaces only the id boxes; every other line of the block survives, once, in order
+  while IFS= read -r FOREIGN <&3; do
+    tk_body "- [ ] <!-- ac:1 --> first
+$FOREIGN
+- [ ] <!-- ac:2 --> [human-gate] second
+- [ ] <!-- ac:3 --> third"
+    OUT="$(run_pw body-splice --pr 9 --mode tick --text "$TK_TXT" --ids 1,3 --keep 2)"
+    ok=0; [ "$(res "$OUT")" = "written/-" ] && grep -qxF -- '- [x] <!-- ac:3 --> third' "$PWD_/body.md" \
+      && [ "$(awk -v l="$FOREIGN" '$0 == l { n++ } END { print n + 0 }' "$PWD_/body.md")" = 1 ] \
+      && [ "$(grep -n -x -F -- "$FOREIGN" "$PWD_/body.md" | cut -d: -f1)" -gt "$(grep -n -F -- '- [x] <!-- ac:3 --> third' "$PWD_/body.md" | cut -d: -f1)" ] && ok=1
+    OUT="$(run_pw body-splice --pr 9 --mode tick --text "$TK_TXT" --ids 1,3 --keep 2)"
+    [ "$(res "$OUT")" = "skipped/unchanged" ] && [ "$(no_call 'pr edit')" = 1 ] || ok=0
+    check "[183] pr-write.sh tick keeps the foreign block line '$FOREIGN' once, after the rendered lines, and again changes nothing" "$ok"
+  done 3<<'EOF'
+exception: skip lint -- migration pending -- #9
+- exception: skip lint -- migration pending -- #9
+Note: the migration plan is in the issue
+* [ ] x
+1. [ ] x
+-[ ] x
+- [ ] a box without an id
+EOF
+  tk_body "- [ ] <!-- ac:1 --> first
+
+- [ ] <!-- ac:2 --> [human-gate] second
+- [ ] <!-- ac:3 --> third"
+  OUT="$(run_pw body-splice --pr 9 --mode tick --text "$TK_TXT" --ids 1,3 --keep 2)"
+  ok=0; [ "$(res "$OUT")" = "written/-" ] && [ "$(sed -n '/ac:3 -->/{n;p;}' "$PWD_/body.md")" = "" ] && [ "$(sed -n '/ac:3 -->/{n;n;p;}' "$PWD_/body.md")" = "<!-- acceptance:end -->" ] && ok=1
+  check "[183] pr-write.sh tick keeps a blank line of the block after the rendered lines" "$ok"
   FENCE='```
 <!-- acceptance:start -->
 - [ ] an example box

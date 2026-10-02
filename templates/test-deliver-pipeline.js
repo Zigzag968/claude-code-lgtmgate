@@ -5109,6 +5109,52 @@ await testCase('T183w in an id run Morgan is told she ticks nothing and LGTM nee
   return e1 || e2 || e3 || e4 || e5 || e6 || e7 || { ok: true }
 })
 
+// The lines a block can hold besides the rendered id boxes (second review round, G1): the tick replaces ONLY the lines of an
+// id box; each of these must come out as it went in, once, after the rendered lines, in the order it had.
+const T183_FOREIGN = [
+  'exception: skip lint -- migration pending -- #9',
+  '- exception: skip lint -- migration pending -- #9',
+  'Note: the migration plan is in the issue',
+  '* [ ] x',
+  '1. [ ] x',
+  '-[ ] x',
+  '- [ ] a box without an id',
+  '- [X] a box without an id, ticked',
+  '',
+]
+
+await testCase('T183x every line of the acceptance block that is not an id box survives the tick, in order, after the rendered lines', async () => {
+  const fns = t183Splice()
+  const crlf = (s) => s.split('\n').join('\r\n')
+  for (const foreign of T183_FOREIGN) {
+    const name = JSON.stringify(foreign)
+    // Between the id boxes, so that "after the rendered lines" and "in the order it had" are both observable.
+    const r = await t183Review({ prBody: t183Body([T183_L3[0], foreign, T183_L3[1], 'last: ' + foreign, T183_L3[2]]), morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, true, true) }] })
+    const p = String(r.prBodyPreview || '')
+    const e1 = eq(name + ': status', r.status, 'ready')
+    const e2 = eq(name + ': the 3 id boxes ticked', t183Ticked(p).length, 3)
+    const tail = '\n' + foreign + '\nlast: ' + foreign + '\n<!-- acceptance:end -->'
+    const e3 = includes(name + ': the foreign lines, in order, right after the rendered lines', p, '- [x] <!-- ac:3 --> ' + T183_PLAIN[2].text + tail)
+    const e4 = foreign === '' ? null : eq(name + ': the foreign line is not duplicated', p.split('\n' + foreign + '\n').length - 1, 1)
+    if (e1 || e2 || e3 || e4) return e1 || e2 || e3 || e4
+    if (!fns) continue
+    // Block level: stable on a second pass, and the same over CRLF.
+    const body = t183Body([T183_L3[0], foreign, T183_L3[1], 'last: ' + foreign, T183_L3[2]])
+    const once = fns.tickAcceptanceBlock(body, T183_L3.join('\n'), [1, 2, 3], [])
+    const e5 = eq(name + ': block level, the foreign lines kept after the rendered ones', once, 'Closes #183\n\n<!-- acceptance:start -->\n' + T183_L3.join('\n').split('- [ ] ').join('- [x] ') + tail + '\n')
+    const e6 = eq(name + ': a second tick changes nothing', fns.tickAcceptanceBlock(once, T183_L3.join('\n'), [1, 2, 3], []), once)
+    const c = crlf(body)
+    const cOnce = fns.tickAcceptanceBlock(c, T183_L3.join('\n'), [1, 2, 3], [])
+    const e7 = eq(name + ': CRLF: the output is the LF output with CRLF line breaks', cOnce, crlf(once))
+    const e8 = eq(name + ': CRLF: a second tick changes nothing', fns.tickAcceptanceBlock(cOnce, T183_L3.join('\n'), [1, 2, 3], []), cOnce)
+    if (e5 || e6 || e7 || e8) return e5 || e6 || e7 || e8
+  }
+  // The same lines read by checkedAcceptanceIds: only an id box counts.
+  if (!fns) return t182Skip('T183x')
+  const ids = fns.checkedAcceptanceIds(t183Body(['- [x] <!-- ac:1 --> a', '- [x] a box without an id', 'exception: x', '- [x] <!-- ac:3 --> c']))
+  return eq('checkedAcceptanceIds: only id boxes', ids, [1, 3]) || { ok: true }
+})
+
 // T123 (#42) — every test ID is unique across the suite. Must stay the LAST case so `results`
 // holds every other case name. Includes a negative control proving the detector really detects.
 await testCase('T123 test IDs are unique across the suite (no duplicated T<n>)', async () => {
