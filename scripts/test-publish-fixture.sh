@@ -90,7 +90,7 @@ if [ "$PUBLISHED" = yes ]; then
   esac
 
   rawsz=$(wc -c < "$RAW" | tr -d ' '); pubsz=$(wc -c < "$PUB" | tr -d ' ')
-  if [ "$pubsz" -lt "$rawsz" ]; then ok "published fixture is smaller than the raw capture ($pubsz < $rawsz bytes)"; else bad "published fixture is not smaller: $pubsz >= $rawsz"; fi
+  if [ "$pubsz" -lt "$rawsz" ]; then ok "published fixture is smaller than the raw capture"; else bad "published fixture is not smaller: $pubsz >= $rawsz"; fi
 
   if grep -qF '"mode": "auto"' "$PUB" && grep -qF '"proceedThrough": "review"' "$PUB" && grep -qF 'features/issue-123' "$PUB"; then
     ok "protected and flow-selecting fields survive"
@@ -102,7 +102,7 @@ if [ "$PUBLISHED" = yes ]; then
   pubcmd=$(jsf "$PUB" 'f.calls["probe-123-provision-provision-r0"].line.match(/cmd=([0-9a-f]{64})/)[1]')
   wt=$(jsf "$PUB" 'f.args.wtPath')
   if [ "$rawcmd" != "$pubcmd" ] && [ "$wt" = '"_"' ] && [ "$REPLAY_OK" = yes ]; then
-    ok "coupled PROBE hashes are recomputed (provision cmd= $rawcmd became $pubcmd, wtPath neutral, the fixture replays)"
+    ok "coupled PROBE hashes are recomputed"
   else
     bad "coupled hashes: raw=$rawcmd pub=$pubcmd wtPath=$wt replay=$REPLAY_OK"
   fi
