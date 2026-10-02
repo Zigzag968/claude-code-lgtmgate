@@ -101,7 +101,7 @@ Every relaunch or resume (green light, `resumeFromRunId`) follows the §4 clean-
 first tool call of its turn. If you need to check anything first (`gh pr view`, `git log`), do it, end the
 turn with a trivial background command, and relaunch from the notification turn.
 
-A payload returned after a Morgan round may carry `boxes[]` (`{id, text, humanGate, proven, proof}` per acceptance box, ids from the `<!-- ac:N -->` comments) when the run holds Sam's `acceptanceItems`; a run resumed at `entryStage` dev or review rebuilds them from the `<!-- ac:N -->` lines of `planText`: pass Sam's plan (the artifact or the `<!-- pipeline-plan:issue-<N> -->` comment), as the `plan-ready`, `dev-done` and `needs-revision` rows of §5 say. A `planText` without ids, one whose checklist has a line without its id (all or nothing), or none, leaves no items and returns no `boxes`.
+A payload returned after a Morgan round may carry `boxes[]` (`{id, text, humanGate, proven, proof}` per acceptance box, ids from the `<!-- ac:N -->` comments) when the run holds Sam's `acceptanceItems`; a run resumed at `entryStage` dev or review rebuilds them from the `<!-- ac:N -->` lines of `planText`: pass Sam's plan (the artifact or the `<!-- pipeline-plan:issue-<N> -->` comment), as the `plan-ready`, `dev-done` and `needs-revision` rows of §5 say. A `planText` without ids, one whose checklist has a line without its id (all or nothing), one holding two different id'd checklists, or none, leaves no items and returns no `boxes`.
 
 ### Probe prerequisites (fail-closed, #82)
 Provision, freshness and the behind-count go through `probe()`; a probe that cannot be proven fails closed, never open.
