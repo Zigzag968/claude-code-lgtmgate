@@ -86,6 +86,7 @@ case "$1 $2" in
       *) echo "${FAKE_MERGED:-true}" ;;
     esac ;;
   "api repos/o/r/issues/"*)
+    [ -e "$FAKE_ISSUES/${2##*/}.fail" ] && { echo "gh: HTTP 502" >&2; exit 1; } # <n>.fail: the REST read of issue <n> errors (#174)
     case "$*" in
       *comments*) cat "$FAKE_COMMENTS" 2>/dev/null || echo '[]' ;; # --tick-from-review (#9)
       *labels*) n="${2##*/}"; cat "$FAKE_ISSUES/$n.labels" 2>/dev/null || echo "closed" ;; # declared-exception lookup (#122)
@@ -533,6 +534,93 @@ r2_prep r2-tamper 'Refs #30' '' 'open type:bug'; r2_main_cfg "$D" "$R2_ENGINE"; 
 ( cd "$D/work" && mkdir -p .claude && echo '{"engineRepo": false}' > .claude/pipeline.config.json && git add -A && git commit -qm "cfg off" && git push -q origin feat/x ) >/dev/null 2>&1
 r2_go
 r2_refused "PR switches engineRepo off in its own config: still refused (config read from origin/main)"
+
+# 20. R2 waiver gate, adversarial-review hardening (#174)
+r2_commit() { # <dir> <message> [append-line]: feat/x gets one more workflows/ edit (or a doc.md edit when no workflows/ line is wanted), pushed
+  ( cd "$1/work" && echo '// fix' >> workflows/deliver-pipeline.js && git add -A && git commit -qm "$2" && git push -q origin feat/x ) >/dev/null 2>&1
+}
+r2_doc() { ( cd "$1/work" && echo docs > doc.md && git add -A && git commit -qm "docs: r2" && git push -q origin feat/x ) >/dev/null 2>&1; }
+r2_remote() { # <dir> <shell snippet>: a commit pushed to feat/x from the second clone (the local branch falls behind the remote head)
+  ( cd "$1/other" && git fetch -q origin && git checkout -q -B feat/x origin/feat/x && eval "$2" && git add -A && git commit -qm "remote: r2" \
+    && git push -q origin feat/x && git checkout -q main ) >/dev/null 2>&1
+}
+r2_main_file() { # <dir> <path> <content>: a commit pushed to origin/main from the second clone
+  ( cd "$1/other" && git checkout -q main && mkdir -p "$(dirname "$2")" && printf '%s\n' "$3" > "$2" && git add -A && git commit -qm "main: $2" && git push -q origin main ) >/dev/null 2>&1
+}
+r2_pull_main() { ( cd "$1/work" && git fetch -q origin && git merge -q --no-edit origin/main ) >/dev/null 2>&1; }
+r2_pr_fixture() { # <dir> <path> <content>: feat/x touches workflows/ and writes a fixture file, pushed
+  ( cd "$1/work" && echo '// fix' >> workflows/deliver-pipeline.js && mkdir -p "$(dirname "$2")" && printf '%s\n' "$3" > "$2" \
+    && git add -A && git commit -qm "fix: r2 fixture" && git push -q origin feat/x ) >/dev/null 2>&1
+}
+# F1 the script's own bump (BUILD line) is not a workflows/ change: a docs-only PR is not refused on its re-run
+r2_prep r2-rerun 'Closes #30' '' 'open type:bug'; r2_main_cfg "$D" "$R2_ENGINE"; r2_doc "$D"; run "$D" "$R2_BODY" 1; rc1=$?; r2_go
+{ [ "$rc1" -ne 0 ] && [ "$(git -C "$D/work" log --format=%s | grep -c 'chore: bump')" -eq 1 ]; } && r2_merges "docs-only PR re-run after its own bump (BUILD line): merges" || bad "r2-waiver: re-run setup (rc1=$rc1)"
+r2_prep r2-disguised 'Closes #30' '' 'open type:bug'; r2_main_cfg "$D" "$R2_ENGINE"; r2_commit "$D" "chore: bump 0.8.99 (lead-merge)"; r2_go
+r2_refused "workflows/ code under a commit subject imitating the bump: refused (BUILD-only lines are exempt, subjects are not)"
+# F2 the gate reads the remote head of the PR, not the lagging local branch
+r2_prep r2-lag-wf 'Closes #30' '' 'open type:bug'; r2_main_cfg "$D" "$R2_ENGINE"; r2_remote "$D" "echo '// fix' >> workflows/deliver-pipeline.js"; r2_go
+r2_refused "local branch behind: the remote head adds workflows/ code with no fixture: refused"
+r2_prep r2-lag-fix 'Closes #30' '' 'open type:bug'; r2_main_cfg "$D" "$R2_ENGINE"; r2_commit "$D" "fix: r2"; r2_remote "$D" "mkdir -p fixtures/incidents && echo '{}' > fixtures/incidents/30-r.json"; r2_go
+r2_merges "local branch behind: the fixture exists only on the remote head: merges"
+r2_prep r2-lag-debt 'Refs #30' "$R2_EXC" 'open type:bug'; printf 'open tech-debt\n' > "$D/issues/9.labels"; r2_main_cfg "$D" "$R2_ENGINE"; r2_commit "$D" "fix: r2"
+r2_remote "$D" "echo '// DEBT(#9): owed' >> workflows/deliver-pipeline.js"; r2_go
+r2_merges "local branch behind: the DEBT(#9) marker (step 1b) exists only on the remote head: merges"
+# F3 renames: git's rename detection must not hide a path
+r2_prep r2-rename-out 'Closes #30' '' 'open type:bug'; r2_main_cfg "$D" "$R2_ENGINE"
+( cd "$D/work" && git mv workflows/deliver-pipeline.js engine.js && echo '// fix' >> engine.js && git add -A && git commit -qm "mv" && git push -q origin feat/x ) >/dev/null 2>&1; r2_go
+r2_refused "workflows/ file renamed out of the folder and edited: refused"
+r2_prep r2-delete 'Closes #30' '' 'open type:bug'; r2_main_cfg "$D" "$R2_ENGINE"
+( cd "$D/work" && git rm -q workflows/deliver-pipeline.js && git commit -qm "del" && git push -q origin feat/x ) >/dev/null 2>&1; r2_go
+r2_refused "workflows/ file deleted: refused"
+r2_prep r2-fix-renamed 'Closes #30' '' 'open type:bug'; r2_main_cfg "$D" "$R2_ENGINE"
+r2_main_file "$D" fixtures/incidents/29-old.json '{"payload":"long enough content to keep the rename similarity high xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}'; r2_pull_main "$D"
+( cd "$D/work" && echo '// fix' >> workflows/deliver-pipeline.js && git mv fixtures/incidents/29-old.json fixtures/incidents/30-new.json && git add -A && git commit -qm "fix: r2" && git push -q origin feat/x ) >/dev/null 2>&1; r2_go
+r2_merges "fixture added by a rename (29-old.json -> 30-new.json): counts as added"
+# F4 every reference form GitHub treats as closing, anywhere in the body or the commit messages
+for form in 'Closes o/r#30' 'closes O/R#30' 'Fixes https://github.com/o/r/issues/30' 'Resolves: https://github.com/o/r/issues/30'; do
+  r2_prep "r2-form-$(printf '%s' "$form" | tr -c 'a-zA-Z0-9' '_')" "$form" '' 'open type:bug'; r2_main_cfg "$D" "$R2_ENGINE"; r2_branch "$D"; r2_go
+  r2_refused "reference form '$form': refused"
+done
+for form in 'Closes o/other#30' 'Closes https://github.com/o/other/issues/30' 'Related to #30'; do
+  r2_prep "r2-other-$(printf '%s' "$form" | tr -c 'a-zA-Z0-9' '_')" "$form" '' 'open type:bug'; r2_main_cfg "$D" "$R2_ENGINE"; r2_branch "$D"; r2_go
+  r2_merges "not a reference to this repo's issue ('$form'): merges"
+done
+r2_prep r2-late-ref $'## What this ships\nCloses #30' '' 'open type:bug'; r2_main_cfg "$D" "$R2_ENGINE"; r2_branch "$D"; r2_go
+r2_refused "Closes #30 after the first '## ' heading: refused"
+r2_prep r2-code-ref $'Refs #1\n## What this ships\nquoting `Closes #30` and\n```\nFixes #30\n```' '' 'open type:bug'; r2_main_cfg "$D" "$R2_ENGINE"; r2_branch "$D"; r2_go
+r2_merges "keywords quoted in code spans or fences are not references: merges"
+r2_prep r2-commit-ref 'Refs #1' '' 'open type:bug'; r2_main_cfg "$D" "$R2_ENGINE"; r2_commit "$D" "fix: x"; ( cd "$D/work" && git commit -q --allow-empty -m "fix: y" -m "Fixes #30" && git push -q origin feat/x ) >/dev/null 2>&1; r2_go
+r2_refused "commit message body 'Fixes #30', PR body 'Refs #1': refused"
+r2_prep r2-two-uncovered $'Closes #29\nCloses #30' '' 'open type:bug'; printf 'open type:bug\n' > "$D/issues/29.labels"; r2_main_cfg "$D" "$R2_ENGINE"; r2_pr_fixture "$D" fixtures/incidents/29-a.json '{}'; r2_go
+r2_refused "two bug issues, fixture for #29 only: #30 is refused"
+r2_prep r2-two-covered $'Closes #29\nCloses #30' '' 'open type:bug'; printf 'open type:bug\n' > "$D/issues/29.labels"; r2_main_cfg "$D" "$R2_ENGINE"; r2_pr_fixture "$D" fixtures/incidents/29-a.json '{}'; r2_pr_fixture "$D" fixtures/incidents/30-b.json '{}'; r2_go
+r2_merges "two bug issues, one fixture each: merges"
+# F5 fixture accounting: added or modified by the PR, valid JSON at the PR head
+r2_prep r2-fix-modified 'Closes #30' '' 'open type:bug'; r2_main_cfg "$D" "$R2_ENGINE"; r2_main_file "$D" fixtures/incidents/30-old.json '{}'; r2_pull_main "$D"
+r2_pr_fixture "$D" fixtures/incidents/30-old.json '{"a":1}'; r2_go
+r2_merges "fixture already on main and modified by the PR: counts"
+r2_prep r2-fix-untouched 'Closes #30' '' 'open type:bug'; r2_main_cfg "$D" "$R2_ENGINE"; r2_main_file "$D" fixtures/incidents/30-old.json '{}'; r2_pull_main "$D"; r2_branch "$D"; r2_go
+r2_refused "fixture already on main and not touched by the PR: does not count"
+r2_prep r2-fix-deleted 'Closes #30' '' 'open type:bug'; r2_main_cfg "$D" "$R2_ENGINE"; r2_main_file "$D" fixtures/incidents/30-old.json '{}'; r2_pull_main "$D"
+( cd "$D/work" && echo '// fix' >> workflows/deliver-pipeline.js && git rm -q fixtures/incidents/30-old.json && git add -A && git commit -qm "fix: r2" && git push -q origin feat/x ) >/dev/null 2>&1; r2_go
+r2_refused "fixture deleted by the PR: does not count"
+r2_prep r2-fix-garbage 'Closes #30' '' 'open type:bug'; r2_main_cfg "$D" "$R2_ENGINE"; r2_pr_fixture "$D" fixtures/incidents/30-x.json 'garbage not json'; r2_go
+r2_refused "fixture that is not valid JSON: does not count"
+r2_prep r2-fix-empty 'Closes #30' '' 'open type:bug'; r2_main_cfg "$D" "$R2_ENGINE"
+( cd "$D/work" && echo '// fix' >> workflows/deliver-pipeline.js && mkdir -p fixtures/incidents && : > fixtures/incidents/30-x.json && git add -A && git commit -qm "fix: r2" && git push -q origin feat/x ) >/dev/null 2>&1; r2_go
+r2_refused "empty fixture file: does not count"
+r2_prep r2-fix-ext 'Closes #30' '' 'open type:bug'; r2_main_cfg "$D" "$R2_ENGINE"; r2_pr_fixture "$D" fixtures/incidents/30-x.txt '{}'; r2_go
+r2_refused "valid JSON in a file without the .json extension: does not count"
+# F6 fail closed, exact matching, scope
+r2_prep r2-gh-error 'Closes #30' '' 'open type:bug'; touch "$D/issues/30.fail"; r2_main_cfg "$D" "$R2_ENGINE"; r2_branch "$D"; r2_go
+[ "$rc" -ne 0 ] && grep -q 'FAIL: r2-waiver: cannot read issue #30' "$D/out" && [ ! -s "$D/pushes" ] && ! grep -qE 'pr merge|pr checks' "$D/log" \
+  && ok "r2-waiver: gh error reading the issue: fail closed with a readable reason" || bad "r2-waiver: gh error (rc=$rc): $(tail -3 "$D/out")"
+r2_prep r2-bugfix 'Closes #30' '' 'open type:bugfix'; r2_main_cfg "$D" "$R2_ENGINE"; r2_branch "$D"; r2_go
+r2_merges "label type:bugfix is not type:bug: merges"
+r2_prep r2-truthy 'Closes #30' '' 'open type:bug'; r2_main_cfg "$D" '{"engineRepo": "true"}'; r2_branch "$D"; r2_go
+r2_merges "engineRepo as the string \"true\" does not switch the gate on: merges"
+r2_prep r2-main-moved 'Closes #30' '' 'open type:bug'; r2_main_cfg "$D" "$R2_ENGINE"; r2_main_file "$D" workflows/other.js '// main only'; r2_doc "$D"; r2_go
+r2_merges "workflows/ changed on main after the branch was cut, not by the PR: merges"
 
 echo "[lead-merge test] passed=$PASS failed=$FAIL"
 [ "$FAIL" -eq 0 ]
