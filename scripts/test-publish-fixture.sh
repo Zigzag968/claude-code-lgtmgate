@@ -483,6 +483,45 @@ D22="$(newdir out-empty)"
 pub "$RAWD/133-empty.json" --fp "$TMP/stub-empty.js" --out-dir "$D22"
 if [ "$RC" -eq 0 ] && [ "$(jsf "$D22/133-empty.json" 'f.args.e+"|"+f.args.n')" = '"|_"' ]; then ok "an empty string stays empty and a non-empty one stays non-empty"; else bad "emptiness: rc=$RC err=$ERR"; fi
 
+# the oracle pins the FORM of the result: a number, a boolean, the length of an array and the emptiness of a string
+printf '%s\n' "return { status: 'a', n: String(args.p1).length, b: String(args.p2).length > 3, arr: String(args.p3).split(','), e: String(args.p4) === '_' ? '' : 'yy' }" > "$TMP/stub-shape.js"
+mkcap "$RAWD/141-shape.json" '{"p1":"zqlongwordx9","p2":"zqlongwordx9","p3":"aaaa,bbbb","p4":"zqfreetextx9"}'
+D42="$(newdir out-shape)"
+pub "$RAWD/141-shape.json" --fp "$TMP/stub-shape.js" --out-dir "$D42"
+shp="$D42/141-shape.json"
+[ "$RC" -eq 0 ] || bad "shape stub publication: rc=$RC err=$ERR"
+if [ "$(jsf "$shp" 'f.args.p1' 2>/dev/null)" = '"zqlongwordx9"' ]; then ok "a number of the result is pinned exactly by the oracle"; else bad "number of the result not pinned: p1=$(jsf "$shp" 'f.args.p1' 2>/dev/null)"; fi
+if [ "$(jsf "$shp" 'f.args.p2' 2>/dev/null)" = '"zqlongwordx9"' ]; then ok "a boolean of the result is pinned exactly by the oracle"; else bad "boolean of the result not pinned: p2=$(jsf "$shp" 'f.args.p2' 2>/dev/null)"; fi
+if [ "$(jsf "$shp" 'f.args.p3' 2>/dev/null)" = '"aaaa,bbbb"' ]; then ok "the length of an array of the result is pinned by the oracle"; else bad "array length of the result not pinned: p3=$(jsf "$shp" 'f.args.p3' 2>/dev/null)"; fi
+if [ "$(jsf "$shp" 'f.args.p4' 2>/dev/null)" = '"zqfreetextx9"' ]; then ok "a non-empty string of the result stays non-empty"; else bad "emptiness of the result not pinned: p4=$(jsf "$shp" 'f.args.p4' 2>/dev/null)"; fi
+
+# typed neutral tokens: zeros of the same length for a hash of 32 characters or more, `1` for an integer, `_` otherwise
+printf '%s\n' "return { status: 'a' }" > "$TMP/stub-any.js"
+H31=0123456789abcdef0123456789abcde; H32=0123456789abcdef0123456789abcdef; H64="$H32$H32"
+mkcap "$RAWD/142-tokens.json" "{\"h31\":\"$H31\",\"h32\":\"$H32\",\"h64\":\"$H64\",\"num\":\"12345\",\"neg\":\"-7\",\"word\":\"zqwordx9\"}"
+D43="$(newdir out-tokens)"
+pub "$RAWD/142-tokens.json" --fp "$TMP/stub-any.js" --out-dir "$D43"
+tk=$(jsf "$D43/142-tokens.json" '[f.args.h31, f.args.h32, f.args.h64, f.args.num, f.args.neg, f.args.word].join("|")' 2>/dev/null)
+z32=00000000000000000000000000000000
+if [ "$RC" -eq 0 ] && [ "$tk" = "\"_|$z32|$z32$z32|1|1|_\"" ]; then ok "neutral tokens: zeros for a hash of 32 characters or more, 1 for an integer, _ otherwise"; else bad "neutral tokens: rc=$RC got=$tk"; fi
+
+# the passes repeat to a fixpoint, three at most: x1 can only go after x2, x2 after x3, x3 after x4 (the chain needs four passes for x1)
+printf '%s\n' "const a = args" "return { status: (a.x1 === 'zq1' || a.x2 === '_') && (a.x2 === 'zq2' || a.x3 === '_') && (a.x3 === 'zq3' || a.x4 === '_') ? 'a' : 'b' }" > "$TMP/stub-chain.js"
+mkcap "$RAWD/143-chain.json" '{"x1":"zq1","x2":"zq2","x3":"zq3","x4":"zq4"}'
+D44="$(newdir out-chain)"
+pub "$RAWD/143-chain.json" --fp "$TMP/stub-chain.js" --out-dir "$D44"
+if [ "$RC" -eq 0 ] && [ "$(jsf "$D44/143-chain.json" '[f.args.x1, f.args.x2, f.args.x3, f.args.x4].join("|")' 2>/dev/null)" = '"zq1|_|_|_"' ]; then
+  ok "minimization repeats to a fixpoint in three passes, no fewer and no more"
+else
+  bad "pass count: rc=$RC args=$(jsf "$D44/143-chain.json" 'JSON.stringify(f.args)' 2>/dev/null) err=$ERR"
+fi
+
+# the published file is readable (0644) whatever the umask: the temporary file is created 0600
+DM="$(newdir out-mode)"
+( umask 077; bash scripts/publish-fixture.sh "$RAW" --out-dir "$DM" >/dev/null 2>&1 )
+pmode=$(node -e 'process.stdout.write((require("fs").statSync(process.argv[1]).mode & 0o777).toString(8))' "$DM/123-auto.json" 2>/dev/null)
+if [ "$pmode" = "644" ]; then ok "the published file is world-readable (mode 644) under a restrictive umask"; else bad "published file mode: $pmode"; fi
+
 # a multi-line string whose middle line cannot be neutralized is cut line by line
 printf '%s\n' "return { status: String(args.p).split('\\n')[1] === 'KEEP' ? 'a' : 'b' }" > "$TMP/stub-lines.js"
 mkcap "$RAWD/134-lines.json" '{"p":"first zqlineone\nKEEP\nlast zqlinetwo"}'
