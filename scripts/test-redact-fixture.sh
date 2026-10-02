@@ -28,6 +28,16 @@ present() {
   done
   ok "$label"
 }
+# nth_line <label> <file> <n> <text>   ok when line n of the file is exactly <text>
+nth_line() {
+  local got; got=$(sed -n "${3}p" "$2")
+  if [ "$got" = "$4" ]; then ok "$1"; else bad "$1: line $3 is [$got]"; fi
+}
+# line_count <label> <file> <n>   ok when the file has n lines
+line_count() {
+  local got; got=$(wc -l < "$2" | tr -d ' ')
+  if [ "$got" = "$3" ]; then ok "$1"; else bad "$1: $got lines"; fi
+}
 # refused <label> <expected stderr line> <file>...   exit 3, that exact line on stderr, no PEM text in any output, every file untouched
 refused() {
   local label=$1 want=$2 f; shift 2
@@ -258,6 +268,43 @@ for f in b1.jsonl b2.jsonl b3.jsonl b4.jsonl b5.json; do
   if [ "$rc" = 0 ] && [ ! -s "$TMP/o.out" ] && cmp -s "$TMP/$f" "$TMP/$f.once"; then ok "trailing backslashes: a second run on $f changes nothing"; else bad "trailing backslashes second run $f: exit $rc, output [$(cat "$TMP/o.out")]"; fi
   node "$RF" --check "$TMP/$f" >"$TMP/o.out" 2>&1; rc=$?
   if [ "$rc" = 0 ] && [ ! -s "$TMP/o.out" ]; then ok "trailing backslashes: --check $f is clean after redaction (exit 0)"; else bad "trailing backslashes --check after $f: exit $rc, $(cat "$TMP/o.out")"; fi
+done
+
+# ---- a truncated line (unterminated value) followed by other lines (review round 4) -----------------------------
+# A value stops at the end of its line: the next line is never swallowed, merged or broken.
+# t1: plain form; t2: escaped form in a string holding JSON; both as .jsonl and .raw.
+L_CLEAN='{"a":"KEEPt1"}'
+L_NEXT='{"password":"ZTsec''ret3"}'
+printf '%s\n%s\n%s\n' '{"token":"ZTsec''ret1' "$L_CLEAN" "$L_NEXT" > "$TMP/t1.jsonl"
+printf '%s\n%s\n%s\n' "{\"m\":\"{${Q1}token${Q1}:${Q1}ZTsec""ret2" '{"a":"KEEPt2"}' "$L_NEXT" > "$TMP/t2.jsonl"
+cp "$TMP/t1.jsonl" "$TMP/t3.raw"
+cp "$TMP/t2.jsonl" "$TMP/t4.raw"
+for f in t1.jsonl t2.jsonl t3.raw t4.raw; do
+  node "$RF" --check "$TMP/$f" >"$TMP/o.out" 2>&1; rc=$?
+  if [ "$rc" = 1 ]; then ok "truncated line: --check $f is not clean before redaction (exit 1)"; else bad "truncated line --check before $f: exit $rc"; fi
+done
+node "$RF" $TMP/t1.jsonl $TMP/t2.jsonl $TMP/t3.raw $TMP/t4.raw >"$TMP/o.out" 2>"$TMP/o.err"; rc=$?
+if [ "$rc" = 0 ]; then ok "truncated line: the four inputs are rewritten (exit 0)"; else bad "truncated line rewrite: exit $rc, $(cat "$TMP/o.err")"; fi
+for f in t1.jsonl t3.raw; do
+  absent  "truncated line, plain form ($f): the secret value of the cut line is gone" "$TMP/$f" ZTsec""ret1 ZTsec""ret3
+  nth_line "truncated line, plain form ($f): the cut line keeps its key" "$TMP/$f" 1 '{"token":"REDACTED'
+  nth_line "truncated line, plain form ($f): the next line is byte-identical" "$TMP/$f" 2 '{"a":"KEEPt1"}'
+  nth_line "truncated line, plain form ($f): a secret on the line after is still rewritten" "$TMP/$f" 3 '{"password":"REDACTED"}'
+  line_count "truncated line, plain form ($f): the line count is unchanged" "$TMP/$f" 3
+done
+for f in t2.jsonl t4.raw; do
+  absent  "truncated line, escaped form ($f): the secret value of the cut line is gone" "$TMP/$f" ZTsec""ret2 ZTsec""ret3
+  nth_line "truncated line, escaped form ($f): the cut line keeps its key" "$TMP/$f" 1 "{\"m\":\"{${Q1}token${Q1}:${Q1}REDACTED"
+  nth_line "truncated line, escaped form ($f): the next line is byte-identical" "$TMP/$f" 2 '{"a":"KEEPt2"}'
+  nth_line "truncated line, escaped form ($f): a secret on the line after is still rewritten" "$TMP/$f" 3 '{"password":"REDACTED"}'
+  line_count "truncated line, escaped form ($f): the line count is unchanged" "$TMP/$f" 3
+done
+for f in t1.jsonl t2.jsonl t3.raw t4.raw; do
+  cp "$TMP/$f" "$TMP/$f.once"
+  node "$RF" "$TMP/$f" >"$TMP/o.out" 2>"$TMP/o.err"; rc=$?
+  if [ "$rc" = 0 ] && [ ! -s "$TMP/o.out" ] && cmp -s "$TMP/$f" "$TMP/$f.once"; then ok "truncated line: a second run on $f changes nothing"; else bad "truncated line second run $f: exit $rc, output [$(cat "$TMP/o.out")]"; fi
+  node "$RF" --check "$TMP/$f" >"$TMP/o.out" 2>&1; rc=$?
+  if [ "$rc" = 0 ] && [ ! -s "$TMP/o.out" ]; then ok "truncated line: --check $f is clean after redaction (exit 0)"; else bad "truncated line --check after $f: exit $rc, $(cat "$TMP/o.out")"; fi
 done
 
 # false-positive guards: look-alike keys, prose, hex values and empty or non-string values stay byte-identical

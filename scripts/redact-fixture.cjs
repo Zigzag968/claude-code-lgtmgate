@@ -51,13 +51,13 @@ const RULES = [
 ]
 // A json-key rule compiles once: `key` for a parsed key (whole name), `plain` and `head` for the text form. A pair is
 // the whole key name between quotes, a colon, then a non-empty string value: plain (`"k":"v"`, value up to the
-// first unescaped quote) or backslash-escaped (`\"k\":\"v\"`, as inside a string that holds JSON: `head` matches
-// the part before the value, `escapedValueEnd` finds where the value really ends).
+// first unescaped quote or the end of the line) or backslash-escaped (`\"k\":\"v\"`, as inside a string that
+// holds JSON: `head` matches the part before the value, `escapedValueEnd` finds where the value really ends).
 for (const r of RULES) {
   if (r.kind !== 'json-key') continue
   const names = r.names.join('|')
   r.key = new RegExp(`^(?:${names})$`, 'i')
-  r.plain = new RegExp(`(")(${names})("\\s*:\\s*")((?:[^"\\\\]|\\\\.)+)`, 'gi')
+  r.plain = new RegExp(`(")(${names})("\\s*:\\s*")((?:[^"\\\\\\n]|\\\\[^\\n])+)`, 'gi')
   r.head = new RegExp(`(\\\\")(${names})(\\\\"\\s*:\\s*\\\\")`, 'gi')
 }
 const REWRITES = RULES.filter((r) => r.kind === 'rewrite')
@@ -67,10 +67,11 @@ const KEY_RULES = RULES.filter((r) => r.kind === 'json-key')
 // JSON a quote of the value is serialised `\\\"` (3 backslashes) and a backslash `\\\\` (4): they belong to the
 // value, so a value ending in m backslashes is followed by 4m of them and the lone `\"` delimiter (a run of 4m+1:
 // the delimiter is the last backslash). A bare quote, or a quote after an even run of backslashes, ends the
-// outer string (truncated capture): the value stops before it. Only this one nesting level is handled.
+// outer string (truncated capture): the value stops before it, and so does a newline (a truncated line never
+// swallows the next one). Only this one nesting level is handled.
 function escapedValueEnd(t, i) {
   while (i < t.length) {
-    if (t[i] === '"') return i
+    if (t[i] === '"' || t[i] === '\n') return i
     if (t[i] !== '\\') { i++; continue }
     let j = i
     while (t[j] === '\\') j++
