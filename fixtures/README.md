@@ -41,24 +41,25 @@ before it is committed, and the `no-private-refs` invariant scans the whole trac
   when the engine swallows the error** (fail-open probes, agent-death routing). Nothing is defaulted:
   the harness only proves what the fixture actually feeds.
 
-## Capture a fixture from a real run (before the probe layer exists)
+## Capture a fixture from a real run
 
-Until E2.2 lands there is no `.pipeline/probes/` directory and no capture script. A smoke or
-incident fixture is built by hand from the run's own record:
+```
+bash scripts/capture-incident.sh <runId> <issue> <label> [--out DIR]
+```
 
-1. Take the run's journal (the Workflow tool records each `agent()` return value) or, failing
-   that, the transcript pasted in the issue.
-2. For every `agent()` call, add one `calls[<label>]` entry with **exactly** what the model
-   returned: the raw string for a schema-less call, the JSON object for a schema call. Do not
-   normalise, do not fix typos — the incident is often in the typo.
-3. Set `args` to the run's arguments (drop `simulate`, drop secrets) and `expect.status` to the
-   status the fix must produce (for an incident: the *correct* outcome, not the observed one).
-4. `node scripts/redact-fixture.cjs fixtures/incidents/<issue>-<label>.json`
-5. `node scripts/run-offline.cjs fixtures/incidents/<issue>-<label>.json` — it must fail on
-   `origin/main` and pass on the fix branch.
-
-Once E2.2 lands, `probe-run` writes every raw probe output under `.pipeline/probes/` and
-`scripts/capture-incident.sh` (E3.10) turns them into a fixture in one command.
+- It reads the run's journal and run record and writes a **private raw capture**
+  `.pipeline/captures/<issue>-<label>.json`: git-ignored (the script refuses any output path git
+  does not ignore), never committed, and it may hold private data.
+- One `calls[<label>]` entry per `agent()` call of the run's final pass, exactly as the agent
+  returned it (the final pass of a relaunched run is identified by the record's `agentId` values,
+  never by journal order). It fails closed, naming the key, on any layout it does not recognise
+  and on a call that died; it then replays the capture and prints the next step.
+- `expect.status` is the OBSERVED status. For a bug fix, set the correct outcome before the
+  fixture is published: it must fail on `origin/main` and pass on the fix branch.
+- Until the publication step exists, publish by hand: `node scripts/redact-fixture.cjs <file>`, move
+  the file to `fixtures/incidents/`, then `node scripts/run-offline.cjs <file>`.
+- `node scripts/run-offline.cjs <file> --report-unused` also lists the fixture entries a replay
+  never consumed (report only, never a failure).
 
 ## Honesty note on `smoke/`
 

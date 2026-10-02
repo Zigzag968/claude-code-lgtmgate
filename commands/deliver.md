@@ -119,6 +119,7 @@ resolved `ready`/`no-go`/`escalate`), do a check-in pass rather than silently ab
 - **Silent past the configured threshold** (`pipeline.config.json` -> `supervision.staleMinutes`,
   default 30 min; the guard `Stop` hook detects this automatically and re-prompts) -> mark it blocked
   and escalate to the user, never leave it as-is.
+- **Before any decision on an `escalate` or `*-died` status** (engine repo): `bash scripts/capture-incident.sh <runId> <issue> <label>` writes a private raw capture under `.pipeline/captures/` (git-ignored), replays it and prints the next step. Capture first, then decide.
 
 ### R2 fixture rule (`no-fixture`)
 - The Lead passes `issueType` in the Workflow args, taken from the issue's `type:*` label (e.g. `bug`, `feature`, `chore`); omit it when unknown (= not a bug).
