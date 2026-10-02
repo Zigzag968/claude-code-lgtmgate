@@ -215,6 +215,37 @@ case "$OUT" in
   *) bad "fail-closed ambiguous run: $OUT";;
 esac
 
+# a symlink at the output FILE is never followed (the guard proved the link path ignored, not its target)
+# capsep [args...]: like cap, but stdout and stderr kept apart (OUT = stdout, ERR = stderr)
+capsep() {
+  OUT=$(cd "$REPO" && CLAUDE_PROJECTS_DIR="$PROJ" bash "$ROOT/scripts/capture-incident.sh" "$@" 2>"$TMP/stderr.txt"); RC=$?
+  ERR=$(cat "$TMP/stderr.txt")
+}
+VICTIM="$REPO/tracked/victim.txt"
+OUTSIDE="$TMP/outside.txt"
+printf 'tracked content\n' > "$VICTIM"
+git -C "$REPO" add tracked/victim.txt
+printf 'outside content\n' > "$OUTSIDE"
+symlink_case() { # name link-target
+  name="$1"; target="$2"
+  printf 'tracked content\n' > "$VICTIM"; printf 'outside content\n' > "$OUTSIDE"; rm -f "$TMP/does-not-exist.txt"
+  newrun base
+  mkdir -p "$OUTD"
+  ln -s "$target" "$CAP"
+  before=$(cksum < "$VICTIM")$(cksum < "$OUTSIDE")
+  cap "$RUN" 181 t --out "$OUTD"
+  after=$(cksum < "$VICTIM")$(cksum < "$OUTSIDE")
+  case "$OUT" in
+    *"refused:"*"$CAP"*"symlink"*"status=refused"*)
+      if [ "$RC" -eq 1 ] && [ "$before" = "$after" ] && [ -L "$CAP" ]; then ok "fail-closed $name"; else bad "fail-closed $name: rc=$RC target changed or link replaced"; fi;;
+    *) bad "fail-closed $name: output does not refuse the symlink: rc=$RC $OUT";;
+  esac
+}
+symlink_case "output file symlinked to a tracked file" "../tracked/victim.txt"
+symlink_case "output file symlinked outside the repo" "$OUTSIDE"
+symlink_case "output file dangling symlink" "$TMP/does-not-exist.txt"
+[ ! -e "$TMP/does-not-exist.txt" ] && ok "fail-closed dangling symlink target not created" || bad "fail-closed dangling symlink target was created"
+
 # ---- usage errors (exit 2, before any filesystem access) ---------------------------------------
 
 usage_case() { # name expected-substring args...

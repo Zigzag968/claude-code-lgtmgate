@@ -243,6 +243,33 @@ function buildFixture(issue, label, record, calls) {
   return { name: `${issue}-${label}`, args, calls: out, expect: { status: record.status } }
 }
 
+// ---- private write --------------------------------------------------------------------------
+
+let createdFile = null // set once the output file is open, so an unexpected error can remove it
+
+// Writes `text` to `file` (mode 600) without ever following a symlink at `file`: git proved the
+// PATH ignored, not whatever a link there points at. A pre-existing regular file is overwritten.
+function writePrivate(file, text) {
+  let st = null
+  try { st = fs.lstatSync(file) } catch (e) { if (!e || e.code !== 'ENOENT') throw e }
+  if (st && st.isSymbolicLink()) refuse(`output file ${file} is a symlink; refusing to write through it`)
+  const C = fs.constants
+  let fd
+  try {
+    fd = fs.openSync(file, C.O_WRONLY | C.O_CREAT | C.O_TRUNC | (C.O_NOFOLLOW || 0), 0o600)
+  } catch (e) {
+    if (e && e.code === 'ELOOP') refuse(`output file ${file} is a symlink; refusing to write through it`)
+    throw e
+  }
+  createdFile = file
+  try {
+    fs.fchmodSync(fd, 0o600)
+    fs.writeSync(fd, text)
+  } finally {
+    fs.closeSync(fd)
+  }
+}
+
 // ---- replay ---------------------------------------------------------------------------------
 
 function replay(file) {
@@ -270,8 +297,7 @@ function main() {
   for (const n of notes) process.stderr.write(`${n}\n`)
   const fixture = buildFixture(issue, label, record, calls)
   fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 })
-  fs.writeFileSync(file, `${JSON.stringify(fixture, null, 2)}\n`, { mode: 0o600 })
-  fs.chmodSync(file, 0o600)
+  writePrivate(file, `${JSON.stringify(fixture, null, 2)}\n`)
   replay(file)
   process.stdout.write(`next: scripts/publish-fixture.sh ${file}\n`)
   const cached = calls.filter((c) => c.cached).length
