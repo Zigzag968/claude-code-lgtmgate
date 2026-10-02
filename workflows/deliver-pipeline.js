@@ -155,8 +155,8 @@ let classifierOutageDeath = false
 // #182: Morgan's `boxes` mapped by id to the rendered acceptance items (set in callMorganGuarded); finish() carries
 // them as `boxes`. Declared before `const finish`: the dryRun return calls finish before the later `let`s run.
 let boxesMapped = null
-// #183: the ids Morgan returned no box for that the PR body already shows ticked (a person's tick): the tick keeps them.
-let boxesKept = []
+// #183: the ids of the human-gate boxes the PR body shows ticked (a person's tick): the one kind of box settled by the body.
+let boxesGates = []
 // #183: why the last pr-write probe call gave no usable answer (null while it did), read by tickAcceptanceBoxes.
 let prWriteFailure = null
 // simulate-only: the PR body as the run composed it (tick, decision log, acceptance sync); finish() exposes it on every terminal.
@@ -907,10 +907,11 @@ function planLacksItems(plan, items) {
   return items.filter((item) => !text.includes(renderLine(item)) && !text.includes(renderLine(item, false))).map((item) => renderLine(item))
 }
 // Morgan's `boxes` [{ id, proven, proof }] mapped by id to the rendered items: { boxes: [{ id, text, humanGate, proven,
-// proof }] in item order, unknown: ids no item carries (dropped), missing: item ids Morgan returned no box for and the
-// body does not show ticked, kept: item ids she returned no box for that `checked` (the ids ticked in the body) shows
-// ticked, a person's tick the tick leaves alone }. A box is proven only with `proven: true` AND a proof that is not blank;
-// two entries for one id are proven only when both are.
+// proof }] in item order, unknown: ids no item carries (dropped), missing: the non-gate item ids Morgan returned no box for
+// (whatever the body shows: a tick of the engine at an earlier round, of the Lead or of Morgan herself settles nothing),
+// gates: the human-gate item ids that `checked` (the ids ticked in the body) shows ticked }. A non-gate box is proven only
+// with `proven: true` AND a proof that is not blank; two entries for one id are proven only when both are. A human-gate box
+// is proven exactly when a person ticked it: the body is its proof, Morgan's `proven` and `proof` change nothing.
 function mapBoxes(items, boxes, checked) {
   const byId = new Map(items.map((item) => [item.id, item]))
   const seen = new Map()
@@ -925,12 +926,11 @@ function mapBoxes(items, boxes, checked) {
     seen.set(b.id, { id: item.id, text: item.text, humanGate: item.humanGate, proven, proof })
   }
   const ticked = Array.isArray(checked) ? checked : []
-  const omitted = items.filter((item) => !seen.has(item.id))
   return {
-    boxes: items.filter((item) => seen.has(item.id)).map((item) => seen.get(item.id)),
+    boxes: items.filter((item) => seen.has(item.id)).map((item) => (item.humanGate ? { ...seen.get(item.id), proven: ticked.includes(item.id) } : seen.get(item.id))),
     unknown,
-    missing: omitted.filter((item) => !ticked.includes(item.id)).map((item) => item.id),
-    kept: omitted.filter((item) => ticked.includes(item.id)).map((item) => item.id),
+    missing: items.filter((item) => !item.humanGate && !seen.has(item.id)).map((item) => item.id),
+    gates: items.filter((item) => item.humanGate && ticked.includes(item.id)).map((item) => item.id),
   }
 }
 // The two prompt notes carrying the rendered block; '' without a block so a legacy run's prompts stay byte-identical.
@@ -943,16 +943,17 @@ function morganBoxesNote(block) {
   return 'ACCEPTANCE BOXES BY ID: the workflow rendered the checklist into the PR body as these lines (the id of a box is the n of its <!-- ac:n --> comment):\n' + block + '\n' +
     'Quote a box line exactly as it stands in the PR body, its <!-- ac:n --> comment included, wherever you quote one (items, itemOwners). ' +
     'Besides items, return boxes: one { id, proven, proof } per box above; proven is true only when you ran its verification and it passed; proof is the command and its verbatim output. ' +
-    'You do not edit the PR body\'s boxes: the workflow ticks by id the boxes you return as proven and never ticks a [human-gate] box, so a [human-gate] box is proven only when the PR body already shows it checked by a person. items carries the quoted line of every box you did not prove. '
+    'Return an entry for EVERY box above, including a box that already reads [x] in the PR body (ticked by the workflow at an earlier round, or by the Lead): re-run its verification this round; a box you return no proven entry for this round is not proven, whatever the body shows. ' +
+    'You do not edit the PR body\'s boxes: the workflow ticks by id the boxes you return as proven and never ticks a [human-gate] box, which is settled only when the PR body already shows it checked by a person (your proven means nothing for it). items carries the quoted line of every box you did not prove. '
 }
 // The sentence of both Morgan prompts that tells her what to put in `items` and when to emit REQUIRED_CHANGES. Without a
-// block (a run with no ids) it is the historical text, byte for byte; with a block the workflow ticks, so no box reads
-// `[x]` when she reads the body: she ticks none, returns `boxes`, and LGTM needs every box proven.
+// block (a run with no ids) it is the historical text, byte for byte; with a block the workflow ticks: she ticks none,
+// returns a `boxes` entry for every box (one that reads [x] from an earlier round included) and LGTM needs every box proven.
 function morganItemsRule(block) {
   if (block) {
-    return 'In this run the workflow ticks the boxes, you tick none: every box reads [ ] when you read the PR body, and LGTM only when EVERY box is proven (returned in `boxes` with proven true and its proof). ' +
+    return 'In this run the workflow ticks the boxes, you tick none, and you prove every box again at every round: return in `boxes` one entry for EACH box, including a box that already reads [x] in the PR body (ticked by the workflow at an earlier round, or by the Lead), and re-run its verification; LGTM only when EVERY box is proven in this round (returned in `boxes` with proven true and its proof). ' +
       'For each box you did not prove, put in `items` the **verbatim checklist line** it blocks on (copy the box line exactly, its <!-- ac:n --> comment included — do NOT paraphrase — so a persistent blocker reads identically across rounds). ' +
-      'A box whose line contains the tag `[human-gate]` is a **human-only** item: you cannot verify it and MUST NOT ask Nick to fix it — copy its line verbatim into `items` (tag preserved) and treat it as a human gate, not a code defect; it is proven only when the PR body already shows it checked by a person. ' +
+      'A box whose line contains the tag `[human-gate]` is a **human-only** item: you cannot verify it and MUST NOT ask Nick to fix it — copy its line verbatim into `items` (tag preserved) and treat it as a human gate, not a code defect; it is settled only when the PR body already shows it checked by a person (your proven means nothing for it). ' +
       'Emit `REQUIRED_CHANGES` whenever any box is not proven (human-gate or not). '
   }
   return 'For each remaining unticked acceptance box, put in `items` the **verbatim checklist line** it blocks on (copy the box text exactly — do NOT paraphrase — so a persistent blocker reads identically across rounds). Any box whose line contains the tag `[human-gate]` is a **human-only** item: you cannot verify it and MUST NOT tick it or ask Nick to fix it — copy its line verbatim into `items` (tag preserved) and treat it as a human gate, not a code defect. Emit `REQUIRED_CHANGES` whenever any box is unticked (human-gate or not). '
@@ -3255,16 +3256,16 @@ if (after('review', entryStage)) {
     // verdict has none clears the previous round's). An id no item carries is dropped and traced, so is an item she
     // returned no box for. #183: the boxes then drive the tick (tickAcceptanceBoxes).
     boxesMapped = null
-    boxesKept = []
+    boxesGates = []
     if (samAcceptanceItems) {
-      // A verdict with no `boxes` is a verdict with no box proven. The ids ticked in the body (read now, after Morgan
-      // ran) are what a person ticked: a box she returned nothing for is kept as it stands, not reopened.
+      // A verdict with no `boxes` is a verdict with no box proven: a non-gate box is settled by the proof Morgan returns
+      // in this round only. The ids ticked in the body (read now, after Morgan ran) matter for the human gates alone.
       const ticked = simulate
         ? checkedAcceptanceIds(simBody() ?? '')
         : (endState && Array.isArray(endState.acceptanceChecked) ? endState.acceptanceChecked : [])
       const mapped = mapBoxes(samAcceptanceItems, v.boxes, ticked)
       boxesMapped = mapped.boxes
-      boxesKept = mapped.kept
+      boxesGates = mapped.gates
       for (const id of mapped.unknown) trace.push(`boxes-unknown-id:${id}`)
       for (const id of mapped.missing) trace.push(`boxes-missing:${id}`)
     }
@@ -3293,8 +3294,8 @@ if (after('review', entryStage)) {
 
   // tickAcceptanceBoxes (#183) — the workflow ticks, Morgan only returns `boxes`. In an id run (items from Sam; a verdict
   // with no `boxes` is a verdict with none proven) one pr-write call re-splices the rendered block with the proven
-  // non-gate boxes `[x]` by id (a human-gate id, and a box a person ticked that Morgan returned nothing for, keep the
-  // state the body has: the engine never writes a gate `[x]`). The tick has landed when the probe answered written or
+  // non-gate boxes `[x]` by id (a human-gate id keeps the state the body has: the engine never writes a gate `[x]`; a
+  // non-gate box Morgan returned nothing proven for is open, a stale `[x]` of the body reopened). The tick has landed when the probe answered written or
   // skipped; anything else is "not ticked" and names its reason (`tickReason`: the probe's own, 'probe-unavailable'-like
   // when it gave no answer); a `stale-read` is retried once, the body being read afresh by the script.
   // The boxes not proven are judged FIRST: a LGTM with one is REQUIRED_CHANGES carrying its canonical line, whatever
@@ -3306,7 +3307,7 @@ if (after('review', entryStage)) {
     const proven = boxesMapped.filter((b) => b.proven)
     const tickBoxes = proven.filter((b) => !b.humanGate)
     const tickIds = tickBoxes.map((b) => b.id)
-    const keepIds = [...samAcceptanceItems.filter((i) => i.humanGate).map((i) => i.id), ...boxesKept]
+    const keepIds = samAcceptanceItems.filter((i) => i.humanGate).map((i) => i.id)
     const rendered = renderChecklist(samAcceptanceItems)
     // One try: null when the tick landed, else the reason it did not. simulate.probes.acceptanceSync: false (refused),
     // a reason string, or a list of those answered one per try (true / absent: the real tickAcceptanceBlock on the body).
@@ -3341,7 +3342,7 @@ if (after('review', entryStage)) {
     let changed = false
     const addLine = (item) => { if (!items.some((l) => lineKey(l) === 'ac:' + item.id)) { items.push(renderLine(item)); changed = true } }
     if (verdict === 'LGTM') {
-      const settled = [...proven.map((b) => b.id), ...boxesKept]
+      const settled = [...tickIds, ...boxesGates]
       const open = samAcceptanceItems.filter((i) => !settled.includes(i.id))
       if (open.length > 0) {
         trace.push(`acceptance-open-lgtm:${round}`)

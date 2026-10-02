@@ -626,6 +626,11 @@ const t182Sam = (items, ids = true) => ({
 // A permissive plan-check model: when a plan is refused, only the script can have refused it.
 const T182_CONFORMING = { 1: { verdict: 'CONFORMING' }, 2: { verdict: 'CONFORMING' } }
 const t182Refusals = (r) => (r.trace || []).filter((t) => String(t).startsWith('acceptance-items-refused:'))
+// The body of a PR whose human gate a person already ticked (T182_ITEMS): the gate is settled by the body alone (#183).
+const t182GateTickedBody = () => {
+  const lines = t182Lines(T182_ITEMS)
+  return 'Closes #182\n\n<!-- acceptance:start -->\n' + [lines[0], '- [x] ' + lines[1].slice(6), lines[2]].join('\n') + '\n<!-- acceptance:end -->\n'
+}
 const t182Skip = (id) => { log(`SKIP — ${id}: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)`); return { ok: true } }
 
 // 18. T18 — human-gate short-circuit at round 0 (#183: an id run, the gate is the item's id, never its text)
@@ -4212,7 +4217,7 @@ await testCase('T182c a human-gate item carrying a command is refused NOT_CONFOR
 // script rendered reaches Nick verbatim, ids and tag included. An LGTM carries its `boxes` (#183: without them no box is
 // proven, see T183n); the payload then carries them mapped by id.
 await testCase('T182d a genuine human-gate item passes the plan gate; the rendered block reaches Nick verbatim', async () => {
-  const r = await run({ mode: 'auto', simulate: { sam: { 1: t182Sam(T182_ITEMS) }, morgan: [{ verdict: 'LGTM', boxes: [{ id: 1, proven: true, proof: 'p1' }, { id: 2, proven: true, proof: 'p2' }, { id: 3, proven: true, proof: 'p3' }] }] } })
+  const r = await run({ mode: 'auto', simulate: { sam: { 1: t182Sam(T182_ITEMS) }, prBody: t182GateTickedBody(), morgan: [{ verdict: 'LGTM', boxes: [{ id: 1, proven: true, proof: 'p1' }, { id: 2, proven: true, proof: 'p2' }, { id: 3, proven: true, proof: 'p3' }] }] } })
   const p = String(r.nickPromptPreview || '')
   const e1 = eq('status', r.status, 'ready')
   const e2 = eq('refusals', t182Refusals(r), [])
@@ -4383,7 +4388,8 @@ await testCase('T182k plan amendment with items: valid items feed the sync (read
     mode: 'auto',
     maxPlanAmendRounds: 1,
     simulate: {
-      sam: { 1: t182Sam(T182_ITEMS) },
+      // No human gate here: the amendment re-renders the block with every box open, so a gate a person had ticked is open again.
+      sam: { 1: t182Sam(T182_ITEMS.map((i) => ({ ...i, humanGate: false }))) },
       samAcceptanceChecklist: '',
       morgan: [
         { verdict: 'REQUIRED_CHANGES', items: [wording], itemOwners: [{ item: wording, itemOwner: 'checklist-wording-defect', proof: 'the command prints 1, the item says 0' }] },
@@ -4418,7 +4424,7 @@ const t182PlanText = (ids = true) => '## Plan\n- [ ] step one: a task, not an ac
 await testCase('T182l a semi relaunch at entryStage dev with an id-bearing planText: the rebuilt block reaches Nick', async () => {
   const fns = t182Block()
   if (!fns) return t182Skip('T182l')
-  const r = await run({ mode: 'semi', entryStage: 'dev', planText: t182PlanText(), simulate: { morgan: [{ verdict: 'LGTM', boxes: [{ id: 1, proven: true, proof: 'p1' }, { id: 2, proven: true, proof: 'p2' }, { id: 3, proven: true, proof: 'p3' }] }] } })
+  const r = await run({ mode: 'semi', entryStage: 'dev', planText: t182PlanText(), simulate: { prBody: t182GateTickedBody(), morgan: [{ verdict: 'LGTM', boxes: [{ id: 1, proven: true, proof: 'p1' }, { id: 2, proven: true, proof: 'p2' }, { id: 3, proven: true, proof: 'p3' }] }] } })
   const p = String(r.nickPromptPreview || '')
   const e1 = eq('status', r.status, 'ready')
   const e2 = includes('Nick prompt carries exactly the rendered block', p, fns.nickBlockNote(t182Lines(T182_ITEMS).join('\n')))
@@ -4713,7 +4719,7 @@ await testCase('T183f a human gate is told by its id, not by a [human-gate] tag 
   const e2 = eq('humanGateItems.length', r.humanGateItems?.length, 1)
   // Control: the tag alone, on a line with no id comment, is no gate. It is a code blocker (Nick round, then LGTM).
   const tagOnly = '- [ ] [human-gate] ' + T182_ITEMS[1].text
-  const c = await run({ mode: 'auto', simulate: { sam: { 1: t182Sam(T182_ITEMS) }, morgan: [{ verdict: 'REQUIRED_CHANGES', items: [tagOnly] }, { verdict: 'LGTM', boxes: t183Boxes(true, true, true) }] } })
+  const c = await run({ mode: 'auto', simulate: { sam: { 1: t182Sam(T182_ITEMS) }, prBody: t182GateTickedBody(), morgan: [{ verdict: 'REQUIRED_CHANGES', items: [tagOnly] }, { verdict: 'LGTM', boxes: t183Boxes(true, true, true) }] } })
   const e3 = eq('control: status', c.status, 'ready')
   const e4 = c.humanGateItems === undefined ? null : { ok: false, msg: 'control: a tag without an id was taken for a human gate' }
   return e1 || e2 || e3 || e4 || { ok: true }
@@ -4982,31 +4988,36 @@ await testCase('T183q unproven boxes are judged before the tick: a refused tick 
   return e1 || e2 || e3 || e4 || e5 || e6 || e7 || e8 || e9 || e10 || { ok: true }
 })
 
-await testCase('T183r a box a person already ticked keeps its state when Morgan returns no entry for it, and is not counted missing', async () => {
+await testCase('T183r a box ticked in the body but absent from Morgan\'s boxes is missing, not settled: the tick reopens it and an LGTM blocks on it', async () => {
+  // Whoever ticked it (the Lead by hand, Morgan out of habit, the engine at an earlier round), only a proof returned in THIS round settles a box.
   const body = t183Body(['- [x] ' + T183_L3[0].slice(6), T183_L3[1], T183_L3[2]])
   const r = await t183Review({ prBody: body, morgan: [{ verdict: 'LGTM', boxes: [{ id: 2, proven: true, proof: 'p2' }, { id: 3, proven: true, proof: 'p3' }] }] })
   const p = String(r.prBodyPreview || '')
-  const e1 = eq('status', r.status, 'ready')
-  const e2 = includes('box 1 stays ticked', p, '- [x] <!-- ac:1 --> ' + T183_PLAIN[0].text)
-  const e3 = eq('3 ticked', t183Ticked(p).length, 3)
-  const e4 = eq('no boxes-missing', (r.trace || []).filter((t) => String(t).startsWith('boxes-missing')), [])
-  // REQUIRED_CHANGES form: the ticked box is not reopened.
+  const e1 = eq('status', r.status, 'needs-revision')
+  const e2 = eq('items: the box returned by no one', r.items, [T183_L3[0]])
+  const e3 = includes('boxes-missing:1', r.trace || [], 'boxes-missing:1')
+  const e4 = includes('box 1 reopened', p, '- [ ] <!-- ac:1 --> ' + T183_PLAIN[0].text)
+  const e5 = eq('boxes 2 and 3 ticked', t183Ticked(p).length, 2)
+  // REQUIRED_CHANGES form: the same, for every box she returned nothing for.
   const w = await t183Review({ prBody: body, morgan: [{ verdict: 'REQUIRED_CHANGES', items: [T183_L3[1]], boxes: [{ id: 3, proven: true, proof: 'p3' }] }] })
   const wp = String(w.prBodyPreview || '')
-  const e5 = includes('REQUIRED_CHANGES: box 1 stays ticked', wp, '- [x] <!-- ac:1 --> ')
-  const e6 = eq('REQUIRED_CHANGES: no boxes-missing:1', (w.trace || []).filter((t) => t === 'boxes-missing:1'), [])
-  // Control: the box open in the body and returned by no one is missing; an LGTM then blocks on it.
+  const e6 = includes('REQUIRED_CHANGES: box 1 reopened', wp, '- [ ] <!-- ac:1 --> ')
+  const e7 = eq('REQUIRED_CHANGES: boxes-missing 1 and 2', (w.trace || []).filter((t) => String(t).startsWith('boxes-missing')), ['boxes-missing:1', 'boxes-missing:2'])
+  // Control: the box open in the body and returned by no one is missing too.
   const c = await t183Review({ prBody: t183Body(T183_L3), morgan: [{ verdict: 'LGTM', boxes: [{ id: 2, proven: true, proof: 'p2' }, { id: 3, proven: true, proof: 'p3' }] }] })
-  const e7 = eq('control: status', c.status, 'needs-revision')
-  const e8 = includes('control: boxes-missing:1', c.trace || [], 'boxes-missing:1')
+  const e8 = eq('control: status', c.status, 'needs-revision')
+  const e9 = includes('control: boxes-missing:1', c.trace || [], 'boxes-missing:1')
   // A box Morgan explicitly says is not proven is reopened even when the body shows it ticked.
   const u = await t183Review({ prBody: body, morgan: [{ verdict: 'REQUIRED_CHANGES', items: [T183_L3[0]], boxes: t183Boxes(false, true, true) }] })
-  const e9 = includes('explicitly unproven: reopened', String(u.prBodyPreview || ''), '- [ ] <!-- ac:1 --> ')
+  const e10 = includes('explicitly unproven: reopened', String(u.prBodyPreview || ''), '- [ ] <!-- ac:1 --> ')
+  // Every box returned and proven settles it, whatever the body showed.
+  const k = await t183Review({ prBody: body, morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, true, true) }] })
+  const e11 = eq('all returned and proven: ready', k.status, 'ready')
   // The block-level helper: ids of a body that are ticked.
   const fns = t183Splice()
   if (!fns) return t182Skip('T183r')
-  const e10 = eq('checkedAcceptanceIds', fns.checkedAcceptanceIds(body), [1])
-  return e1 || e2 || e3 || e4 || e5 || e6 || e7 || e8 || e9 || e10 || { ok: true }
+  const e12 = eq('checkedAcceptanceIds', fns.checkedAcceptanceIds(body), [1])
+  return e1 || e2 || e3 || e4 || e5 || e6 || e7 || e8 || e9 || e10 || e11 || e12 || { ok: true }
 })
 
 await testCase('T183s a refused tick carries the probe reason (tickReason) and a stale-read is retried once before parking', async () => {
@@ -5099,14 +5110,17 @@ await testCase('T183w in an id run Morgan is told she ticks nothing and LGTM nee
   if (!src || !fns) return t182Skip('T183w')
   const idRule = fns.morganItemsRule(t182Lines(T182_ITEMS).join('\n'))
   const e1 = includes('id run: Morgan ticks nothing', idRule, 'you tick none')
-  const e2 = includes('id run: boxes by id', idRule, 'every box reads [ ]')
+  const e2 = includes('id run: an entry for EACH box, an already ticked one included', idRule, 'one entry for EACH box, including a box that already reads [x] in the PR body')
+  const e2b = idRule.includes('every box reads [ ]') ? { ok: false, msg: 'the id-run rule still says every box reads [ ] when Morgan reads the body (false from round 1)' } : null
+  const note = fns.morganBoxesNote(t182Lines(T182_ITEMS).join('\n'))
+  const e2c = includes('boxes note: an entry for EVERY box, an already ticked one included', note, 'Return an entry for EVERY box above, including a box that already reads [x] in the PR body')
   const e3 = includes('id run: LGTM needs every box proven', idRule, 'LGTM only when EVERY box is proven')
   const legacy = fns.morganItemsRule('')
   const e4 = includes('no ids: the historical sentence', legacy, 'Emit `REQUIRED_CHANGES` whenever any box is unticked (human-gate or not). ')
   const e5 = eq('no ids: starts like it always did', legacy.startsWith('For each remaining unticked acceptance box, put in `items` the **verbatim checklist line** it blocks on'), true)
   const e6 = eq('both Morgan prompts interpolate the rule', src.split('${morganItemsRule(acceptanceBlock)}').length - 1, 2)
   const e7 = eq('the historical sentence is written once (in the rule)', src.split('Emit `REQUIRED_CHANGES` whenever any box is unticked').length - 1, 1)
-  return e1 || e2 || e3 || e4 || e5 || e6 || e7 || { ok: true }
+  return e1 || e2 || e2b || e2c || e3 || e4 || e5 || e6 || e7 || { ok: true }
 })
 
 // The lines a block can hold besides the rendered id boxes (second review round, G1): the tick replaces ONLY the lines of an
@@ -5149,10 +5163,80 @@ await testCase('T183x every line of the acceptance block that is not an id box s
     const e8 = eq(name + ': CRLF: a second tick changes nothing', fns.tickAcceptanceBlock(cOnce, T183_L3.join('\n'), [1, 2, 3], []), cOnce)
     if (e5 || e6 || e7 || e8) return e5 || e6 || e7 || e8
   }
+  // Blank lines at the end of the block are lines too: kept, and a second pass changes nothing.
+  if (fns) {
+    const padded = t183Body([...T183_L3, '', ''])
+    const once = fns.tickAcceptanceBlock(padded, T183_L3.join('\n'), [1, 2, 3], [])
+    const e0 = eq('trailing blank lines kept', once, 'Closes #183\n\n<!-- acceptance:start -->\n' + T183_L3.join('\n').split('- [ ] ').join('- [x] ') + '\n\n\n<!-- acceptance:end -->\n')
+    const e0b = eq('trailing blank lines: a second tick changes nothing', fns.tickAcceptanceBlock(once, T183_L3.join('\n'), [1, 2, 3], []), once)
+    if (e0 || e0b) return e0 || e0b
+  }
   // The same lines read by checkedAcceptanceIds: only an id box counts.
   if (!fns) return t182Skip('T183x')
   const ids = fns.checkedAcceptanceIds(t183Body(['- [x] <!-- ac:1 --> a', '- [x] a box without an id', 'exception: x', '- [x] <!-- ac:3 --> c']))
   return eq('checkedAcceptanceIds: only id boxes', ids, [1, 3]) || { ok: true }
+})
+
+await testCase('T183y a box settled at an earlier round is not settled again without a proof of this round (a tick of the engine, of Morgan or of the Lead)', async () => {
+  // R1: round 0 proves boxes 1 and 2 (the engine ticks them), Nick pushes, round 1 returns only box 3: boxes 1 and 2 are missing.
+  const r = await t183Review({
+    prBody: t183Body(T183_L3),
+    morgan: [
+      { verdict: 'REQUIRED_CHANGES', items: [T183_L3[2]], boxes: t183Boxes(true, true, false) },
+      { verdict: 'LGTM', boxes: [{ id: 3, proven: true, proof: 'p3' }] },
+      { verdict: 'LGTM', boxes: t183Boxes(true, true, true) },
+    ],
+  }, { mode: 'auto' })
+  const e1 = includes('R1: only the third round ticked the last boxes', r.trace || [], 'acceptance-ticked:2')
+  const e2 = eq('R1: status', r.status, 'ready')
+  const e3 = includes('R1: boxes 1 missing at round 1', r.trace || [], 'boxes-missing:1')
+  const e4 = includes('R1: boxes 2 missing at round 1', r.trace || [], 'boxes-missing:2')
+  const e5 = includes('R1: the LGTM of round 1 was refused', r.trace || [], 'acceptance-open-lgtm:1')
+  // R1b: Morgan ticked everything herself (old habit) and answers LGTM with no boxes over a body already all [x].
+  const allTicked = t183Body(T183_L3.map((l) => '- [x] ' + l.slice(6)))
+  const b = await t183Review({ prBody: allTicked, morgan: [{ verdict: 'LGTM' }] })
+  const e6 = eq('R1b: status', b.status, 'needs-revision')
+  const e7 = eq('R1b: every box blocks', b.items, T183_L3)
+  const e8 = eq('R1b: boxes-missing 1 2 3', (b.trace || []).filter((t) => String(t).startsWith('boxes-missing')), ['boxes-missing:1', 'boxes-missing:2', 'boxes-missing:3'])
+  const e9 = eq('R1b: nothing stays ticked', t183Ticked(String(b.prBodyPreview || '')), [])
+  // The mapping itself: a ticked box nobody returned is missing, whatever the body shows.
+  const fns = t182Block()
+  if (!fns) return t182Skip('T183y')
+  const m = fns.mapBoxes(fns.numberItems(T183_PLAIN), [{ id: 3, proven: true, proof: 'p3' }], [1, 2, 3])
+  const e10 = eq('mapBoxes: missing', m.missing, [1, 2])
+  return e1 || e2 || e3 || e4 || e5 || e6 || e7 || e8 || e9 || e10 || { ok: true }
+})
+
+await testCase('T183z a human-gate box is settled by the body alone: ticked by a person, never by Morgan\'s proven', async () => {
+  const gateLines = t182Lines(T182_ITEMS)
+  const gate = (body, boxes, extra = {}) => run({ mode: 'semi', entryStage: 'review', prNumber: 190, planText: t182Sam(T182_ITEMS).plan, simulate: { prBody: t183Body(body), morgan: [{ verdict: 'LGTM', boxes }], ...extra } })
+  const proof = (id) => ({ id, proven: true, proof: 'proof ' + id })
+  // (a) The gate is open in the body and Morgan says proven: the gate is still open, ready-pending-human, never ready, never ticked.
+  const a = await gate(gateLines, [proof(1), proof(2), proof(3)])
+  const e1 = eq('(a) status', a.status, 'ready-pending-human')
+  const e2 = eq('(a) humanGateItems', a.humanGateItems, [gateLines[1]])
+  const e3 = includes('(a) the gate stays open', String(a.prBodyPreview || ''), gateLines[1])
+  const e4 = eq('(a) boxes 1 and 3 ticked, the gate not', t183Ticked(String(a.prBodyPreview || '')).length, 2)
+  const e4b = eq('(a) the gate box is not proven in the payload, whatever Morgan returned', (a.boxes || []).map((b) => [b.id, b.proven]), [[1, true], [2, false], [3, true]])
+  // (b) The gate was ticked by a person: it is settled with an empty proof, with proven false, and with no entry at all.
+  const ticked = [gateLines[0], '- [x] ' + gateLines[1].slice(6), gateLines[2]]
+  const b1 = await gate(ticked, [proof(1), { id: 2, proven: true, proof: '' }, proof(3)])
+  const e5 = eq('(b) empty proof: status', b1.status, 'ready')
+  const e5b = eq('(b) empty proof: the gate box is proven in the payload', (b1.boxes || []).map((b) => [b.id, b.proven]), [[1, true], [2, true], [3, true]])
+  const b2 = await gate(ticked, [proof(1), { id: 2, proven: false, proof: '' }, proof(3)])
+  const e6 = eq('(b) proven false: status', b2.status, 'ready')
+  const b3 = await gate(ticked, [proof(1), proof(3)])
+  const e7 = eq('(b) no entry: status', b3.status, 'ready')
+  const e8 = eq('(b) no entry: no boxes-missing for the gate', (b3.trace || []).filter((t) => String(t).startsWith('boxes-missing')), [])
+  // (c) The gate was ticked by a person and Morgan returns a proof: ready, and the tick stays.
+  const c = await gate(ticked, [proof(1), proof(2), proof(3)])
+  const e9 = eq('(c) status', c.status, 'ready')
+  const e10 = includes('(c) the gate stays ticked', String(c.prBodyPreview || ''), '- [x] <!-- ac:2 --> [human-gate] ')
+  // (d) A non-gate box is still missing when the gate is settled: the gate does not stand for it.
+  const d = await gate(ticked, [proof(1)])
+  const e11 = eq('(d) status', d.status, 'needs-revision')
+  const e12 = eq('(d) trace', (d.trace || []).filter((t) => String(t).startsWith('boxes-missing')), ['boxes-missing:3'])
+  return e1 || e2 || e3 || e4 || e4b || e5 || e5b || e6 || e7 || e8 || e9 || e10 || e11 || e12 || { ok: true }
 })
 
 // T123 (#42) — every test ID is unique across the suite. Must stay the LAST case so `results`

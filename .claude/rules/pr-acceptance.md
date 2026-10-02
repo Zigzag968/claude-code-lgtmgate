@@ -31,10 +31,12 @@ Morgan runs / inspects each item, then :
   `- [ ]`/`- [x]` line between them) is **REQUIRED_CHANGES**, never LGTM; Morgan's `items` carries the
   literal line `Acceptance block absent or empty`.
 - With ids (an `<!-- ac:N -->` comment after each checkbox) Morgan does not edit the body: she returns
-  `boxes` (`{id, proven, proof}` per box) and the workflow ticks the proven ids through the write probe
-  (never a `[human-gate]` box). If the write is refused the workflow parks the run itself
-  (`verified-untickable`, no Nick round, `untickableItems[]` = `{id, item, proof}`); the Lead re-verifies
-  the proofs and checks the boxes by hand. A run without ids keeps the manual tick: Morgan checks the box
+  `boxes` (`{id, proven, proof}` for EACH box, one that already reads `[x]` included: she proves every box
+  again at every round, and a box with no proven entry this round is not proven whatever the body shows) and
+  the workflow ticks the proven ids through the write probe. A `[human-gate]` box is never ticked by the
+  workflow and is settled only by the body showing it checked by a person (her `proven` means nothing for it).
+  If the write is refused the workflow parks the run itself (`verified-untickable`, no Nick round,
+  `untickableItems[]` = `{id, item, proof}`); the Lead re-verifies the proofs and checks the boxes by hand. A run without ids keeps the manual tick: Morgan checks the box
   after the proof, and a refused tick is left open with a one-line `tick pending (permissions)` entry.
 
 ### Markers (mandatory)
