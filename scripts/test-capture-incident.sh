@@ -278,6 +278,30 @@ if expect_ok "relaunch failed-then-result"; then
   [ "$got" = "$want" ] && ok "relaunch failed then a later result (retry) keeps the later result" || bad "relaunch retry: got=$got"
 fi
 
+# unexpected file-system errors end as a status line, never a stack trace
+error_case() { # name; asserts the result of the last capsep
+  name="$1"
+  last=$(printf '%s\n' "$OUT" | tail -n 1)
+  stack=$(printf '%s\n' "$ERR" | grep -cE '^[[:space:]]+at |node:internal' || true)
+  left=$(ls -A "$OUTD" 2>/dev/null | wc -l | tr -d ' ')
+  if [ "$RC" -eq 1 ] && [ "$last" = "[capture-incident] status=error" ] && [ "$stack" = "0" ] && [ "$left" = "0" ] \
+     && printf '%s\n' "$ERR" | grep -q '^error: [A-Z]'; then
+    ok "error $name: status=error, one stderr line, no stack, nothing written"
+  else
+    bad "error $name: rc=$RC last='$last' stack=$stack left=$left err=$ERR"
+  fi
+}
+newrun base
+mkdir -p "$OUTD"; chmod 500 "$OUTD"
+capsep "$RUN" 181 t --out "$OUTD"
+chmod 700 "$OUTD"
+error_case "read-only output directory"
+LONG=$(printf 'a%.0s' $(seq 1 300))
+newrun base
+mkdir -p "$OUTD"
+capsep "$RUN" 181 "$LONG" --out "$OUTD"
+error_case "300-character label"
+
 # ---- usage errors (exit 2, before any filesystem access) ---------------------------------------
 
 usage_case() { # name expected-substring args...

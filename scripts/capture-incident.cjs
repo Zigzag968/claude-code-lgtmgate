@@ -14,8 +14,10 @@
 //     <runId>  wf_<id>                 <issue>  digits                <label>  [a-z0-9-]
 //     --out    default <cwd>/.pipeline/captures   (must be git-ignored, inside a work tree)
 //     --from   projects directory; default $CLAUDE_PROJECTS_DIR, else ~/.claude/projects
-// Last stdout line (always): `[capture-incident] status=<ok|refused|usage-error>`
-// (ok adds `out=<path> calls=<n> cached=<n>`). Detail goes to stderr. Exit 0 ok, 1 refused, 2 usage.
+// Last stdout line (always): `[capture-incident] status=<ok|refused|error|usage-error>`
+// (ok adds `out=<path> calls=<n> cached=<n>`). Detail goes to stderr. Exit 0 ok, 1 refused or error
+// (error = an unexpected file-system failure, one `error: <code>: <message>` stderr line, stack only
+// with CAPTURE_INCIDENT_DEBUG=1, nothing left written), 2 usage.
 //
 // Observed layout (Claude Code does not document it; measured on real files by other users):
 //   journal  <projects>/<project>/<session>/subagents/workflows/<runId>/journal.jsonl
@@ -327,5 +329,15 @@ try {
     process.stdout.write('[capture-incident] status=refused\n')
     process.exit(1)
   }
-  throw e
+  // Anything else (EACCES, ENAMETOOLONG, ENOSPC...) still ends with a status line, no stack.
+  if (createdFile) { try { fs.unlinkSync(createdFile) } catch (u) { /* already gone or not ours */ } }
+  const err = e instanceof Error ? e : new Error(String(e))
+  const code = err.code || err.name || 'Error'
+  let msg = String(err.message).replace(/\s*\n\s*/g, ' ')
+  if (err.code && msg.startsWith(`${err.code}: `)) msg = msg.slice(err.code.length + 2)
+  if (err.path && !msg.includes(err.path)) msg += ` (${err.path})`
+  process.stderr.write(`error: ${code}: ${msg}\n`)
+  if (process.env.CAPTURE_INCIDENT_DEBUG === '1') process.stderr.write(`${err.stack}\n`)
+  process.stdout.write('[capture-incident] status=error\n')
+  process.exit(1)
 }
