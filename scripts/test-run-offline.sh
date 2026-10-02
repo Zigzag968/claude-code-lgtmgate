@@ -32,6 +32,26 @@ node scripts/redact-fixture.cjs "$TMP/redact.json" >/dev/null
 out=$(node -e 'const f=require(process.argv[1]);process.stdout.write(f.calls.a+"|"+f.args.wtPath)' "$TMP/redact.json")
 case "$out" in 'cd "/Users/you" && x'$'\n''PROVISION-EXIT:0'$'\n''|/Users/you/wt') ok "redaction keeps JSON escapes and uses the invariant-safe home path";; *) bad "redaction output: $out";; esac
 
+python3 - "$TMP" <<'PY'
+import json,sys,os
+f=json.load(open('fixtures/smoke/auto-lgtm.json'))
+f['calls']['decoy-label']='never asked'
+f['calls']['diagnose-issue-123']=[f['calls']['diagnose-issue-123'],'decoy second item']
+json.dump(f,open(os.path.join(sys.argv[1],'extra-entries.json'),'w'))
+PY
+out=$(node scripts/run-offline.cjs "$TMP/extra-entries.json" --report-unused 2>&1)
+case "$out" in
+  *"unused: decoy-label"*"status=ok passed=1"*)
+    case "$out" in *"unused: diagnose-issue-123[1]"*) ok "report-unused lists an unasked label and an unconsumed array item";; *) bad "report-unused misses the array tail: $out";; esac;;
+  *) bad "report-unused output: $out";;
+esac
+
+out=$(node scripts/run-offline.cjs "$TMP/extra-entries.json" 2>&1)
+case "$out" in *"unused:"*) bad "unused printed without the flag: $out";; *"status=ok passed=1"*) ok "report-unused is opt-in (silent without the flag, still passes)";; *) bad "extra-entries.json without flag: $out";; esac
+
+out=$(node scripts/run-offline.cjs fixtures/smoke/auto-lgtm.json --report-unused 2>&1)
+case "$out" in *"unused:"*) bad "committed smoke fixture reports unused entries: $out";; *"status=ok passed=1"*) ok "report-unused prints nothing on the committed smoke fixture";; *) bad "smoke with flag: $out";; esac
+
 rm -rf "$TMP"
 STATUS=ok; [ "$FAIL" -gt 0 ] && STATUS=fail
 echo "[test-run-offline] status=$STATUS passed=$PASS failed=$FAIL"

@@ -38,6 +38,8 @@
 // Usage:
 //   node scripts/run-offline.cjs <fixture.json> [--fp workflows/deliver-pipeline.js]
 //   node scripts/run-offline.cjs --all <dir> [--fp ...]      # every *.json under <dir>, recursive
+//   node scripts/run-offline.cjs <fixture.json> --report-unused   # also list fixture entries the run never consumed
+//     (report only: an unused entry never changes pass/fail, the trailer or the exit code)
 // Last stdout line (always): `[offline] status=<ok|fail|harness-error> passed=<n> failed=<n>`
 // Exit 0 when the run(s) completed; OFFLINE_STRICT=1 (CI) turns failed>0 into exit 1.
 
@@ -45,10 +47,11 @@ const fs = require('fs')
 const path = require('path')
 
 function parseArgs(argv) {
-  const out = { fp: 'workflows/deliver-pipeline.js', all: null, fixtures: [] }
+  const out = { fp: 'workflows/deliver-pipeline.js', all: null, reportUnused: false, fixtures: [] }
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--fp' && argv[i + 1]) { out.fp = argv[++i]; continue }
     if (argv[i] === '--all' && argv[i + 1]) { out.all = argv[++i]; continue }
+    if (argv[i] === '--report-unused') { out.reportUnused = true; continue }
     out.fixtures.push(argv[i])
   }
   return out
@@ -72,8 +75,7 @@ function listJson(dir) {
 // A missing entry throws AND is recorded in `missing`: the engine catches most agent()
 // errors on purpose (fail-open probes, agent-death routing), so the harness must fail the
 // fixture itself — a run that "passed" while a call went unanswered proves nothing.
-function buildFixtureAgent(fixture, calls, missing) {
-  const cursors = new Map()
+function buildFixtureAgent(fixture, calls, missing, cursors) {
   return async (prompt, opts) => {
     const label = opts && opts.label
     const entry = { label: label || null, hasSchema: !!(opts && opts.schema) }
@@ -111,6 +113,19 @@ function buildPipelineRunner(fpSrcStripped) {
     'args', 'agent', 'log', 'phase',
     'return (async () => {\n' + fpSrcStripped + '\n})()',
   )
+}
+
+// Fixture entries the run never consumed: a label never asked, or the unconsumed tail of an array.
+function findUnused(fixture, calls, cursors) {
+  const unused = []
+  for (const label of Object.keys(fixture.calls)) {
+    if (!calls.some((c) => c.label === label)) { unused.push(label); continue }
+    const value = fixture.calls[label]
+    if (Array.isArray(value)) {
+      for (let i = cursors.get(label) || 0; i < value.length; i++) unused.push(`${label}[${i}]`)
+    }
+  }
+  return unused
 }
 
 function check(fixture, result, logs) {
@@ -152,8 +167,9 @@ async function runOne(fixturePath, fpSrcStripped) {
   const logs = []
   const calls = []
   const missing = []
+  const cursors = new Map()
   const log = (m) => { logs.push(String(m)) }
-  const agent = buildFixtureAgent(fixture, calls, missing)
+  const agent = buildFixtureAgent(fixture, calls, missing, cursors)
   const run = buildPipelineRunner(fpSrcStripped)
   const expThrows = fixture.expect && fixture.expect.throws
   if (typeof expThrows === 'string') {
@@ -163,16 +179,16 @@ async function runOne(fixturePath, fpSrcStripped) {
     if (!err) problems.push(`throws: expected an error containing "${expThrows}", but the run did not throw`)
     else if (!String(err.message).includes(expThrows)) problems.push(`throws: expected message containing "${expThrows}", got "${err.message}"`)
     if (calls.length) problems.push(`throws: ${calls.length} agent() call(s) happened before the refusal (${calls.map((c) => c.label || c).join(', ')})`)
-    return { fixture, result: { status: 'threw' }, logs, calls, problems }
+    return { fixture, result: { status: 'threw' }, logs, calls, problems, unused: findUnused(fixture, calls, cursors) }
   }
   const result = await run({ ...(fixture.args || {}) }, agent, log, () => {})
   const problems = check(fixture, result, logs)
   for (const m of missing) problems.push(`unanswered call (engine swallowed the error): ${m}`)
-  return { fixture, result, logs, calls, problems }
+  return { fixture, result, logs, calls, problems, unused: findUnused(fixture, calls, cursors) }
 }
 
 async function main() {
-  const { fp, all, fixtures } = parseArgs(process.argv.slice(2))
+  const { fp, all, fixtures, reportUnused } = parseArgs(process.argv.slice(2))
   const files = all ? listJson(path.resolve(all)) : fixtures.map((f) => path.resolve(f))
   if (!files.length) {
     process.stderr.write('usage: node scripts/run-offline.cjs <fixture.json>... | --all <dir> [--fp <pipeline.js>]\n')
@@ -196,6 +212,7 @@ async function main() {
         passed++
         process.stdout.write(`ok: ${rel} (${r.fixture.name}) status=${r.result.status} calls=${r.calls.length}\n`)
       }
+      if (reportUnused) for (const u of r.unused) process.stdout.write(`  unused: ${u}\n`)
     } catch (e) {
       failed++
       process.stdout.write(`FAIL: ${rel} — ${e && e.message ? e.message : String(e)}\n`)
