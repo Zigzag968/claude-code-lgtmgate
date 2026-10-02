@@ -24,6 +24,11 @@ before it is committed, and the `no-private-refs` invariant scans the whole trac
 }
 ```
 
+`expect` keys: `status` (required), `reason` (exact), `trace` (PREFIX match on `result.trace`), `logsInclude`
+(substrings of the log), `throws` (the run must throw an error containing it, instead of `status`) and two opt-in
+exactness keys that change no fixture that does not set them: `traceExact: true` (the trace must have exactly as many
+entries as `trace`) and `callLabels` (the ordered labels of the `agent()` calls, exact equality).
+
 - `calls` is keyed by the `label` of each `agent()` call. A migrated probe (#82: provision, provision
   freshness, review-phase behind-count) is keyed `probe-<issue>-<parser>-<label>-r<round>` and answered
   `{ line, verify }`: `line` built with `require('./templates/probe-run.cjs').probeLine(parser, { stdout, exit })`,
@@ -54,12 +59,40 @@ bash scripts/capture-incident.sh <runId> <issue> <label> [--out DIR]
   returned it (the final pass of a relaunched run is identified by the record's `agentId` values,
   never by journal order). It fails closed, naming the key, on any layout it does not recognise
   and on a call that died; it then replays the capture and prints the next step.
-- `expect.status` is the OBSERVED status. For a bug fix, set the correct outcome before the
-  fixture is published: it must fail on `origin/main` and pass on the fix branch.
-- Until the publication step exists, publish by hand: `node scripts/redact-fixture.cjs <file>`, move
-  the file to `fixtures/incidents/`, then `node scripts/run-offline.cjs <file>`.
+- `expect.status` is the OBSERVED status, and publishing requires the replay to reproduce it: leave it
+  as captured. For a bug fix the correct outcome is set on the published fixture (see below).
 - `node scripts/run-offline.cjs <file> --report-unused` also lists the fixture entries a replay
   never consumed (report only, never a failure).
+
+## Publish a capture as a public fixture
+
+```
+bash scripts/publish-fixture.sh <raw capture> [<out name>] [--out-dir DIR]
+```
+
+It turns the private capture into `fixtures/incidents/<issue>-<label>.json`, written exclusively (an
+existing file is never overwritten). Any step that cannot reach an identical outcome refuses with its
+cause and writes nothing.
+
+- Every string value of `args` and `calls` is replaced by a typed neutral token (zeros for a hash, `1` for
+  a number, `_` otherwise), and a replacement is kept only if the replay outcome is identical: status,
+  reason, exact trace, ordered call labels and the engine's log, agent and phase call sites.
+- Protected args (`mode`, `entryStage`, `proceedThrough`, `issueType`, `resumeReason`, `planFreshness`,
+  `config.planFreshness`, `config.preflight.envSymlink`) are never neutralized.
+- The `cmd=` hash of a PROBE answer coupled to the args is recomputed after every change.
+- `scripts/redact-fixture.cjs` runs next (it refuses on residue), then its `--check`, then a strict replay.
+- The published `expect` is rebuilt from the replay: `status`, `reason`, `trace` with `traceExact`, `callLabels`.
+- It prints what remains as field names and character counts, never values.
+
+For a bug fix, the Lead sets `expect` to the CORRECT outcome (and drops or corrects `reason`, `callLabels` and
+`traceExact`) before the PR: the fixture must fail on `origin/main` and pass on the fix branch.
+
+Declared limits:
+- The remainder still holds local paths, the repo slug and branch names, which the engine parses: read it
+  before the first publication from any consumer repo.
+- A minimized fixture reproduces the OBSERVED outcome, not the correct one.
+- A weak oracle (status and trace only) silently drops behaviour, hence the strict one.
+- A new enum or switch arg in the engine must be added to `PROTECTED_ARGS` in `scripts/publish-fixture.cjs`.
 
 ## Honesty note on `smoke/`
 
