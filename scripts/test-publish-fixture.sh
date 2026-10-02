@@ -237,6 +237,48 @@ else
   bad "free-text report: rc=$RC err=$ERR out=$OUT"
 fi
 
+# F3b: the free-text report also counts what the old report let through: PROBE / VERIFY lines kept whole that carry a repository
+# path, a folder name after /Users/<name> or a title, and protected fields that hold a path. Planted words are fictitious.
+cat > "$TMP/genft.cjs" <<'JS'
+const hex = (c) => c.repeat(64)
+const probe = (name, json) => `PROBE name=${name} exit=0 sha=${hex('a')} cmd=${hex('b')} json=${JSON.stringify(json)}`
+const entry = (name, json) => ({ line: probe(name, json), verify: `VERIFY ok line=${probe(name, json)}` })
+const cap = {
+  name: '1-s',
+  args: { config: { oneWayDoorPaths: ['src/zqprotx9/**'] } },
+  calls: {
+    'probe-1-a': entry('stale', { planStale: '/zqrepox9/work' }),
+    'probe-1-b': entry('where', { gitDir: '/Users/zqnamex9/zqprojx9/.git/worktrees/w1' }),
+    'probe-1-c': entry('pr', { title: 'zqtitlex9 fix the thing' }),
+    'probe-1-d': entry('plain', { ok: true, behind: 0 }),
+  },
+  expect: { status: 'a' },
+}
+require('fs').writeFileSync(process.argv[2], JSON.stringify(cap))
+JS
+printf '%s\n' "const rs = []" "for (const k of ['a', 'b', 'c', 'd']) rs.push(await agent('p', { label: 'probe-1-' + k }))" \
+  "return { status: rs.every((r) => /^PROBE name=/.test(r.line) && /^VERIFY ok line=PROBE /.test(r.verify)) ? 'a' : 'b' }" > "$TMP/stub-probes.js"
+node "$TMP/genft.cjs" "$RAWD/140-ft.json"
+D41="$(newdir out-ft)"
+pub "$RAWD/140-ft.json" --fp "$TMP/stub-probes.js" --out-dir "$D41"
+FTP="$D41/140-ft.json"
+ftn=$(jsf "$FTP" '["probe-1-a","probe-1-b","probe-1-c"].reduce((n,k)=>n+f.calls[k].line.length+f.calls[k].verify.length,0)+f.args.config.oneWayDoorPaths[0].length' 2>/dev/null)
+ftl=$(jsf "$FTP" 'f.calls["probe-1-a"].line.length' 2>/dev/null)
+ftd=$(jsf "$FTP" 'f.calls["probe-1-d"].line.length' 2>/dev/null)
+ftp=$(jsf "$FTP" 'f.args.config.oneWayDoorPaths[0].length' 2>/dev/null)
+nout=$(printf '%s\n' "$OUT")
+if [ "$RC" -eq 0 ] && [ -n "$ftn" ] \
+   && printf '%s\n' "$nout" | grep -Fxq "free text: 7 field(s), $ftn characters (published as is, read them before publishing)" \
+   && printf '%s\n' "$nout" | grep -Fxq "  calls.probe-1-a.line $ftl kept free-text" \
+   && printf '%s\n' "$nout" | grep -Fxq "  calls.probe-1-d.line $ftd kept" \
+   && printf '%s\n' "$nout" | grep -Fxq "  args.config.oneWayDoorPaths[0] $ftp protected free-text" \
+   && [ "$(printf '%s\n%s\n' "$nout" "$ERR" | grep -c -e zqrepox9 -e zqprojx9 -e zqtitlex9 -e zqprotx9 -e zqnamex9 || true)" = "0" ] \
+   && grep -q zqprojx9 "$FTP" && grep -q zqrepox9 "$FTP" && grep -q zqtitlex9 "$FTP"; then
+  ok "kept probe lines with a path or a title and protected paths are counted as free text, by path and length, never printed"
+else
+  bad "free text of probe lines and protected paths: rc=$RC want-chars=$ftn err=$ERR out=$OUT"
+fi
+
 # the R3 configuration (oneWayDoorKinds / oneWayDoorPaths) is a switch of the engine the oracle cannot always see: it survives
 OWRAW="$RAWD/128-oneway.json"
 node "$TMP/gen.cjs" "$OWRAW" oneway

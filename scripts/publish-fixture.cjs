@@ -37,9 +37,10 @@
 //   5. scripts/redact-fixture.cjs (exit 3 refuses on residue), re-hash, `--check`, a strict replay (in process, then
 //      run-offline.cjs with OFFLINE_STRICT=1): the outcome must still be the baseline's.
 //   6. the entries of `calls` the final replay never consumed are dropped, the file is written, and what remains is
-//      printed as JSON paths and character counts, never values: kept strings (free text flagged, with the published
-//      expect.reason), then the number of key names and non-string scalars kept as they are (never neutralized) and
-//      the number of entries pruned.
+//      printed as JSON paths and character counts, never values: kept strings (free text flagged: plan lines, paths,
+//      protected fields with a path, PROBE / VERIFY lines whose `json=` payload holds a space or a path separator, and
+//      the published expect.reason), then the number of key names and non-string scalars kept as they are (never
+//      neutralized) and the number of entries pruned. The report counts what it flags; it does not judge it.
 // The published `expect` is built from the baseline: status, reason (if any), trace with traceExact, callLabels.
 // Nothing here calls a model, the network or the Claude Code projects directory.
 
@@ -160,6 +161,9 @@ function cmdOfPrompt(prompt) {
   if (q.length < 2 || q[0] !== "'" || q[q.length - 1] !== "'") return null
   return q.slice(1, -1).split("'\\''").join("'")
 }
+
+// The fixed words of a PROBE / VERIFY answer line before its `json=` payload (see templates/probe-run.cjs).
+const PROBE_ENVELOPE_TOKEN = /^(PROBE|VERIFY|ok|fail|line=PROBE|name=[A-Za-z0-9._-]+|exit=-?\d+|sha=[0-9a-f]+|cmd=[0-9a-f]+|reason=[A-Za-z0-9._-]+)$/
 
 const CMD_RE = /cmd=([0-9a-f]{64})/
 const firstCmdHash = (s) => { const m = CMD_RE.exec(s); return m ? m[1] : null }
@@ -447,9 +451,17 @@ async function main() {
   tmpOut = null
 
   // ---- what remains: field names and counts, never a value ----
-  // A kept string with a space, a newline or a path separator is free text (a plan line, a reason, a file path), unless it
-  // is a PROBE / VERIFY answer line. The published expect.reason is always the engine's own copy of the run's text.
-  const isFreeText = (v) => !/^(PROBE|VERIFY) /.test(v) && /[\s/\\]/.test(v)
+  // A kept string with a space, a newline or a path separator is free text (a plan line, a reason, a file path), protected
+  // fields included. A PROBE / VERIFY answer line is judged on what is not its fixed envelope (`PROBE`, `VERIFY ok line=PROBE`,
+  // `name=`, `exit=`, `sha=`, `cmd=`, `reason=`, whose spaces are delimiters): the part after `json=` is free text when it holds a
+  // space or a path separator (a repository path, a folder name after `/Users/<name>`, a title), and so is any other token.
+  const isFreeText = (v) => {
+    if (!/^(PROBE|VERIFY) /.test(v)) return /[\s/\\]/.test(v)
+    const i = v.indexOf(' json=')
+    const head = i < 0 ? v : v.slice(0, i)
+    const payload = i < 0 ? '' : v.slice(i + 6)
+    return !head.split(' ').every((t) => PROBE_ENVELOPE_TOKEN.test(t)) || /[\s/\\]/.test(payload)
+  }
   const rem = [...collectLeaves(cand.args, 'args'), ...collectLeaves(cand.calls, 'calls')]
     .map((l) => ({ p: pathOf(l.segs), n: l.parent[l.key].length, v: l.parent[l.key], prot: isProtected(l.segs) }))
     .filter((x) => !isNeutral(x.v))
@@ -457,7 +469,7 @@ async function main() {
   const out = [`remains: ${rem.length} strings, ${rem.reduce((n, x) => n + x.n, 0)} characters (was ${charsBefore})`]
   const free = []
   for (const x of rem) {
-    const ft = !x.prot && isFreeText(x.v)
+    const ft = isFreeText(x.v)
     if (ft) free.push(x.n)
     out.push(`  ${x.p} ${x.n} ${x.prot ? 'protected' : 'kept'}${ft ? ' free-text' : ''}`)
   }

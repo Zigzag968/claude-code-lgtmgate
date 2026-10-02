@@ -92,16 +92,23 @@ cause and writes nothing.
 - Entries of `calls` the final replay never consumed (a label never asked, the tail of an array) are dropped.
 - The published `expect` is rebuilt from the replay: `status`, `reason`, `trace` with `traceExact`, `callLabels`.
 - It prints what remains as field names and character counts, never values: every kept string by JSON path, the kept
-  fields that hold free text (`free-text`: a plan line, a reason, a file path) and the published `expect.reason`, with their
-  length, then the number of key names and of non-string scalars kept as they are, and the number of entries pruned.
+  fields that hold free text (`free-text`: a plan line, a reason, a file path, a protected field with a path, and a PROBE /
+  VERIFY line whose part after `json=` holds a space or a path separator) and the published `expect.reason`, with their
+  length (the line `free text: N field(s), T characters`), then the number of key names and of non-string scalars kept
+  as they are, and the number of entries pruned.
 
 For a bug fix, the Lead sets `expect` to the CORRECT outcome (and drops or corrects `reason`, `callLabels` and
 `traceExact`) before the PR: the fixture must fail on `origin/main` and pass on the fix branch.
 
 Declared limits:
-- Key names and non-string values (numbers, booleans, null) are never neutralized: only the count is printed. Read the
-  published file before the first publication of a capture from any consumer repo (local paths, repo slug and branch names
-  are parsed by the engine and stay; the project folder name stays after a `.git/worktrees` path).
+- Key names and non-string values (numbers, booleans, null) are never neutralized: only the count is printed.
+- What stays in the published file although it may be private: the PROBE / VERIFY answer lines the engine parses (kept
+  whole, with their `json=` payload: a repository path of `planStale`, a `gitDir`, a PR `title`), the folder name of the
+  project that follows `/Users/<name>` (the redactor rewrites the user name only), the protected args (for example
+  `config.oneWayDoorPaths` such as `src/<product>/**`), the local paths, repo slug and branch names the engine parses, and
+  the project folder name after a `.git/worktrees` path. The `free text:` line counts and lists the probe lines and the
+  protected fields that hold a space or a path separator; it does not judge them. The first publication of a capture from
+  a consumer repository is read by a person before it is committed.
 - Free text the engine copies into `result.reason` (Sam's rationale, a target file path) is pinned as `expect.reason`, and
   the plan lines, `targetFiles` and path patterns it keeps stay in `calls` and `args`: the output lists them by path and
   length, it does not judge them. A token outside the patterns of `scripts/redact-fixture.cjs` is not caught by it.
