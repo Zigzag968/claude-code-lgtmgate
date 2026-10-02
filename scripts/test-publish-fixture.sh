@@ -13,6 +13,8 @@ set -u
 cd "$(dirname "$0")/.."
 ROOT="$(pwd)"
 export ROOT
+# the repo must come out of the suite exactly as it went in: no stub engine or publisher writes into the working tree
+TREE0="$(git status --short --untracked-files=all 2>&1)"
 PASS=0; FAIL=0
 ok()  { PASS=$((PASS+1)); echo "ok: $1"; }
 bad() { FAIL=$((FAIL+1)); echo "FAIL: $1"; }
@@ -342,9 +344,12 @@ else
 fi
 
 # a file that appears at the final name during the run is never overwritten (the engine stub plants it)
-printf '%s\n' "const fs = process.mainModule.require('fs')" "try { fs.writeFileSync(args.victim, 'precious\n', { flag: 'wx' }) } catch (e) {}" "return { status: 'a' }" > "$TMP/stub-race.js"
+# the victim path is absolute and comes from the environment, never from an arg (minimization would turn an arg into `_`
+# and the stub would then write into the working directory)
+printf '%s\n' "const fs = process.mainModule.require('fs')" "try { fs.writeFileSync(process.env.RACE_VICTIM, 'precious\n', { flag: 'wx' }) } catch (e) {}" "return { status: 'a' }" > "$TMP/stub-race.js"
 DR="$(newdir out-race)"
-printf '{"name":"1-s","args":{"victim":"%s"},"calls":{},"expect":{"status":"a"}}\n' "$DR/130-race.json" > "$RAWD/130-race.json"
+printf '{"name":"1-s","args":{},"calls":{},"expect":{"status":"a"}}\n' > "$RAWD/130-race.json"
+RACE_VICTIM="$DR/130-race.json"; export RACE_VICTIM
 pub "$RAWD/130-race.json" --fp "$TMP/stub-race.js" --out-dir "$DR"
 if [ "$RC" -eq 1 ] && [ "$(last_line)" = "[publish-fixture] status=refused" ] && [ "$(cat "$DR/130-race.json")" = "precious" ] \
    && [ "$(ls -A "$DR")" = "130-race.json" ] && printf '%s\n' "$ERR" | grep -q '^refused: .*never overwritten'; then
@@ -544,6 +549,9 @@ pub "$RAW" '../x' --out-dir "$UD"
 case "$(last_line)" in "[publish-fixture] status=usage-error") [ "$RC" -eq 2 ] && U2=yes || U2=no;; *) U2=no;; esac
 uleft=$(ls -A "$UD" | wc -l | tr -d ' ')
 if [ "$U1" = yes ] && [ "$U2" = yes ] && [ "$uleft" = "0" ]; then ok "usage errors exit 2"; else bad "usage errors: no-arg=$U1 bad-name=$U2 left=$uleft"; fi
+
+TREE1="$(git status --short --untracked-files=all 2>&1)"
+if [ "$TREE0" = "$TREE1" ]; then ok "the suite leaves the working tree untouched"; else bad "the suite changed the working tree: before='$TREE0' after='$TREE1'"; fi
 
 rm -rf "$TMP"
 STATUS=ok; [ "$FAIL" -gt 0 ] && STATUS=fail
