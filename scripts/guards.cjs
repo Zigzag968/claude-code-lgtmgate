@@ -43,15 +43,21 @@
 //      import, which would load the docs twice); unless AGENTS.md (the agents.md pointer for other
 //      tools) exists and names both files; or if any agents/*.md frontmatter sets
 //      `omitClaudeMd: true` (a subagent that would skip the project instructions).
+//   status-table (#180): the run's STATUS registry (top-level `const STATUS = Object.freeze({ ... })` in
+//      workflows/deliver-pipeline.js) and the status table of commands/deliver.md §5 name the same set:
+//      every registry key has a row (a row's first cell may group several statuses, each in backticks)
+//      and every row names a registry key. A failure names the status.
 //
 // Env (test seams, all optional)
-//   GUARDS_ONLY            comma list among r1,wired,version,parity,budgets,instructions (default: all)
+//   GUARDS_ONLY            comma list among r1,wired,version,parity,budgets,instructions,status (default: all)
 //   GUARDS_BASE_FILE       workflow file used as the base for R1 (default: git show origin/main:<file>)
 //   GUARDS_BRANCH_FILE     workflow file used as the branch for R1 (default: workflows/deliver-pipeline.js)
 //   GUARDS_BASE_MANIFEST   base plugin.json path for the version floor (default: git show origin/main:...)
 //   GUARDS_BRANCH_MANIFEST branch plugin.json path (default: .claude-plugin/plugin.json)
 //   GUARDS_SAM_FILE        Sam persona for sam-parity (default: agents/sam.md)
 //   GUARDS_SAM_JS_FILE     workflow file for sam-parity (default: workflows/deliver-pipeline.js)
+//   GUARDS_STATUS_JS_FILE  workflow file for status-table (default: workflows/deliver-pipeline.js)
+//   GUARDS_DELIVER_MD      Lead runbook for status-table (default: commands/deliver.md)
 //   GUARDS_ROOT            repo root (default: parent of scripts/)
 
 const fs = require('fs')
@@ -62,7 +68,8 @@ const ROOT = process.env.GUARDS_ROOT || path.resolve(__dirname, '..')
 const WORKFLOW = 'workflows/deliver-pipeline.js'
 const MANIFEST = '.claude-plugin/plugin.json'
 const GUARDS_YML = '.github/workflows/guards.yml'
-const ONLY = process.env.GUARDS_ONLY ? process.env.GUARDS_ONLY.split(',') : ['r1', 'wired', 'version', 'parity', 'budgets', 'instructions']
+const DELIVER_MD = 'commands/deliver.md'
+const ONLY = process.env.GUARDS_ONLY ? process.env.GUARDS_ONLY.split(',') : ['r1', 'wired', 'version', 'parity', 'budgets', 'instructions', 'status']
 
 // Suites that are NOT named in guards.yml, each with its reason. Add a suite here only if it is
 // red on main (report it, do not wire it) or is run through another runner.
@@ -412,10 +419,62 @@ function checkDocBudgets() {
   else out(`PASS: doc-budgets: ${sizes.join('; ')}`)
 }
 
+// ---- status-table (#180) -----------------------------------------------------------------------
+// The registry is the top-level `const STATUS = Object.freeze({ ... })` closed by a `})` at column 0;
+// agentDeathRouting()'s indented role -> status table is not it. Keys are the quoted entry names.
+const STATUS_SECTION = '## 5. Handle the returned status'
+function statusRegistryKeys(src) {
+  const m = /^const STATUS = Object\.freeze\(\{\n([\s\S]*?)^\}\)/m.exec(src)
+  return m ? [...m[1].matchAll(/^\s*'([^']+)':/gm)].map((x) => x[1]) : null
+}
+// Body rows of the first Markdown table after the §5 heading, each as its first cell and the
+// backticked statuses in it (`a` / `b` groups several). Null when the heading or the table is absent.
+function statusTableRows(md) {
+  const lines = md.split('\n')
+  const start = lines.findIndex((l) => l.trim() === STATUS_SECTION)
+  if (start < 0) return null
+  const rows = []
+  for (let i = start + 1; i < lines.length; i++) {
+    if (/^##/.test(lines[i])) break
+    if (!lines[i].startsWith('|')) { if (rows.length) break; continue }
+    rows.push(lines[i])
+  }
+  if (rows.length < 2) return null
+  return rows.slice(2).map((l) => {
+    const cell = l.split('|')[1].trim()
+    return { cell, statuses: [...cell.matchAll(/`([^`]+)`/g)].map((x) => x[1]) }
+  })
+}
+function checkStatusTable() {
+  const js = readOr(process.env.GUARDS_STATUS_JS_FILE || path.join(ROOT, WORKFLOW))
+  const md = readOr(process.env.GUARDS_DELIVER_MD || path.join(ROOT, DELIVER_MD))
+  if (js === null) { bad(`FAIL: status-table: cannot read ${WORKFLOW}`); return }
+  if (md === null) { bad(`FAIL: status-table: cannot read ${DELIVER_MD}`); return }
+  const keys = statusRegistryKeys(js)
+  if (!keys || !keys.length) { bad(`FAIL: status-table: no top-level \`const STATUS = Object.freeze({ ... })\` registry in ${WORKFLOW}`); return }
+  const rows = statusTableRows(md)
+  if (!rows) { bad(`FAIL: status-table: no table under \`${STATUS_SECTION}\` in ${DELIVER_MD}`); return }
+  const problems = []
+  for (const k of keys.filter((k, i) => keys.indexOf(k) !== i)) problems.push(`STATUS key '${k}' is declared twice in ${WORKFLOW}`)
+  const inRows = new Set()
+  for (const r of rows) {
+    if (!r.statuses.length) problems.push(`row '${r.cell}' of the status table (${DELIVER_MD} §5) names no \`status\``)
+    for (const s of r.statuses) {
+      if (inRows.has(s)) problems.push(`status '${s}' has two rows in the status table (${DELIVER_MD} §5)`)
+      inRows.add(s)
+      if (!keys.includes(s)) problems.push(`row '${s}' of the status table (${DELIVER_MD} §5) is not a STATUS key in ${WORKFLOW}`)
+    }
+  }
+  for (const k of keys) if (!inRows.has(k)) problems.push(`STATUS key '${k}' (${WORKFLOW}) has no row in the status table of ${DELIVER_MD} §5`)
+  if (problems.length) bad(`FAIL: status-table: ${problems.join('; ')}`)
+  else out(`PASS: status-table: ${keys.length} STATUS keys, each with a row in ${DELIVER_MD} §5, no row without a key`)
+}
+
 if (ONLY.includes('r1')) checkR1()
 if (ONLY.includes('wired')) checkWired()
 if (ONLY.includes('version')) checkVersion()
 if (ONLY.includes('parity')) checkSamParity()
 if (ONLY.includes('budgets')) checkDocBudgets()
 if (ONLY.includes('instructions')) checkInstructionsWired()
+if (ONLY.includes('status')) checkStatusTable()
 process.exit(failed ? 1 : 0)

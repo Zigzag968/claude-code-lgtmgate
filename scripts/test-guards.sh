@@ -6,7 +6,8 @@
 # block comments, multi-line agent calls, missing base, all-tests-wired (wired/unwired/comment-only),
 # version floor, sam-parity (PLAN RULE both sides, LAYER RULE workflow only, no engine vocabulary in the persona),
 # doc-budgets (at budget / over / missing / per-line cap, through GUARDS_ROOT),
-# instructions-wired (imports outside code, once each, no @AGENTS.md, AGENTS.md names both, omitClaudeMd).
+# instructions-wired (imports outside code, once each, no @AGENTS.md, AGENTS.md names both, omitClaudeMd),
+# status-table (registry <-> §5 table both ways, grouped rows, missing registry or table; #180).
 # Ends with `[test-guards] status=<ok|fail> passed=<n> failed=<n>`.
 set -u
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -277,6 +278,48 @@ mkinst "$T/i8"; printf '# AGENTS.md\n\nRead `VISION.md` first.\n' > "$T/i8/AGENT
 inst_fail "instructions-wired: AGENTS.md does not name ARCHITECTURE.md -> FAIL" "$T/i8" 'AGENTS.md does not name ARCHITECTURE.md'
 mkinst "$T/i9"; printf -- '---\nname: B\nomitClaudeMd: true\n---\nbody\n' > "$T/i9/agents/b.md"
 inst_fail "instructions-wired: agents/b.md frontmatter omitClaudeMd: true -> FAIL" "$T/i9" 'agents/b.md sets omitClaudeMd: true'
+
+# ---- status-table (#180) ----
+# A registry of 3 statuses (plus agentDeathRouting's indented role table, which must not be read as the
+# registry) and a runbook whose §5 table groups two of them in one row; a table before §5 is ignored.
+cat > "$T/st.js" <<'JS'
+const STATUS = Object.freeze({
+  'ready': { status: 'ready' },
+  'dev-died': { status: 'dev-died', resumable: true },
+  'plan-died': { status: 'plan-died', resumable: true },
+})
+function agentDeathRouting(role) {
+  const STATUS = { nick: 'dev-died', ghost: 'not-a-run-status' }
+  return STATUS[role]
+}
+JS
+cat > "$T/st-ok.md" <<'MD'
+## 4. Launch the workflow
+| status | note |
+|---|---|
+| `not-in-the-registry` | a table before §5 is not the status table |
+
+## 5. Handle the returned status
+The workflow returns an object `{ status, ... }`.
+
+| status | Meaning | Lead action |
+|--------|------|-------------|
+| `ready` | LGTM | Update. See §6. |
+| `dev-died` / `plan-died` | An agent died; `resumable:true` | Relaunch via `resumeFromRunId`. |
+
+Always relaunch the workflow with the same `config`.
+MD
+run_status() { OUT="$(GUARDS_ONLY=status GUARDS_STATUS_JS_FILE="$1" GUARDS_DELIVER_MD="$2" node scripts/guards.cjs 2>&1)"; RC=$?; }
+run_status "$T/st.js" "$T/st-ok.md"
+if [ "$RC" -eq 0 ] && [ "$OUT" = "PASS: status-table: 3 STATUS keys, each with a row in commands/deliver.md §5, no row without a key" ]; then ok "status-table: every key has a row (a grouped row counts each status), every row is a key -> PASS"; else ko "status-table positive (rc=$RC) $OUT"; fi
+grep -v '^| `ready` |' "$T/st-ok.md" > "$T/st-norow.md"; run_status "$T/st.js" "$T/st-norow.md"
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q "^FAIL: status-table: STATUS key 'ready' (workflows/deliver-pipeline.js) has no row in the status table of commands/deliver.md §5$"; then ok "status-table: a registry key without a row -> FAIL naming the status"; else ko "status-table key without row (rc=$RC) $OUT"; fi
+awk '{ print } /^\| `ready` \|/ { print "| `ghost` | no such outcome | none |" }' "$T/st-ok.md" > "$T/st-extra.md"; run_status "$T/st.js" "$T/st-extra.md"
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q "^FAIL: status-table: row 'ghost' of the status table (commands/deliver.md §5) is not a STATUS key in workflows/deliver-pipeline.js$"; then ok "status-table: a row that is no registry key -> FAIL naming the row"; else ko "status-table row without key (rc=$RC) $OUT"; fi
+printf 'const finish = (def, extra = {}) => ({ ...def, ...extra })\n' > "$T/st-none.js"; run_status "$T/st-none.js" "$T/st-ok.md"
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: status-table: no top-level `const STATUS = Object.freeze({ ... })` registry in workflows/deliver-pipeline.js$'; then ok "status-table: registry absent (only agentDeathRouting's table) -> FAIL"; else ko "status-table no registry (rc=$RC) $OUT"; fi
+printf '## 5. Handle the returned status\nNo table here.\n' > "$T/st-notable.md"; run_status "$T/st.js" "$T/st-notable.md"
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: status-table: no table under `## 5. Handle the returned status` in commands/deliver.md$'; then ok "status-table: §5 without a table -> FAIL"; else ko "status-table no table (rc=$RC) $OUT"; fi
 
 STATUS=ok; [ "$FAIL_N" -eq 0 ] || STATUS=fail
 echo "[test-guards] status=${STATUS} passed=${PASS_N} failed=${FAIL_N}"

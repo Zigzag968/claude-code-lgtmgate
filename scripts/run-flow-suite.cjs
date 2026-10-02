@@ -53,6 +53,15 @@
 // FLOW_SUITE_STRICT=1 (opt-in, set by .github/workflows/guards.yml only) turns the
 // capture marker into a real CI gate: exit 1 if any case failed, exit 0 otherwise.
 // This does not touch the harness-error path (already exit 1, unconditional).
+//
+// FLOW_SUITE_DUMP_KEYS=<path> (opt-in, #180): after the suite completes, write one line per
+// object the pipeline returned, in run order:
+//   <case>\t#<n>\t<status>\t<sorted top-level keys, comma-separated>
+// <case> is the text of the PASS/FAIL line the suite logs right after the return (a FAIL line
+// keeps its message), <n> the return's ordinal within that case (a case may run the pipeline
+// several times). A run that throws leaves no line; the suite's two resolution probes, run
+// before the first case, are listed under the first case. Diffing two dumps (origin/main vs a
+// branch, through --fp) proves that a refactor keeps every case's returned key set identical.
 
 const fs = require('fs')
 const path = require('path')
@@ -113,10 +122,25 @@ async function main() {
   const fpPath = path.resolve(fp)
 
   const lines = []
-  const log = (msg) => { lines.push(String(msg)) }
+  // FLOW_SUITE_DUMP_KEYS (see the header note): returns pending since the last PASS/FAIL line.
+  const dumpPath = process.env.FLOW_SUITE_DUMP_KEYS || null
+  const dumpLines = []
+  let pendingReturns = []
+  const log = (msg) => {
+    const s = String(msg)
+    lines.push(s)
+    if (!dumpPath) return
+    const m = /^(?:PASS|FAIL) — (.*)$/.exec(s)
+    if (!m) return
+    pendingReturns.forEach((r, i) => dumpLines.push(`${m[1]}\t#${i + 1}\t${r.status}\t${Object.keys(r).sort().join(',')}`))
+    pendingReturns = []
+  }
 
   const suiteSrcStripped = stripExports(fs.readFileSync(suitePath, 'utf-8'))
-  const workflow = buildWorkflowMock(log)
+  const workflowMock = buildWorkflowMock(log)
+  const workflow = dumpPath
+    ? async (ref, a) => { const r = await workflowMock(ref, a); if (r && typeof r === 'object') pendingReturns.push(r); return r }
+    : workflowMock
   // fpSource: raw pipeline text for source-anchored cases (#214) — agentDeathRouting table and
   // STRUCTURED_OUTPUT_MANDATE are unreachable through simulate-mode workflow() runs.
   // repoConfig: this repo's own `.claude/pipeline.config.json` (null if absent), for cases that pin the
@@ -143,6 +167,10 @@ async function main() {
   }
 
   for (const l of lines) process.stdout.write(l + '\n')
+  if (dumpPath) {
+    pendingReturns.forEach((r, i) => dumpLines.push(`(after last case)\t#${i + 1}\t${r.status}\t${Object.keys(r).sort().join(',')}`))
+    fs.writeFileSync(dumpPath, dumpLines.join('\n') + (dumpLines.length ? '\n' : ''))
+  }
 
   const status = result && result.status ? result.status : 'unknown'
   const passed = result && Number.isInteger(result.passed) ? result.passed : 0

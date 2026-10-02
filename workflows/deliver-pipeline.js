@@ -16,126 +16,38 @@ export const meta = {
 // up. A parser wrapped between the comment lines `// guards:parser-begin` and
 // `// guards:parser-end` is not counted by agent-output-regex, so moving one inside markers lowers it.
 //
-// Args:
-//   issue       — GitHub issue number (required)
-//   brief       — one-line description of the change (required)
-//   wtPath      — shared worktree absolute path (required)
-//   config      — project-specific configuration (stack-agnostic; see pipeline.config.template.json)
-//                 worktreeRoot resolution order: LGTMGATE_WORKTREE_ROOT env var -> configLocal.worktreeRoot
-//                 -> config.worktreeRoot -> wtPath's parent dir (see resolveWorktreeRoot below).
-//                 { ghProject, baseBranch, branchPrefix, worktreeRoot, conventionsRule,
-//                   commands:{build,test,format}, ciChecks:[], regressionGuard:{testGlob,testFnPattern,baselineCmd},
-//                   provision:{extraLinks:[{src,dst}]}, preflight:{canonicalStringBan:[]},
-//                   commitHygiene:{squashBeforeHandoff,maxCommits}, commentHygiene:bool,
-//                   oneWayDoorPaths:[] (optional; R3 path globs/prefixes, default none; see oneWayDoorSignals),
-//                   oneWayDoorKinds:[] (optional; R3 kinds among status|agent|hook|seam, default none),
-//                   engineRepo:true (optional; marks the repo that IS this plugin: engine-only rules, default absent = consumer; see engineRules),
-//                   repo:'owner/repo' }  // repo: code repo for cross-repo runs; absent -> cwd-resolved
-//   config      — REQUIRED object: the parsed `.claude/pipeline.config.json`, supplied by the Lead. Absent or
-//                 not an object (e.g. a JSON string) -> throws before any agent call (#13, #12).
-//   configLocal — parsed `.claude/pipeline.config.local.json`, supplied by the Lead (the workflow
-//                 sandbox has no filesystem — see resolveWorktreeRoot below); only `worktreeRoot` is
-//                 read today (#61). Gitignored, machine-local, never versioned. Absent/garbage -> {}.
-//   pmReview    — run Mia before Sam (default false)
-//   issueType   — the issue's type, from its `type:*` label (e.g. 'bug', 'feature', 'chore'); optional,
-//                 absent = not a bug. With 'bug' AND a Sam target under `workflows/` AND config.engineRepo
-//                 is true, the R2 fixture acceptance item is injected into Nick's prompt (#76, #163). A launch arg, not a simulate key.
-//   scoutAgent  — agent type for the scout/plan stage (default 'Sam'). Lets the consuming
-//                 project route to a different scout than Sam — e.g. a domain-specific
-//                 planner it registers itself — while keeping the same plan contract
-//                 (artifact + SAM schema) whoever fills the slot. Any agent name outside
-//                 the built-in set (Mia/Sam/Nick/Morgan) passes through normalizeAgentType
-//                 unchanged, so the consuming project can supply an already-namespaced
-//                 agentType or a custom agent it registered itself.
-//   branchOverride — exact branch name used verbatim instead of <branchPrefix>issue-<N> (#232; rebase-without-force-push,
-//                 numbered slices). Arg, else config.branchOverride. Empty = unset; chars limited to [A-Za-z0-9._/-].
-//                 Skips the config-prefix reconcile so a config-prefix branch is never accepted.
-//   branchPrefix — top-level arg is IGNORED (config.branchPrefix wins); a differing value logs a warning +
-//                 trace 'branch-prefix-arg-ignored' (#232). Use branchOverride to force a branch.
-//                 config.branchPrefix absent/blank -> falls back to 'features/' and traces
-//                 'branch-prefix-fallback-default' (#267), so a caller that fails to thread the
-//                 project's own branchPrefix through config is diagnosable, not silent.
-//   prNumber    — existing PR number; required when entryStage='review'
-//   mode        — 'auto' | 'semi' (default) | 'manual'
-//   entryStage  — 'plan' (default) | 'dev' | 'review'  (skip completed phases on crash-resume)
-//   proceedThrough — last stage the Lead authorized to RUN on resume ('plan'|'dev'|'review'|null).
-//                    The pipeline PAUSES before any stage beyond it. proceedThrough='plan' stops at plan-ready.
-//   planText    — Sam's plan text, supplied on resume (entryStage='dev'|'review') so the
-//                 hand-off survives a crash without re-reading GitHub. If absent on resume,
-//                 the plan is re-materialized from the artifact file (see planPath below).
-//   resumeReason — optional, null by default. Set by the Lead on an entryStage:'dev' relaunch
-//                  that follows a status:'escalate', reason:'mergeable-conflicting' result
-//                  (#170), to thread WHY the resume happens into Nick's prompt (#183) —
-//                  otherwise Nick reasons only from branch/plan content. Allow-list deliberately
-//                  narrow (one value today): a branch-mismatch or plan-stale escalate doesn't
-//                  resolve by relaunching Nick with this same message.
-//   dryRun      — if true, validate args and return immediately (no agents spawned)
-//   probeOnly   — optional { name, cmd, label, round }: run ONE probe() (probe-run gate, #80) and return
-//                 status 'dry-run-ok' reason 'probe-only'. Lets a run-offline fixture reach probe()
-//                 while no engine call site is migrated yet. Not a simulate key.
-//   pluginRoot  — optional absolute path of the plugin root (#82). The Lead passes
-//                 ${CLAUDE_PLUGIN_ROOT} for the plugin component and omits it for a local copy; the
-//                 probe layer resolves templates/probe-run.cjs from it (the workflow has no
-//                 filesystem or env). config.probeRunPath wins; fallback <wtPath>/templates/probe-run.cjs.
-//   models      — optional per-role model override: { scout?, planAudit?, morgan? }. Resolution
-//                 order per role is `models.<role> ?? config.models?.<role> ?? 'sonnet'` (same `??`
-//                 idiom as planAudit above — arg wins per-run over the project default). Default is
-//                 'sonnet' for all three roles (lgtmgate#161: the plan-phase loop could spawn
-//                 up to 4 opus scout attempts per issue with planAudit on, the dominant cost driver);
-//                 pass e.g. `models: { scout: 'opus' }` per-run when an issue is dense/dangerous
-//                 enough to warrant it — opus stays fully reachable, just no longer the default. Not
-//                 a general cost-control knob: Theo and Nick are NOT overridable by this key, always
-//                 'sonnet' (out of scope per the issue — their calls are unconditional literals).
-//   maxPlanAttempts — bound on the plan-verification gate loop between Sam and Nick
-//                 (default 2; mirrors advisory.js's `maxAttempts = 2`). On the
-//                 maxPlanAttempts-th NOT_CONFORMING verdict, escalate instead of looping again.
-//   planAudit   — optional, DEFAULT OFF: once Sam's plan clears the planCheck gate,
-//                 run an independent, adversarial plan-soundness audit (persona-in-prompt,
-//                 no agentType — independence holds by construction) before Dev ever starts.
-//                 Resolved `planAudit ?? config.planAudit ?? false` — arg wins per-run over the
-//                 project default, an explicit `false` beats a `true` config. Placement: Plan
-//                 phase only — never re-runs on entryStage='dev'|'review' (resume). Spawn-cost
-//                 bound (~70k session tokens/spawn): OFF unchanged; ON typical +1 opus audit
-//                 (SOUND) or +1 audit +1 scout +1 planCheck (one amendment); ON worst case per
-//                 Plan phase = maxAuditRounds × maxPlanAttempts = 4 opus scout spawns + 4 haiku
-//                 planChecks + 2 opus audits (defaults).
-//   planFreshness — optional, default 'advisory' (#103): before Dev, diff Sam's declared
-//                 `targetFiles` against origin/<baseBranch> so a plan whose premise moved
-//                 upstream since the worktree's frozen base is caught before Nick opens a PR.
-//                 Resolution order: this arg, then config.planFreshness, then the 'advisory'
-//                 fallback (arg wins per-run over the project default); a value outside
-//                 'advisory'|'gate'|'off' throws.
-//                 'advisory' warns Nick + traces `plan-stale:<n>`, no routing change. 'gate'
-//                 escalates (reason:'plan-stale') before Nick is spawned. 'off' skips the probe.
-//   maxAuditRounds — bound on the auditor <-> scout amendment loop (default 2, mirrors
-//                 maxPlanAttempts). Must be a positive integer; a non-integer or < 1 throws.
-//                 HARD CEILING: values above AUDIT_ROUNDS_CEILING (2) throw
-//                 unless maxAuditRoundsOverrideReason is a non-empty string naming the risk class
-//                 that justifies the extra round(s) — never config-reachable, arg-only, on every
-//                 launch. The reason is echoed in the dryRun/escalate/plan-ready returns and
-//                 pushed onto `trace` as `audit-budget-override:<n>`.
-//   maxAuditRoundsOverrideReason — required non-empty string whenever maxAuditRounds > 2; ignored
-//                 (trimmed to '') otherwise. See "HARD CEILING" above.
-//   architectureDecisionApproved — asserts the design-step-trigger's architecture-only pass (see
-//                 Theo's design-step signals below) already happened and was approved, so the
-//                 design-step gate does not require proceedThrough:'plan' on this launch.
-//   maxPlanAmendRounds — optional, DEFAULT 0 (issue #97): dark-launch kill-switch for routing a
-//                 Morgan-classified PLAN defect (as opposed to a code defect) back to Sam for a
-//                 plan amendment instead of forever re-dispatching Nick against a frozen,
-//                 unfixable plan. 0 (the shipped default) is SHADOW MODE — Morgan's itemOwners
-//                 classification is still computed and traced (`plan-route-shadow:<round>`), but
-//                 every item is still routed to Nick as a code defect, so the off-path behaviour
-//                 is byte-for-bit identical to before #97. Must be a non-negative integer; a
-//                 non-integer or negative value throws. Flipped by the human only after
-//                 observing shadow-mode `trace` evidence that the classification is trustworthy.
-//   simulate    — test fixture object; the only key the engine reads is `simulate.probes`, a map keyed
-//                 by seam name (agent mocks sam/mia/nick/morgan/theo/audit/planCheck/preflight/
-//                 alreadyDoneCheck, parsed-value probes such as headSha/prBody/mergeState/behindCount,
-//                 agentTypeUnresolved, branchCheckRaw, ...). When set, no real agent is spawned and the
-//                 trace is still recorded. The translation from the suite's flat keys to `probes` and
-//                 every default live in run() of the flow suite (scripts/run-flow-suite.cjs runs it);
-//                 the engine carries no `??` default on a seam. `simulate.probes[<role>] = 'DIE'` (the
-//                 literal string) is the plain-death lever for a role, since `null` is nullish.
+// Args — one row per arg (the `config.*` keys that are not args follow the table):
+// | Arg | Doc |
+// |---|---|
+// | `issue` | GitHub issue number (required) |
+// | `brief` | one-line description of the change (required) |
+// | `wtPath` | shared worktree absolute path (required) |
+// | `config` | REQUIRED object: the parsed `.claude/pipeline.config.json`, supplied by the Lead. Absent or not an object (e.g. a JSON string) -> throws before any agent call (#13, #12). Project-specific configuration (stack-agnostic; see pipeline.config.template.json): `{ ghProject, baseBranch, branchPrefix, worktreeRoot, conventionsRule, commands:{build,test,format}, ciChecks:[], regressionGuard:{testGlob,testFnPattern,baselineCmd}, provision:{extraLinks:[{src,dst}]}, preflight:{canonicalStringBan:[]}, commitHygiene:{squashBeforeHandoff,maxCommits}, commentHygiene:bool, oneWayDoorPaths:[] (optional; R3 path globs/prefixes, default none; see oneWayDoorSignals), oneWayDoorKinds:[] (optional; R3 kinds among status\|agent\|hook\|seam, default none), engineRepo:true (optional; marks the repo that IS this plugin: engine-only rules, default absent = consumer; see engineRules), repo:'owner/repo' }` — repo: code repo for cross-repo runs; absent -> cwd-resolved. worktreeRoot resolution order: LGTMGATE_WORKTREE_ROOT env var -> configLocal.worktreeRoot -> config.worktreeRoot -> wtPath's parent dir (see resolveWorktreeRoot below). |
+// | `configLocal` | parsed `.claude/pipeline.config.local.json`, supplied by the Lead (the workflow sandbox has no filesystem — see resolveWorktreeRoot below); only `worktreeRoot` is read today (#61). Gitignored, machine-local, never versioned. Absent/garbage -> {}. |
+// | `pmReview` | run Mia before Sam (default false) |
+// | `issueType` | the issue's type, from its `type:*` label (e.g. 'bug', 'feature', 'chore'); optional, absent = not a bug. With 'bug' AND a Sam target under `workflows/` AND config.engineRepo is true, the R2 fixture acceptance item is injected into Nick's prompt (#76, #163). A launch arg, not a simulate key. |
+// | `scoutAgent` | agent type for the scout/plan stage (default 'Sam'). Lets the consuming project route to a different scout than Sam — e.g. a domain-specific planner it registers itself — while keeping the same plan contract (artifact + SAM schema) whoever fills the slot. Any agent name outside the built-in set (Mia/Sam/Nick/Morgan) passes through normalizeAgentType unchanged, so the consuming project can supply an already-namespaced agentType or a custom agent it registered itself. |
+// | `branchOverride` | exact branch name used verbatim instead of <branchPrefix>issue-<N> (#232; rebase-without-force-push, numbered slices). Arg, else config.branchOverride. Empty = unset; chars limited to [A-Za-z0-9._/-]. Skips the config-prefix reconcile so a config-prefix branch is never accepted. |
+// | `branchPrefix` | top-level arg is IGNORED (config.branchPrefix wins); a differing value logs a warning + trace 'branch-prefix-arg-ignored' (#232). Use branchOverride to force a branch. config.branchPrefix absent/blank -> falls back to 'features/' and traces 'branch-prefix-fallback-default' (#267), so a caller that fails to thread the project's own branchPrefix through config is diagnosable, not silent. |
+// | `prNumber` | existing PR number; required when entryStage='review' |
+// | `mode` | 'auto' \| 'semi' (default) \| 'manual' |
+// | `entryStage` | 'plan' (default) \| 'dev' \| 'review' (skip completed phases on crash-resume) |
+// | `proceedThrough` | last stage the Lead authorized to RUN on resume ('plan'\|'dev'\|'review'\|null). The pipeline PAUSES before any stage beyond it. proceedThrough='plan' stops at plan-ready. |
+// | `planText` | Sam's plan text, supplied on resume (entryStage='dev'\|'review') so the hand-off survives a crash without re-reading GitHub. If absent on resume, the plan is re-materialized from the artifact file (see planPath below). |
+// | `resumeReason` | optional, null by default. Set by the Lead on an entryStage:'dev' relaunch that follows a status:'escalate', reason:'mergeable-conflicting' result (#170), to thread WHY the resume happens into Nick's prompt (#183) — otherwise Nick reasons only from branch/plan content. Allow-list deliberately narrow (one value today): a branch-mismatch or plan-stale escalate doesn't resolve by relaunching Nick with this same message. |
+// | `dryRun` | if true, validate args and return immediately (no agents spawned) |
+// | `probeOnly` | optional { name, cmd, label, round }: run ONE probe() (probe-run gate, #80) and return status 'dry-run-ok' reason 'probe-only'. Lets a run-offline fixture reach probe() while no engine call site is migrated yet. Not a simulate key. |
+// | `pluginRoot` | optional absolute path of the plugin root (#82). The Lead passes ${CLAUDE_PLUGIN_ROOT} for the plugin component and omits it for a local copy; the probe layer resolves templates/probe-run.cjs from it (the workflow has no filesystem or env). config.probeRunPath wins; fallback <wtPath>/templates/probe-run.cjs. |
+// | `models` | optional per-role model override: { scout?, planAudit?, morgan? }. Resolution order per role is `models.<role> ?? config.models?.<role> ?? 'sonnet'` (same `??` idiom as planAudit above — arg wins per-run over the project default). Default is 'sonnet' for all three roles (lgtmgate#161: the plan-phase loop could spawn up to 4 opus scout attempts per issue with planAudit on, the dominant cost driver); pass e.g. `models: { scout: 'opus' }` per-run when an issue is dense/dangerous enough to warrant it — opus stays fully reachable, just no longer the default. Not a general cost-control knob: Theo and Nick are NOT overridable by this key, always 'sonnet' (out of scope per the issue — their calls are unconditional literals). |
+// | `maxPlanAttempts` | bound on the plan-verification gate loop between Sam and Nick (default 2; mirrors advisory.js's `maxAttempts = 2`). On the maxPlanAttempts-th NOT_CONFORMING verdict, escalate instead of looping again. |
+// | `planAudit` | optional, DEFAULT OFF: once Sam's plan clears the planCheck gate, run an independent, adversarial plan-soundness audit (persona-in-prompt, no agentType — independence holds by construction) before Dev ever starts. Resolved `planAudit ?? config.planAudit ?? false` — arg wins per-run over the project default, an explicit `false` beats a `true` config. Placement: Plan phase only — never re-runs on entryStage='dev'\|'review' (resume). Spawn-cost bound (~70k session tokens/spawn): OFF unchanged; ON typical +1 opus audit (SOUND) or +1 audit +1 scout +1 planCheck (one amendment); ON worst case per Plan phase = maxAuditRounds × maxPlanAttempts = 4 opus scout spawns + 4 haiku planChecks + 2 opus audits (defaults). |
+// | `planFreshness` | optional, default 'advisory' (#103): before Dev, diff Sam's declared `targetFiles` against origin/<baseBranch> so a plan whose premise moved upstream since the worktree's frozen base is caught before Nick opens a PR. Resolution order: this arg, then config.planFreshness, then the 'advisory' fallback (arg wins per-run over the project default); a value outside 'advisory'\|'gate'\|'off' throws. 'advisory' warns Nick + traces `plan-stale:<n>`, no routing change. 'gate' escalates (reason:'plan-stale') before Nick is spawned. 'off' skips the probe. |
+// | `maxAuditRounds` | bound on the auditor <-> scout amendment loop (default 2, mirrors maxPlanAttempts). Must be a positive integer; a non-integer or < 1 throws. HARD CEILING: values above AUDIT_ROUNDS_CEILING (2) throw unless maxAuditRoundsOverrideReason is a non-empty string naming the risk class that justifies the extra round(s) — never config-reachable, arg-only, on every launch. The reason is echoed in the dryRun/escalate/plan-ready returns and pushed onto `trace` as `audit-budget-override:<n>`. |
+// | `maxAuditRoundsOverrideReason` | required non-empty string whenever maxAuditRounds > 2; ignored (trimmed to '') otherwise. See "HARD CEILING" above. |
+// | `architectureDecisionApproved` | asserts the design-step-trigger's architecture-only pass (see Theo's design-step signals below) already happened and was approved, so the design-step gate does not require proceedThrough:'plan' on this launch. |
+// | `maxPlanAmendRounds` | optional, DEFAULT 0 (issue #97): dark-launch kill-switch for routing a Morgan-classified PLAN defect (as opposed to a code defect) back to Sam for a plan amendment instead of forever re-dispatching Nick against a frozen, unfixable plan. 0 (the shipped default) is SHADOW MODE — Morgan's itemOwners classification is still computed and traced (`plan-route-shadow:<round>`), but every item is still routed to Nick as a code defect, so the off-path behaviour is byte-for-bit identical to before #97. Must be a non-negative integer; a non-integer or negative value throws. Flipped by the human only after observing shadow-mode `trace` evidence that the classification is trustworthy. |
+// | `simulate` | test fixture object; the only key the engine reads is `simulate.probes`, a map keyed by seam name (agent mocks sam/mia/nick/morgan/theo/audit/planCheck/preflight/alreadyDoneCheck, parsed-value probes such as headSha/prBody/mergeState/behindCount, agentTypeUnresolved, branchCheckRaw, ...). When set, no real agent is spawned and the trace is still recorded. The translation from the suite's flat keys to `probes` and every default live in run() of the flow suite (scripts/run-flow-suite.cjs runs it); the engine carries no `??` default on a seam. `simulate.probes[<role>] = 'DIE'` (the literal string) is the plain-death lever for a role, since `null` is nullish. |
+// | `stamp` | optional epoch ms of the run (the harness bans an argless `new Date()`, which breaks resume): read by the already-done guard's future-merged check, the artifact-floor fallback and the preflight probes' `--stamp`; absent -> each degrades gracefully. |
 //
 // config.commitHygiene — OFF by default: { squashBeforeHandoff: bool, maxCommits: int }.
 // squashBeforeHandoff=true makes the pipeline soft-reset a >maxCommits branch to 2-3 logical
@@ -219,7 +131,7 @@ export const meta = {
 // `version`, checked against plugin.json by templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '1.0.0-beta.3', cutFrom: '16b3b9b' }
+const BUILD = { plugin: 'lgtmgate', version: '1.0.0-beta.4', cutFrom: '6e301a6' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -240,9 +152,40 @@ let provisionCmdPreview = null
 // #110: set by callAgent when an agent call stayed cut off by a classifier outage past its retry
 // bound; finish() then names the cause on the resulting `*-died` status.
 let classifierOutageDeath = false
-const finish = (o) => ({ buildStamp: BUILD_STAMP, ...(simulate ? { nickPromptPreview, provisionCmdPreview, preflightFixPromptPreview } : {}),
-  ...(classifierOutageDeath && String(o.status).endsWith('-died')
-    ? { reason: 'classifier-outage: resume with resumeFromRunId' } : {}), ...o })
+// Status registry (#180) — every outcome a run can return, one entry per status, in pipeline order.
+// finish(def, extra) is the only way out of the run, so no status reaches a return as a string
+// literal; `resumable` belongs to the status (a `*-died` run, or one parked for the Lead, resumes
+// through resumeFromRunId), never to a call site. scripts/guards.cjs (status-table) checks these keys
+// against the Lead's table in commands/deliver.md §5, both ways. agentDeathRouting() below keeps its
+// own role -> status table (pure, extractable); its values are keys of this registry.
+const STATUS = Object.freeze({
+  'dry-run-ok': { status: 'dry-run-ok' },
+  'provision-died': { status: 'provision-died', resumable: true },
+  'escalate': { status: 'escalate' },
+  'already-done': { status: 'already-done' },
+  'diagnose-died': { status: 'diagnose-died', resumable: true },
+  'diagnosis-refuted': { status: 'diagnosis-refuted' },
+  'lane-refused': { status: 'lane-refused' },
+  'design-step-required': { status: 'design-step-required' },
+  'plan-died': { status: 'plan-died', resumable: true },
+  'no-go': { status: 'no-go' },
+  'plan-check-died': { status: 'plan-check-died', resumable: true },
+  'plan-audit-died': { status: 'plan-audit-died', resumable: true },
+  'plan-ready': { status: 'plan-ready' },
+  'dev-died': { status: 'dev-died', resumable: true },
+  'dev-done': { status: 'dev-done' },
+  'delivered-no-pr': { status: 'delivered-no-pr' },
+  'preflight-died': { status: 'preflight-died', resumable: true },
+  'preflight-stuck': { status: 'preflight-stuck' },
+  'review-died': { status: 'review-died', resumable: true },
+  'needs-revision': { status: 'needs-revision' },
+  'verified-untickable': { status: 'verified-untickable', resumable: true },
+  'ready-pending-human': { status: 'ready-pending-human', resumable: true },
+  'ready': { status: 'ready' },
+})
+const finish = (def, extra = {}) => ({ buildStamp: BUILD_STAMP, ...(simulate ? { nickPromptPreview, provisionCmdPreview, preflightFixPromptPreview } : {}),
+  ...(classifierOutageDeath && def.status.endsWith('-died')
+    ? { reason: 'classifier-outage: resume with resumeFromRunId' } : {}), ...def, ...extra })
 
 const {
   issue, brief, pmReview = false, issueType = null, wtPath,
@@ -346,7 +289,7 @@ const planAuditModel = models.planAudit ?? modelsCfg.planAudit ?? 'sonnet'
 const morganModel = models.morgan ?? modelsCfg.morgan ?? 'sonnet'
 // Probe-run gate (#80): version of the PROBES registry (the call-site names declared at `const PROBES`).
 const PROBES_VERSION = 2
-if (dryRun) return finish({ status: 'dry-run-ok', probesVersion: PROBES_VERSION, issue, mode, entryStage, planAudit: planAuditEnabled, planFreshness: planFreshnessMode, maxAuditRounds, maxAuditRoundsOverrideReason: auditBudgetOverrideReason || null, maxPlanAmendRounds, models: { scout: scoutModel, planAudit: planAuditModel, morgan: morganModel } })
+if (dryRun) return finish(STATUS['dry-run-ok'], { probesVersion: PROBES_VERSION, issue, mode, entryStage, planAudit: planAuditEnabled, planFreshness: planFreshnessMode, maxAuditRounds, maxAuditRoundsOverrideReason: auditBudgetOverrideReason || null, maxPlanAmendRounds, models: { scout: scoutModel, planAudit: planAuditModel, morgan: morganModel } })
 
 const trace = []
 if (auditBudgetOverridden) {
@@ -1471,9 +1414,10 @@ function auditConvergenceNote(auditTrace) {
 // Routes a callAgentSafe-caught agent death (thrown error or null/undefined result) to
 // retry-once or a terminal, resumable `<stage>-died` status. Pure: no I/O, no closure over
 // simulate/config/trace. Side-effectful roles (nick, morgan) are never retried — see the
-// call-site table above for why. mia/alreadyDoneCheck are deliberately absent from
-// STATUS: both sites DEGRADE on death (continue the run) and never return a status, so a dead
-// map entry there would mislead the next reader.
+// call-site table above for why. Its STATUS table (role -> status, values are keys of the run's
+// STATUS registry near finish()) deliberately omits mia/alreadyDoneCheck: both sites DEGRADE on
+// death (continue the run) and never return a status, so a dead map entry there would mislead the
+// next reader.
 function agentDeathRouting(role, attempt, maxAttempts = 2) {
   const RETRY_SAFE = new Set([
     'provision', 'theo', 'mia', 'sam', 'planCheck', 'audit', 'alreadyDoneCheck', 'preflight', 'probe',
@@ -1941,7 +1885,7 @@ async function prWrite(op, label, round, argv) {
 // probeOnly (#80): reach probe() from a run-offline fixture while no call site exists yet.
 if (probeOnly) {
   const r = await probe(probeOnly.name, probeOnly.cmd, { ...probeOnly })
-  return finish({ status: 'dry-run-ok', reason: 'probe-only', issue, probesVersion: PROBES_VERSION, probe: r, trace })
+  return finish(STATUS['dry-run-ok'], { reason: 'probe-only', issue, probesVersion: PROBES_VERSION, probe: r, trace })
 }
 
 // ---------------------------------------------------------------------------
@@ -2012,12 +1956,12 @@ if (probeOnly) {
         }
       })()
   if (provision?.probeFailed === 'agent-death') {
-    return finish({ status: 'provision-died', issue, trace, resumable: true })
+    return finish(STATUS['provision-died'], { issue, trace })
   }
   if (provision?.probeFailed) {
     log(`Provisioning probe failed (${provision.probeFailed}) — failing closed` + (PROBE_REASON_HINTS[provision.probeFailed] ? `: ${PROBE_REASON_HINTS[provision.probeFailed]}` : ''))
     await updateStatus('Blocked')
-    return finish({ status: 'escalate', reason: 'provision-failed', issue, missing: [], exitCode: null, probeReason: provision.probeFailed, probeHint: PROBE_REASON_HINTS[provision.probeFailed] || null, trace })
+    return finish(STATUS['escalate'], { reason: 'provision-failed', issue, missing: [], exitCode: null, probeReason: provision.probeFailed, probeHint: PROBE_REASON_HINTS[provision.probeFailed] || null, trace })
   }
   log(`Provision: ok=${provision?.ok}, exitCode=${provision?.exitCode ?? 'unknown'}, ` +
     `skipped=${provision?.skipped === true}, ` +
@@ -2028,7 +1972,7 @@ if (probeOnly) {
   if (provision?.ok !== true) {
     log(`Provisioning failed — missing source(s): ${(provision?.missing || []).join(', ') || 'unknown'}`)
     await updateStatus('Blocked')
-    return finish({ status: 'escalate', reason: 'provision-failed', issue, missing: provision?.missing || [], exitCode: provision?.exitCode ?? null, trace })
+    return finish(STATUS['escalate'], { reason: 'provision-failed', issue, missing: provision?.missing || [], exitCode: provision?.exitCode ?? null, trace })
   }
 }
 
@@ -2070,7 +2014,7 @@ if (entryStage === 'plan') {
     log(`Provision-freshness: worktree is ${provisionBehind} commit(s) behind origin/${baseBranch} at dispatch (own commits: ${ownCommits ?? 'unknown'}) — escalating before any planning spend; run: ${mergeCommand}`)
     trace.push(`provision-stale:${provisionBehind}`)
     await updateStatus('Blocked')
-    return finish({ status: 'escalate', reason: 'provision-stale', issue, behind: provisionBehind, ownCommits, mergeCommand, baseBranch, wtPath, trace })
+    return finish(STATUS['escalate'], { reason: 'provision-stale', issue, behind: provisionBehind, ownCommits, mergeCommand, baseBranch, wtPath, trace })
   }
 }
 
@@ -2120,20 +2064,20 @@ if (after('plan', entryStage)) {
     },
   )
   if (isAgentDeath(diag)) {
-    return finish({ status: 'diagnose-died', issue, trace, resumable: true })
+    return finish(STATUS['diagnose-died'], { issue, trace })
   }
 
   if (!diag.confirmed) {
     log(`Diagnosis refuted: ${diag.evidence}`)
     await updateStatus('Blocked')
-    return finish({ status: 'diagnosis-refuted', evidence: diag.evidence, actualCause: diag.actualCause || null, issue, trace })
+    return finish(STATUS['diagnosis-refuted'], { evidence: diag.evidence, actualCause: diag.actualCause || null, issue, trace })
   }
   log(`Diagnosis confirmed: ${diag.evidence}`)
 
   if (diag.laneOk === false) {
     log(`Lane refused: user-visible issue on the '${scoutAgent}' lane — requires ${diag.requiredScout || 'the product scout'}`)
     await updateStatus('Blocked')
-    return finish({ status: 'lane-refused', requiredScout: diag.requiredScout || null, evidence: diag.evidence, issue, trace })
+    return finish(STATUS['lane-refused'], { requiredScout: diag.requiredScout || null, evidence: diag.evidence, issue, trace })
   }
 
   // Design-step-trigger gate (B1-B3) — computed by the SCRIPT from Theo's raw
@@ -2149,8 +2093,7 @@ if (after('plan', entryStage)) {
   if (designStepTriggered && !architectureDecisionApproved && proceedThrough !== 'plan') {
     log(`Design-step trigger fired (signals: ${designStepSignalCount}/3 + immatureVendorApi=${!!diag.immatureVendorApiSignal}) — architecture decision not yet approved`)
     await updateStatus('Blocked')
-    return finish({
-      status: 'design-step-required',
+    return finish(STATUS['design-step-required'], {
       issue, trace,
       designStepSignalCount,
       immatureVendorApiSignal: !!diag.immatureVendorApiSignal,
@@ -2283,13 +2226,13 @@ if (after('plan', entryStage)) {
         { agentType: scoutAgent, phase: 'Plan', schema: SAM, label: `scout-issue-${issue}-${planPass}`, model: scoutModel },
       )
       if (isAgentDeath(sam)) {
-        return finish({ status: 'plan-died', issue, planPath, trace, resumable: true })
+        return finish(STATUS['plan-died'], { issue, planPath, trace })
       }
 
       if (sam.decision === 'NO-GO') {
         log(`Sam: NO-GO — ${sam.rationale || 'see report'}`)
         await updateStatus('Blocked')
-        return finish({ status: 'no-go', reason: sam.rationale, plan: sam.plan, trace })
+        return finish(STATUS['no-go'], { reason: sam.rationale, plan: sam.plan, trace })
       }
 
       // Capture the plan into the script variable — the hand-off payload for Dev + Review.
@@ -2320,7 +2263,7 @@ if (after('plan', entryStage)) {
         planPass,
       )
       if (isAgentDeath(planCheck)) {
-        return finish({ status: 'plan-check-died', issue, planPath, trace, resumable: true })
+        return finish(STATUS['plan-check-died'], { issue, planPath, trace })
       }
 
       if (planCheck.verdict === 'CONFORMING') break
@@ -2328,7 +2271,7 @@ if (after('plan', entryStage)) {
       if (planAttempt >= maxPlanAttempts) {
         log(`Plan-verification gate: NOT_CONFORMING after ${planAttempt} attempt(s) — escalating`)
         await updateStatus('Blocked')
-        return finish({ status: 'escalate', reason: 'plan-not-conforming', issue, planCheckIssues: planCheck.issues || [], trace })
+        return finish(STATUS['escalate'], { reason: 'plan-not-conforming', issue, planCheckIssues: planCheck.issues || [], trace })
       }
 
       checkIssues = planCheck.issues || []
@@ -2366,7 +2309,7 @@ if (after('plan', entryStage)) {
       auditRound,
     )
     if (isAgentDeath(auditResult)) {
-      return finish({ status: 'plan-audit-died', issue, auditRounds: auditRound, trace, resumable: true })
+      return finish(STATUS['plan-audit-died'], { issue, auditRounds: auditRound, trace })
     }
     trace.push(`plan-audit:${auditResult?.verdict ?? 'malformed'}`)
 
@@ -2391,8 +2334,8 @@ if (after('plan', entryStage)) {
     if (routing.action === 'escalate') {
       log(`Plan audit: ${routing.reason} after ${auditRound} round(s) — escalating`)
       await updateStatus('Blocked')
-      return finish({
-        status: 'escalate', reason: routing.reason, issue,
+      return finish(STATUS['escalate'], {
+        reason: routing.reason, issue,
         auditVerdict: auditResult?.verdict ?? null,
         auditFindings: auditResult?.findings ?? [],
         auditRounds: auditRound, trace,
@@ -2414,16 +2357,15 @@ if (after('plan', entryStage)) {
     log(`R3 one-way-door: plan adds ${oneWayDoor.kinds.join(' + ')} — design step required`)
     trace.push(`one-way-door:${oneWayDoor.kinds.join('+')}`)
     await updateStatus('Blocked')
-    return finish({
-      status: 'design-step-required',
+    return finish(STATUS['design-step-required'], {
       issue, trace, planPath,
       oneWayDoorHits: oneWayDoor.kinds,
       reason: oneWayDoor.summary.join('\n'),
     })
   }
 
-  if (gate('plan')) return finish({
-    status: 'plan-ready', plan: sam.plan, planPath, issue, trace,
+  if (gate('plan')) return finish(STATUS['plan-ready'], {
+    plan: sam.plan, planPath, issue, trace,
     auditVerdict: auditResult?.verdict ?? null,
     auditFindings: auditResult?.findings ?? [],
     auditRounds: auditRound,
@@ -2509,7 +2451,7 @@ if (entryStage === 'dev' || entryStage === 'review') {
     const verdict = acceptAlreadyDone(guard, expectedHead, stamp ? new Date(Number(stamp)).toISOString() : '')
     if (verdict.accepted) {
       log(`Already-done guard: issue #${issue} is ${verdict.reason} — aborting relaunch`)
-      return finish({ status: 'already-done', issue, mergedAt: verdict.reason === 'merged' ? (guard.mergedAt || null) : null, trace })
+      return finish(STATUS['already-done'], { issue, mergedAt: verdict.reason === 'merged' ? (guard.mergedAt || null) : null, trace })
     }
     if (guard?.isAlreadyDone === true || guard?.checkFailed === true) {
       log(`Already-done guard ERROR: unverified already-done claim rejected (${verdict.reason})${guard?.error ? ` — gh: ${guard.error}` : ''}. Proceeding with the run; the guard is a safety net, never a merge gate.`)
@@ -2587,16 +2529,12 @@ const assertBranchConformance = async (prNum, nickBranchFallback) => {
     } else {
       log(`Branch mismatch: PR #${prNum} head is "${headRef}", expected "${expectedBranch}"`)
       trace.push(`branch-mismatch:${headRef}`)
-      // Named (not returned as a bare object literal) so this intermediate escalate value — which
-      // the caller always wraps in finish() before it ever leaves the pipeline — doesn't trip the
-      // stamp-placement guard's textual scan for unstamped status-object returns
-      // (test-canonical-guards.sh); same shape/keys, no behavior change.
-      const branchMismatch = {
-        status: 'escalate', reason: 'branch-mismatch',
+      // The escalate payload without its status: both callers pass it to finish(STATUS['escalate'], ...).
+      return {
+        reason: 'branch-mismatch',
         expectedBranch, actualBranch: headRef,
         pr: prNum ?? null, issue, trace,
       }
-      return branchMismatch
     }
   }
   return null
@@ -2633,7 +2571,7 @@ if (after('dev', entryStage)) {
       log(`Plan freshness: ${planStaleFiles.length} target file(s) changed upstream on origin/${baseBranch} since the frozen base — ${planStaleFiles.join(', ')}`)
       if (planFreshnessMode === 'gate') {
         await updateStatus('Blocked')
-        return finish({ status: 'escalate', reason: 'plan-stale', staleFiles: planStaleFiles, planTargetsChecked, issue, trace })
+        return finish(STATUS['escalate'], { reason: 'plan-stale', staleFiles: planStaleFiles, planTargetsChecked, issue, trace })
       }
     }
   }
@@ -2675,7 +2613,7 @@ if (after('dev', entryStage)) {
     trace.push(`worktree-git-dir-not-writable:${gitDirProbe.gitDir || 'unknown'}`)
     log(`Worktree write-access preflight: git-dir "${gitDirProbe.gitDir}" is not writable — escalating before Nick spawn`)
     await updateStatus('Blocked')
-    return finish({ status: 'escalate', reason: 'worktree-git-dir-not-writable', gitDir: gitDirProbe.gitDir, issue, wtPath, trace })
+    return finish(STATUS['escalate'], { reason: 'worktree-git-dir-not-writable', gitDir: gitDirProbe.gitDir, issue, wtPath, trace })
   }
 
   const epicRef = subGate.blocked ? `(see #${issue})` : 'Closes #' + issue
@@ -2710,13 +2648,13 @@ if (after('dev', entryStage)) {
     { agentType: 'Nick', phase: 'Dev', schema: NICK, label: `nick-issue-${issue}`, model: 'sonnet' },
   )
   if (isAgentDeath(nick)) {
-    return finish({ status: 'dev-died', issue, trace, resumable: true })
+    return finish(STATUS['dev-died'], { issue, trace })
   }
 
   const branchGuardResult = await assertBranchConformance(nick?.prNumber, nick?.branch)
-  if (branchGuardResult) { await updateStatus('Blocked'); return finish(branchGuardResult) }
+  if (branchGuardResult) { await updateStatus('Blocked'); return finish(STATUS['escalate'], branchGuardResult) }
 
-  if (gate('dev')) return finish({ status: 'dev-done', pr: nick.prNumber, issue, planStaleFiles, planTargetsChecked, subIssuesUncovered, trace })
+  if (gate('dev')) return finish(STATUS['dev-done'], { pr: nick.prNumber, issue, planStaleFiles, planTargetsChecked, subIssuesUncovered, trace })
 }
 
 // ---------------------------------------------------------------------------
@@ -2739,7 +2677,7 @@ if (after('review', entryStage)) {
       trace.push('delivered-no-pr')
       const leadAction = `Lead: if the branch was not pushed (SSH blocked in the sandbox, #108), push it with \`${httpsPushCmdFor(expectedBranchName)}\`, then open the PR with \`gh pr create --draft${prFlag} --base ${baseBranch} --head ${expectedBranchName}\` and relaunch with entryStage:"review" + prNumber.`
       log(`delivered-no-pr: ${leadAction}`)
-      return finish({ status: 'delivered-no-pr', issue, summary: nick.summary, leadAction, trace })
+      return finish(STATUS['delivered-no-pr'], { issue, summary: nick.summary, leadAction, trace })
     }
     // Dev-stage failure with no evidence and no PR (lgtmgate#262) — whatever the cause
     // (permission gap, agent crash, anything), stay inside the pipeline's normal status
@@ -2748,7 +2686,7 @@ if (after('review', entryStage)) {
     log('Review phase: no PR number and no delivery evidence (nick + prNumber both null) — escalating')
     trace.push('dev-stage-no-pr')
     await updateStatus('Blocked')
-    return finish({ status: 'escalate', reason: 'dev-stage-no-pr', issue, trace })
+    return finish(STATUS['escalate'], { reason: 'dev-stage-no-pr', issue, trace })
   }
 
   // Branch-conformance guard, resume path (lgtmgate#45) — `entryStage:'review'` is the only
@@ -2762,7 +2700,7 @@ if (after('review', entryStage)) {
   // seed; it only matters as the harness default when a test does not simulate branchCheckRaw.
   if (entryStage === 'review') {
     const branchGuardResult = await assertBranchConformance(pr, `${expectedBranchName}`)
-    if (branchGuardResult) { await updateStatus('Blocked'); return finish(branchGuardResult) }
+    if (branchGuardResult) { await updateStatus('Blocked'); return finish(STATUS['escalate'], branchGuardResult) }
   }
 
   // PR comment hygiene — hidden HTML marker the pipeline injects into its OWN posted
@@ -3122,7 +3060,7 @@ if (after('review', entryStage)) {
     preflightCallCount++
     logTestCmdRun(pf)
     if (isAgentDeath(pf)) {
-      return finish({ status: 'preflight-died', pr, issue, round: currentRound, trace, resumable: true })
+      return finish(STATUS['preflight-died'], { pr, issue, round: currentRound, trace })
     }
     if (pf?.pass !== false) return true
 
@@ -3150,7 +3088,7 @@ if (after('review', entryStage)) {
       currentRound,
     )
     if (isAgentDeath(nickFix)) {
-      return finish({ status: 'dev-died', pr, issue, round: currentRound, trace, resumable: true })
+      return finish(STATUS['dev-died'], { pr, issue, round: currentRound, trace })
     }
 
     const pf2 = await callAgentSafe(
@@ -3162,12 +3100,12 @@ if (after('review', entryStage)) {
     preflightCallCount++
     logTestCmdRun(pf2)
     if (isAgentDeath(pf2)) {
-      return finish({ status: 'preflight-died', pr, issue, round: currentRound, trace, resumable: true })
+      return finish(STATUS['preflight-died'], { pr, issue, round: currentRound, trace })
     }
     if (pf2?.pass !== false) return true
 
     log(`Preflight still failing after retry — escalating as preflight-stuck`)
-    return finish({ status: 'preflight-stuck', pr, issue, round: currentRound, issues: foldFailedChecks(pf2), trace })
+    return finish(STATUS['preflight-stuck'], { pr, issue, round: currentRound, issues: foldFailedChecks(pf2), trace })
   }
 
   let prevRoundItems = null
@@ -3224,9 +3162,9 @@ if (after('review', entryStage)) {
     log(`Verified-untickable: ${untickable.length} box(es) proven but not tickable (permissions)${rest.length > 0 ? ` + ${rest.length} human-gate` : ''} — parking for the Lead, no Nick round`)
     await updateStatus('Pending Tick')   // best-effort; logs + skips if the option is unconfigured
     if (rest.length === 0) {
-      return finish({ status: 'verified-untickable', pr, issue, round, untickableItems: untickable, trace, decisionLog, resumable: true })
+      return finish(STATUS['verified-untickable'], { pr, issue, round, untickableItems: untickable, trace, decisionLog })
     }
-    return finish({ status: 'ready-pending-human', pr, issue, round, humanGateItems: rest, untickableItems: untickable, trace, decisionLog, resumable: true })
+    return finish(STATUS['ready-pending-human'], { pr, issue, round, humanGateItems: rest, untickableItems: untickable, trace, decisionLog })
   }
 
   // syncAcceptanceBlock (issue #97) — deterministic, FAIL-CLOSED sync of Sam's amended acceptance
@@ -3329,7 +3267,7 @@ if (after('review', entryStage)) {
   // Null guard (item 1) — Morgan agent death on initial call
   if (v === null) {
     log('Morgan died (null result) — run is resumable via resumeFromRunId (same-args crash-retry only)')
-    return finish({ status: 'review-died', pr, issue, round: 0, trace, resumable: true })
+    return finish(STATUS['review-died'], { pr, issue, round: 0, trace })
   }
 
   await recordDecision(round, v.verdict, v.items)
@@ -3344,12 +3282,12 @@ if (after('review', entryStage)) {
   if (v.verdict === 'REQUIRED_CHANGES' && allHumanGate(v.items)) {
     log(`Ready pending human: only human-gate items remain (${v.items.length})`)
     await updateStatus('Pending Human')   // best-effort; no-ops if the option is unconfigured
-    return finish({ status: 'ready-pending-human', pr, issue, round, humanGateItems: v.items, trace, decisionLog, resumable: true })
+    return finish(STATUS['ready-pending-human'], { pr, issue, round, humanGateItems: v.items, trace, decisionLog })
   }
 
   while (v.verdict !== 'LGTM' && round < 3) {
     if (gate('review', v.verdict)) {
-      return finish({ status: 'needs-revision', round, items: v.items, pr, issue, trace })
+      return finish(STATUS['needs-revision'], { round, items: v.items, pr, issue, trace })
     }
     prevRoundItems = v.items || []
     round++
@@ -3378,19 +3316,19 @@ if (after('review', entryStage)) {
         round,
       )
       if (isAgentDeath(samAmend)) {
-        return finish({ status: 'plan-died', issue, planPath, trace, resumable: true })
+        return finish(STATUS['plan-died'], { issue, planPath, trace })
       }
       if (samAmend.decision === 'NO-GO') {
         log(`Sam (plan amendment): NO-GO — ${samAmend.rationale || 'see report'}`)
         await updateStatus('Blocked')
-        return finish({ status: 'no-go', reason: samAmend.rationale, plan: samAmend.plan, trace })
+        return finish(STATUS['no-go'], { reason: samAmend.rationale, plan: samAmend.plan, trace })
       }
       samPlan = samAmend.plan
       refreshPlanBlock()
       const acceptanceSynced = await syncAcceptanceBlock(samAmend.acceptanceChecklist, round)
       if (!acceptanceSynced) {
         await updateStatus('Blocked')
-        return finish({ status: 'escalate', reason: 'acceptance-sync-failed', pr, issue, round, trace })
+        return finish(STATUS['escalate'], { reason: 'acceptance-sync-failed', pr, issue, round, trace })
       }
       nickItems = codeItems
       planRouted = true
@@ -3416,13 +3354,13 @@ if (after('review', entryStage)) {
         round,
       )
       if (isAgentDeath(nickFixRound)) {
-        return finish({ status: 'dev-died', pr, issue, round, trace, resumable: true })
+        return finish(STATUS['dev-died'], { pr, issue, round, trace })
       }
       const after = await prSignature('after', round)
       if (after.sha === before.sha && after.body === before.body) {
         log(`Round ${round}: Nick no-op — SHA+body unchanged (${after.sha}). Escalating without re-review.`)
         await updateStatus('Blocked')
-        return finish({ status: 'escalate', reason: 'nick-no-op', round, pr, issue, trace, sha: after.sha })
+        return finish(STATUS['escalate'], { reason: 'nick-no-op', round, pr, issue, trace, sha: after.sha })
       }
       if (after.sha === before.sha) {
         trace.push(`nick-body-only-fix:${round}`)
@@ -3456,7 +3394,7 @@ if (after('review', entryStage)) {
     // Null guard (item 1) — Morgan agent death in loop
     if (v === null) {
       log(`Morgan died (null result) on round ${round} — run is resumable via resumeFromRunId (same-args crash-retry only)`)
-      return finish({ status: 'review-died', pr, issue, round, trace, resumable: true })
+      return finish(STATUS['review-died'], { pr, issue, round, trace })
     }
 
     await recordDecision(round, v.verdict, v.items)
@@ -3471,7 +3409,7 @@ if (after('review', entryStage)) {
     if (v.verdict === 'REQUIRED_CHANGES' && allHumanGate(v.items)) {
       log(`Ready pending human: only human-gate items remain (${v.items.length})`)
       await updateStatus('Pending Human')   // best-effort; no-ops if the option is unconfigured
-      return finish({ status: 'ready-pending-human', pr, issue, round, humanGateItems: v.items, trace, decisionLog, resumable: true })
+      return finish(STATUS['ready-pending-human'], { pr, issue, round, humanGateItems: v.items, trace, decisionLog })
     }
 
     // Plan-defect-persists escalation (issue #97, S13) — evaluated BEFORE same-blocker-twice, and
@@ -3484,8 +3422,8 @@ if (after('review', entryStage)) {
       if (freshPlanRoutes.length > 0) {
         log(`Plan-defect-persists: round ${round} still classifies ${freshPlanRoutes.length} item(s) as plan defect(s) after ${planAmendRounds} amendment round(s) — escalating`)
         await updateStatus('Blocked')
-        return finish({
-          status: 'escalate', reason: 'plan-defect-persists', pr, issue, round,
+        return finish(STATUS['escalate'], {
+          reason: 'plan-defect-persists', pr, issue, round,
           items: freshPlanRoutes.map(r => r.item), trace,
         })
       }
@@ -3495,7 +3433,7 @@ if (after('review', entryStage)) {
     if (round > 0 && v.verdict === 'REQUIRED_CHANGES' && isSubset(prevRoundItems, v.items)) {
       log(`Same-blocker-twice: round ${round} items ⊇ round ${round - 1} items — escalating`)
       await updateStatus('Blocked')
-      return finish({ status: 'escalate', reason: 'same-blocker-twice', pr, issue, round, items: v.items, trace })
+      return finish(STATUS['escalate'], { reason: 'same-blocker-twice', pr, issue, round, items: v.items, trace })
     }
   }
 
@@ -3557,14 +3495,13 @@ if (after('review', entryStage)) {
       trace.push(`mergeable-conflicting:${mergeState.mergeStateStatus || 'DIRTY'}`)
       log(`Mergeability recheck: PR #${pr} reports mergeable=CONFLICTING (mergeStateStatus=${mergeState.mergeStateStatus}) despite LGTM — escalating instead of a false-positive ready (#91/#119)`)
       await updateStatus('Blocked')
-      return finish({ status: 'escalate', reason: 'mergeable-conflicting', pr, issue, round, mergeStateStatus: mergeState.mergeStateStatus || null, trace, decisionLog })
+      return finish(STATUS['escalate'], { reason: 'mergeable-conflicting', pr, issue, round, mergeStateStatus: mergeState.mergeStateStatus || null, trace, decisionLog })
     }
     await squashBeforeHandoff()
   }
 
   await updateStatus(v.verdict === 'LGTM' ? 'PR Ready' : 'Blocked')
-  return finish({
-    status: v.verdict === 'LGTM' ? 'ready' : 'escalate',
+  return finish(v.verdict === 'LGTM' ? STATUS['ready'] : STATUS['escalate'], {
     pr,
     branch: nick?.branch ?? '<unavailable>',
     rounds: round,
