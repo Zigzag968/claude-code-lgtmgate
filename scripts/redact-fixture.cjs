@@ -6,8 +6,9 @@
 // string value and key is redacted on its DECODED form (so `\n`, `\"` inside JSON never
 // confuse the patterns), then re-serialised; other files are treated as plain text.
 // A rule has a `kind`: rewrite (each match of `re` becomes `to`), json-key (the string value of a
-// JSON key whose whole name matches `key` becomes `to`) or refuse (never rewritten: a match
-// stops the run). After the rewrite pass the whole table runs again on the output: a rule that
+// JSON key whose whole name matches `key` becomes `to`, as a parsed key AND as a `"key":"value"` pair
+// in any text: a string holding JSON, `\"key\":\"value\"` included, a .jsonl journal, a raw capture)
+// or refuse (never rewritten: a match stops the run). After the rewrite pass the whole table runs again on the output: a rule that
 // would still act on it is a hit, and any hit refuses. `refused: <file>: <rule> at <json path or
 // line>` goes to stderr (never the value), the exit code is 3 and nothing is written, not even
 // for the other files given.
@@ -44,16 +45,36 @@ const RULES = [
   // signed / tokenized URLs
   { id: 'signed-url', kind: 'rewrite', re: /([?&](?:token|sig|signature|X-Amz-Signature|access_token)=)[^&\s"'`\\]+/gi, to: '$1REDACTED' },
   // the string value of a secret-named JSON key (whole name, any case): `authSecurityBoundarySignal` is not one
-  { id: 'secret-key-value', kind: 'json-key', key: /^(?:apiKey|api_key|secret|password|passwd|token|access_token|refresh_token|client_secret|private_key|authorization)$/i, to: 'REDACTED' },
+  { id: 'secret-key-value', kind: 'json-key', names: ['apiKey', 'api_key', 'secret', 'password', 'passwd', 'token', 'access_token', 'refresh_token', 'client_secret', 'private_key', 'authorization'], to: 'REDACTED' },
   // a PEM private-key header (RSA, EC, OPENSSH, ENCRYPTED...): no safe rewrite, the run refuses
   { id: 'pem-private-key', kind: 'refuse', re: /-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----/ },
 ]
+// A json-key rule compiles once: `key` for a parsed key (whole name), `pairs` for the text form. A pair is the
+// whole key name between quotes, a colon, then a non-empty string value: plain (`"k":"v"`, value up to the
+// first unescaped quote) or backslash-escaped (`\"k\":\"v\"`, as inside a string that holds JSON).
+for (const r of RULES) {
+  if (r.kind !== 'json-key') continue
+  const names = r.names.join('|')
+  r.key = new RegExp(`^(?:${names})$`, 'i')
+  r.pairs = [
+    new RegExp(`(")(${names})("\\s*:\\s*")((?:[^"\\\\]|\\\\.)+)`, 'gi'),
+    new RegExp(`(\\\\")(${names})(\\\\"\\s*:\\s*\\\\")((?:[^"\\\\]|\\\\(?!"))+)`, 'gi'),
+  ]
+}
 const REWRITES = RULES.filter((r) => r.kind === 'rewrite')
 const KEY_RULES = RULES.filter((r) => r.kind === 'json-key')
+
+// `"key":"value"` -> `"key":"<to>"` for the pairs of one json-key rule (the key keeps its spelling)
+function redactPairs(text, r) {
+  let out = text
+  for (const re of r.pairs) out = out.replace(re, (m, open, key, close) => open + key + close + r.to)
+  return out
+}
 
 function redactText(text) {
   let out = text
   for (const r of REWRITES) out = out.replace(r.re, r.to)
+  for (const r of KEY_RULES) out = redactPairs(out, r)
   return out
 }
 
@@ -90,6 +111,7 @@ function stringHits(s) {
   const ids = []
   for (const r of RULES) {
     if (r.kind === 'rewrite' && s.replace(r.re, r.to) !== s) ids.push(r.id)
+    else if (r.kind === 'json-key' && redactPairs(s, r) !== s) ids.push(r.id)
     else if (r.kind === 'refuse' && r.re.test(s)) ids.push(r.id)
   }
   return ids
