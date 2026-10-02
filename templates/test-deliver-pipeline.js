@@ -4090,7 +4090,7 @@ const t182Block = () => {
   const block = extractBetween(src, '// --- acceptanceItems:start ---', '// --- acceptanceItems:end ---')
   if (!block) throw new Error('acceptanceItems:start/:end markers not found in the pipeline source')
   // eslint-disable-next-line no-new-func
-  return new Function(block + '\nreturn { numberItems, renderLine, renderChecklist, parseChecklist, holdsCommandSpan, validateAcceptanceItems, planLacksItems, mapBoxes, nickBlockNote, morganBoxesNote }')()
+  return new Function(block + '\nreturn { numberItems, renderLine, renderChecklist, parseChecklist, itemsFromPlan, holdsCommandSpan, validateAcceptanceItems, planLacksItems, mapBoxes, nickBlockNote, morganBoxesNote }')()
 }
 const T182_ITEMS = [
   { text: '`node scripts/guards.cjs; echo $?` prints `0` as its last line', humanGate: false },
@@ -4416,6 +4416,67 @@ await testCase('T182k plan amendment with items: valid items feed the sync (read
   const e3 = eq('refused amendment: status', r2.status, 'escalate')
   const e4 = eq('refused amendment: reason', r2.reason, 'acceptance-sync-failed')
   return e1 || e2 || e3 || e4 || { ok: true }
+})
+
+// T182l-n (#182, PR #190 review) — the default `semi` flow stops at plan-ready and the Lead relaunches at entryStage dev
+// (then review) with `planText`: no Plan phase runs in that process, so the items are rebuilt from the plan's
+// `<!-- ac:N -->` lines. The plan also holds a task list without ids, which must not become an item.
+const t182PlanText = (ids = true) => '## Plan\n- [ ] step one: a task, not an acceptance item\n\n' + t182Sam(T182_ITEMS, ids).plan
+await testCase('T182l a semi relaunch at entryStage dev with an id-bearing planText: the rebuilt block reaches Nick', async () => {
+  const fns = t182Block()
+  if (!fns) return t182Skip('T182l')
+  const r = await run({ mode: 'semi', entryStage: 'dev', planText: t182PlanText(), simulate: { morgan: [{ verdict: 'LGTM' }] } })
+  const p = String(r.nickPromptPreview || '')
+  const e1 = eq('status', r.status, 'ready')
+  const e2 = includes('Nick prompt carries exactly the rendered block', p, fns.nickBlockNote(t182Lines(T182_ITEMS).join('\n')))
+  const e3 = p.includes('step one') ? { ok: false, msg: 'a task-list line without an id reached the Nick prompt' } : null
+  // The reader itself: a checklist written twice (artifact + index copy) keeps one item per id, a malformed id comment
+  // is not an id, and a plan without any id yields null (the legacy path).
+  const twice = t182PlanText() + '\n## Index copy\n' + t182Lines(T182_ITEMS).join('\n') + '\n- [ ] <!-- ac:x --> not an id\n'
+  const e4 = eq('itemsFromPlan: one item per id', fns.itemsFromPlan(twice), T182_CANON)
+  const e5 = eq('itemsFromPlan: no id -> null', [fns.itemsFromPlan(t182PlanText(false)), fns.itemsFromPlan(''), fns.itemsFromPlan(undefined)], [null, null, null])
+  return e1 || e2 || e3 || e4 || e5 || { ok: true }
+})
+await testCase('T182m a semi relaunch at entryStage review with an id-bearing planText: Morgan boxes are mapped by id', async () => {
+  const r = await run({
+    mode: 'semi',
+    entryStage: 'review',
+    prNumber: 190,
+    planText: t182PlanText(),
+    simulate: {
+      morgan: [{
+        verdict: 'REQUIRED_CHANGES',
+        items: [t182Lines(T182_ITEMS)[1]],
+        boxes: [{ id: 2, proven: false, proof: '' }, { id: 1, proven: true, proof: '0' }, { id: 3, proven: true, proof: 'failed=0' }],
+      }],
+    },
+  })
+  const e1 = eq('status', r.status, 'ready-pending-human')
+  const e2 = eq('boxes', r.boxes, [
+    { id: 1, text: T182_ITEMS[0].text, humanGate: false, proven: true, proof: '0' },
+    { id: 2, text: T182_ITEMS[1].text, humanGate: true, proven: false, proof: '' },
+    { id: 3, text: T182_ITEMS[2].text, humanGate: false, proven: true, proof: 'failed=0' },
+  ])
+  const bad = (r.trace || []).find((t) => String(t).startsWith('boxes-'))
+  const e3 = bad ? { ok: false, msg: `unexpected trace entry ${JSON.stringify(bad)}` } : null
+  return e1 || e2 || e3 || { ok: true }
+})
+await testCase('T182n a relaunch with a legacy planText (no ids): no rendered block for Nick, no boxes from Morgan', async () => {
+  const r1 = await run({ mode: 'semi', entryStage: 'dev', planText: t182PlanText(false), simulate: { morgan: [{ verdict: 'LGTM' }] } })
+  const e1 = eq('dev: status', r1.status, 'ready')
+  const e2 = String(r1.nickPromptPreview || '').includes('rendered the acceptance checklist') ? { ok: false, msg: 'Nick prompt carries a rendered block for a legacy plan' } : null
+  const r2 = await run({
+    mode: 'semi',
+    entryStage: 'review',
+    prNumber: 190,
+    planText: t182PlanText(false),
+    simulate: { morgan: [{ verdict: 'LGTM', boxes: [{ id: 1, proven: true, proof: 'x' }] }] },
+  })
+  const e3 = eq('review: status', r2.status, 'ready')
+  const e4 = eq('review: boxes', r2.boxes, undefined)
+  const bad = [...(r1.trace || []), ...(r2.trace || [])].find((t) => String(t).startsWith('boxes-'))
+  const e5 = bad ? { ok: false, msg: `unexpected trace entry ${JSON.stringify(bad)}` } : null
+  return e1 || e2 || e3 || e4 || e5 || { ok: true }
 })
 
 // T123 (#42) — every test ID is unique across the suite. Must stay the LAST case so `results`

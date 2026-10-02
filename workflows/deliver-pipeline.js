@@ -481,8 +481,9 @@ let samAbsorbedIssues = []  // populated by Sam (#174) — sanitized issue numbe
                              // alongside #<issue>. Defaults to [] (never null) so the Dev-phase
                              // closesLine composer never needs an extra Array.isArray guard.
 let samAcceptanceItems = null  // populated by Sam (#182) — her validated, numbered acceptance items
-                                // [{ id, text, humanGate }]. null = she returned the legacy checklist string
-                                // (or no Plan phase ran in this process: a resume at entryStage dev/review).
+                                // [{ id, text, humanGate }]; on a resume at entryStage dev/review, rebuilt from the
+                                // id-bearing lines of `planText` (itemsFromPlan). null = she returned the legacy
+                                // checklist string, or the resumed plan carries no id (or no planText was given).
 let acceptanceBlock = ''       // renderChecklist(samAcceptanceItems): the lines Nick pastes and Morgan quotes;
                                 // '' when samAcceptanceItems is null, so a legacy run's prompts stay byte-identical.
 
@@ -681,21 +682,34 @@ function parseChecklist(text) {
     if (!(t.startsWith('- [ ]') || t.startsWith('- [x]') || t.startsWith('- [X]'))) continue
     let rest = t.slice(5).trim()
     if (rest === '') continue
-    let id = null
-    if (rest.startsWith(AC_ID_OPEN)) {
-      const end = rest.indexOf('-->')
-      const digits = end > 0 ? rest.slice(AC_ID_OPEN.length, end).trim() : ''
-      if (digits !== '' && [...digits].every((c) => c >= '0' && c <= '9') && Number(digits) >= 1) {
-        id = Number(digits)
-        rest = rest.slice(end + 3).trim()
-      }
-    }
+    const id = leadingId(rest)
+    if (id !== null) rest = rest.slice(rest.indexOf('-->') + 3).trim()
     const g = rest.toLowerCase().indexOf(AC_TAG)
     const humanGate = g >= 0
     if (humanGate) rest = (rest.slice(0, g).trimEnd() + ' ' + rest.slice(g + AC_TAG.length).trimStart()).trim()
     items.push({ id: id === null ? items.length + 1 : id, text: rest, humanGate })
   }
   return items
+}
+// The id N of a box text that starts with a well-formed `<!-- ac:N -->` comment (N a positive integer), else null.
+function leadingId(rest) {
+  if (!rest.startsWith(AC_ID_OPEN)) return null
+  const end = rest.indexOf('-->')
+  const digits = end > 0 ? rest.slice(AC_ID_OPEN.length, end).trim() : ''
+  return digits !== '' && [...digits].every((c) => c >= '0' && c <= '9') && Number(digits) >= 1 ? Number(digits) : null
+}
+// The items of a plan handed to a resumed run (entryStage dev/review, PR #190 review): the checkbox lines of `plan`
+// whose text starts with an `<!-- ac:N -->` id (a task list without ids is not the checklist), parsed by parseChecklist
+// so each keeps its id and [human-gate] flag, the first line per id kept. null when no line carries an id (a plan
+// written before #182): the resumed run then keeps no items and its prompts stay byte-identical.
+function itemsFromPlan(plan) {
+  const idLines = String(plan ?? '').split('\n').filter((l) => {
+    const t = l.trimStart()
+    return (t.startsWith('- [ ]') || t.startsWith('- [x]') || t.startsWith('- [X]')) && leadingId(t.slice(5).trim()) !== null
+  })
+  const seen = new Set()
+  const items = parseChecklist(idLines.join('\n')).filter((item) => !seen.has(item.id) && seen.add(item.id))
+  return items.length ? items : null
 }
 // The first backticked span holding whitespace (a command with arguments), or null. A single-token span (a path,
 // an identifier) is not a command; an unterminated backtick opens no span.
@@ -2584,6 +2598,15 @@ if (samPlan === null && (after('dev', entryStage) || after('review', entryStage)
     planFromArtifact = true
     log(`Resume at entryStage='${entryStage}' without planText — Nick/Morgan will re-read the plan artifact at ${planPath}.`)
   }
+}
+
+// #182 — a resume at entryStage dev/review ran no Plan phase in this process: Sam's items are rebuilt from the
+// `<!-- ac:N -->` lines of `planText` (simulate included: the arg alone decides), so Nick still gets the rendered block
+// and Morgan is still asked for `boxes` by id. A plan without ids keeps today's legacy path (items null, block '').
+if (samAcceptanceItems === null && (entryStage === 'dev' || entryStage === 'review')) {
+  samAcceptanceItems = itemsFromPlan(planText)
+  acceptanceBlock = samAcceptanceItems ? renderChecklist(samAcceptanceItems) : ''
+  if (samAcceptanceItems) log(`Resume at entryStage='${entryStage}': ${samAcceptanceItems.length} acceptance item(s) rebuilt from the ids of planText.`)
 }
 
 // Plan reference block inlined into every downstream prompt (advisory.js style):
