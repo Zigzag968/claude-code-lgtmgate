@@ -136,6 +136,59 @@ cp "$TMP/plant.raw" "$TMP/mix-c.json"
 node "$RF" "$TMP/mix-c.json" >/dev/null 2>&1
 if ! cmp -s "$TMP/mix-c.json" "$TMP/plant.raw"; then ok "all-or-nothing control: the rewritable file alone is rewritten"; else bad "control: the rewritable file was not rewritten"; fi
 
+# ---- secret-named pairs outside parsed JSON keys (a string holding JSON, a text capture) -------------
+# n1.json: the pair sits inside a string value (PROBE line, agent answer); n2.jsonl / n3.raw: text captures;
+# n4.json: truncated, falls back to text mode (one escaped pair, one plain pair).
+cat > "$TMP/n1.json" <<'EOF'
+{"calls":{"p":{"line":"PROBE name=x exit=0 json={\"token\":\"MKS12\"}"},"a":"{\"apiKey\":\"MKS1\"}","c":"{\"Password\": \"MKS15\", \"n\": 2}"},"top":{"password":"MKS9"}}
+EOF
+printf '%s\n%s\n' '{"password":"MKS10"}' '{"event":"x","detail":"{\"client_secret\":\"MKS16\"}"}' > "$TMP/n2.jsonl"
+printf 'out: %s\nnext line\n' '{"token":"MKS11"}' > "$TMP/n3.raw"
+printf '%s' '{"calls":{"a":"{\"refresh_token\":\"MKS13\"}","b":{"authorization":"MKS14"' > "$TMP/n4.json"
+N_ALL="$TMP/n1.json $TMP/n2.jsonl $TMP/n3.raw $TMP/n4.json"
+for f in n1.json n2.jsonl n3.raw n4.json; do
+  node "$RF" --check "$TMP/$f" >"$TMP/o.out" 2>&1; rc=$?
+  if [ "$rc" = 1 ] && grep -qxF "would redact: $TMP/$f" "$TMP/o.out"; then ok "--check: $f holds a secret-named pair outside a parsed key (exit 1)"; else bad "--check $f: exit $rc, $(cat "$TMP/o.out")"; fi
+done
+cp "$TMP/n1.json" "$TMP/n1.orig"
+node "$RF" $N_ALL >"$TMP/o.out" 2>"$TMP/o.err"; rc=$?
+if [ "$rc" = 0 ]; then ok "the four inputs are rewritten (exit 0)"; else bad "n-inputs: exit $rc, $(cat "$TMP/o.err")"; fi
+absent  "string holding JSON: the pairs in a PROBE line and an answer are rewritten, the parsed key too" "$TMP/n1.json" MKS12 MKS1 MKS15 MKS9
+present "string holding JSON: the rest of the PROBE line is kept" "$TMP/n1.json" 'PROBE name=x exit=0 json={\"token\":\"REDACTED\"}' '\"n\": 2'
+absent  ".jsonl: plain and escaped pairs are rewritten" "$TMP/n2.jsonl" MKS10 MKS16
+present ".jsonl: the clean part of the journal is kept" "$TMP/n2.jsonl" '"event":"x"'
+absent  ".raw: the pair in a command output is rewritten" "$TMP/n3.raw" MKS11
+present ".raw: the text around the pair is kept" "$TMP/n3.raw" 'out: {"token":"REDACTED"}' 'next line'
+absent  "truncated .json (text fallback): escaped and plain pairs are rewritten" "$TMP/n4.json" MKS13 MKS14
+for f in n1.json n2.jsonl n3.raw n4.json; do
+  cp "$TMP/$f" "$TMP/$f.once"
+  node "$RF" "$TMP/$f" >"$TMP/o.out" 2>"$TMP/o.err"; rc=$?
+  if [ "$rc" = 0 ] && [ ! -s "$TMP/o.out" ] && cmp -s "$TMP/$f" "$TMP/$f.once"; then ok "idempotent: a second run on $f changes nothing"; else bad "second run $f: exit $rc, output [$(cat "$TMP/o.out")]"; fi
+  node "$RF" --check "$TMP/$f" >"$TMP/o.out" 2>&1; rc=$?
+  if [ "$rc" = 0 ] && [ ! -s "$TMP/o.out" ]; then ok "--check: $f is clean after redaction (exit 0)"; else bad "--check clean $f: exit $rc, $(cat "$TMP/o.out")"; fi
+done
+
+# false-positive guards: look-alike keys, prose, hex values and empty or non-string values stay byte-identical
+HEX="0123456789abcdef0123456789abcdef01234567"
+node -e '
+const hex = process.argv[1]
+const line = "PROBE name=x exit=0 sha=" + hex + " cmd=" + hex + " json={\"authSecurityBoundarySignal\":\"keep-a\",\"tokenCount\":\"keep-b\",\"secretary\":\"keep-c\",\"mytoken\":\"keep-d\",\"token\":\"\",\"password\":null}"
+const prose = "the token is rotated daily; a secret ingredient; set the password later; \"token\" alone, and \"password: soon\""
+process.stdout.write(JSON.stringify({ calls: { p: { line }, q: prose } }, null, 2) + "\n")
+' "$HEX" > "$TMP/g.json"
+node -e '
+const hex = process.argv[1]
+process.stdout.write("{\"authSecurityBoundarySignal\":\"keep-e\",\"tokenCount\":\"keep-f\",\"secretary\":\"keep-g\"}\n" + "{\"line\":\"PROBE sha=" + hex + " cmd=" + hex + "\"}\n" + "a sentence about the token and the password, \"token\" in quotes.\n")
+' "$HEX" > "$TMP/g.jsonl"
+cp "$TMP/g.jsonl" "$TMP/g.raw"
+for f in g.json g.jsonl g.raw; do
+  cp "$TMP/$f" "$TMP/$f.orig"
+  node "$RF" "$TMP/$f" >"$TMP/o.out" 2>"$TMP/o.err"; rc=$?
+  if [ "$rc" = 0 ] && [ ! -s "$TMP/o.out" ] && cmp -s "$TMP/$f" "$TMP/$f.orig"; then ok "false positives: $f is byte-identical (look-alike keys, prose, sha=/cmd= hex, empty values)"; else bad "false positives $f: exit $rc, output [$(cat "$TMP/o.out")]"; fi
+  node "$RF" --check "$TMP/$f" >"$TMP/o.out" 2>&1; rc=$?
+  if [ "$rc" = 0 ]; then ok "false positives: --check $f exits 0"; else bad "--check $f: exit $rc"; fi
+done
+
 rm -rf "$TMP"
 STATUS=ok; [ "$FAIL" -gt 0 ] && STATUS=fail
 echo "[test-redact-fixture] status=$STATUS passed=$PASS failed=$FAIL"
