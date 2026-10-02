@@ -595,67 +595,77 @@ await testCase('preflight fails then passes → ready (no extra Morgan round con
   return e ? e : { ok: true }
 })
 
-// 18. T18 — human-gate short-circuit at round 0
-// Morgan returns only the HUMAN TEST GATE item → pipeline terminates ready-pending-human
+// #182/#183 helpers, defined before the cases that use them (the #228 / human-gate cases below run in id mode).
+// The engine's pure `acceptanceItems` block is extracted from its source and run through `new Function` (as T163 does
+// for engineRules), so the property and table cases exercise the real functions, never a copy. t182Block() returns null
+// only when the suite was not given the pipeline source (the case then logs SKIP); a source without the markers THROWS,
+// so the case FAILs instead of passing vacuously.
+const t182Block = () => {
+  const src = SUITE_ARGS.fpSource
+  if (!src) return null
+  const block = extractBetween(src, '// --- acceptanceItems:start ---', '// --- acceptanceItems:end ---')
+  if (!block) throw new Error('acceptanceItems:start/:end markers not found in the pipeline source')
+  // eslint-disable-next-line no-new-func
+  return new Function(block + '\nreturn { numberItems, renderLine, renderChecklist, parseChecklist, itemsFromPlan, validateAcceptanceItems, planLacksItems, mapBoxes, nickBlockNote, morganBoxesNote, boxLineId, lineKey, humanGateLine, onlyHumanGateLines, parkUntickable }')()
+}
+const T182_ITEMS = [
+  { text: '`node scripts/guards.cjs; echo $?` prints `0` as its last line', humanGate: false },
+  { text: 'the maintainer confirms the plan wording reads well', humanGate: true },
+  { text: '`node scripts/run-flow-suite.cjs | tail -n 1` ends with `failed=0`', humanGate: false },
+]
+// What numberItems must make of T182_ITEMS: { id, text, humanGate } in this key order (the suite compares JSON).
+const T182_CANON = T182_ITEMS.map((it, i) => ({ id: i + 1, text: it.text, humanGate: it.humanGate }))
+// The lines `items` must render to, written BY HAND: an oracle independent of renderChecklist.
+const t182Lines = (items, ids = true) =>
+  items.map((it, i) => `- [ ] ${ids ? `<!-- ac:${i + 1} --> ` : ''}${it.humanGate ? '[human-gate] ' : ''}${it.text}`)
+// A Sam return carrying the items as data AND their lines in the plan text, as the contract asks.
+const t182Sam = (items, ids = true) => ({
+  plan: '## Plan\n1. change it\n\n## Acceptance checklist\n' + t182Lines(items, ids).join('\n') + '\n',
+  acceptanceItems: items,
+})
+// A permissive plan-check model: when a plan is refused, only the script can have refused it.
+const T182_CONFORMING = { 1: { verdict: 'CONFORMING' }, 2: { verdict: 'CONFORMING' } }
+const t182Refusals = (r) => (r.trace || []).filter((t) => String(t).startsWith('acceptance-items-refused:'))
+const t182Skip = (id) => { log(`SKIP — ${id}: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)`); return { ok: true } }
+
+// 18. T18 — human-gate short-circuit at round 0 (#183: an id run, the gate is the item's id, never its text)
+// Morgan returns only the HUMAN TEST GATE box → pipeline terminates ready-pending-human
 // at round 0 (not a REQUIRED_CHANGES loop). Directly replays the real incident.
 await testCase('T18 human-gate short-circuit round 0 → ready-pending-human', async () => {
-  const humanItem = "[human-gate] HUMAN TEST GATE: human runs `python -m app.render --render-id abc123-... --publish`, verifies the output renders correctly, posts approval on the PR"
+  const gate = { text: 'HUMAN TEST GATE: human runs `python -m app.render --render-id abc123-... --publish`, verifies the output renders correctly, posts approval on the PR', humanGate: true }
   const r = await run({
     mode: 'auto',
     simulate: {
-      sam: 'GO',
-      morgan: [{ verdict: 'REQUIRED_CHANGES', items: [humanItem] }],
+      sam: { 1: t182Sam([gate]) },
+      morgan: [{ verdict: 'REQUIRED_CHANGES', items: t182Lines([gate]) }],
     },
   })
   const e1 = eq('status', r.status, 'ready-pending-human')
   const e2 = eq('round', r.round, 0)
-  const e3 = r.humanGateItems && r.humanGateItems.length === 1
-    ? null
-    : { ok: false, msg: `humanGateItems.length: expected 1, got ${r.humanGateItems?.length}` }
-  const e4 = r.resumable === true
-    ? null
-    : { ok: false, msg: `resumable: expected true, got ${r.resumable}` }
-  return (e1 || e2 || e3 || e4) ? (e1 || e2 || e3 || e4) : { ok: true }
+  const e3 = eq('humanGateItems.length', r.humanGateItems?.length, 1)
+  const e4 = eq('resumable', r.resumable, true)
+  return e1 || e2 || e3 || e4 || { ok: true }
 })
 
 // 19. T19 — mixed round loops on real blocker, then terminates
-// round0: [human-gate item + real blocker] → loops; round1: [human-gate only] → ready-pending-human
+// round0: [human-gate box + real blocker] → loops; round1: [human-gate only] → ready-pending-human
 await testCase('T19 mixed round loops on real blocker then human-gate terminates', async () => {
-  const humanItem = '[human-gate] human live-render check, post approval on PR'
+  const items = [{ text: 'human live-render check, post approval on PR', humanGate: true }, { text: '`grep -c FOO file` prints `1`', humanGate: false }]
+  const lines = t182Lines(items)
   const r = await run({
     mode: 'auto',
     simulate: {
-      sam: 'GO',
+      sam: { 1: t182Sam(items) },
       morgan: [
-        { verdict: 'REQUIRED_CHANGES', items: [humanItem, 'fix URL regex'] },
-        { verdict: 'REQUIRED_CHANGES', items: [humanItem] },
+        { verdict: 'REQUIRED_CHANGES', items: [lines[0], lines[1]] },
+        { verdict: 'REQUIRED_CHANGES', items: [lines[0]] },
       ],
     },
   })
   const e1 = eq('status', r.status, 'ready-pending-human')
-  const e2 = r.humanGateItems && r.humanGateItems.length === 1
-    ? null
-    : { ok: false, msg: `humanGateItems.length: expected 1, got ${r.humanGateItems?.length}` }
-  return (e1 || e2) ? (e1 || e2) : { ok: true }
-})
-
-// 20. T20 — normalization catches cosmetic rewording (Part 2)
-// Two cosmetically-reworded copies of one blocker trigger same-blocker-twice escalate.
-// Would fail under the old exact-match isSubset, passes under normalized comparison.
-await testCase('T20 normalization catches cosmetic rewording → same-blocker-twice escalate', async () => {
-  const r = await run({
-    mode: 'auto',
-    simulate: {
-      sam: 'GO',
-      morgan: [
-        { verdict: 'REQUIRED_CHANGES', items: ['Fix URL validation regex'] },
-        { verdict: 'REQUIRED_CHANGES', items: ['fix  url validation regex.'] },
-      ],
-    },
-  })
-  const e1 = eq('status', r.status, 'escalate')
-  const e2 = eq('reason', r.reason, 'same-blocker-twice')
-  return (e1 || e2) ? (e1 || e2) : { ok: true }
+  const e2 = eq('round', r.round, 1)
+  const e3 = eq('humanGateItems.length', r.humanGateItems?.length, 1)
+  return e1 || e2 || e3 || { ok: true }
 })
 
 // 21. T21 — genuinely different blockers still loop (no false early-stop from normalization)
@@ -731,20 +741,27 @@ await testCase('T23b Nick body-only fix (SHA unchanged, body changed) → contin
   return (e1 || e2) ? (e1 || e2) : { ok: true }
 })
 
-// ── #228 — verified-untickable terminal status ──────────────────────────────────────────────
-// Morgan PROVED every box but the tick (`gh pr edit`) is denied by permissions. The workflow must
-// park the run for the Lead (`verified-untickable`) instead of dispatching a Nick round that ends
-// `escalate nick-no-op`. Fail-safe: human-gate items, empty proofs and ciGreen:false never park.
-const UNT_A = '- [ ] `node scripts/run-flow-suite.cjs` ends `failed=0`'
-const UNT_B = '- [ ] `diff templates/pr-acceptance.md .claude/rules/pr-acceptance.md` prints nothing'
-const untOwner = (item, proof = '$ cmd\n(verbatim output)') => ({ item, itemOwner: 'proven-untickable', proof })
+// ── #228, #183 — verified-untickable terminal status ───────────────────────────────────────
+// Morgan PROVED every box but the workflow's tick (the pr-write probe, `--mode tick`) is refused. The run parks for the
+// Lead (`verified-untickable`) instead of dispatching a Nick round that ends `escalate nick-no-op`. The refusal is read
+// from the probe result (here simulate.probes.acceptanceSync === false), never from Morgan's prose. Fail-safe: human
+// gates, empty proofs and ciGreen:false never park. Id runs: Sam returns the items, Morgan returns `boxes`.
+const UNT_ITEMS = [
+  { text: '`node scripts/run-flow-suite.cjs` ends `failed=0`', humanGate: false },
+  { text: '`diff templates/pr-acceptance.md .claude/rules/pr-acceptance.md` prints nothing', humanGate: false },
+]
+const UNT_LINES = t182Lines(UNT_ITEMS)
+const UNT_PROOF = '$ cmd\n(verbatim output)'
+const untBoxes = (...proven) => proven.map((p, i) => ({ id: i + 1, proven: p, proof: p ? UNT_PROOF : '' }))
+const nickTrace = (r) => ((r.trace || []).some(t => /^nick/i.test(String(t))) ? { ok: false, msg: `Nick dispatched: trace=${JSON.stringify(r.trace)}` } : null)
 
-await testCase('T228a all boxes proven-untickable (auto) → verified-untickable, no Nick round, no reason', async () => {
+await testCase('T228a all boxes proven, the tick refused (auto) → verified-untickable, no Nick round, no reason', async () => {
   const r = await run({
     mode: 'auto',
     simulate: {
-      sam: 'GO',
-      morgan: [{ verdict: 'REQUIRED_CHANGES', items: [UNT_A, UNT_B], itemOwners: [untOwner(UNT_A), untOwner(UNT_B)] }],
+      sam: { 1: t182Sam(UNT_ITEMS) },
+      morgan: [{ verdict: 'REQUIRED_CHANGES', items: [UNT_LINES[0], UNT_LINES[1]], boxes: untBoxes(true, true) }],
+      acceptanceSync: false,
       headSha: { 1: 'sha-abc123' },
     },
   })
@@ -753,11 +770,11 @@ await testCase('T228a all boxes proven-untickable (auto) → verified-untickable
   const e3 = eq('untickableItems.length', r.untickableItems?.length, 2)
   const e4 = eq('resumable', r.resumable, true)
   const e5 = eq('reason', r.reason, undefined)
-  const e6 = eq('item verbatim', r.untickableItems?.[0]?.item, UNT_A)
-  const e7 = eq('proof carried', r.untickableItems?.[0]?.proof, '$ cmd\n(verbatim output)')
-  const e8 = (r.trace || []).some(t => /^nick/i.test(String(t))) ? { ok: false, msg: `Nick dispatched: trace=${JSON.stringify(r.trace)}` } : null
+  const e6 = eq('item verbatim', r.untickableItems?.[0]?.item, UNT_LINES[0])
+  const e7 = eq('proof carried', r.untickableItems?.[0]?.proof, UNT_PROOF)
+  const e8 = eq('id carried', r.untickableItems?.map(i => i.id), [1, 2])
   const e9 = includes('trace', r.trace, 'verified-untickable:0')
-  return e1 || e2 || e3 || e4 || e5 || e6 || e7 || e8 || e9 || { ok: true }
+  return e1 || e2 || e3 || e4 || e5 || e6 || e7 || e8 || nickTrace(r) || e9 || { ok: true }
 })
 
 await testCase('T228b semi mode, entryStage:review → verified-untickable (returns before gate(review))', async () => {
@@ -765,8 +782,10 @@ await testCase('T228b semi mode, entryStage:review → verified-untickable (retu
     mode: 'semi',
     entryStage: 'review',
     prNumber: 231,
+    planText: t182Sam(UNT_ITEMS).plan,
     simulate: {
-      morgan: [{ verdict: 'REQUIRED_CHANGES', items: [UNT_A, UNT_B], itemOwners: [untOwner(UNT_A), untOwner(UNT_B)] }],
+      morgan: [{ verdict: 'REQUIRED_CHANGES', items: [UNT_LINES[0], UNT_LINES[1]], boxes: untBoxes(true, true) }],
+      acceptanceSync: false,
     },
   })
   const e1 = eq('status', r.status, 'verified-untickable')
@@ -774,43 +793,31 @@ await testCase('T228b semi mode, entryStage:review → verified-untickable (retu
   return e1 || e2 || { ok: true }
 })
 
-await testCase('T228c [human-gate] line labelled proven-untickable → refused → ready-pending-human, no untickableItems', async () => {
-  const humanItem = '- [ ] [human-gate] human confirms the wording'
+await testCase('T228d a refused tick + a human-gate box → ready-pending-human carrying both lists', async () => {
+  const items = [UNT_ITEMS[0], { text: 'human confirms the D5 status name', humanGate: true }]
+  const lines = t182Lines(items)
   const r = await run({
     mode: 'auto',
     simulate: {
-      sam: 'GO',
-      morgan: [{ verdict: 'REQUIRED_CHANGES', items: [humanItem], itemOwners: [untOwner(humanItem)] }],
+      sam: { 1: t182Sam(items) },
+      morgan: [{ verdict: 'REQUIRED_CHANGES', items: [lines[1]], boxes: untBoxes(true, false) }],
+      acceptanceSync: false,
     },
   })
   const e1 = eq('status', r.status, 'ready-pending-human')
-  const e2 = eq('humanGateItems.length', r.humanGateItems?.length, 1)
-  const e3 = eq('untickableItems', r.untickableItems, undefined)
-  return e1 || e2 || e3 || { ok: true }
-})
-
-await testCase('T228d proven-untickable + [human-gate] → ready-pending-human carrying both lists', async () => {
-  const humanItem = '- [ ] [human-gate] human confirms the D5 status name'
-  const r = await run({
-    mode: 'auto',
-    simulate: {
-      sam: 'GO',
-      morgan: [{ verdict: 'REQUIRED_CHANGES', items: [UNT_A, humanItem], itemOwners: [untOwner(UNT_A)] }],
-    },
-  })
-  const e1 = eq('status', r.status, 'ready-pending-human')
-  const e2 = eq('humanGateItems.length', r.humanGateItems?.length, 1)
+  const e2 = eq('humanGateItems', r.humanGateItems, [lines[1]])
   const e3 = eq('untickableItems.length', r.untickableItems?.length, 1)
-  const e4 = eq('untickable item', r.untickableItems?.[0]?.item, UNT_A)
+  const e4 = eq('untickable item', r.untickableItems?.[0]?.item, lines[0])
   return e1 || e2 || e3 || e4 || { ok: true }
 })
 
-await testCase('T228e empty/whitespace proof → fail-safe legacy path → escalate nick-no-op', async () => {
+await testCase('T228e a checklist-wording owner with a whitespace proof → fail-safe legacy path → escalate nick-no-op', async () => {
+  const line = '- [ ] `grep -c FOO file` prints exactly 1'
   const r = await run({
     mode: 'auto',
     simulate: {
       sam: 'GO',
-      morgan: [{ verdict: 'REQUIRED_CHANGES', items: [UNT_A], itemOwners: [untOwner(UNT_A, '   ')] }, { verdict: 'LGTM' }],
+      morgan: [{ verdict: 'REQUIRED_CHANGES', items: [line], itemOwners: [{ item: line, itemOwner: 'checklist-wording-defect', proof: '   ' }] }, { verdict: 'LGTM' }],
       headSha: { 1: 'sha-abc123' },
     },
   })
@@ -820,12 +827,13 @@ await testCase('T228e empty/whitespace proof → fail-safe legacy path → escal
   return e1 || e2 || e3 || { ok: true }
 })
 
-await testCase('T228f ciGreen:false with all items proven-untickable → not parked (legacy path)', async () => {
+await testCase('T228f ciGreen:false with every box proven and the tick refused → not parked (legacy path)', async () => {
   const r = await run({
     mode: 'auto',
     simulate: {
-      sam: 'GO',
-      morgan: [{ verdict: 'REQUIRED_CHANGES', ciGreen: false, items: [UNT_A], itemOwners: [untOwner(UNT_A)] }, { verdict: 'LGTM' }],
+      sam: { 1: t182Sam([UNT_ITEMS[0]]) },
+      morgan: [{ verdict: 'REQUIRED_CHANGES', ciGreen: false, items: [UNT_LINES[0]], boxes: untBoxes(true) }, { verdict: 'LGTM', boxes: untBoxes(true) }],
+      acceptanceSync: false,
       headSha: { 1: 'sha-abc123' },
     },
   })
@@ -835,20 +843,21 @@ await testCase('T228f ciGreen:false with all items proven-untickable → not par
   return e1 || e2 || e3 || { ok: true }
 })
 
-await testCase('T228g round 0 proven-untickable + real code blocker loops, round 1 only proven-untickable → verified-untickable at round 1', async () => {
+await testCase('T228g round 0 a refused tick + a real code blocker loops, round 1 only the refused tick → verified-untickable at round 1', async () => {
   const r = await run({
     mode: 'auto',
     simulate: {
-      sam: 'GO',
+      sam: { 1: t182Sam(UNT_ITEMS) },
       morgan: [
-        { verdict: 'REQUIRED_CHANGES', items: [UNT_A, 'fix the null guard'], itemOwners: [untOwner(UNT_A)] },
-        { verdict: 'REQUIRED_CHANGES', items: [UNT_A], itemOwners: [untOwner(UNT_A)] },
+        { verdict: 'REQUIRED_CHANGES', items: [UNT_LINES[1]], boxes: untBoxes(true, false) },
+        { verdict: 'REQUIRED_CHANGES', items: [UNT_LINES[0]], boxes: untBoxes(true, true) },
       ],
+      acceptanceSync: false,
     },
   })
   const e1 = eq('status', r.status, 'verified-untickable')
   const e2 = eq('round', r.round, 1)
-  const e3 = eq('untickableItems.length', r.untickableItems?.length, 1)
+  const e3 = eq('untickableItems.length', r.untickableItems?.length, 2)
   return e1 || e2 || e3 || { ok: true }
 })
 
@@ -3304,21 +3313,21 @@ await testCase('T104d provisionCmdPreview: SCRIPT invocation + extraLinks args p
 // (T23b lives next to T23 above; T109-T115 below)
 // ---------------------------------------------------------------------------
 
-// T270 (#107) — every Morgan blocker is a checklist item (structured itemOwner 'checklist-wording-defect'
-// with proof) and plan amendment is off (default): park as verified-untickable, never a Nick round.
+// T270 (#107, #183) — every Morgan blocker is a checklist box (structured itemOwner 'checklist-wording-defect' with
+// proof, matched by the box's id) and plan amendment is off (default): park as verified-untickable, never a Nick round.
 await testCase('T270 all blockers checklist-wording-defect (amend off) → verified-untickable, zero Nick round', async () => {
-  const CHK = '- [ ] `grep -c FOO file` prints exactly 1'
+  const items = [{ text: '`grep -c FOO file` prints exactly 1', humanGate: false }]
+  const line = t182Lines(items)[0]
   const r = await run({
     mode: 'auto',
     simulate: {
-      sam: 'GO',
-      morgan: [{ verdict: 'REQUIRED_CHANGES', items: [CHK], itemOwners: [{ item: CHK, itemOwner: 'checklist-wording-defect', proof: '$ grep -c FOO file\n2' }] }],
+      sam: { 1: t182Sam(items) },
+      morgan: [{ verdict: 'REQUIRED_CHANGES', items: [line], itemOwners: [{ item: line, itemOwner: 'checklist-wording-defect', proof: '$ grep -c FOO file\n2' }] }],
     },
   })
   const e1 = eq('status', r.status, 'verified-untickable')
-  const e2 = eq('untickableItems.length', r.untickableItems?.length, 1)
-  const e3 = (r.trace || []).some(t => /^nick/i.test(String(t))) ? { ok: false, msg: `Nick dispatched: trace=${JSON.stringify(r.trace)}` } : null
-  return e1 || e2 || e3 || { ok: true }
+  const e2 = eq('untickableItems', r.untickableItems, [{ id: 1, item: line, proof: '$ grep -c FOO file\n2' }])
+  return e1 || e2 || nickTrace(r) || { ok: true }
 })
 
 // T271 (#132) — a failed required check reaches Nick's preflight-fix prompt with the failing step name
@@ -3950,22 +3959,6 @@ await testCase('T109j worktreeFreshnessNote: behind:100 → plural "commits"', a
   return { ok: true }
 })
 
-// T9001 (#9) — Morgan's initial AND re-review prompts carry the exact one-line-per-box template that
-// `scripts/lead-merge.sh --tick-from-review` matches (never grouped, never by index). Source-level: the
-// shared UNTICKABLE_LINE_RULE text is present and interpolated into both Morgan prompts.
-await testCase('T9001 Morgan prompts (initial + re-review) require one matchable tick-pending line per untickable box', async () => {
-  const src = SUITE_ARGS.fpSource
-  if (!src) {
-    log('SKIP — T9001: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
-    return { ok: true }
-  }
-  const tpl = '`- [ ] **<box text verbatim>** — verified, tick pending (permissions): <command> -> <verbatim output>`'
-  const e1 = includes('template sentence', src, 'write ONE line per box, exactly ' + tpl)
-  const e2 = includes('never grouped / never by index', src, 'never grouped ("Boxes 1-4"), never cited by index ("Box 2")')
-  const e3 = eq('interpolations in the Morgan prompts', src.split('${UNTICKABLE_LINE_RULE}').length - 1, 2)
-  return (e1 || e2 || e3) ? (e1 || e2 || e3) : { ok: true }
-})
-
 // T9030 (#30) — Morgan's initial AND re-review prompts treat an absent or empty acceptance block as
 // REQUIRED_CHANGES. Source-level: the shared ACCEPTANCE_PRESENCE_RULE literal is present and is
 // interpolated into both Morgan prompts.
@@ -4080,37 +4073,6 @@ await testCase('T86c the engine reads only simulate.probes (#86)', async () => {
 // ---------------------------------------------------------------------------
 // #182 / #169 — the acceptance checklist as data
 // ---------------------------------------------------------------------------
-// The engine's pure `acceptanceItems` block is extracted from its source and run through `new Function` (as T163 does
-// for engineRules), so the property and table cases exercise the real functions, never a copy. t182Block() returns null
-// only when the suite was not given the pipeline source (the case then logs SKIP); a source without the markers THROWS,
-// so the case FAILs instead of passing vacuously.
-const t182Block = () => {
-  const src = SUITE_ARGS.fpSource
-  if (!src) return null
-  const block = extractBetween(src, '// --- acceptanceItems:start ---', '// --- acceptanceItems:end ---')
-  if (!block) throw new Error('acceptanceItems:start/:end markers not found in the pipeline source')
-  // eslint-disable-next-line no-new-func
-  return new Function(block + '\nreturn { numberItems, renderLine, renderChecklist, parseChecklist, itemsFromPlan, validateAcceptanceItems, planLacksItems, mapBoxes, nickBlockNote, morganBoxesNote }')()
-}
-const T182_ITEMS = [
-  { text: '`node scripts/guards.cjs; echo $?` prints `0` as its last line', humanGate: false },
-  { text: 'the maintainer confirms the plan wording reads well', humanGate: true },
-  { text: '`node scripts/run-flow-suite.cjs | tail -n 1` ends with `failed=0`', humanGate: false },
-]
-// What numberItems must make of T182_ITEMS: { id, text, humanGate } in this key order (the suite compares JSON).
-const T182_CANON = T182_ITEMS.map((it, i) => ({ id: i + 1, text: it.text, humanGate: it.humanGate }))
-// The lines `items` must render to, written BY HAND: an oracle independent of renderChecklist.
-const t182Lines = (items, ids = true) =>
-  items.map((it, i) => `- [ ] ${ids ? `<!-- ac:${i + 1} --> ` : ''}${it.humanGate ? '[human-gate] ' : ''}${it.text}`)
-// A Sam return carrying the items as data AND their lines in the plan text, as the contract asks.
-const t182Sam = (items, ids = true) => ({
-  plan: '## Plan\n1. change it\n\n## Acceptance checklist\n' + t182Lines(items, ids).join('\n') + '\n',
-  acceptanceItems: items,
-})
-// A permissive plan-check model: when a plan is refused, only the script can have refused it.
-const T182_CONFORMING = { 1: { verdict: 'CONFORMING' }, 2: { verdict: 'CONFORMING' } }
-const t182Refusals = (r) => (r.trace || []).filter((t) => String(t).startsWith('acceptance-items-refused:'))
-const t182Skip = (id) => { log(`SKIP — ${id}: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)`); return { ok: true } }
 
 // T182a (#182) — parse(render(x)) deep-equals x. First on the three-item list holding a human-gate item, with the
 // rendered lines compared to a hand-written oracle; then as a property over 300 seeded random lists whose texts stress
@@ -4667,6 +4629,188 @@ await testCase('T182t itemsFromPlan: two different id\'d checklists in a plan gi
   const c = await run({ mode: 'semi', entryStage: 'dev', planText: t182Twice, simulate: { morgan: [{ verdict: 'LGTM' }] } })
   const e10 = includes('control: Nick prompt carries the block for the list written twice', String(c.nickPromptPreview || ''), fns.nickBlockNote(t182Lines(T182_ITEMS).join('\n')))
   return e1 || e2 || e3 || e4 || e5 || e6 || e7 || e8 || e9 || e10 || { ok: true }
+})
+
+// ---------------------------------------------------------------------------
+// #183 — the acceptance checklist as data (2/2): the workflow ticks by id, the textual gates are gone
+// ---------------------------------------------------------------------------
+// (T183a-c above belong to an unrelated resume note.) Every case is an id run: Sam returns the items, Morgan returns
+// `boxes` and quotes box lines with their `<!-- ac:N -->` comment. T183d-j are written against the engine behaviour,
+// T183k is the source check of what must no longer exist.
+const T183_PLAIN = [
+  { text: '`node scripts/guards.cjs; echo $?` prints `0` as its last line', humanGate: false },
+  { text: '`bash templates/test-probe-run.sh | tail -n 1` ends with `failed=0`', humanGate: false },
+  { text: '`node scripts/run-flow-suite.cjs | tail -n 1` ends with `failed=0`', humanGate: false },
+]
+const t183Boxes = (...proven) => proven.map((p, i) => ({ id: i + 1, proven: p, proof: p ? `proof ${i + 1}` : '' }))
+const t183Body = (lines) => 'Closes #183\n\n<!-- acceptance:start -->\n' + lines.join('\n') + '\n<!-- acceptance:end -->\n'
+
+await testCase('T183d Morgan proving 2 of 3 boxes leaves exactly ids 1 and 3 ticked in the body, the human gate open', async () => {
+  const lines = t182Lines(T182_ITEMS)
+  const r = await run({
+    mode: 'semi',
+    entryStage: 'review',
+    prNumber: 190,
+    planText: t182PlanText(),
+    simulate: {
+      prBody: t183Body(lines),
+      morgan: [{ verdict: 'REQUIRED_CHANGES', items: [lines[1]], boxes: t183Boxes(true, false, true) }],
+    },
+  })
+  const p = String(r.prBodyPreview || '')
+  const e1 = eq('status', r.status, 'ready-pending-human')
+  const e2 = includes('box 1 ticked', p, '- [x] <!-- ac:1 --> ' + T182_ITEMS[0].text)
+  const e3 = includes('the gate stays open, tag and text intact', p, lines[1])
+  const e4 = includes('box 3 ticked', p, '- [x] <!-- ac:3 --> ' + T182_ITEMS[2].text)
+  const e5 = eq('ticked boxes in the body', p.split('- [x] ').length - 1, 2)
+  const e6 = includes('trace', r.trace || [], 'acceptance-ticked:0')
+  return e1 || e2 || e3 || e4 || e5 || e6 || { ok: true }
+})
+
+await testCase('T183e a refused tick returns verified-untickable with the box ids in untickableItems', async () => {
+  const lines = t182Lines(T183_PLAIN)
+  const r = await run({
+    mode: 'auto',
+    simulate: {
+      sam: { 1: t182Sam(T183_PLAIN) },
+      morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, true, true) }],
+      acceptanceSync: false,
+    },
+  })
+  const e1 = eq('status', r.status, 'verified-untickable')
+  const e2 = eq('untickableItems ids', (r.untickableItems || []).map((i) => i.id), [1, 2, 3])
+  const e3 = eq('untickableItems lines', (r.untickableItems || []).map((i) => i.item), lines)
+  const e4 = eq('resumable', r.resumable, true)
+  const e5 = includes('trace', r.trace || [], 'acceptance-tick-refused:0')
+  return e1 || e2 || e3 || e4 || e5 || nickTrace(r) || { ok: true }
+})
+
+await testCase('T183f a human gate is told by its id, not by a [human-gate] tag in Morgan\'s line', async () => {
+  const untagged = '- [ ] <!-- ac:2 --> ' + T182_ITEMS[1].text
+  const r = await run({ mode: 'auto', simulate: { sam: { 1: t182Sam(T182_ITEMS) }, morgan: [{ verdict: 'REQUIRED_CHANGES', items: [untagged] }] } })
+  const e1 = eq('status', r.status, 'ready-pending-human')
+  const e2 = eq('humanGateItems.length', r.humanGateItems?.length, 1)
+  // Control: the tag alone, on a line with no id comment, is no gate. It is a code blocker (Nick round, then LGTM).
+  const tagOnly = '- [ ] [human-gate] ' + T182_ITEMS[1].text
+  const c = await run({ mode: 'auto', simulate: { sam: { 1: t182Sam(T182_ITEMS) }, morgan: [{ verdict: 'REQUIRED_CHANGES', items: [tagOnly] }, { verdict: 'LGTM' }] } })
+  const e3 = eq('control: status', c.status, 'ready')
+  const e4 = c.humanGateItems === undefined ? null : { ok: false, msg: 'control: a tag without an id was taken for a human gate' }
+  return e1 || e2 || e3 || e4 || { ok: true }
+})
+
+await testCase('T183g a refused tick + an open human gate → ready-pending-human carrying humanGateItems and untickableItems', async () => {
+  const lines = t182Lines(T182_ITEMS)
+  const r = await run({
+    mode: 'auto',
+    simulate: {
+      sam: { 1: t182Sam(T182_ITEMS) },
+      morgan: [{ verdict: 'REQUIRED_CHANGES', items: [lines[1]], boxes: t183Boxes(true, false, true) }],
+      acceptanceSync: false,
+    },
+  })
+  const e1 = eq('status', r.status, 'ready-pending-human')
+  const e2 = eq('humanGateItems', r.humanGateItems, [lines[1]])
+  const e3 = eq('untickableItems ids', (r.untickableItems || []).map((i) => i.id), [1, 3])
+  return e1 || e2 || e3 || { ok: true }
+})
+
+await testCase('T183h an LGTM with a non-gate box not proven is forced to REQUIRED_CHANGES, then ready once every box is proven', async () => {
+  const lines = t182Lines(T183_PLAIN)
+  const r = await run({
+    mode: 'auto',
+    simulate: {
+      sam: { 1: t182Sam(T183_PLAIN) },
+      morgan: [
+        { verdict: 'LGTM', boxes: t183Boxes(true, false, true) },
+        { verdict: 'LGTM', boxes: t183Boxes(true, true, true) },
+      ],
+    },
+  })
+  const e1 = eq('status', r.status, 'ready')
+  const e2 = eq('rounds', r.rounds, 1)
+  const e3 = includes('trace', r.trace || [], 'acceptance-open-lgtm:0')
+  // The unproven box is what the first round blocks on: with a single verdict it is the REQUIRED_CHANGES items (gate(review) pauses a semi run).
+  const s = await run({
+    mode: 'semi',
+    entryStage: 'review',
+    prNumber: 190,
+    planText: t182Sam(T183_PLAIN).plan,
+    simulate: { morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, false, true) }] },
+  })
+  const e4 = eq('semi: status', s.status, 'needs-revision')
+  const e5 = eq('semi: items', s.items, [lines[1]])
+  return e1 || e2 || e3 || e4 || e5 || { ok: true }
+})
+
+await testCase('T183i the same id reworded in two rounds is the same blocker → escalate same-blocker-twice; two different ids loop', async () => {
+  const mk = (n, text) => `- [ ] <!-- ac:${n} --> ${text}`
+  const r = await run({
+    mode: 'auto',
+    simulate: {
+      sam: { 1: t182Sam(T183_PLAIN) },
+      morgan: [
+        { verdict: 'REQUIRED_CHANGES', items: [mk(1, 'Fix URL validation regex')] },
+        { verdict: 'REQUIRED_CHANGES', items: [mk(1, 'the url validation still rejects a valid host')] },
+      ],
+    },
+  })
+  const e1 = eq('status', r.status, 'escalate')
+  const e2 = eq('reason', r.reason, 'same-blocker-twice')
+  const c = await run({
+    mode: 'auto',
+    simulate: {
+      sam: { 1: t182Sam(T183_PLAIN) },
+      morgan: [
+        { verdict: 'REQUIRED_CHANGES', items: [mk(1, 'fix A')] },
+        { verdict: 'REQUIRED_CHANGES', items: [mk(2, 'fix B')] },
+        { verdict: 'LGTM' },
+      ],
+    },
+  })
+  const e3 = eq('control: status', c.status, 'ready')
+  const e4 = eq('control: rounds', c.rounds, 2)
+  return e1 || e2 || e3 || e4 || { ok: true }
+})
+
+await testCase('T183j a checklist-wording blocker on an id is parked (CP-9): verified-untickable, no Nick round; an empty proof is a code blocker', async () => {
+  const items = T183_PLAIN.slice(0, 2)
+  const lines = t182Lines(items)
+  const owner = (proof) => ({ item: lines[0], itemOwner: 'checklist-wording-defect', proof })
+  const r = await run({
+    mode: 'auto',
+    simulate: {
+      sam: { 1: t182Sam(items) },
+      morgan: [{ verdict: 'REQUIRED_CHANGES', items: [lines[0]], boxes: t183Boxes(false, true), itemOwners: [owner('$ grep -c FOO file\n2')] }],
+    },
+  })
+  const e1 = eq('status', r.status, 'verified-untickable')
+  const e2 = eq('untickableItems[0].id', r.untickableItems?.[0]?.id, 1)
+  const e3 = eq('untickableItems[0].item', r.untickableItems?.[0]?.item, lines[0])
+  const c = await run({
+    mode: 'auto',
+    simulate: {
+      sam: { 1: t182Sam(items) },
+      morgan: [{ verdict: 'REQUIRED_CHANGES', items: [lines[0]], boxes: t183Boxes(false, true), itemOwners: [owner('')] }, { verdict: 'LGTM' }],
+      headSha: { 1: 'sha-abc123' },
+    },
+  })
+  const e4 = eq('control: status', c.status, 'escalate')
+  const e5 = eq('control: reason', c.reason, 'nick-no-op')
+  return e1 || e2 || e3 || nickTrace(r) || e4 || e5 || { ok: true }
+})
+
+await testCase('T183k source: the normalisation and the textual gates are gone; Morgan is told the workflow ticks', async () => {
+  const src = SUITE_ARGS.fpSource
+  const fns = t182Block()
+  if (!src || !fns) return t182Skip('T183k')
+  const banned = ['normItem', 'HUMAN_GATE_RE', 'isHumanGate', 'allHumanGate', 'classifyUntickable', 'UNTICKABLE_LINE_RULE', 'proven-untickable']
+  const present = banned.filter((w) => src.includes(w))
+  const e1 = present.length ? { ok: false, msg: `the engine still holds ${JSON.stringify(present)}` } : null
+  const note = fns.morganBoxesNote(t182Lines(T182_ITEMS).join('\n'))
+  const e2 = includes('Morgan note: the workflow ticks', note, 'the workflow ticks by id the boxes you return as proven')
+  const e3 = includes('Morgan note: Morgan does not edit the body', note, 'You do not edit the PR body')
+  const e4 = includes('Morgan note: a gate is proven only when a person checked it', note, 'only when the PR body already shows it checked by a person')
+  return e1 || e2 || e3 || e4 || { ok: true }
 })
 
 // T123 (#42) — every test ID is unique across the suite. Must stay the LAST case so `results`
