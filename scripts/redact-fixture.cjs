@@ -65,7 +65,8 @@ const KEY_RULES = RULES.filter((r) => r.kind === 'json-key')
 
 // End (exclusive index) of the value of an escaped pair, from its first character. Inside a string that holds
 // JSON a quote of the value is serialised `\\\"` (3 backslashes) and a backslash `\\\\` (4): they belong to the
-// value. The closing delimiter is a lone `\"`. A bare quote, or a quote after an even run of backslashes, ends the
+// value, so a value ending in m backslashes is followed by 4m of them and the lone `\"` delimiter (a run of 4m+1:
+// the delimiter is the last backslash). A bare quote, or a quote after an even run of backslashes, ends the
 // outer string (truncated capture): the value stops before it. Only this one nesting level is handled.
 function escapedValueEnd(t, i) {
   while (i < t.length) {
@@ -73,7 +74,8 @@ function escapedValueEnd(t, i) {
     if (t[i] !== '\\') { i++; continue }
     let j = i
     while (t[j] === '\\') j++
-    if (t[j] === '"' && (j - i === 1 || (j - i) % 2 === 0)) return i
+    if (t[j] === '"' && (j - i) % 4 === 1) return j - 1
+    if (t[j] === '"' && (j - i) % 2 === 0) return i
     i = t[j] === '"' ? j + 1 : j
   }
   return i

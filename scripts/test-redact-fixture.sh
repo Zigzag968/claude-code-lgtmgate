@@ -213,6 +213,53 @@ for f in e1.jsonl e2.raw e3.json e4.jsonl e5.json; do
   if [ "$rc" = 0 ] && [ ! -s "$TMP/o.out" ]; then ok "embedded quote: --check $f is clean after redaction (exit 0)"; else bad "embedded quote --check after $f: exit $rc, $(cat "$TMP/o.out")"; fi
 done
 
+# ---- an escaped pair whose value ends in backslashes (review round 4) ---------------------------------------
+# A value ending in m backslashes is serialised as 4m of them, then the lone `\"` closing delimiter: a run of
+# 4m+1 backslashes before the quote. It is the real end of the value, not an embedded quote.
+B8="$B4$B4"
+printf '%s\n%s\n' "{\"m\":\"{${Q1}token${Q1}:${Q1}ZRsec""ret1${B4}${Q1}}\"}" '{"event":"clean"}' > "$TMP/b1.jsonl"
+printf '%s\n%s\n' "{\"m\":\"{${Q1}token${Q1}:${Q1}ZRsec""ret2${B4}${Q1},${Q1}note${Q1}:${Q1}KEEPb2${Q1}}\"}" '{"event":"clean"}' > "$TMP/b2.jsonl"
+printf '%s\n%s\n' "{\"m\":\"{${Q1}token${Q1}:${Q1}ZRsec""ret3${B8}${Q1}}\"}" '{"event":"clean"}' > "$TMP/b3.jsonl"
+printf '%s\n' "{\"m\":\"{${Q1}token${Q1}:${Q1}ZRsec""ret4${B8}${Q1},${Q1}note${Q1}:${Q1}KEEPb4${Q1}}\"}" > "$TMP/b4.jsonl"
+printf '%s' "{\"calls\":{\"a\":\"{${Q1}token${Q1}:${Q1}ZRsec""ret5${B4}${Q1},${Q1}note${Q1}:${Q1}KEEPb5${Q1}}\",\"b\":{\"x\":\"{${Q1}token${Q1}:${Q1}ZRsec""ret6${B8}${Q1},${Q1}note${Q1}:${Q1}KEEPb6${Q1}}\",\"tail\":\"cut" > "$TMP/b5.json"
+for f in b1.jsonl b2.jsonl b3.jsonl b4.jsonl b5.json; do
+  node "$RF" --check "$TMP/$f" >"$TMP/o.out" 2>&1; rc=$?
+  if [ "$rc" = 1 ]; then ok "trailing backslashes: --check $f is not clean before redaction (exit 1)"; else bad "trailing backslashes --check before $f: exit $rc"; fi
+done
+node "$RF" $TMP/b1.jsonl $TMP/b2.jsonl $TMP/b3.jsonl $TMP/b4.jsonl $TMP/b5.json >"$TMP/o.out" 2>"$TMP/o.err"; rc=$?
+if [ "$rc" = 0 ]; then ok "trailing backslashes: the five inputs are rewritten (exit 0)"; else bad "trailing backslashes rewrite: exit $rc, $(cat "$TMP/o.err")"; fi
+absent  "trailing backslashes: no secret value remains" "$TMP/b1.jsonl" ZRsec""ret1
+absent  "trailing backslashes with a following key: no secret value remains" "$TMP/b2.jsonl" ZRsec""ret2
+absent  "trailing backslashes, two of them: no secret value remains" "$TMP/b3.jsonl" ZRsec""ret3
+absent  "trailing backslashes, two of them, with a following key: no secret value remains" "$TMP/b4.jsonl" ZRsec""ret4
+absent  "trailing backslashes in a truncated .json (text fallback): both values are gone" "$TMP/b5.json" ZRsec""ret5 ZRsec""ret6
+present "trailing backslashes: the closing delimiter and the rest of the string are kept (.jsonl)" "$TMP/b1.jsonl" "{\"m\":\"{${Q1}token${Q1}:${Q1}REDACTED${Q1}}\"}" '{"event":"clean"}'
+present "trailing backslashes: the following key is kept (.jsonl)" "$TMP/b2.jsonl" "{\"m\":\"{${Q1}token${Q1}:${Q1}REDACTED${Q1},${Q1}note${Q1}:${Q1}KEEPb2${Q1}}\"}"
+present "trailing backslashes, two of them: the closing delimiter is kept (.jsonl)" "$TMP/b3.jsonl" "{\"m\":\"{${Q1}token${Q1}:${Q1}REDACTED${Q1}}\"}" '{"event":"clean"}'
+present "trailing backslashes, two of them: the following key is kept (.jsonl)" "$TMP/b4.jsonl" "{\"m\":\"{${Q1}token${Q1}:${Q1}REDACTED${Q1},${Q1}note${Q1}:${Q1}KEEPb4${Q1}}\"}"
+present "trailing backslashes in a truncated .json: the surrounding text is kept" "$TMP/b5.json" "${Q1}token${Q1}:${Q1}REDACTED${Q1},${Q1}note${Q1}:${Q1}KEEPb5${Q1}}" "${Q1}token${Q1}:${Q1}REDACTED${Q1},${Q1}note${Q1}:${Q1}KEEPb6${Q1}}" ',"tail":"cut'
+out=$(node -e '
+const fs = require("fs")
+const bad = []
+for (const [f, note] of [["b1.jsonl", undefined], ["b2.jsonl", "KEEPb2"], ["b3.jsonl", undefined], ["b4.jsonl", "KEEPb4"]]) {
+  const lines = fs.readFileSync(process.argv[1] + "/" + f, "utf-8").split("\n").filter(Boolean)
+  try { const inner = JSON.parse(JSON.parse(lines[0]).m); if (inner.token !== "REDACTED" || inner.note !== note) bad.push(f + ":value") } catch (e) { bad.push(f + ":parse") }
+}
+try {
+  const t = JSON.parse(fs.readFileSync(process.argv[1] + "/b5.json", "utf-8") + "\"}}}")
+  const a = JSON.parse(t.calls.a), b = JSON.parse(t.calls.b.x)
+  if (a.token !== "REDACTED" || a.note !== "KEEPb5" || b.token !== "REDACTED" || b.note !== "KEEPb6") bad.push("b5.json:value")
+} catch (e) { bad.push("b5.json:parse") }
+process.stdout.write(bad.join(" "))' "$TMP" 2>&1)
+if [ -z "$out" ]; then ok "trailing backslashes: every inner string still parses as JSON with the secret replaced and the next key intact"; else bad "trailing backslashes, inner JSON: $out"; fi
+for f in b1.jsonl b2.jsonl b3.jsonl b4.jsonl b5.json; do
+  cp "$TMP/$f" "$TMP/$f.once"
+  node "$RF" "$TMP/$f" >"$TMP/o.out" 2>"$TMP/o.err"; rc=$?
+  if [ "$rc" = 0 ] && [ ! -s "$TMP/o.out" ] && cmp -s "$TMP/$f" "$TMP/$f.once"; then ok "trailing backslashes: a second run on $f changes nothing"; else bad "trailing backslashes second run $f: exit $rc, output [$(cat "$TMP/o.out")]"; fi
+  node "$RF" --check "$TMP/$f" >"$TMP/o.out" 2>&1; rc=$?
+  if [ "$rc" = 0 ] && [ ! -s "$TMP/o.out" ]; then ok "trailing backslashes: --check $f is clean after redaction (exit 0)"; else bad "trailing backslashes --check after $f: exit $rc, $(cat "$TMP/o.out")"; fi
+done
+
 # false-positive guards: look-alike keys, prose, hex values and empty or non-string values stay byte-identical
 HEX="0123456789abcdef0123456789abcdef01234567"
 node -e '
