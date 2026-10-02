@@ -9,6 +9,9 @@ Sam drafts the checklist in the plan (posted on the issue). Every item MUST be :
 - **Relevant** — an acceptance criterion that actually matters for what the PR ships.
 - **Verifiable by Morgan** — a concrete command Morgan can run, or an artifact he can inspect.
   Never an item Morgan cannot verify (no "looks good", no manual step out of his reach).
+- **Marked `[human-gate]` only when no command can decide it** — a judgement, an external system out
+  of reach or a product decision. The plan check refuses a `[human-gate]` item that carries a command,
+  in its `command` field or as a backticked command in its text.
 
 Each item is a `- [ ]` line. Nick copies the checklist **verbatim** into the PR body when it opens,
 **between the markers** `<!-- acceptance:start -->` and `<!-- acceptance:end -->`.
@@ -42,6 +45,12 @@ The acceptance block lives between two HTML markers in the body :
 
 The hook (below) inspects **only** the `- [ ]` boxes located between these two markers. The
 template's other checkboxes (remoteconfig section) are out of scope and never block the merge.
+
+Each line carries an id comment, `- [ ] <!-- ac:N --> <criterion>` (N = the 1-based position; a
+human-gate box reads `- [ ] <!-- ac:N --> [human-gate] <criterion>`). The workflow renders the lines
+from the `acceptanceItems` Sam returns, Nick pastes them verbatim and Morgan returns a `boxes` entry
+(`id`, `proven`, `proof`) per id, repeating the `<!-- ac:N -->` comment wherever he quotes a box. A
+body without ids (opened before this format) still parses.
 
 ### Body order (artifact-first)
 The PR body follows a fixed, artifact-first order : `Closes #N` on the first line ->
