@@ -1,6 +1,6 @@
 {
   "name": "169-human-gate-with-command",
-  "note": "Synthetic shape built from the wording of the incident text in issue 169 (the original run data was not retained). Sam first returns a human-gate item whose text carries a bare node -e invocation; the base plan check accepts it, the engine must refuse it before any plan-check call and loop back to Sam, whose second answer drops the human gate. Sam answers hold both the legacy plan text with its checklist lines and the acceptanceItems entries, so the same fixture is valid for the base engine and the branch. plan-check-169-1 is answered CONFORMING on purpose: the base reaches it, the branch never does.",
+  "note": "Synthetic shape built from the incident in issue 169 (the original run data was not retained). Sam first returns a human-gate item that also carries the command deciding it in its structured command field (the node -e render of the incident); the base plan check accepts it, the engine must refuse it before any plan-check call and loop back to Sam, whose second answer drops the human gate. A command written only in an item text is judged by the plan-check model, not by the engine, so it is not replayed here. Sam answers hold both the legacy plan text with its checklist lines and the acceptanceItems entries, so the same fixture is valid for the base engine and the branch. plan-check-169-1 is answered CONFORMING on purpose: the base reaches it, the branch never does.",
   "args": {
     "pluginRoot": "/plugin",
     "issue": 169,
@@ -30,21 +30,22 @@
     },
     "scout-issue-169-1": {
       "decision": "GO",
-      "plan": "## Plan\n1. src/render.js: format the label per locale\n\n## Acceptance checklist\n- [ ] <!-- ac:1 --> `node scripts/guards.cjs; echo $?` prints `0` as its last line\n- [ ] <!-- ac:2 --> [human-gate] Visual check: the PR body pastes verbatim the output of node -e '…render(…, { locale: \"fr-FR\" })' … and the human confirms both\n",
+      "plan": "## Plan\n1. src/render.js: format the label per locale\n\n## Acceptance checklist\n- [ ] <!-- ac:1 --> `node scripts/guards.cjs; echo $?` prints `0` as its last line\n- [ ] <!-- ac:2 --> [human-gate] Visual check: the PR body pastes verbatim the output of the fr-FR locale render and the human confirms both\n",
       "rationale": "",
       "targetFiles": [
         "src/render.js"
       ],
       "absorbedIssues": [],
-      "acceptanceChecklist": "- [ ] <!-- ac:1 --> `node scripts/guards.cjs; echo $?` prints `0` as its last line\n- [ ] <!-- ac:2 --> [human-gate] Visual check: the PR body pastes verbatim the output of node -e '…render(…, { locale: \"fr-FR\" })' … and the human confirms both",
+      "acceptanceChecklist": "- [ ] <!-- ac:1 --> `node scripts/guards.cjs; echo $?` prints `0` as its last line\n- [ ] <!-- ac:2 --> [human-gate] Visual check: the PR body pastes verbatim the output of the fr-FR locale render and the human confirms both",
       "acceptanceItems": [
         {
           "text": "`node scripts/guards.cjs; echo $?` prints `0` as its last line",
           "humanGate": false
         },
         {
-          "text": "Visual check: the PR body pastes verbatim the output of node -e '…render(…, { locale: \"fr-FR\" })' … and the human confirms both",
-          "humanGate": true
+          "text": "Visual check: the PR body pastes verbatim the output of the fr-FR locale render and the human confirms both",
+          "humanGate": true,
+          "command": "node -e '…render(…, { locale: \"fr-FR\" })'"
         }
       ]
     },
