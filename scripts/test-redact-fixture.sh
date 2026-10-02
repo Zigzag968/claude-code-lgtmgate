@@ -168,6 +168,51 @@ for f in n1.json n2.jsonl n3.raw n4.json; do
   if [ "$rc" = 0 ] && [ ! -s "$TMP/o.out" ]; then ok "--check: $f is clean after redaction (exit 0)"; else bad "--check clean $f: exit $rc, $(cat "$TMP/o.out")"; fi
 done
 
+# ---- an escaped pair whose value holds a quote (embedded-quote tail, review round 3) ---------------------
+# In a string that holds JSON, a quote inside the value is serialised `\\\"` (3 backslashes) and a backslash
+# `\\\\`; the closing delimiter is a lone `\"`. Values are assembled from fragments; nesting deeper than
+# one string-in-JSON level is out of scope.
+BS='\'
+Q1="$BS\""
+Q3="$BS$BS$BS\""
+B4="$BS$BS$BS$BS"
+V_REPRO="ab${Q3}ZQsec""ret1"
+V_TWO="Aq${Q3}Bq${B4}Cq${Q3}Dq""ZQsec""ret2"
+PAIR_REPRO="{${Q1}password${Q1}:${Q1}${V_REPRO}${Q1}}"
+PAIR_TWO="{${Q1}token${Q1}:${Q1}${V_TWO}${Q1},${Q1}n${Q1}:2}"
+printf '%s\n%s\n' "{\"out\":\"${PAIR_REPRO}\"}" '{"event":"clean"}' > "$TMP/e1.jsonl"
+printf 'out: %s\nnext line\n' "${PAIR_REPRO}" > "$TMP/e2.raw"
+printf '%s' "{\"calls\":{\"a\":\"${PAIR_REPRO}\",\"b\":{\"x\":\"${PAIR_TWO}\"" > "$TMP/e3.json"
+printf '%s\n' "{\"out\":\"${PAIR_TWO}\"}" > "$TMP/e4.jsonl"
+printf '%s\n' "{\"out\":\"${PAIR_REPRO}\",\"two\":\"${PAIR_TWO}\"}" > "$TMP/e5.json"
+for f in e1.jsonl e2.raw e3.json e4.jsonl e5.json; do
+  node "$RF" --check "$TMP/$f" >"$TMP/o.out" 2>&1; rc=$?
+  if [ "$rc" = 1 ]; then ok "embedded quote: --check $f is not clean before redaction (exit 1)"; else bad "embedded quote --check before $f: exit $rc"; fi
+done
+node "$RF" $TMP/e1.jsonl $TMP/e2.raw $TMP/e3.json $TMP/e4.jsonl $TMP/e5.json >"$TMP/o.out" 2>"$TMP/o.err"; rc=$?
+if [ "$rc" = 0 ]; then ok "embedded quote: the five inputs are rewritten (exit 0)"; else bad "embedded quote rewrite: exit $rc, $(cat "$TMP/o.err")"; fi
+absent  "embedded quote .jsonl: nothing of the value remains" "$TMP/e1.jsonl" ab ZQsec""ret1
+present "embedded quote .jsonl: the pair and the rest of the journal are kept" "$TMP/e1.jsonl" "{\"out\":\"{${Q1}password${Q1}:${Q1}REDACTED${Q1}}\"}" '{"event":"clean"}'
+absent  "embedded quote .raw: nothing of the value remains" "$TMP/e2.raw" ab ZQsec""ret1
+present "embedded quote .raw: the text around the pair is kept" "$TMP/e2.raw" "out: {${Q1}password${Q1}:${Q1}REDACTED${Q1}}" 'next line'
+absent  "embedded quote truncated .json (text fallback): both values are gone" "$TMP/e3.json" ab ZQsec""ret1 Aq Bq Cq Dq ZQsec""ret2
+present "embedded quote truncated .json (text fallback): the surrounding text is kept" "$TMP/e3.json" "${Q1}password${Q1}:${Q1}REDACTED${Q1}}" "${Q1}token${Q1}:${Q1}REDACTED${Q1},${Q1}n${Q1}:2}"
+absent  "embedded quote, two quotes and a backslash (.jsonl): nothing of the value remains" "$TMP/e4.jsonl" Aq Bq Cq Dq ZQsec""ret2
+present "embedded quote, two quotes and a backslash (.jsonl): the pair after the value is kept" "$TMP/e4.jsonl" "{\"out\":\"{${Q1}token${Q1}:${Q1}REDACTED${Q1},${Q1}n${Q1}:2}\"}"
+absent  "embedded quote, parsed .json value: nothing of either value remains" "$TMP/e5.json" ab Aq Bq Cq Dq ZQsec""ret1 ZQsec""ret2
+out=$(node -e '
+const f = JSON.parse(require("fs").readFileSync(process.argv[1], "utf-8"))
+const a = JSON.parse(f.out), b = JSON.parse(f.two)
+process.stdout.write([a.password, b.token, b.n].join("|"))' "$TMP/e5.json" 2>&1)
+if [ "$out" = "REDACTED|REDACTED|2" ]; then ok "embedded quote, parsed .json value: the output parses and the inner JSON is intact"; else bad "embedded quote parsed .json: $out"; fi
+for f in e1.jsonl e2.raw e3.json e4.jsonl e5.json; do
+  cp "$TMP/$f" "$TMP/$f.once"
+  node "$RF" "$TMP/$f" >"$TMP/o.out" 2>"$TMP/o.err"; rc=$?
+  if [ "$rc" = 0 ] && [ ! -s "$TMP/o.out" ] && cmp -s "$TMP/$f" "$TMP/$f.once"; then ok "embedded quote: a second run on $f changes nothing"; else bad "embedded quote second run $f: exit $rc, output [$(cat "$TMP/o.out")]"; fi
+  node "$RF" --check "$TMP/$f" >"$TMP/o.out" 2>&1; rc=$?
+  if [ "$rc" = 0 ] && [ ! -s "$TMP/o.out" ]; then ok "embedded quote: --check $f is clean after redaction (exit 0)"; else bad "embedded quote --check after $f: exit $rc, $(cat "$TMP/o.out")"; fi
+done
+
 # false-positive guards: look-alike keys, prose, hex values and empty or non-string values stay byte-identical
 HEX="0123456789abcdef0123456789abcdef01234567"
 node -e '
