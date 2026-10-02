@@ -698,18 +698,27 @@ function leadingId(rest) {
   const digits = end > 0 ? rest.slice(AC_ID_OPEN.length, end).trim() : ''
   return digits !== '' && [...digits].every((c) => c >= '0' && c <= '9') && Number(digits) >= 1 ? Number(digits) : null
 }
-// The items of a plan handed to a resumed run (entryStage dev/review, PR #190 review): the checkbox lines of `plan`
-// whose text starts with an `<!-- ac:N -->` id (a task list without ids is not the checklist), parsed by parseChecklist
-// so each keeps its id and [human-gate] flag, the first line per id kept. null when no line carries an id (a plan
-// written before #182): the resumed run then keeps no items and its prompts stay byte-identical.
+// The items of a plan handed to a resumed run (entryStage dev/review, PR #190 review). The checklist is every run of
+// consecutive checkbox lines of `plan` that holds an `<!-- ac:N -->` id (a task list without ids is not the checklist),
+// parsed by parseChecklist so each item keeps its id and [human-gate] flag, the first line per id kept (a checklist
+// written twice, artifact + index copy, reads once). All or nothing: a line of the checklist without a valid id, or ids
+// that are not exactly 1..N in order (ids are positions), give null, never a partial list that would drop an item from
+// the block Nick pastes. null too when no line carries an id (a plan written before #182): the resumed run then keeps no
+// items and its prompts stay byte-identical.
 function itemsFromPlan(plan) {
-  const idLines = String(plan ?? '').split('\n').filter((l) => {
+  const isBox = (t) => t.startsWith('- [ ]') || t.startsWith('- [x]') || t.startsWith('- [X]')
+  const hasId = (t) => leadingId(t.slice(5).trim()) !== null
+  const runs = [[]]
+  for (const l of String(plan ?? '').split('\n')) {
     const t = l.trimStart()
-    return (t.startsWith('- [ ]') || t.startsWith('- [x]') || t.startsWith('- [X]')) && leadingId(t.slice(5).trim()) !== null
-  })
+    if (isBox(t)) runs[runs.length - 1].push(t)
+    else if (runs[runs.length - 1].length > 0) runs.push([])
+  }
+  const checklist = runs.filter((run) => run.some(hasId))
+  if (checklist.some((run) => !run.every(hasId))) return null
   const seen = new Set()
-  const items = parseChecklist(idLines.join('\n')).filter((item) => !seen.has(item.id) && seen.add(item.id))
-  return items.length ? items : null
+  const items = parseChecklist(checklist.flat().join('\n')).filter((item) => !seen.has(item.id) && seen.add(item.id))
+  return items.length > 0 && items.every((item, i) => item.id === i + 1) ? items : null
 }
 // The deterministic plan-check for Sam's `acceptanceItems` (#182, #169): [] when the entries are valid, else one
 // sentence per problem, appended to Sam's next prompt by the plan-verification loop. It checks STRUCTURE only: a

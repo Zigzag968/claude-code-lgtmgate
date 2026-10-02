@@ -4440,9 +4440,9 @@ await testCase('T182l a semi relaunch at entryStage dev with an id-bearing planT
   const e1 = eq('status', r.status, 'ready')
   const e2 = includes('Nick prompt carries exactly the rendered block', p, fns.nickBlockNote(t182Lines(T182_ITEMS).join('\n')))
   const e3 = p.includes('step one') ? { ok: false, msg: 'a task-list line without an id reached the Nick prompt' } : null
-  // The reader itself: a checklist written twice (artifact + index copy) keeps one item per id, a malformed id comment
-  // is not an id, and a plan without any id yields null (the legacy path).
-  const twice = t182PlanText() + '\n## Index copy\n' + t182Lines(T182_ITEMS).join('\n') + '\n- [ ] <!-- ac:x --> not an id\n'
+  // The reader itself: a checklist written twice (artifact + index copy) keeps one item per id, and a plan without any
+  // id yields null (the legacy path). A malformed id comment inside the checklist yields null too (all or nothing, T182r).
+  const twice = t182PlanText() + '\n## Index copy\n' + t182Lines(T182_ITEMS).join('\n') + '\n'
   const e4 = eq('itemsFromPlan: one item per id', fns.itemsFromPlan(twice), T182_CANON)
   const e5 = eq('itemsFromPlan: no id -> null', [fns.itemsFromPlan(t182PlanText(false)), fns.itemsFromPlan(''), fns.itemsFromPlan(undefined)], [null, null, null])
   return e1 || e2 || e3 || e4 || e5 || { ok: true }
@@ -4581,6 +4581,33 @@ await testCase('T182q validator checks structure only: prose with backticks or p
   const e3 = eq('a gate with a command field: status', r2.status, 'plan-ready')
   const e4 = eq('a gate with a command field: refusals', t182Refusals(r2), ['acceptance-items-refused:1'])
   return e1 || e2 || e3 || e4 || { ok: true }
+})
+
+// T182r (#182, PR #190 review round 2) — itemsFromPlan is all-or-nothing: a checklist where some lines carry an id and
+// others do not yields null (the legacy path: no block for Nick, no boxes), never a partial list that would drop the
+// id-less item from the block Nick pastes. Same when the lines are spaced by blank lines, or an id comment is malformed.
+const t182Mixed = (sep, middle = t182Lines(T182_ITEMS, false)[1]) =>
+  '## Plan\n- [ ] step one: a task, not an acceptance item\n\n## Acceptance checklist\n' + [t182Lines(T182_ITEMS)[0], middle, t182Lines(T182_ITEMS)[2]].join(sep) + '\n'
+await testCase('T182r a mixed plan (ids on lines 1 and 3, none on line 2) yields no items: a semi relaunch at entryStage dev gets no block note and no boxes', async () => {
+  const fns = t182Block()
+  if (!fns) return t182Skip('T182r')
+  const e1 = eq('itemsFromPlan: mixed, adjacent / blank-separated / malformed id', [
+    fns.itemsFromPlan(t182Mixed('\n')),
+    fns.itemsFromPlan(t182Mixed('\n\n')),
+    fns.itemsFromPlan(t182Mixed('\n', '- [ ] <!-- ac:x --> [human-gate] ' + T182_ITEMS[1].text)),
+  ], [null, null, null])
+  // Control: the same plan with the id on line 2 rebuilds all three items, so the null above is the mix, not the shape.
+  const e2 = eq('itemsFromPlan: control, every line with its id', fns.itemsFromPlan(t182Mixed('\n', t182Lines(T182_ITEMS)[1])), T182_CANON)
+  const r = await run({
+    mode: 'semi',
+    entryStage: 'dev',
+    planText: t182Mixed('\n'),
+    simulate: { morgan: [{ verdict: 'LGTM', boxes: [{ id: 1, proven: true, proof: '0' }, { id: 3, proven: true, proof: 'failed=0' }] }] },
+  })
+  const e3 = eq('status', r.status, 'ready')
+  const e4 = String(r.nickPromptPreview || '').includes('rendered the acceptance checklist') ? { ok: false, msg: 'Nick prompt carries a partial rendered block for a mixed plan' } : null
+  const e5 = eq('boxes', r.boxes, undefined)
+  return e1 || e2 || e3 || e4 || e5 || { ok: true }
 })
 
 // T182s (#169, PR #190 review round 2) — source-anchored: the judgement of a command written in a human-gate item's text
