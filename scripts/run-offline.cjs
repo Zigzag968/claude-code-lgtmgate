@@ -24,6 +24,9 @@
 //                                          // (arg-validation refusals; zero agent() call allowed) — replaces status
 //       "reason": "nick-no-op",            // optional, exact match
 //       "trace": ["Provision", "Diagnose"],// optional, PREFIX match on result.trace
+//       "traceExact": true,                // optional (needs "trace" as an array): result.trace must have exactly
+//                                          // as many entries as "trace" (the prefix match stays, nothing more may follow)
+//       "callLabels": ["probe-1-...", "..."], // optional: the ordered labels of the agent() calls, EXACT equality
 //       "logsInclude": ["..."]             // optional, each substring must appear in a log line
 //     }
 //   }
@@ -75,10 +78,11 @@ function listJson(dir) {
 // A missing entry throws AND is recorded in `missing`: the engine catches most agent()
 // errors on purpose (fail-open probes, agent-death routing), so the harness must fail the
 // fixture itself — a run that "passed" while a call went unanswered proves nothing.
-function buildFixtureAgent(fixture, calls, missing, cursors) {
+function buildFixtureAgent(fixture, calls, missing, cursors, withPrompts = false) {
   return async (prompt, opts) => {
     const label = opts && opts.label
     const entry = { label: label || null, hasSchema: !!(opts && opts.schema) }
+    if (withPrompts) entry.prompt = String(prompt)
     calls.push(entry)
     const head = String(prompt).slice(0, 200)
     if (!label) {
@@ -128,7 +132,7 @@ function findUnused(fixture, calls, cursors) {
   return unused
 }
 
-function check(fixture, result, logs) {
+function check(fixture, result, logs, calls = []) {
   const exp = fixture.expect || {}
   const problems = []
   if (typeof exp.status !== 'string') {
@@ -147,12 +151,71 @@ function check(fixture, result, logs) {
       if (got[i] !== t) problems.push(`trace[${i}]: expected "${t}", got "${got[i]}"`)
     })
   }
+  if (exp.traceExact !== undefined) {
+    if (exp.traceExact !== true && exp.traceExact !== false) problems.push('traceExact: must be true or false')
+    else if (exp.traceExact) {
+      if (!Array.isArray(exp.trace)) problems.push('traceExact: requires expect.trace to be an array')
+      else {
+        const got = Array.isArray(result.trace) ? result.trace : []
+        if (got.length !== exp.trace.length) problems.push(`trace: expected ${exp.trace.length} entries, got ${got.length}`)
+      }
+    }
+  }
+  if (exp.callLabels !== undefined) {
+    if (!Array.isArray(exp.callLabels)) problems.push('callLabels: must be an array')
+    else {
+      const got = calls.map((c) => c.label)
+      if (got.length !== exp.callLabels.length || got.some((l, i) => l !== exp.callLabels[i])) {
+        problems.push(`callLabels: expected ${JSON.stringify(exp.callLabels)}, got ${JSON.stringify(got)}`)
+      }
+    }
+  }
   if (Array.isArray(exp.logsInclude)) {
     for (const needle of exp.logsInclude) {
       if (!logs.some((l) => l.includes(needle))) problems.push(`logs: missing "${needle}"`)
     }
   }
   return problems
+}
+
+// The engine frame of the current call stack as `<line>:<col>` (the body runs inside `new Function`, whose
+// frames read `<anonymous>:L:C`), or `?` when none can be read.
+function engineSite() {
+  const lines = String(new Error().stack).split('\n')
+  for (const l of lines) {
+    const m = /<anonymous>:(\d+):(\d+)/.exec(l)
+    if (m) return `${m[1]}:${m[2]}`
+  }
+  return '?'
+}
+
+// One replay of a fixture through `run` (see buildPipelineRunner). Never throws: an engine error lands in `error`.
+//   sites:   each log(), phase() and agent() call appends its engine call site (`L<line>:<col>`, `P...`,
+//            `A<line>:<col>:<label>`) to `sites`. In-process only: sites shift on any engine edit and are never
+//            written to a fixture.
+//   prompts: each `calls[]` entry also carries the `prompt` string it was called with.
+// The fixture is not modified (args are deep-copied, a replay of the same object can be repeated).
+async function replayFixture(fixture, run, { sites = false, prompts = false } = {}) {
+  const logs = []
+  const calls = []
+  const missing = []
+  const cursors = new Map()
+  const siteList = []
+  let log = (m) => { logs.push(String(m)) }
+  let phase = () => {}
+  let agent = buildFixtureAgent(fixture, calls, missing, cursors, prompts)
+  if (sites) {
+    const logInner = log
+    const phaseInner = phase
+    const agentInner = agent
+    log = (m) => { siteList.push(`L${engineSite()}`); return logInner(m) }
+    phase = (...a) => { siteList.push(`P${engineSite()}`); return phaseInner(...a) }
+    agent = (prompt, opts) => { siteList.push(`A${engineSite()}:${(opts && opts.label) || ''}`); return agentInner(prompt, opts) }
+  }
+  let result
+  let error = null
+  try { result = await run(clone(fixture.args || {}), agent, log, phase) } catch (e) { error = e }
+  return { result, error, logs, calls, missing, cursors, sites: siteList }
 }
 
 async function runOne(fixturePath, fpSrcStripped) {
@@ -164,25 +227,21 @@ async function runOne(fixturePath, fpSrcStripped) {
   if (fixture.args && fixture.args.simulate) {
     throw new Error(`[offline] fixture "${fixture.name}" sets args.simulate — this harness runs the REAL parsers, never simulate mode`)
   }
-  const logs = []
-  const calls = []
-  const missing = []
-  const cursors = new Map()
-  const log = (m) => { logs.push(String(m)) }
-  const agent = buildFixtureAgent(fixture, calls, missing, cursors)
   const run = buildPipelineRunner(fpSrcStripped)
+  const r = await replayFixture(fixture, run)
+  const { logs, calls, missing, cursors } = r
   const expThrows = fixture.expect && fixture.expect.throws
   if (typeof expThrows === 'string') {
-    let err = null
-    try { await run({ ...(fixture.args || {}) }, agent, log, () => {}) } catch (e) { err = e }
+    const err = r.error
     const problems = []
     if (!err) problems.push(`throws: expected an error containing "${expThrows}", but the run did not throw`)
     else if (!String(err.message).includes(expThrows)) problems.push(`throws: expected message containing "${expThrows}", got "${err.message}"`)
     if (calls.length) problems.push(`throws: ${calls.length} agent() call(s) happened before the refusal (${calls.map((c) => c.label || c).join(', ')})`)
     return { fixture, result: { status: 'threw' }, logs, calls, problems, unused: findUnused(fixture, calls, cursors) }
   }
-  const result = await run({ ...(fixture.args || {}) }, agent, log, () => {})
-  const problems = check(fixture, result, logs)
+  if (r.error) throw r.error
+  const result = r.result
+  const problems = check(fixture, result, logs, calls)
   for (const m of missing) problems.push(`unanswered call (engine swallowed the error): ${m}`)
   return { fixture, result, logs, calls, problems, unused: findUnused(fixture, calls, cursors) }
 }
@@ -224,8 +283,13 @@ async function main() {
   process.exit(strict && failed > 0 ? 1 : 0)
 }
 
-main().catch((err) => {
-  console.error(err && err.stack ? err.stack : String(err))
-  process.stdout.write('[offline] status=harness-error passed=0 failed=0\n')
-  process.exit(1)
-})
+// Required by scripts/publish-fixture.cjs; run as a CLI otherwise (spawned or direct use is unchanged).
+module.exports = { stripExports, buildPipelineRunner, replayFixture }
+
+if (require.main === module) {
+  main().catch((err) => {
+    console.error(err && err.stack ? err.stack : String(err))
+    process.stdout.write('[offline] status=harness-error passed=0 failed=0\n')
+    process.exit(1)
+  })
+}

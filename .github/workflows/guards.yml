@@ -7,7 +7,8 @@ name: guards
 #     scripts/guards.cjs (R1 ratchet vs origin/main, all-tests-wired, version floor)
 #   - scripts/run-flow-suite.cjs         : offline flow suite (templates/test-deliver-pipeline.js)
 #   - scripts/run-offline.cjs --all fixtures : record/replay harness with the real parsers
-#   - scripts/test-guards.sh, test-run-offline.sh, test-capture-incident.sh, test-cleanup-worktree.sh,
+#   - scripts/test-guards.sh, test-run-offline.sh, test-capture-incident.sh, test-publish-fixture.sh,
+#     test-redact-fixture.sh, test-cleanup-worktree.sh,
 #     test-verify-workflow-launch.sh, hooks/test-*.sh, templates/test-provision-worktree.sh,
 #     test-blocked-by-check.sh, test-gh-pipeline-status.sh, test-probe-evals.sh,
 #     test-gate-check.sh : per-script regression tests
@@ -50,6 +51,8 @@ jobs:
         run: bash scripts/test-capture-incident.sh
       - name: redact-fixture self-test
         run: bash scripts/test-redact-fixture.sh
+      - name: publish-fixture self-test
+        run: bash scripts/test-publish-fixture.sh
       - name: Stop-supervise watchdog regression test
         run: bash hooks/test-Stop-supervise-runs.sh
       - name: deny-destructive-git hook regression test

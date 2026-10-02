@@ -52,6 +52,48 @@ case "$out" in *"unused:"*) bad "unused printed without the flag: $out";; *"stat
 out=$(node scripts/run-offline.cjs fixtures/smoke/auto-lgtm.json --report-unused 2>&1)
 case "$out" in *"unused:"*) bad "committed smoke fixture reports unused entries: $out";; *"status=ok passed=1"*) ok "report-unused prints nothing on the committed smoke fixture";; *) bad "smoke with flag: $out";; esac
 
+# expect.callLabels / expect.traceExact (opt-in exactness; trace stays a prefix match without traceExact).
+# mk.cjs derives the real labels and trace by replaying the smoke fixture, then writes the variants.
+cat > "$TMP/mk.cjs" <<'JS'
+const fs = require('fs')
+const path = require('path')
+const root = process.cwd()
+const o = require(path.join(root, 'scripts/run-offline.cjs'))
+const run = o.buildPipelineRunner(o.stripExports(fs.readFileSync(path.join(root, 'workflows/deliver-pipeline.js'), 'utf8')))
+const smoke = () => JSON.parse(fs.readFileSync(path.join(root, 'fixtures/smoke/auto-lgtm.json'), 'utf8'))
+const w = (name, f) => fs.writeFileSync(path.join(process.argv[2], name), JSON.stringify(f))
+o.replayFixture(smoke(), run).then((r) => {
+  const labels = r.calls.map((c) => c.label)
+  const trace = r.result.trace
+  let f = smoke(); f.expect.callLabels = labels; w('labels-exact.json', f)
+  f = smoke(); f.expect.callLabels = [labels[1], labels[0], ...labels.slice(2)]; w('labels-swapped.json', f)
+  f = smoke(); f.expect.callLabels = labels.slice(0, -1); w('labels-short.json', f)
+  f = smoke(); f.expect.trace = trace.slice(0, 3); w('trace-prefix.json', f)
+  f = smoke(); f.expect.trace = trace.slice(0, 3); f.expect.traceExact = true; w('trace-truncated.json', f)
+  f = smoke(); f.expect.trace = trace; f.expect.traceExact = true; w('trace-full.json', f)
+  f = smoke(); f.expect.traceExact = true; w('trace-missing.json', f)
+})
+JS
+node "$TMP/mk.cjs" "$TMP"
+
+out=$(node scripts/run-offline.cjs "$TMP/labels-exact.json" 2>&1)
+case "$out" in *"status=ok passed=1"*) pass1=1;; *) pass1=0;; esac
+out=$(node scripts/run-offline.cjs "$TMP/labels-swapped.json" 2>&1)
+case "$out" in *"FAIL:"*"callLabels: expected ["*"], got ["*) fail1=1;; *) fail1=0;; esac
+out=$(node scripts/run-offline.cjs "$TMP/labels-short.json" 2>&1)
+case "$out" in *"FAIL:"*"callLabels: expected ["*) fail2=1;; *) fail2=0;; esac
+if [ "$pass1$fail1$fail2" = "111" ]; then ok "expect.callLabels pins the ordered labels (a swapped pair fails with a callLabels problem, the exact list passes)"; else bad "callLabels: exact=$pass1 swapped=$fail1 short=$fail2"; fi
+
+out=$(node scripts/run-offline.cjs "$TMP/trace-prefix.json" 2>&1)
+case "$out" in *"status=ok passed=1"*) prefix=1;; *) prefix=0;; esac
+out=$(node scripts/run-offline.cjs "$TMP/trace-truncated.json" 2>&1)
+case "$out" in *"FAIL:"*"trace: expected 3 entries, got "*) trunc=1;; *) trunc=0;; esac
+out=$(node scripts/run-offline.cjs "$TMP/trace-full.json" 2>&1)
+case "$out" in *"status=ok passed=1"*) full=1;; *) full=0;; esac
+out=$(node scripts/run-offline.cjs "$TMP/trace-missing.json" 2>&1)
+case "$out" in *"FAIL:"*"traceExact: requires expect.trace to be an array"*) miss=1;; *) miss=0;; esac
+if [ "$prefix$trunc$full$miss" = "1111" ]; then ok "expect.traceExact rejects a truncated trace that prefix matching accepts (and accepts the full trace)"; else bad "traceExact: prefix=$prefix truncated=$trunc full=$full missing=$miss"; fi
+
 rm -rf "$TMP"
 STATUS=ok; [ "$FAIL" -gt 0 ] && STATUS=fail
 echo "[test-run-offline] status=$STATUS passed=$PASS failed=$FAIL"
