@@ -259,8 +259,11 @@ function buildFixture(issue, label, record, calls) {
 
 let createdFile = null // set once the output file is open, so an unexpected error can remove it
 
-// Writes `text` to `file` (mode 600) without ever following a symlink at `file`: git proved the
-// PATH ignored, not whatever a link there points at. A pre-existing regular file is overwritten.
+// Writes `text` to `file` (mode 600) without ever following a symlink at `file` and without
+// touching a file that is not ours alone: git proved the PATH ignored, not the inode behind it.
+// The file is opened WITHOUT truncation and checked on the descriptor (a regular file with a single
+// link) before anything is written; O_NONBLOCK makes a FIFO fail with ENXIO instead of hanging.
+// A pre-existing regular single-link file is overwritten.
 function writePrivate(file, text) {
   let st = null
   try { st = fs.lstatSync(file) } catch (e) { if (!e || e.code !== 'ENOENT') throw e }
@@ -268,15 +271,26 @@ function writePrivate(file, text) {
   const C = fs.constants
   let fd
   try {
-    fd = fs.openSync(file, C.O_WRONLY | C.O_CREAT | C.O_TRUNC | (C.O_NOFOLLOW || 0), 0o600)
+    fd = fs.openSync(file, C.O_WRONLY | C.O_CREAT | (C.O_NOFOLLOW || 0) | (C.O_NONBLOCK || 0), 0o600)
   } catch (e) {
     if (e && e.code === 'ELOOP') refuse(`output file ${file} is a symlink; refusing to write through it`)
+    if (e && e.code === 'ENXIO') refuse(`output file ${file} is not a regular file`)
     throw e
   }
-  createdFile = file
   try {
+    const fst = fs.fstatSync(fd)
+    if (!fst.isFile()) refuse(`output file ${file} is not a regular file`)
+    if (fst.nlink !== 1) refuse(`output file ${file} has more than one hard link; refusing to overwrite a shared file`)
+    createdFile = file
+    fs.ftruncateSync(fd, 0)
     fs.fchmodSync(fd, 0o600)
-    fs.writeSync(fd, text)
+    const buf = Buffer.from(text)
+    let off = 0
+    while (off < buf.length) {
+      const n = fs.writeSync(fd, buf, off, buf.length - off)
+      if (!(n > 0)) throw new Error(`short write to ${file}: no progress after ${off} of ${buf.length} bytes`)
+      off += n
+    }
   } finally {
     fs.closeSync(fd)
   }

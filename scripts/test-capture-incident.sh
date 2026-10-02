@@ -242,6 +242,7 @@ VICTIM="$REPO/tracked/victim.txt"
 OUTSIDE="$TMP/outside.txt"
 printf 'tracked content\n' > "$VICTIM"
 git -C "$REPO" add tracked/victim.txt
+git -C "$REPO" -c user.email=t@example.com -c user.name=t -c commit.gpgsign=false commit -q -m init tracked/victim.txt
 printf 'outside content\n' > "$OUTSIDE"
 symlink_case() { # name link-target
   name="$1"; target="$2"
@@ -262,6 +263,68 @@ symlink_case "output file symlinked to a tracked file" "../tracked/victim.txt"
 symlink_case "output file symlinked outside the repo" "$OUTSIDE"
 symlink_case "output file dangling symlink" "$TMP/does-not-exist.txt"
 [ ! -e "$TMP/does-not-exist.txt" ] && ok "fail-closed dangling symlink target not created" || bad "fail-closed dangling symlink target was created"
+
+# a HARD LINK at the output file is a regular file whose inode is shared: truncating it would
+# overwrite the other path (a tracked file, a file outside the repo). The descriptor is checked
+# (nlink === 1) before anything is written.
+hardlink_case() { # name link-source
+  name="$1"; source="$2"
+  printf 'tracked content\n' > "$VICTIM"; printf 'outside content\n' > "$OUTSIDE"
+  newrun base
+  mkdir -p "$OUTD"
+  ln "$source" "$CAP"
+  before=$(cksum < "$VICTIM")$(cksum < "$OUTSIDE")
+  cap "$RUN" 181 t --out "$OUTD"
+  after=$(cksum < "$VICTIM")$(cksum < "$OUTSIDE")
+  dirty=$(git -C "$REPO" status --porcelain -- tracked/victim.txt)
+  last=$(printf '%s\n' "$OUT" | tail -n 1)
+  case "$OUT" in
+    *"refused:"*"$CAP"*"more than one hard link"*)
+      if [ "$RC" -eq 1 ] && [ "$last" = "[capture-incident] status=refused" ] && [ "$before" = "$after" ] && [ -z "$dirty" ]; then
+        ok "fail-closed $name"
+      else
+        bad "fail-closed $name: rc=$RC last='$last' target changed or git dirty='$dirty'"
+      fi;;
+    *) bad "fail-closed $name: output does not refuse the hard link: rc=$RC target-changed=$([ "$before" = "$after" ] && echo no || echo YES) $OUT";;
+  esac
+}
+hardlink_case "output file hard link to a tracked file" "$VICTIM"
+hardlink_case "output file hard link to a file outside the repo" "$OUTSIDE"
+
+# a FIFO at the output file must not hang the script (open(O_WRONLY) blocks without a reader)
+newrun base
+mkdir -p "$OUTD"
+mkfifo "$CAP"
+rm -f "$TMP/fifo.rc"
+( cd "$REPO" && CLAUDE_PROJECTS_DIR="$PROJ" bash "$ROOT/scripts/capture-incident.sh" "$RUN" 181 t --out "$OUTD" >"$TMP/fifo.out" 2>&1; echo $? > "$TMP/fifo.rc" ) &
+FIFO_PID=$!
+tries=0
+while [ ! -f "$TMP/fifo.rc" ] && [ "$tries" -lt 50 ]; do sleep 0.2; tries=$((tries+1)); done
+if [ -f "$TMP/fifo.rc" ]; then
+  wait "$FIFO_PID" 2>/dev/null
+  RC=$(cat "$TMP/fifo.rc"); OUT=$(cat "$TMP/fifo.out"); last=$(printf '%s\n' "$OUT" | tail -n 1)
+  case "$OUT" in
+    *"refused:"*"$CAP"*"not a regular file"*)
+      if [ "$RC" -eq 1 ] && [ "$last" = "[capture-incident] status=refused" ]; then ok "fail-closed output file is a FIFO"; else bad "fail-closed output file is a FIFO: rc=$RC last='$last'"; fi;;
+    *) bad "fail-closed output file is a FIFO: output does not refuse it: rc=$RC $OUT";;
+  esac
+else
+  # hung: hold the FIFO open read-write for a moment (a stray blocked open succeeds against it) until the job ends
+  tries=0
+  while [ ! -f "$TMP/fifo.rc" ] && [ "$tries" -lt 10 ]; do ( exec 9<>"$CAP"; sleep 1 ); tries=$((tries+1)); done
+  bad "fail-closed output file is a FIFO: the script was still blocked after 10 s (hang)"
+fi
+
+# a pre-existing REGULAR single-link ignored file is still overwritten (and fully truncated)
+newrun base
+mkdir -p "$OUTD"
+node -e 'process.stdout.write("x".repeat(200000))' > "$CAP"
+cap "$RUN" 181 t --out "$OUTD"
+if expect_ok "overwrite regular file" && [ "$(jsq 'f.name')" = '"181-t"' ]; then
+  ok "output file regular single-link ignored file is overwritten and truncated"
+else
+  bad "output file regular overwrite: rc=$RC $OUT"
+fi
 
 # a failed call whose LAST event for its key is `failed` is refused, even with an earlier result for that key
 failed_refusal() { # name mutation
