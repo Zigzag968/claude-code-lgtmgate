@@ -11,6 +11,10 @@
 //   node pr-body-splice.cjs splice <decision-log|acceptance> <preFile> <textFile> <outFile>
 //       exit 0 = spliced and written to outFile; 3 = acceptance markers absent / empty checklist
 //       (NEVER appends); any other non-zero = failure. One trailing "\n" of the text file is stripped.
+//   node pr-body-splice.cjs tick <preFile> <textFile> <outFile> <tickCsv> <keepCsv>
+//       the acceptance block of preFile replaced by the rendered checklist in textFile with each box set by its
+//       `<!-- ac:N -->` id (#183): ids of tickCsv `[x]`, ids of keepCsv keep the state preFile has, the others open.
+//       Same exits as `splice acceptance` (3 = markers absent / empty checklist).
 //   node pr-body-splice.cjs guard <preLen> <postFile>
 //       exit 0 = bodyWriteGuardOk (>= 90 % of the pre length and both acceptance markers), 1 = not ok.
 // No network, no regex outside the block.
@@ -80,6 +84,13 @@ function spliceAcceptanceBlock(body, checklist) {
   const list = String(checklist ?? '').trim()
   if (!list) return null
   const src = String(body ?? '')
+  const span = acceptanceSpan(src)
+  if (span === null) return null
+  return src.slice(0, span.from) + '\n' + list + '\n' + src.slice(span.to)
+}
+// The contents of the acceptance block of `src`, as { from, to } offsets (just after the start marker line, at the start
+// of the end marker line): the LAST marker pair, null when a marker is missing or the end does not follow the start.
+function acceptanceSpan(src) {
   let s = -1
   let sLen = ACCEPTANCE_START.length
   ACCEPTANCE_START_RE.lastIndex = 0
@@ -89,7 +100,42 @@ function spliceAcceptanceBlock(body, checklist) {
   ACCEPTANCE_END_RE.lastIndex = 0
   while ((m = ACCEPTANCE_END_RE.exec(src))) e = m.index
   if (s === -1 || e === -1 || e <= s) return null
-  return src.slice(0, s + sLen) + '\n' + list + '\n' + src.slice(e)
+  return { from: s + sLen, to: e }
+}
+// Ticks the acceptance block by id (#183). Pure. `rendered` is the canonical block (every box open, `<!-- ac:N -->` ids);
+// the block of `body` (the LAST marker pair) is replaced by it with each box set by its id: `[x]` for an id of `tickIds`;
+// an id of `keepIds` (a human gate) keeps the state the body has, so a person's tick survives and the engine never writes a
+// gate `[x]`; any other id is open, so a stale `[x]` is reopened. null, like spliceAcceptanceBlock, when `rendered` is
+// blank or a marker is missing. String operations only.
+function tickAcceptanceBlock(body, rendered, tickIds, keepIds) {
+  const list = String(rendered ?? '').trim()
+  const src = String(body ?? '')
+  const span = acceptanceSpan(src)
+  if (!list || span === null) return null
+  const idOf = (rest) => {
+    if (!rest.startsWith('<!-- ac:')) return null
+    const end = rest.indexOf('-->')
+    const digits = end > 0 ? rest.slice(8, end).trim() : ''
+    return digits !== '' && [...digits].every((c) => c >= '0' && c <= '9') ? Number(digits) : null
+  }
+  const checkedById = new Map()
+  for (const l of src.slice(span.from, span.to).split('\n')) {
+    const t = l.trimStart()
+    const checked = t.startsWith('- [x] ') || t.startsWith('- [X] ')
+    if (!checked && !t.startsWith('- [ ] ')) continue
+    const id = idOf(t.slice(6).trimStart())
+    if (id !== null) checkedById.set(id, checked)
+  }
+  const tick = Array.isArray(tickIds) ? tickIds : []
+  const keep = Array.isArray(keepIds) ? keepIds : []
+  const lines = list.split('\n').map((line) => {
+    if (!line.startsWith('- [ ] ')) return line
+    const id = idOf(line.slice(6))
+    if (id === null) return line
+    const checked = keep.includes(id) ? checkedById.get(id) === true : tick.includes(id)
+    return checked ? '- [x] ' + line.slice(6) : line
+  })
+  return spliceAcceptanceBlock(src, lines.join('\n'))
 }
 
 // Post-write byte/marker guard (issue #87) — protects a PR body read-modify-write against a
@@ -129,6 +175,15 @@ function cli(argv) {
     }
     return 2
   }
+  if (mode === 'tick') {
+    const pre = fs.readFileSync(argv[1], 'utf8')
+    const text = stripOneTrailingNewline(fs.readFileSync(argv[2], 'utf8'))
+    const ids = (csv) => (csv ? String(csv).split(',').map(Number) : [])
+    const out = tickAcceptanceBlock(pre, text, ids(argv[4]), ids(argv[5]))
+    if (out === null) return 3
+    fs.writeFileSync(argv[3], out)
+    return 0
+  }
   if (mode === 'guard') {
     const preLen = Number(argv[1])
     const post = fs.readFileSync(argv[2], 'utf8')
@@ -143,4 +198,4 @@ if (require.main === module) {
   process.exit(rc)
 }
 
-module.exports = { spliceDecisionLogBlock, spliceAcceptanceBlock, bodyWriteGuardOk, composeDecisionLogBlock, upsertDecisionLog }
+module.exports = { spliceDecisionLogBlock, spliceAcceptanceBlock, tickAcceptanceBlock, bodyWriteGuardOk, composeDecisionLogBlock, upsertDecisionLog }

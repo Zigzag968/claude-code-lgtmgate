@@ -488,6 +488,45 @@ text")"
   ok=0; [ "$(res "$OUT")" = "failed/stale-read" ] && [ "$(no_call 'pr edit')" = 1 ] && grep -q 'edited by someone else' "$PWD_/body.md" && ok=1
   check "[151] pr-write.sh body-splice: body changed between the first read and the edit fails stale-read, no edit" "$ok"
 
+  # body-splice --mode tick (#183): the block re-spliced from the rendered checklist, boxes set by id
+  TK_TXT='- [ ] <!-- ac:1 --> first
+- [ ] <!-- ac:2 --> [human-gate] second
+- [ ] <!-- ac:3 --> third'
+  tk_body() { printf 'Closes #1\n\n## What this ships\n- a summary line long enough that rewording two boxes stays far under the ten percent guard\n- another summary line of the same kind, so the body is not only the checklist\n\n## Acceptance checklist\n<!-- acceptance:start -->\n%s\n<!-- acceptance:end -->\n<!-- decision-log:start -->\n<!-- decision-log:end -->\n' "$1" > "$PWD_/body.md"; }
+  tk_body '- [ ] <!-- ac:1 --> first, stale wording
+- [ ] <!-- ac:2 --> [human-gate] second
+- [ ] <!-- ac:3 --> third, stale wording'
+  OUT="$(run_pw body-splice --pr 9 --mode tick --text "$TK_TXT" --ids 1,3 --keep 2)"
+  ok=0; [ "$(res "$OUT")" = "written/-" ] && [ "$(read_first 'pr view' 'pr edit')" = 1 ] \
+    && grep -qxF -- '- [x] <!-- ac:1 --> first' "$PWD_/body.md" && grep -qxF -- '- [ ] <!-- ac:2 --> [human-gate] second' "$PWD_/body.md" \
+    && grep -qxF -- '- [x] <!-- ac:3 --> third' "$PWD_/body.md" && ! grep -q 'stale wording' "$PWD_/body.md" && ok=1
+  check "pr-write.sh body-splice: tick ticks the ids 1,3, leaves 2 open, restores the canonical text" "$ok"
+  tk_body '- [ ] <!-- ac:1 --> first
+- [x] <!-- ac:2 --> [human-gate] second
+- [ ] <!-- ac:3 --> third'
+  OUT="$(run_pw body-splice --pr 9 --mode tick --text "$TK_TXT" --ids 1,3 --keep 2,3)"
+  ok=0; [ "$(res "$OUT")" = "written/-" ] \
+    && grep -qxF -- '- [x] <!-- ac:1 --> first' "$PWD_/body.md" && grep -qxF -- '- [x] <!-- ac:2 --> [human-gate] second' "$PWD_/body.md" \
+    && grep -qxF -- '- [ ] <!-- ac:3 --> third' "$PWD_/body.md" && ok=1
+  check "pr-write.sh body-splice: tick keeps the state of a --keep id from the body ([x] stays, [ ] stays even when listed in --ids)" "$ok"
+  tk_body '- [x] <!-- ac:1 --> first
+- [ ] <!-- ac:2 --> [human-gate] second
+- [ ] <!-- ac:3 --> third'
+  OUT="$(run_pw body-splice --pr 9 --mode tick --text "$TK_TXT" --ids 3 --keep '')"
+  ok=0; [ "$(res "$OUT")" = "written/-" ] \
+    && grep -qxF -- '- [ ] <!-- ac:1 --> first' "$PWD_/body.md" && grep -qxF -- '- [x] <!-- ac:3 --> third' "$PWD_/body.md" && ok=1
+  check "pr-write.sh body-splice: tick reopens a stale [x] of an id in neither list" "$ok"
+  OUT="$(run_pw body-splice --pr 9 --mode tick --text "$TK_TXT" --ids 3 --keep '')"
+  ok=0; [ "$(res "$OUT")" = "skipped/unchanged" ] && [ "$(no_call 'pr edit')" = 1 ] && ok=1
+  check "[183] pr-write.sh tick that changes nothing: skipped/unchanged, no edit" "$ok"
+  printf 'no markers here, long enough body text to matter\n' > "$PWD_/body.md"
+  OUT="$(run_pw body-splice --pr 9 --mode tick --text "$TK_TXT" --ids 1 --keep 2)"
+  ok=0; [ "$(res "$OUT")" = "failed/no-markers" ] && [ "$(no_call 'pr edit')" = 1 ] && ok=1
+  check "pr-write.sh body-splice: tick with the markers absent -> failed/no-markers, never appends, no edit" "$ok"
+  OUT="$(run_pw body-splice --pr 9 --mode tick --text "$TK_TXT" --ids 1,x --keep 2)"
+  ok=0; [ "$(res "$OUT")" = "failed/bad-args" ] && [ "$(no_call 'pr view')" = 1 ] && ok=1
+  check "[183] pr-write.sh tick with a non-digit id: failed/bad-args, nothing read" "$ok"
+
   # parser round trip and the engine/helper block parity
   OUT="$(GH_MINIMIZED=true run_pw minimize --id IC_1)"
   out_rt="$(printf '%s\n' "$OUT" | node -e '
