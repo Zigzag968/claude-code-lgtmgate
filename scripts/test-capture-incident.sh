@@ -85,6 +85,23 @@ switch (mut) {
   case 'countmismatch': rec.agentCount += 1; break
   case 'noresultstatus': rec.result = {}; break
   case 'noagentid': delete rec.workflowProgress[2].agentId; break
+  // ag-3 (scout-issue-123-1, key K): the LAST event of K among result/failed rows decides.
+  case 'failedlast': { // started old-3 K, result K OLD, started ag-3 K, failed K
+    const si = rows.findIndex((x) => x.type === 'started' && x.agentId === 'ag-3')
+    const K = rows[si].key
+    rows.splice(si, 2, started('old-3', K, rows[si].label), result('old-3', K, { decoy: 'OLD' }), rows[si], { type: 'failed', agentId: 'ag-3', key: K })
+    break
+  }
+  case 'failedafter': { // started ag-3 K, result K, failed K
+    const si = rows.findIndex((x) => x.type === 'started' && x.agentId === 'ag-3')
+    rows.splice(si + 2, 0, { type: 'failed', agentId: 'ag-3', key: rows[si].key })
+    break
+  }
+  case 'failedretry': { // started ag-3 K, failed K, result K (a retry)
+    const si = rows.findIndex((x) => x.type === 'started' && x.agentId === 'ag-3')
+    rows.splice(si + 1, 0, { type: 'failed', agentId: 'ag-3', key: rows[si].key })
+    break
+  }
   default: break
 }
 if (mut !== 'nojournal') fs.writeFileSync(path.join(runDir, 'journal.jsonl'), rows.map((r) => JSON.stringify(r)).join('\n') + '\n')
@@ -245,6 +262,21 @@ symlink_case "output file symlinked to a tracked file" "../tracked/victim.txt"
 symlink_case "output file symlinked outside the repo" "$OUTSIDE"
 symlink_case "output file dangling symlink" "$TMP/does-not-exist.txt"
 [ ! -e "$TMP/does-not-exist.txt" ] && ok "fail-closed dangling symlink target not created" || bad "fail-closed dangling symlink target was created"
+
+# a failed call whose LAST event for its key is `failed` is refused, even with an earlier result for that key
+failed_refusal() { # name mutation
+  refusal "$1" "$2" "failed call scout-issue-123-1 key v2:3eb"
+}
+failed_refusal "failed after an earlier pass result" failedlast
+failed_refusal "failed after its own result" failedafter
+
+newrun failedretry
+cap "$RUN" 181 t --out "$OUTD"
+if expect_ok "relaunch failed-then-result"; then
+  want=$(node -e 'process.stdout.write(JSON.stringify(require(process.env.ROOT+"/fixtures/smoke/auto-lgtm.json").calls["scout-issue-123-1"]))')
+  got=$(jsq 'f.calls["scout-issue-123-1"]')
+  [ "$got" = "$want" ] && ok "relaunch failed then a later result (retry) keeps the later result" || bad "relaunch retry: got=$got"
+fi
 
 # ---- usage errors (exit 2, before any filesystem access) ---------------------------------------
 

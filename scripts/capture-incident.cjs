@@ -26,7 +26,8 @@
 // instead of guessing, so a change of layout is loud. `cached` alone is optional (absent = false).
 //
 // The final pass of a relaunched run is the set of agentId values in the record's workflowProgress,
-// never journal order. A result is joined to its start by `key`.
+// never journal order. A result is joined to its start by `key`. A key whose LAST result/failed row
+// is `failed` is refused (a `failed` followed by a later `result`, a retry, is accepted).
 
 const fs = require('fs')
 const os = require('os')
@@ -199,13 +200,17 @@ function finalPass(journalFile, rows, agents) {
   for (const { line, row } of rows) {
     if (row.type === 'started') { startedKeys.add(row.key); startedByAgent.set(row.agentId, { row, line }) }
   }
+  const lastEventByKey = new Map() // key -> { type: 'result'|'failed', line } of its LAST such row
   for (const { line, row } of rows) {
+    if (row.type !== 'result' && row.type !== 'failed') continue
+    lastEventByKey.set(row.key, { type: row.type, line })
     if (row.type !== 'result') continue
     if (!startedKeys.has(row.key)) refuse(`${journalFile}: orphan result for key ${row.key} [line ${line}]`)
     resultByKey.set(row.key, row) // last wins
   }
   const calls = []
   const died = []
+  const failedLast = []
   const finalIds = new Set(agents.map((a) => a.agentId))
   for (const a of agents) {
     const s = startedByAgent.get(a.agentId)
@@ -215,9 +220,14 @@ function finalPass(journalFile, rows, agents) {
     }
     const res = resultByKey.get(s.row.key)
     if (!res) { died.push(`${a.label} key ${s.row.key} [line ${s.line}]`); continue }
+    const last = lastEventByKey.get(s.row.key)
+    if (last.type === 'failed') { failedLast.push(`${a.label} key ${s.row.key} [line ${last.line}]`); continue }
     calls.push({ label: a.label, value: res.result, cached: a.cached })
   }
-  if (died.length) refuse(`${journalFile}: died call ${died.join('; died call ')}`)
+  const causes = []
+  if (died.length) causes.push(`died call ${died.join('; died call ')}`)
+  if (failedLast.length) causes.push(`failed call ${failedLast.join('; failed call ')} (the key's last event is failed, an earlier result is not used)`)
+  if (causes.length) refuse(`${journalFile}: ${causes.join('; ')}`)
   const notes = []
   for (const [agentId, { row, line }] of startedByAgent) {
     if (!finalIds.has(agentId) && !resultByKey.has(row.key)) {
