@@ -9,14 +9,17 @@
 #      A head holding only this script's own bump/merge commits after the reviewed sha (a re-run) is accepted.
 #   1b. declared exceptions (#122): each `exception: <what> — <why> — #N` line between the acceptance markers
 #      (optionally prefixed `- ` or `- [x] `; ` -- ` is accepted as separator too) must parse, name an OPEN issue
-#      #N labelled `tech-debt` (REST), and the PR diff (`git diff origin/main...HEAD`, added lines only) must hold a
-#      `DEBT(#N)` marker. Any failure prints one `FAIL: declared-exception: <reason>` line and exits before any
+#      #N labelled `tech-debt` (REST), and the PR diff (`git diff origin/main...<remote head>`, added lines only) must hold a
+#      `DEBT(#N)` marker. The gates 1b and 1b2 judge the remote head of the PR (fetched, checked against the head sha step 1a
+#      read), never the local branch: step 2 may still fast-forward it. Any failure prints one `FAIL: declared-exception: <reason>` line and exits before any
 #      fetch-merge, bump, push, checks or merge.
 #      The `git fetch origin main` of this step is unconditional (the next step needs it too).
 #   1b2. R2 waivers (#174): in an engine repo (`engineRepo: true` in .claude/pipeline.config.json on origin/main, never the
-#      PR's copy), a PR whose header names (Closes/Fixes/Resolves/Refs #N) a `type:bug` issue and whose diff touches
-#      `workflows/` must add `fixtures/incidents/<N>-*.json`, unless a valid `exception:` line (1b) declares the waiver.
-#      Otherwise one `FAIL: r2-waiver: <reason>` line and exit before any fetch-merge, bump, push, checks or merge.
+#      PR's copy), a PR that names (closing keyword or Refs, `#N`, `<this repo>#N` or its URL, anywhere in the PR body or in a
+#      commit message of the PR) a `type:bug` issue and whose remote head changes `workflows/` (renames not detected; the
+#      BUILD line the bump commit rewrites is not a change) must add or modify `fixtures/incidents/<N>-*.json` holding valid
+#      JSON, unless a valid `exception:` line (1b) declares the waiver. Every issue found is checked; a gh error reading one
+#      refuses. Otherwise one `FAIL: r2-waiver: <reason>` line and exit before any fetch-merge, bump, push, checks or merge.
 #   2. sync: refuse unless on the PR head branch with a clean tree; fetch the head branch and
 #      fast-forward when the remote is ahead (a previous partial run), refuse when diverged.
 #   3. bring the base in LOCALLY: fetch origin/main, `git merge --no-edit origin/main`. On conflict:
@@ -97,28 +100,38 @@ fi
 
 # --- 1. acceptance checklist -------------------------------------------------
 body="$(gh pr view "$PR" -R "$REPO" --json body -q .body)" || die "cannot read PR #$PR body"
-# header_issue_refs <keyword alternation>: the same-repo issue numbers named by `<keyword> #N` in the body's header block
-# ONLY (#119): the lines before the first `## ` line (the PR body order puts `Closes #N` first); fenced code blocks and
-# inline `code` spans are stripped before matching, so proofs quoting `Closes #N` in the acceptance section never count.
-# owner/repo#N never matches, case-insensitive, deduplicated. Used by the R2 waiver gate (1b2) and the issue closing (8).
-header_issue_refs() {
-  printf '%s\n' "$body" | KW="$1" python3 -c '
+# issue_refs <keyword alternation> <header|all> [<owner/repo>]: the issue numbers named by `<keyword> <ref>`. Input on stdin:
+# text chunks separated by NUL (the PR body, then one chunk per commit message), each parsed on its own. Fenced code blocks
+# and inline `code` spans are stripped before matching, so proofs quoting `Closes #N` never count. Case-insensitive,
+# deduplicated. Scope `header` (#119): only the lines before the first `## ` line of a chunk (the PR body order puts
+# `Closes #N` first); `all`: the whole chunk. Without <owner/repo> only `#N` matches (owner/repo#N never does); with it
+# `#N`, `<owner/repo>#N` and `https://github.com/<owner/repo>/issues/N` match, a reference to another repo never does.
+issue_refs() {
+  KW="$1" SCOPE="$2" SAME_REPO="${3:-}" python3 -c '
 import os, re, sys
-head, fenced = [], False
-for line in sys.stdin.read().splitlines():
-    if not fenced and line.startswith("## "):
-        break
-    if re.match(r"\s*(```|~~~)", line):
-        fenced = not fenced
-        continue
-    if not fenced:
-        head.append(re.sub(r"`[^`]*`", " ", line))
+ref = r"#(\d+)"
+if os.environ["SAME_REPO"]:
+    r = re.escape(os.environ["SAME_REPO"])
+    ref = r"(?:#|" + r + r"#|https://github\.com/" + r + r"/issues/)(\d+)"
+pat = re.compile(r"(?<![\w/])(?:" + os.environ["KW"] + r")\s*:?\s+" + ref + r"\b", re.I)
 seen = []
-for m in re.finditer(r"(?<![\w/])(?:" + os.environ["KW"] + r")\s*:?\s+#(\d+)\b", "\n".join(head), re.I):
-    if m.group(1) not in seen:
-        seen.append(m.group(1))
+for chunk in sys.stdin.read().split("\0"):
+    kept, fenced = [], False
+    for line in chunk.splitlines():
+        if os.environ["SCOPE"] == "header" and not fenced and line.startswith("## "):
+            break
+        if re.match(r"\s*(```|~~~)", line):
+            fenced = not fenced
+            continue
+        if not fenced:
+            kept.append(re.sub(r"`[^`]*`", " ", line))
+    for m in pat.finditer("\n".join(kept)):
+        if m.group(1) not in seen:
+            seen.append(m.group(1))
 print("\n".join(seen))'
 }
+# header_issue_refs <keyword alternation>: `#N` references in the body's header block (the issue closing, step 8)
+header_issue_refs() { printf '%s\n' "$body" | issue_refs "$1" header; }
 rc=0
 printf '%s\n' "$body" | acceptance_check_body || rc=$?
 if [ "$rc" -ne 0 ]; then
@@ -170,8 +183,22 @@ for line in sys.stdin.read().splitlines():
     if re.search(r"<!--\s*acceptance:start\s*-->", line):
         inb = True')" || die "cannot parse declared exceptions"
 git fetch origin "+refs/heads/main:refs/remotes/origin/main" || die "git fetch origin main failed"
+# lm_sync_head: the gates below judge the PR head as the remote has it ($lm_head_ref = the fetched tip, checked against the
+# head sha the review check read), never the local branch, which step 2 may still fast-forward (#174).
+lm_head_ref=""
+lm_sync_head() {
+  [ -z "$lm_head_ref" ] || return 0
+  local hb got
+  hb="$(gh pr view "$PR" -R "$REPO" --json headRefName -q .headRefName)" || die "cannot read PR #$PR head branch"
+  [ -n "$hb" ] || die "empty head branch for PR #$PR"
+  git fetch origin "+refs/heads/$hb:refs/remotes/origin/$hb" || die "git fetch origin $hb failed"
+  got="$(git rev-parse "refs/remotes/origin/$hb")" || die "cannot resolve origin/$hb"
+  [ "$got" = "$pr_head" ] || die "FAIL: review-stale: the PR head moved to $got after the review check read $pr_head; re-run"
+  lm_head_ref="$got"
+}
 if [ -n "$exc_lines" ]; then
-  exc_diff="$(git diff origin/main...HEAD | grep -E '^\+' | grep -vE '^\+\+\+ ' || true)"
+  lm_sync_head
+  exc_diff="$(git diff "origin/main...$lm_head_ref" | grep -E '^\+' | grep -vE '^\+\+\+ ' || true)"
   while IFS="$(printf '\t')" read -r kind val; do
     [ -n "$kind" ] || continue
     [ "$kind" = OK ] || exc_fail "malformed line (want: exception: <what> — <why> — #N): $val"
@@ -187,9 +214,13 @@ fi
 
 # --- 1b2. R2 waivers must be declared (#174) -----------------------------------
 # R2 scope = engine repo (`engineRepo: true` in .claude/pipeline.config.json ON origin/main, never the PR's own copy, so a PR
-# cannot switch the rule off) + an issue named by Closes/Fixes/Resolves/Refs #N in the header block labelled `type:bug` +
-# a diff touching workflows/. Such a PR must add fixtures/incidents/<N>-*.json, or carry a valid declared exception (an
-# `exception:` line already validated by 1b above). Local tests first: no gh call unless engine AND scope hold.
+# cannot switch the rule off) + an issue named by a closing keyword or Refs (`#N`, `<this repo>#N` or its URL; anywhere in the
+# PR body or in a commit message of the PR) labelled `type:bug` + a PR head touching workflows/. Such a PR must add or modify
+# fixtures/incidents/<N>-*.json holding valid JSON at the PR head, or carry a valid declared exception (an `exception:` line
+# already validated by 1b above). The PR is the REMOTE head against origin/main (three dots), renames are not detected (a
+# file moved out of workflows/ is still a change there; a fixture moved in is still an addition). The BUILD line the bump
+# commit rewrites is not a workflows/ change (a re-run after a partial run carries that bump). Local tests first: no gh call
+# unless engine holds.
 r2_fail() { echo "FAIL: r2-waiver: $*" >&2; die "PR #$PR R2 waiver not declared; nothing bumped, nothing merged"; }
 if [ -z "$exc_lines" ]; then
   r2_engine=0
@@ -198,16 +229,44 @@ if [ -z "$exc_lines" ]; then
     r2_engine=1
   fi
   if [ "$r2_engine" -eq 1 ]; then
-    r2_changed="$(git diff --name-only origin/main...HEAD)" || die "cannot diff the PR against origin/main"
-    r2_added="$(git diff --name-only --diff-filter=A origin/main...HEAD)" || die "cannot diff the PR against origin/main"
-    if [ "$(printf '%s\n' "$r2_changed" | grep -c '^workflows/' || true)" -gt 0 ]; then
-      r2_refs="$(header_issue_refs 'close[sd]?|fix(?:e[sd])?|resolve[sd]?|refs?')" || die "cannot parse issue references"
+    lm_sync_head
+    r2_range="origin/main...$lm_head_ref"
+    r2_wf="$(git diff --no-renames -U0 "$r2_range" -- workflows/ | WORKFLOW="$WORKFLOW" python3 -c '
+import os, re, sys
+own = "diff --git a/%s b/%s" % (os.environ["WORKFLOW"], os.environ["WORKFLOW"])
+build = re.compile(r"^[+-]const BUILD = \{[^}]*\}\s*;?\s*$")
+blocks = []   # [header, hunk seen, changed lines, extended header lines (mode change, new or deleted file, binary...)]
+for line in sys.stdin.read().split("\n"):
+    if line.startswith("diff --git "):
+        blocks.append([line, False, [], []])
+    elif blocks:
+        if line.startswith("@@"):
+            blocks[-1][1] = True
+        elif blocks[-1][1]:
+            if line and line[0] in "+-":
+                blocks[-1][2].append(line)
+        elif line and not line.startswith(("index ", "--- ", "+++ ")):
+            blocks[-1][3].append(line)
+# a file is a real change unless it is the workflow with hunks made only of BUILD lines (no mode change, not created or deleted)
+print(1 if any(h != own or not seen or not lines or ext or any(not build.match(l) for l in lines) for h, seen, lines, ext in blocks) else 0)')" \
+      || die "cannot diff the PR against origin/main"
+    if [ "$r2_wf" = 1 ]; then
+      r2_fixtures="$(git diff --no-renames --name-status "$r2_range" | awk -F'\t' '$1 == "A" || $1 == "M" { print $2 }')" \
+        || die "cannot diff the PR against origin/main"
+      r2_refs="$({ printf '%s\0' "$body"; git log -z --format=%B "origin/main..$lm_head_ref"; } \
+        | issue_refs 'close[sd]?|fix(?:e[sd])?|resolve[sd]?|refs?' all "$REPO")" || die "cannot parse issue references"
       for n in $r2_refs; do
         info="$(gh api "repos/$REPO/issues/$n" --jq '.state + " " + ([.labels[].name] | join(","))')" || r2_fail "cannot read issue #$n"
         case ",${info#* }," in *,type:bug,*) ;; *) continue ;; esac
-        [ "$(printf '%s\n' "$r2_added" | grep -cE "^fixtures/incidents/$n-[^/]+\.json\$" || true)" -eq 0 ] \
-          || continue
-        r2_fail "issue #$n is type:bug and the PR changes workflows/ but adds no fixtures/incidents/$n-*.json; add the fixture (replayed red on base, green on the branch) or declare the waiver with 'exception: <what> — <why> — #M' in the acceptance block (#M an open tech-debt issue, DEBT(#M) marker in the diff)"
+        covered=0
+        while IFS= read -r fx; do
+          [ -n "$fx" ] || continue
+          if git show "$lm_head_ref:$fx" 2>/dev/null | python3 -c 'import json,sys; json.load(sys.stdin)' >/dev/null 2>&1; then covered=1; break; fi
+        done <<EOX
+$(printf '%s\n' "$r2_fixtures" | grep -E "^fixtures/incidents/$n-[^/]+\.json\$" || true)
+EOX
+        if [ "$covered" -eq 1 ]; then continue; fi
+        r2_fail "issue #$n is type:bug and the PR changes workflows/ but adds or modifies no valid (non-empty JSON) fixtures/incidents/$n-*.json; add the fixture (replayed red on base, green on the branch) or declare the waiver with 'exception: <what> — <why> — #M' in the acceptance block (#M an open tech-debt issue, DEBT(#M) marker in the diff)"
       done
     fi
   fi

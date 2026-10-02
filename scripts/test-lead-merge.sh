@@ -554,7 +554,7 @@ r2_pr_fixture() { # <dir> <path> <content>: feat/x touches workflows/ and writes
 }
 # F1 the script's own bump (BUILD line) is not a workflows/ change: a docs-only PR is not refused on its re-run
 r2_prep r2-rerun 'Closes #30' '' 'open type:bug'; r2_main_cfg "$D" "$R2_ENGINE"; r2_doc "$D"; run "$D" "$R2_BODY" 1; rc1=$?; r2_go
-{ [ "$rc1" -ne 0 ] && [ "$(git -C "$D/work" log --format=%s | grep -c 'chore: bump')" -eq 1 ]; } && r2_merges "docs-only PR re-run after its own bump (BUILD line): merges" || bad "r2-waiver: re-run setup (rc1=$rc1)"
+{ [ "$rc1" -ne 0 ] && [ "$(git -C "$D/work" log --format=%s | grep -c 'chore: bump')" -eq 1 ]; } && r2_merges "docs-only PR re-run after its own bump (BUILD line): merges" || bad "r2-waiver: re-run setup (rc1=$rc1, bumps=$(git -C "$D/work" log --format=%s | grep -c 'chore: bump')): $(tail -3 "$D/out")"
 r2_prep r2-disguised 'Closes #30' '' 'open type:bug'; r2_main_cfg "$D" "$R2_ENGINE"; r2_commit "$D" "chore: bump 0.8.99 (lead-merge)"; r2_go
 r2_refused "workflows/ code under a commit subject imitating the bump: refused (BUILD-only lines are exempt, subjects are not)"
 # F2 the gate reads the remote head of the PR, not the lagging local branch
