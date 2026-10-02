@@ -2,43 +2,74 @@
 'use strict'
 
 // Redacts a fixture (JSON) or any text file before it is committed under fixtures/ — this
-// repo is public. Fixed rule list, no options. JSON files are parsed and every string value
-// is redacted on its DECODED form (so `\n`, `\"` inside JSON never confuse the patterns),
-// then re-serialised; other files are treated as plain text.
-// Replacement values are the ones the `no-private-refs` invariant whitelists
-// (`/Users/you`, `/home/user`), so a redacted fixture never trips that invariant.
+// repo is public. One fixed rule table (RULES), no options. JSON files are parsed and every
+// string value and key is redacted on its DECODED form (so `\n`, `\"` inside JSON never
+// confuse the patterns), then re-serialised; other files are treated as plain text.
+// A rule has a `kind`: rewrite (each match of `re` becomes `to`), json-key (the string value of a
+// JSON key whose whole name matches `key` becomes `to`) or refuse (never rewritten: a match
+// stops the run). After the rewrite pass the whole table runs again on the output: a rule that
+// would still act on it is a hit, and any hit refuses. `refused: <file>: <rule> at <json path or
+// line>` goes to stderr (never the value), the exit code is 3 and nothing is written, not even
+// for the other files given.
+// Every placeholder stays outside the `no-private-refs` pattern table (templates/test-canonical-guards.sh):
+// `/Users/you` and `/home/user` are on its allow list, the others match none of its patterns.
+// Only the shapes listed in RULES are guaranteed; private business content in a fixture is out of this script's reach (the capture and publish tooling minimizes it, #181 and #189).
 // Usage: node scripts/redact-fixture.cjs <file> [<file>...]   (rewrites in place)
 //        node scripts/redact-fixture.cjs --check <file>...     (exit 1 if anything would change)
+// Exit:  0 done · 1 --check: something would change · 2 usage · 3 refused, nothing written
 
 const fs = require('fs')
 
 const RULES = [
   // GitHub tokens (classic, fine-grained, app), API keys (base64url: `_` included)
-  [/\bgh[pousr]_[A-Za-z0-9]{20,}\b/g, 'gh*_REDACTED'],
-  [/\bgithub_pat_[A-Za-z0-9_]{20,}\b/g, 'github_pat_REDACTED'],
-  [/\b(sk|rk)-[A-Za-z0-9_-]{20,}\b/g, '$1-REDACTED'],
-  // home directories and mounted volumes (case-insensitive, like the invariant), keep the tail
-  [/\/users\/[^/\s"'`\\]+/gi, '/Users/you'],
-  [/\/home\/[^/\s"'`\\]+/gi, '/home/user'],
-  [/\/Volumes\/[^/\s"'`\\]+/g, '/Volumes/' + 'disk'],  // split literal: the no-private-refs invariant greps `/Volumes/<name>`
+  { id: 'github-token', kind: 'rewrite', re: /\bgh[pousr]_[A-Za-z0-9]{20,}\b/g, to: 'gh*_REDACTED' },
+  { id: 'github-pat', kind: 'rewrite', re: /\bgithub_pat_[A-Za-z0-9_]{20,}\b/g, to: 'github_pat_REDACTED' },
+  { id: 'sk-rk-key', kind: 'rewrite', re: /\b(sk|rk)-[A-Za-z0-9_-]{20,}\b/g, to: '$1-REDACTED' },
+  // temp directories: the whole path goes (uid, project directory and run id are all session-private);
+  // `/var/folders` may carry the `/private` of its real path
+  { id: 'temp-private-tmp', kind: 'rewrite', re: /\/private\/tmp\/[^\s"'`\\]*/g, to: '/tmp/redacted' },
+  { id: 'temp-var-folders', kind: 'rewrite', re: /(?:\/private)?\/var\/folders\/[^\s"'`\\]*/g, to: '/tmp/redacted' },
+  // home directories, mounted volumes and /opt/<dir> (case-insensitive for the first two, like the invariant): keep the tail
+  { id: 'home-users', kind: 'rewrite', re: /\/users\/[^/\s"'`\\]+/gi, to: '/Users/you' },
+  { id: 'home-linux', kind: 'rewrite', re: /\/home\/[^/\s"'`\\]+/gi, to: '/home/user' },
+  { id: 'volumes', kind: 'rewrite', re: /\/Volumes\/[^/\s"'`\\]+/g, to: '/Volumes/<disk>' },
+  { id: 'opt-dir', kind: 'rewrite', re: /\/opt\/[^/\s"'`\\]+/g, to: '/opt/app' },
+  // dash-encoded paths (a working directory as a directory name, `/` -> `-`): the whole name goes, the user
+  // name cannot be told from the rest; only at a name start, so `smart-home-hub` stays
+  { id: 'dash-users', kind: 'rewrite', re: /(?<![\w.~-])-Users-[\w.-]+/g, to: '-Users-you' },
+  { id: 'dash-home', kind: 'rewrite', re: /(?<![\w.~-])-home-[\w.-]+/g, to: '-home-user' },
+  { id: 'dash-volumes', kind: 'rewrite', re: /(?<![\w.~-])-Volumes-[\w.-]+/g, to: '-Volumes-disk' },
   // emails, except the `git@` SSH remote form (`git@github.com:owner/repo.git` is not personal data)
-  [/\b(?!git@)[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g, 'redacted@example.com'],
+  { id: 'email', kind: 'rewrite', re: /\b(?!git@)[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g, to: 'redacted@example.com' },
   // signed / tokenized URLs
-  [/([?&](?:token|sig|signature|X-Amz-Signature|access_token)=)[^&\s"'`\\]+/gi, '$1REDACTED'],
+  { id: 'signed-url', kind: 'rewrite', re: /([?&](?:token|sig|signature|X-Amz-Signature|access_token)=)[^&\s"'`\\]+/gi, to: '$1REDACTED' },
+  // the string value of a secret-named JSON key (whole name, any case): `authSecurityBoundarySignal` is not one
+  { id: 'secret-key-value', kind: 'json-key', key: /^(?:apiKey|api_key|secret|password|passwd|token|access_token|refresh_token|client_secret|private_key|authorization)$/i, to: 'REDACTED' },
+  // a PEM private-key header (RSA, EC, OPENSSH, ENCRYPTED...): no safe rewrite, the run refuses
+  { id: 'pem-private-key', kind: 'refuse', re: /-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----/ },
 ]
+const REWRITES = RULES.filter((r) => r.kind === 'rewrite')
+const KEY_RULES = RULES.filter((r) => r.kind === 'json-key')
 
 function redactText(text) {
   let out = text
-  for (const [re, rep] of RULES) out = out.replace(re, rep)
+  for (const r of REWRITES) out = out.replace(r.re, r.to)
   return out
 }
+
+// The json-key rule that acts on this key/value: a non-empty string under a secret-named key
+// (null, numbers, booleans, objects, arrays and '' hold nothing to hide).
+const keyRule = (k, v) => (typeof v === 'string' && v !== '' ? KEY_RULES.find((r) => r.key.test(k)) : undefined)
 
 function redactValue(v) {
   if (typeof v === 'string') return redactText(v)
   if (Array.isArray(v)) return v.map(redactValue)
   if (v && typeof v === 'object') {
     const out = {}
-    for (const k of Object.keys(v)) out[redactText(k)] = redactValue(v[k])
+    for (const k of Object.keys(v)) {
+      const r = keyRule(k, v[k])
+      out[redactText(k)] = r ? r.to : redactValue(v[k])
+    }
     return out
   }
   return v
@@ -53,6 +84,45 @@ function redactFile(raw, isJson) {
   return redactText(raw)
 }
 
+// The ids of the rules that would still act on a string: a rewrite that would change it, a refuse that matches it.
+// A placeholder its own rule matches again is not a hit (rewriting it gives the same string).
+function stringHits(s) {
+  const ids = []
+  for (const r of RULES) {
+    if (r.kind === 'rewrite' && s.replace(r.re, r.to) !== s) ids.push(r.id)
+    else if (r.kind === 'refuse' && r.re.test(s)) ids.push(r.id)
+  }
+  return ids
+}
+
+// [rule id, location] for every hit in the output. Location: `$.a.b[0]` for a JSON value, `line N` for text.
+// A hit inside a key is located at `<key>`: the key itself is never printed.
+const step = (k) => (/^[A-Za-z_]\w*$/.test(k) ? `.${k}` : `[${JSON.stringify(k)}]`)
+function jsonHits(v, at, found) {
+  if (typeof v === 'string') for (const id of stringHits(v)) found.push([id, at])
+  else if (Array.isArray(v)) v.forEach((x, i) => jsonHits(x, `${at}[${i}]`, found))
+  else if (v && typeof v === 'object') {
+    for (const k of Object.keys(v)) {
+      const inKey = stringHits(k)
+      const here = inKey.length ? `${at}.<key>` : at + step(k)
+      for (const id of inKey) found.push([id, here])
+      const r = keyRule(k, v[k])
+      if (r && v[k] !== r.to) found.push([r.id, here])
+      jsonHits(v[k], here, found)
+    }
+  }
+  return found
+}
+function textHits(text) {
+  const found = []
+  text.split('\n').forEach((line, i) => { for (const id of stringHits(line)) found.push([id, `line ${i + 1}`]) })
+  return found
+}
+function hitsOf(output, isJson) {
+  if (isJson) { try { return jsonHits(JSON.parse(output), '$', []) } catch (e) { /* not JSON: scanned as text */ } }
+  return textHits(output)
+}
+
 const argv = process.argv.slice(2)
 const check = argv[0] === '--check'
 const files = check ? argv.slice(1) : argv
@@ -60,18 +130,29 @@ if (!files.length) {
   process.stderr.write('usage: node scripts/redact-fixture.cjs [--check] <file>...\n')
   process.exit(2)
 }
-let dirty = 0
-for (const f of files) {
+// Every file is redacted and re-scanned before any is written: one hit refuses the whole run.
+const runs = files.map((f) => {
   const before = fs.readFileSync(f, 'utf-8')
-  const after = redactFile(before, f.endsWith('.json'))
-  // compare on content, not formatting: a JSON file is re-serialised by this script
-  const same = f.endsWith('.json')
-    ? (() => { try { return JSON.stringify(JSON.parse(before)) === JSON.stringify(JSON.parse(after)) } catch (e) { return before === after } })()
-    : before === after
-  if (!same) {
-    dirty++
-    if (check) process.stdout.write(`would redact: ${f}\n`)
-    else { fs.writeFileSync(f, after); process.stdout.write(`redacted: ${f}\n`) }
+  const isJson = f.endsWith('.json')
+  const after = redactFile(before, isJson)
+  return { f, isJson, before, after, hits: hitsOf(after, isJson) }
+})
+const refused = runs.flatMap((r) => r.hits.map(([id, at]) => `refused: ${r.f}: ${id} at ${at}`))
+if (refused.length) {
+  process.stderr.write(refused.join('\n') + '\n')
+  process.exitCode = 3
+} else {
+  let dirty = 0
+  for (const { f, isJson, before, after } of runs) {
+    // compare on content, not formatting: a JSON file is re-serialised by this script
+    const same = isJson
+      ? (() => { try { return JSON.stringify(JSON.parse(before)) === JSON.stringify(JSON.parse(after)) } catch (e) { return before === after } })()
+      : before === after
+    if (!same) {
+      dirty++
+      if (check) process.stdout.write(`would redact: ${f}\n`)
+      else { fs.writeFileSync(f, after); process.stdout.write(`redacted: ${f}\n`) }
+    }
   }
+  process.exitCode = check && dirty ? 1 : 0
 }
-process.exit(check && dirty ? 1 : 0)
