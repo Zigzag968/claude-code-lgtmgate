@@ -711,13 +711,74 @@ function itemsFromPlan(plan) {
   const items = parseChecklist(idLines.join('\n')).filter((item) => !seen.has(item.id) && seen.add(item.id))
   return items.length ? items : null
 }
-// The first backticked span holding whitespace (a command with arguments), or null. A single-token span (a path,
-// an identifier) is not a command; an unterminated backtick opens no span.
+// What counts as a command in a human-gate item's text (#169, PR #190 review) — a closed rule, string operations only:
+// - a code span (a run of N backticks closed by the next run of exactly N, as Markdown reads it) of two or more words
+//   is a command when its first word is a known executable (COMMAND_NAMES, exact case) or a path (PATH_PREFIXES), or
+//   when a later word is a flag (`-x`, `--xy`: one or two dashes, then a letter), or when it holds a shell operator
+//   (SHELL_OPERATORS); a one-word span (a path, an identifier, `README.md`) is never a command;
+// - outside the code spans, a bare invocation is a command: a known executable word followed by a flag, a path or a
+//   word that opens with a quote (`node -e '…'`, `bash scripts/x.sh`).
+// UI copy (`No items yet`), a Markdown heading (`## What this ships`) and a breadcrumb (`Settings > Privacy`) match
+// none: `>` and `<` are not operators here, a redirect is caught by its executable. Known limit: lowercase UI copy that
+// starts with an executable name (`go back`) reads as a command; the refusal says to reword it without the command.
+const COMMAND_NAMES = ['node', 'npm', 'npx', 'pnpm', 'yarn', 'bash', 'sh', 'zsh', 'grep', 'egrep', 'rg', 'sed', 'awk', 'cat',
+  'ls', 'test', 'git', 'gh', 'python', 'python3', 'pip', 'make', 'curl', 'jq', 'diff', 'cmp', 'wc', 'find', 'xargs', 'echo',
+  'printf', 'cd', 'swift', 'xcodebuild', 'cargo', 'go', 'docker']
+const PATH_PREFIXES = ['./', '../', '/', '~/', 'scripts/']
+const SHELL_OPERATORS = ['|', '&&', ';', '$(']
+const QUOTES = ['\'', '"', '‘', '’', '“', '”']
+const wordsOf = (s) => s.split('\t').join(' ').split('\n').join(' ').split(' ').filter((w) => w !== '')
+const isPath = (w) => PATH_PREFIXES.some((p) => w.startsWith(p))
+const isFlag = (w) => {
+  const c = w.startsWith('--') ? w[2] : (w.startsWith('-') ? w[1] : undefined)
+  return c !== undefined && c.toLowerCase() !== c.toUpperCase()
+}
+// The code spans of `text`, in order: [{ start, end, content }] (content trimmed); an unmatched backtick run is literal.
+function codeSpans(text) {
+  const s = String(text)
+  const runAt = (i) => { let n = 0; while (s[i + n] === '`') n++; return n }
+  const spans = []
+  let i = 0
+  while (i < s.length) {
+    if (s[i] !== '`') { i++; continue }
+    const n = runAt(i)
+    let j = i + n
+    let close = -1
+    while (j < s.length) {
+      if (s[j] !== '`') { j++; continue }
+      const m = runAt(j)
+      if (m === n) { close = j; break }
+      j += m
+    }
+    if (close < 0) { i += n; continue }
+    spans.push({ start: i, end: close + n, content: s.slice(i + n, close).trim() })
+    i = close + n
+  }
+  return spans
+}
+function isCommandSpan(content) {
+  const words = wordsOf(content)
+  if (words.length < 2) return false
+  return COMMAND_NAMES.includes(words[0]) || isPath(words[0]) || words.slice(1).some(isFlag) ||
+    SHELL_OPERATORS.some((op) => content.includes(op))
+}
+// The first code span of `text` that is a command (rule above), or null.
 function holdsCommandSpan(text) {
-  const parts = String(text).split('`')
-  for (let i = 1; i + 1 < parts.length; i += 2) {
-    const s = parts[i].trim()
-    if (s.includes(' ') || s.includes('\t')) return s
+  const span = codeSpans(text).find((sp) => isCommandSpan(sp.content))
+  return span ? span.content : null
+}
+// The first bare invocation outside the code spans of `text` (rule above), as `<executable> <next word>`, or null.
+function holdsBareCommand(text) {
+  const s = String(text)
+  let outside = ''
+  let from = 0
+  for (const sp of codeSpans(s)) { outside += s.slice(from, sp.start) + ' '; from = sp.end }
+  const words = wordsOf(outside + s.slice(from))
+  for (let k = 0; k + 1 < words.length; k++) {
+    let w = words[k]
+    while (w !== '' && '(["\''.includes(w[0])) w = w.slice(1)
+    const next = words[k + 1]
+    if (COMMAND_NAMES.includes(w) && (isFlag(next) || isPath(next) || QUOTES.includes(next[0]))) return `${w} ${next}`
   }
   return null
 }
@@ -740,10 +801,13 @@ function validateAcceptanceItems(entries) {
     if (e.humanGate !== true) return
     const command = typeof e.command === 'string' ? e.command.trim() : ''
     const span = holdsCommandSpan(text)
+    const bare = span ? null : holdsBareCommand(text)
     if (command) {
       issues.push(`item ${n}: flagged humanGate but carries the command \`${command}\`; a command can decide it, so it is not a human gate. Drop humanGate and prove the item with that command, or drop the command if only a person can judge it`)
     } else if (span) {
       issues.push(`item ${n}: flagged humanGate but its text holds the backticked command \`${span}\`; a command can decide it, so it is not a human gate. Drop humanGate and prove the item with that command, or reword the item without a command`)
+    } else if (bare) {
+      issues.push(`item ${n}: flagged humanGate but its text holds the command invocation \`${bare}\`; a command can decide it, so it is not a human gate. Drop humanGate and prove the item with that command, or reword the item without a command`)
     }
   })
   return issues
@@ -2315,7 +2379,7 @@ const ACCEPTANCE_PROOF_RULE = 'ACCEPTANCE PROOF RULE: (1) every acceptance item 
 // (validateAcceptanceItems); this sentence carries the one clause left to the model: a gate that restates another item.
 const HUMAN_GATE_CHECK_NOTE = 'A `[human-gate]` item (a judgement no command can decide) is exempt from the executed-command requirement; it fails only when it restates the expected output of another item of the checklist, which already proves it.'
 // #182: Sam's instruction for the checklist as data; ends the scout prompt (see validateAcceptanceItems for the refusals).
-const ACCEPTANCE_ITEMS_RULE = 'ACCEPTANCE ITEMS RULE: return the acceptance checklist as data in `acceptanceItems`, one entry per item in checklist order: `{ text, humanGate, command? }`. `text` is ONE line: no `- [ ]` prefix, no `<!-- ac:N -->` id, no `[human-gate]` tag (the workflow adds them). `humanGate` is true only when no command can decide the item (a judgement, an external system out of reach, a product decision); that is the one kind of item that needs no Proof log entry, and it never carries a `command` nor a backticked command in its text, or the plan is refused and sent back to you. `command` is the command that proves the item, when there is one. Write the same items in the artifact and in the index comment as `- [ ] <!-- ac:N --> <text>` lines (N = the 1-based position; a `humanGate` item as `- [ ] <!-- ac:N --> [human-gate] <text>`); the plan gate refuses a plan whose text lacks an item\'s line. Do not return `acceptanceChecklist`.'
+const ACCEPTANCE_ITEMS_RULE = 'ACCEPTANCE ITEMS RULE: return the acceptance checklist as data in `acceptanceItems`, one entry per item in checklist order: `{ text, humanGate, command? }`. `text` is ONE line: no `- [ ]` prefix, no `<!-- ac:N -->` id, no `[human-gate]` tag (the workflow adds them). `humanGate` is true only when no command can decide the item (a judgement, an external system out of reach, a product decision); that is the one kind of item that needs no Proof log entry, and it never carries a `command`, nor a command in its text (a backticked command or a bare invocation whose first word is a known executable or a path, or that holds a flag or a shell operator; UI copy or a heading in backticks is fine), or the plan is refused and sent back to you. `command` is the command that proves the item, when there is one. Write the same items in the artifact and in the index comment as `- [ ] <!-- ac:N --> <text>` lines (N = the 1-based position; a `humanGate` item as `- [ ] <!-- ac:N --> [human-gate] <text>`); the plan gate refuses a plan whose text lacks an item\'s line. Do not return `acceptanceChecklist`.'
 // #153: checklist lines (`- [ ]`) Sam returned in acceptanceChecklist that are absent from the
 // returned plan text. Pure string ops, no regex. Empty checklist => [] (nothing to compare).
 const planMissingChecklistLines = (plan, checklist) => {

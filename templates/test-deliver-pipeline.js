@@ -4324,7 +4324,9 @@ await testCase('T182g validateAcceptanceItems: each refused shape names its item
   }
   const both = fns.validateAcceptanceItems([{ text: '' }, { text: 'fine' }, { text: 'x', humanGate: 'no' }])
   const e1 = eq('one issue per bad item, in item order', both.map((s) => s.split(':')[0]), ['item 1', 'item 3'])
-  const e2 = eq('holdsCommandSpan', [fns.holdsCommandSpan('a `b c` d'), fns.holdsCommandSpan('a `b` d'), fns.holdsCommandSpan('a `b c'), fns.holdsCommandSpan('`x` and `y z`')], ['b c', null, null, 'y z'])
+  // PR #190 review: a span is a command by the closed rule (executable or path first, a flag, a shell operator), not
+  // by holding a space, so the prose span `b c` is no longer one; `npm test` and `y --z` are.
+  const e2 = eq('holdsCommandSpan', [fns.holdsCommandSpan('a `npm test` d'), fns.holdsCommandSpan('a `b` d'), fns.holdsCommandSpan('a `b c'), fns.holdsCommandSpan('`x` and `y --z`'), fns.holdsCommandSpan('a `b c` d')], ['npm test', null, null, 'y --z', null])
   return e1 || e2 || { ok: true }
 })
 
@@ -4477,6 +4479,58 @@ await testCase('T182n a relaunch with a legacy planText (no ids): no rendered bl
   const bad = [...(r1.trace || []), ...(r2.trace || [])].find((t) => String(t).startsWith('boxes-'))
   const e5 = bad ? { ok: false, msg: `unexpected trace entry ${JSON.stringify(bad)}` } : null
   return e1 || e2 || e3 || e4 || e5 || { ok: true }
+})
+
+// T182o-p (#169, PR #190 review) — what counts as a command in a human-gate item is a closed rule: a backticked span
+// (any backtick run length) of two or more words whose first word is a known executable or a path, or that holds a flag
+// or a shell operator; or, outside the spans, a bare known executable followed by a flag, a path or a quote. UI copy and
+// a Markdown heading in backticks are judgements, not commands.
+const T182_INCIDENT = 'Visual check: the PR body pastes verbatim the output of node -e \'…render(…, { locale: "fr-FR" })\' … and the human confirms both'
+const T182_UI_COPY = 'The empty-state copy `No items yet` reads naturally on a small screen'
+const T182_HEADING = 'The `## What this ships` section reads well to a third party'
+await testCase('T182o validator: the #169 incident text and a double-backtick command are refused; UI copy, a heading and a judgement pass', async () => {
+  const fns = t182Block()
+  if (!fns) return t182Skip('T182o')
+  const gate = (text) => fns.validateAcceptanceItems([{ text, humanGate: true }])
+  const refused = [
+    ['the #169 incident (bare invocation)', T182_INCIDENT, 'node -e'],
+    ['a double-backtick command', 'the maintainer judges the output of ``npm test`` by eye', 'npm test'],
+    ['a double-backtick span holding a backtick', 'a person reads ``git log --format=`%h` `` and judges', 'git log --format=`%h`'],
+    ['a span whose first word is a path', 'a person runs `./build.sh release` and looks', './build.sh release'],
+    ['a span with a flag', 'a person runs `mytool --dry-run` and looks', 'mytool --dry-run'],
+    ['a span with a pipe', 'a person reads `cat x | head` and judges', 'cat x | head'],
+    ['a bare executable then a path', 'a person runs bash scripts/x.sh and judges the colours', 'bash scripts/x.sh'],
+  ]
+  for (const [label, text, cmd] of refused) {
+    const issues = gate(text)
+    if (issues.length !== 1 || !issues[0].startsWith('item 1: flagged humanGate but its text holds') || !issues[0].includes(cmd)) {
+      return { ok: false, msg: `${label}: expected one refusal quoting ${JSON.stringify(cmd)}, got ${JSON.stringify(issues)}` }
+    }
+  }
+  const accepted = [
+    ['UI copy in backticks', T182_UI_COPY],
+    ['a Markdown heading in backticks', T182_HEADING],
+    ['a genuine judgement', 'the maintainer confirms the plan wording reads well'],
+    ['a judgement naming a file', 'the maintainer reads `scripts/lead-merge.sh` and judges the wording'],
+    ['a judgement with an executable name as prose', 'the release notes say node 22 is the floor, the maintainer agrees'],
+    ['a breadcrumb in backticks', 'on the device, `Settings > Privacy > Camera` lists the app'],
+  ]
+  for (const [label, text] of accepted) {
+    const issues = gate(text)
+    if (issues.length !== 0) return { ok: false, msg: `${label}: expected no issue, got ${JSON.stringify(issues)}` }
+  }
+  return { ok: true }
+})
+await testCase('T182p plan gate: the #169 incident item is refused NOT_CONFORMING then passes once amended; UI-copy and heading gates pass first time', async () => {
+  const incident = T182_ITEMS.map((it) => (it.humanGate ? { ...it, text: T182_INCIDENT } : it))
+  const r1 = await run({ mode: 'semi', simulate: { sam: { 1: t182Sam(incident), 2: t182Sam(T182_ITEMS) }, planCheck: T182_CONFORMING } })
+  const e1 = eq('incident: status', r1.status, 'plan-ready')
+  const e2 = eq('incident: refusals', t182Refusals(r1), ['acceptance-items-refused:1'])
+  const judged = [{ text: T182_UI_COPY, humanGate: true }, { text: T182_HEADING, humanGate: true }]
+  const r2 = await run({ mode: 'semi', simulate: { sam: { 1: t182Sam(judged) }, planCheck: T182_CONFORMING } })
+  const e3 = eq('UI copy and heading: status', r2.status, 'plan-ready')
+  const e4 = eq('UI copy and heading: refusals', t182Refusals(r2), [])
+  return e1 || e2 || e3 || e4 || { ok: true }
 })
 
 // T123 (#42) — every test ID is unique across the suite. Must stay the LAST case so `results`
