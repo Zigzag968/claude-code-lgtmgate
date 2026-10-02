@@ -48,7 +48,7 @@ f.args.proceedThrough = 'review'
 f.calls[`unused-${process.env.W_LABEL}-feat-branch`] = { someKey: 'someValue', n: 777777, b: true }
 f.calls['plan-check-123-1'] = [f.calls['plan-check-123-1'], { verdict: 'CONFORMING', issues: [] }]
 if (variant === 'pem') f.args.issueType = process.env.PEM_HEADER
-if (variant === 'oneway') f.args.config = { oneWayDoorKinds: ['status', 'seam'], oneWayDoorPaths: ['workflows/**', '!docs/'] }
+if (variant === 'oneway') f.args.config = { oneWayDoorKinds: ['Status', 'seam'], oneWayDoorPaths: ['workflows/**', '!docs/'] }
 if (variant === 'nogo') {
   // the run stops at the scout and Sam's free-text rationale becomes result.reason
   f.calls['scout-issue-123-1'].decision = 'NO-GO'
@@ -234,7 +234,7 @@ node "$TMP/gen.cjs" "$OWRAW" oneway
 D16="$(newdir out-oneway)"
 pub "$OWRAW" 128-oneway --out-dir "$D16"
 owc=$(jsf "$D16/128-oneway.json" 'f.args.config' 2>/dev/null)
-if [ "$RC" -eq 0 ] && [ "$owc" = '{"oneWayDoorKinds":["status","seam"],"oneWayDoorPaths":["workflows/**","!docs/"]}' ]; then
+if [ "$RC" -eq 0 ] && [ "$owc" = '{"oneWayDoorKinds":["Status","seam"],"oneWayDoorPaths":["workflows/**","!docs/"]}' ]; then
   ok "protected R3 config (oneWayDoorKinds, oneWayDoorPaths) survives"
 else
   bad "R3 config lost or publication failed: rc=$RC config=$owc err=$ERR"
@@ -364,6 +364,176 @@ if [ "$RC" -eq 1 ] && [ "$(last_line)" = "[publish-fixture] status=error" ] && [
 else
   bad "unwritable output directory: rc=$RC last='$(last_line)' left=$wleft"
 fi
+
+# ---- each step of the publisher is pinned by a case that fails when the step is disabled ---------------------------------
+
+# mkcap <out> <args JSON> [<status>]: a minimal capture (no calls) for the stub engines
+mkcap() { node -e 'const [o,a,st]=process.argv.slice(1);require("fs").writeFileSync(o,JSON.stringify({name:"1-s",args:JSON.parse(a),calls:{},expect:{status:st||"a"}}))' "$1" "$2" "${3:-a}"; }
+
+# fault preload for the child processes and the publisher itself (PF_FAULT selects one fault)
+cat > "$TMP/fault.cjs" <<'JS'
+const base = require('path').basename(process.argv[1] || '')
+const f = process.env.PF_FAULT
+if (f === 'redact-check' && base === 'redact-fixture.cjs' && process.argv.includes('--check')) process.exit(1)
+if (f === 'redact-crash' && base === 'redact-fixture.cjs' && !process.argv.includes('--check')) process.exit(2)
+if (f === 'strict-exit' && base === 'run-offline.cjs') { console.log('[offline] status=ok passed=1 failed=0'); process.exit(1) }
+if (f === 'strict-nopass' && base === 'run-offline.cjs') { console.log('[offline] status=ok passed=0 failed=0'); process.exit(0) }
+if (f === 'stack-limit' && base === 'publish-fixture.cjs') Error.stackTraceLimit = 2
+if (f === 'track-fsync') {
+  const fs = require('fs')
+  const fsync = fs.fsyncSync
+  fs.fsyncSync = function (fd) { fs.appendFileSync(process.env.PF_MARK, 'fsync\n'); return fsync.call(this, fd) }
+}
+JS
+# pubf <fault> [args...]: pub with a fault injected
+pubf() { f="$1"; shift; OUT=$(PF_FAULT="$f" NODE_OPTIONS="--require $TMP/fault.cjs" bash scripts/publish-fixture.sh "$@" 2>"$TMP/stderr.txt"); RC=$?; ERR=$(cat "$TMP/stderr.txt"); }
+
+# the oracle compares the engine call sites: a neutralization that only moves the path through the engine is refused
+printf '%s\n' "if (String(args.p).length > 3) {" "  log('one')" "} else {" "  log('two')" "}" "return { status: 'a' }" > "$TMP/stub-sites.js"
+mkcap "$RAWD/131-sites.json" '{"p":"zq-branch-token"}'
+D20="$(newdir out-sites)"
+pub "$RAWD/131-sites.json" --fp "$TMP/stub-sites.js" --out-dir "$D20"
+if [ "$RC" -eq 0 ] && [ "$(jsf "$D20/131-sites.json" 'f.args.p')" = '"zq-branch-token"' ]; then
+  ok "a neutralization that only changes the engine call sites is refused"
+else
+  bad "sites oracle: rc=$RC p=$(jsf "$D20/131-sites.json" 'f.args.p' 2>/dev/null) err=$ERR"
+fi
+
+# the oracle compares the form of the result: a string equal to a token of the engine's vocabulary is pinned, other free text is not
+printf '%s\n' "const T = 'zqvocabtoken'" "return { status: 'a', tag: String(args.p).split(',')[0], free: args.q }" > "$TMP/stub-vocab.js"
+mkcap "$RAWD/132-vocab.json" '{"p":"zqvocabtoken,zqfreetextx9","q":"zqfreetextx9"}'
+D21="$(newdir out-vocab)"
+pub "$RAWD/132-vocab.json" --fp "$TMP/stub-vocab.js" --out-dir "$D21"
+if [ "$RC" -eq 0 ] && [ "$(jsf "$D21/132-vocab.json" 'f.args.p+"|"+f.args.q')" = '"zqvocabtoken,zqfreetextx9|_"' ]; then
+  ok "a result string that is a token of the engine's vocabulary is pinned and other free text is neutralized"
+else
+  bad "vocabulary: rc=$RC args=$(jsf "$D21/132-vocab.json" 'JSON.stringify(f.args)' 2>/dev/null) err=$ERR"
+fi
+# an emptiness change is a shape change: an empty string stays empty, a non-empty one stays non-empty
+printf '%s\n' "return { status: 'a', e: args.e, n: args.n }" > "$TMP/stub-empty.js"
+mkcap "$RAWD/133-empty.json" '{"e":"","n":"zqfreetextx9"}'
+D22="$(newdir out-empty)"
+pub "$RAWD/133-empty.json" --fp "$TMP/stub-empty.js" --out-dir "$D22"
+if [ "$RC" -eq 0 ] && [ "$(jsf "$D22/133-empty.json" 'f.args.e+"|"+f.args.n')" = '"|_"' ]; then ok "an empty string stays empty and a non-empty one stays non-empty"; else bad "emptiness: rc=$RC err=$ERR"; fi
+
+# a multi-line string whose middle line cannot be neutralized is cut line by line
+printf '%s\n' "return { status: String(args.p).split('\\n')[1] === 'KEEP' ? 'a' : 'b' }" > "$TMP/stub-lines.js"
+mkcap "$RAWD/134-lines.json" '{"p":"first zqlineone\nKEEP\nlast zqlinetwo"}'
+D23="$(newdir out-lines)"
+pub "$RAWD/134-lines.json" --fp "$TMP/stub-lines.js" --out-dir "$D23"
+if [ "$RC" -eq 0 ] && [ "$(jsf "$D23/134-lines.json" 'f.args.p')" = '"_\nKEEP\n_"' ]; then
+  ok "a multi-line string is neutralized line by line around the line the engine needs"
+else
+  bad "line pass: rc=$RC p=$(jsf "$D23/134-lines.json" 'f.args.p' 2>/dev/null) err=$ERR"
+fi
+
+# the published expect pins the exact trace and the ordered call labels
+if [ "$PUBLISHED" = yes ]; then
+  lab=$(rinfo "$PUB" 'r.calls.map((c) => c.label)'); tr=$(rinfo "$PUB" 'r.result.trace')
+  if [ "$(jsf "$PUB" 'f.expect.traceExact')" = "true" ] && [ "$(jsf "$PUB" 'f.expect.callLabels')" = "$lab" ] && [ "$(jsf "$PUB" 'f.expect.trace')" = "$tr" ]; then
+    ok "published expect holds traceExact, the exact trace and the ordered call labels"
+  else
+    bad "published expect: traceExact/callLabels/trace do not match the replay"
+  fi
+fi
+
+# the baseline must be a clean run with a result object
+printf '%s\n' "return 5" > "$TMP/stub-noresult.js"
+mkcap "$RAWD/135-noresult.json" '{}'
+D24="$(newdir out-noresult)"
+refusal_case "a baseline whose engine returns no result object" "returned no result object" "$D24" "$RAWD/135-noresult.json" --fp "$TMP/stub-noresult.js" --out-dir "$D24"
+printf '%s\n' "throw new Error('boom')" > "$TMP/stub-throw.js"
+D25="$(newdir out-throw)"
+refusal_case "a baseline whose engine throws" "the engine threw" "$D25" "$RAWD/135-noresult.json" --fp "$TMP/stub-throw.js" --out-dir "$D25"
+printf '%s\n' "return { status: 'a', reason: 5 }" > "$TMP/stub-reason.js"
+D26="$(newdir out-reason)"
+refusal_case "a baseline whose result.reason is not a string" "result.reason is not a string" "$D26" "$RAWD/135-noresult.json" --fp "$TMP/stub-reason.js" --out-dir "$D26"
+printf '%s\n' "try { await agent('p', { label: 'missing-label' }) } catch (e) {}" "return { status: 'a' }" > "$TMP/stub-missing.js"
+D27="$(newdir out-missing)"
+refusal_case "a baseline with an unanswered call" "unanswered call" "$D27" "$RAWD/135-noresult.json" --fp "$TMP/stub-missing.js" --out-dir "$D27"
+
+# the capture format
+SIMRAW="$RAWD/136-sim.json"; node -e 'const f=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));f.args.simulate={};require("fs").writeFileSync(process.argv[2],JSON.stringify(f))' "$RAW" "$SIMRAW"
+D28="$(newdir out-sim)"
+refusal_case "a capture that sets args.simulate" "args.simulate" "$D28" "$SIMRAW" --out-dir "$D28"
+THRRAW="$RAWD/137-throws.json"; node -e 'const f=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));f.expect.throws="x";require("fs").writeFileSync(process.argv[2],JSON.stringify(f))' "$RAW" "$THRRAW"
+D29="$(newdir out-throws)"
+refusal_case "a capture that expects a throw" "expect.throws" "$D29" "$THRRAW" --out-dir "$D29"
+
+# the existing-file refusal comes before any replay: a capture that would be refused later still reports the file
+D30="$(newdir out-early)"
+printf 'precious\n' > "$D30/126-badstatus.json"
+pub "$BADRAW" --out-dir "$D30"
+if [ "$RC" -eq 1 ] && printf '%s\n' "$ERR" | grep -q '^refused: .*exists' && [ "$(cat "$D30/126-badstatus.json")" = "precious" ]; then
+  ok "refuses an existing output file before replaying anything"
+else
+  bad "early existing-file refusal: rc=$RC err=$ERR"
+fi
+
+# a probe answer whose hash is not the engine's is not coupled (re-hashing it would turn a failed probe into a good one)
+node -e '
+const fs = require("fs")
+const f = JSON.parse(fs.readFileSync(process.argv[1], "utf8"))
+const e = f.calls["probe-123-provision-freshness-provision-freshness-r0"]
+const old = /cmd=([0-9a-f]{64})/.exec(e.line)[1]
+e.line = e.line.split(old).join("1".repeat(64)); e.verify = e.verify.split(old).join("1".repeat(64))
+fs.writeFileSync(process.argv[2], JSON.stringify(f))' "$RAW" "$RAWD/138-badhash.json"
+D31="$(newdir out-badhash)"
+pub "$RAWD/138-badhash.json" --out-dir "$D31"
+if [ "$RC" -eq 0 ] && [ "$(planted_in "$D31/138-badhash.json")" = "0" ] \
+   && [ "$(node scripts/run-offline.cjs "$D31/138-badhash.json" 2>&1 | tail -n 1)" = "[offline] status=ok passed=1 failed=0" ]; then
+  ok "a probe answer whose hash is not the engine's is not coupled and the rest is minimized"
+else
+  bad "uncoupled hash: rc=$RC planted=$(planted_in "$D31/138-badhash.json" 2>/dev/null) err=$ERR"
+fi
+
+# faults injected into the children: the gates after the redaction each refuse
+D32="$(newdir out-fault1)"
+pubf redact-check "$RAW" --out-dir "$D32"
+if [ "$RC" -eq 1 ] && [ "$(last_line)" = "[publish-fixture] status=refused" ] && printf '%s\n' "$ERR" | grep -q 'refused: redact-fixture --check exited 1' && [ "$(ls -A "$D32" | wc -l | tr -d ' ')" = "0" ]; then
+  ok "refuses when redact-fixture --check reports a change"
+else
+  bad "--check refusal: rc=$RC err=$ERR"
+fi
+D33="$(newdir out-fault2)"
+pubf redact-crash "$RAW" --out-dir "$D33"
+if [ "$RC" -eq 1 ] && [ "$(last_line)" = "[publish-fixture] status=refused" ] && printf '%s\n' "$ERR" | grep -q 'refused: redact-fixture exited 2' && [ "$(ls -A "$D33" | wc -l | tr -d ' ')" = "0" ]; then
+  ok "refuses when redact-fixture fails with a code other than 3"
+else
+  bad "redactor failure refusal: rc=$RC err=$ERR"
+fi
+D34="$(newdir out-fault3)"
+pubf strict-exit "$RAW" --out-dir "$D34"
+if [ "$RC" -eq 1 ] && [ "$(last_line)" = "[publish-fixture] status=refused" ] && printf '%s\n' "$ERR" | grep -q 'refused: strict replay of the redacted candidate failed' && [ "$(ls -A "$D34" | wc -l | tr -d ' ')" = "0" ]; then
+  ok "refuses when the strict replay exits non-zero"
+else
+  bad "strict exit refusal: rc=$RC err=$ERR"
+fi
+D35="$(newdir out-fault4)"
+pubf strict-nopass "$RAW" --out-dir "$D35"
+if [ "$RC" -eq 1 ] && printf '%s\n' "$ERR" | grep -q 'refused: strict replay of the redacted candidate failed' && [ "$(ls -A "$D35" | wc -l | tr -d ' ')" = "0" ]; then
+  ok "refuses when the strict replay does not report the fixture as passed"
+else
+  bad "strict passed refusal: rc=$RC err=$ERR"
+fi
+# a real behavioural gap: an engine that behaves differently inside run-offline.cjs is caught by the strict replay alone
+printf '%s\n' "return { status: /run-offline/.test(process.argv[1] || '') ? 'b' : 'a' }" > "$TMP/stub-argv.js"
+D36="$(newdir out-argv)"
+refusal_case "an engine whose behaviour differs in the strict replay" "strict replay of the redacted candidate failed" "$D36" "$RAWD/124-flaky.json" --fp "$TMP/stub-argv.js" --out-dir "$D36"
+# engine call sites that cannot be resolved (a stack too short to reach the engine frame) are refused
+D37="$(newdir out-stack)"
+printf '%s\n' "log('x')" "return { status: 'a' }" > "$TMP/stub-log.js"
+pubf stack-limit "$RAWD/124-flaky.json" --fp "$TMP/stub-log.js" --out-dir "$D37"
+if [ "$RC" -eq 1 ] && printf '%s\n' "$ERR" | grep -q 'refused: baseline replay: an engine call site could not be resolved' && [ "$(ls -A "$D37" | wc -l | tr -d ' ')" = "0" ]; then
+  ok "refuses when an engine call site cannot be resolved"
+else
+  bad "unresolved site refusal: rc=$RC err=$ERR"
+fi
+# the written file is flushed before it is linked
+D38="$(newdir out-fsync)"
+: > "$TMP/fsync-mark"
+PF_MARK="$TMP/fsync-mark" PF_FAULT=track-fsync NODE_OPTIONS="--require $TMP/fault.cjs" bash scripts/publish-fixture.sh "$RAW" --out-dir "$D38" >/dev/null 2>&1
+if [ -f "$D38/123-auto.json" ] && [ "$(grep -c fsync "$TMP/fsync-mark")" -ge 1 ]; then ok "the candidate is fsynced before it is linked"; else bad "no fsync before the link"; fi
 
 # ---- usage errors (exit 2, before any filesystem access) ----------------------------------------------
 

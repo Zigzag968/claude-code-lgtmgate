@@ -347,7 +347,7 @@ async function main() {
     for (const l of leaves) {
       if (isProtected(l.segs)) continue
       const v = l.parent[l.key]
-      if (isNeutral(v)) continue
+      if (isNeutral(v) || vocab.has(v)) continue // a token of the engine's own vocabulary (`GO`, `LGTM`...) is public
       for (const t of [...new Set([neutralOf(v), '_'])]) {
         if (t === v) continue
         if (await tryChange(l.parent, l.key, t)) break
@@ -414,7 +414,7 @@ async function main() {
     if (oracleOf(settled) !== base) refuse('outcome changed after redaction')
     const strict = runNode([path.join(__dirname, 'run-offline.cjs'), tmp, '--report-unused', '--fp', fp], { ...process.env, OFFLINE_STRICT: '1' })
     const sout = `${strict.stdout || ''}${strict.stderr || ''}`
-    if (strict.status !== 0 || sout.includes('unanswered call') || !sout.includes('passed=1 failed=0')) {
+    if (strict.status !== 0 || !sout.includes('passed=1 failed=0')) {
       refuse(`strict replay of the redacted candidate failed (exit ${strict.status === null ? 'abnormally' : strict.status})`)
     }
     text = fs.readFileSync(tmp, 'utf8')
