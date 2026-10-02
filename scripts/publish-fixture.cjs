@@ -17,14 +17,19 @@
 //
 // What it does, in order (each failure is a refusal):
 //   1. the output file must not exist; the capture must be a plain fixture (name, args, calls, expect only).
-//   2. BASELINE: the capture is replayed twice in process against the real engine. The OUTCOME it must keep is
-//      the status, the reason, the full trace, the ordered agent() call labels and the ordered engine call SITES
-//      (every log(), phase() and agent() call, by line and column of the engine body). Two replays must agree.
+//   2. BASELINE: the capture is replayed three times in process against the real engine. The OUTCOME it must keep
+//      is the status, the reason, the full trace, the ordered agent() call labels, the ordered engine call SITES
+//      (every log(), phase() and agent() call, by line and column of the engine body), the FORM of the rest of the
+//      result (its keys, array lengths, numbers, booleans and nulls exactly; a string only as empty or not, or exactly
+//      when it is a token of the engine's own vocabulary) and the number of log lines. Free text of the result stays
+//      out of the oracle (nothing could be neutralized otherwise). The three replays must agree.
 //   3. MINIMIZE: every string value of args and calls is replaced by a typed neutral token (zeros for a hash, `1`
 //      for a number, `_` otherwise), one at a time in JSON order, and the replacement is kept only if the outcome
 //      stays identical. Then, for a multi-line string that is still not neutral, each line to `_`. Passes repeat
 //      to a fixpoint (3 at most). PROTECTED_ARGS are never neutralized. A weak oracle (status plus trace) silently
 //      drops behaviour (probes became placeholders and the engine took fail-open paths), hence the strict one.
+//      The sites and the ordered labels pin the engine's path: every agent() call resolves to one site (callAgent),
+//      so the labels carry the order of the agents, and the log and phase sites carry the path through the engine.
 //   4. COUPLED PROBES: a `probe-*` answer whose `cmd=` hash is the SHA-256 of the command the engine composed is
 //      re-hashed after every change of args (the command is parsed from the prompt the engine already builds).
 //   5. scripts/redact-fixture.cjs (exit 3 refuses on residue), re-hash, `--check`, a strict replay (in process, then
@@ -45,6 +50,7 @@ const NAME_RE = /^[0-9]+-[a-z0-9][a-z0-9-]*(\.json)?$/
 const USAGE = 'usage: node scripts/publish-fixture.cjs <raw capture> [<out name>] [--out-dir DIR] [--fp FILE]'
 const MAX_REPLAYS = 50000
 const MAX_PASSES = 3
+const BASELINE_REPLAYS = 3
 const MAX_REHASH = 8
 
 // Args the engine validates or branches on as an enum or a switch. The oracle cannot always see them (a `_` in
@@ -114,6 +120,31 @@ function loadCapture(file) {
   if (!isObj(c.expect) || typeof c.expect.status !== 'string' || !c.expect.status) refuse('the raw capture has no expect.status')
   if (Object.prototype.hasOwnProperty.call(c.expect, 'throws')) refuse('the raw capture sets expect.throws (an arg-validation refusal has nothing to minimize)')
   return c
+}
+
+// ---- result shape ------------------------------------------------------------------------------
+
+// The engine's own vocabulary: single-word string literals of the engine file (`'GO'`, `'LGTM'`, `'ready'`...).
+// A result string equal to one is a token the engine chose, pinned exactly; any other string is free text.
+function vocabularyOf(src) {
+  const out = new Set()
+  const re = /(['"`])([A-Za-z0-9_.:-]{1,40})\1/g
+  let m
+  while ((m = re.exec(src)) !== null) out.add(m[2])
+  return out
+}
+
+// The FORM of a value, with no free text: keys, array lengths, numbers, booleans and null exactly; a string only
+// as empty / non-empty, or exactly when it is a token of the engine's vocabulary.
+function shapeOf(v, vocab) {
+  if (v === null) return ['0']
+  if (v === undefined) return ['u']
+  if (typeof v === 'string') return v === '' ? ['s', ''] : vocab.has(v) ? ['s', '=', v] : ['s', '~']
+  if (typeof v === 'number') return ['n', String(v)]
+  if (typeof v === 'boolean') return ['b', v]
+  if (Array.isArray(v)) return ['a', v.map((x) => shapeOf(x, vocab))]
+  if (isObj(v)) return ['o', Object.keys(v).sort().map((k) => [k, shapeOf(v[k], vocab)])]
+  return ['?', typeof v]
 }
 
 // ---- probe prompts ------------------------------------------------------------------------------
@@ -186,20 +217,28 @@ async function main() {
   let run
   try { run = buildPipelineRunner(stripExports(fs.readFileSync(fp, 'utf8'))) } catch (e) { refuse(`cannot load the engine file (${(e && e.code) || 'error'})`) }
 
+  let engineSrc
+  try { engineSrc = fs.readFileSync(fp, 'utf8') } catch (e) { refuse(`cannot load the engine file (${(e && e.code) || 'error'})`) }
+  const vocab = vocabularyOf(engineSrc)
   let replays = 0
   const replay = async (fx) => {
     if (++replays > MAX_REPLAYS) refuse(`replay budget of ${MAX_REPLAYS} exhausted before the minimization settled`)
     return replayFixture(fx, run, { sites: true, prompts: true })
   }
-  // The comparable outcome of a replay; null when the replay is not a clean run.
+  // The comparable outcome of a replay; null when the replay is not a clean run. Status, reason and trace exactly,
+  // the ordered agent() labels, the engine call sites, the form of the rest of the result and the number of log lines.
   const oracleOf = (r) => {
     if (r.error || r.missing.length || !r.result || typeof r.result !== 'object') return null
+    const rest = {}
+    for (const k of Object.keys(r.result)) if (!['status', 'reason', 'trace'].includes(k)) rest[k] = r.result[k]
     return JSON.stringify([
       r.result.status === undefined ? null : r.result.status,
       r.result.reason === undefined ? null : r.result.reason,
       Array.isArray(r.result.trace) ? r.result.trace : [],
       r.calls.map((c) => c.label),
       r.sites,
+      shapeOf(rest, vocab),
+      r.logs.length,
     ])
   }
 
@@ -214,8 +253,10 @@ async function main() {
   if (r1.missing.length) refuse(`baseline replay: ${r1.missing.length} unanswered call(s)`)
   const base = oracleOf(r1)
   if (base === null) refuse('baseline replay: the engine returned no result object')
-  const r2 = await replay(cand)
-  if (oracleOf(r2) !== base) refuse('baseline replay is not deterministic')
+  for (let i = 0; i < BASELINE_REPLAYS - 1; i++) {
+    const rn = await replay(cand)
+    if (oracleOf(rn) !== base) refuse('baseline replay is not deterministic')
+  }
   if (typeof r1.result.status !== 'string' || r1.result.status !== raw.expect.status) {
     refuse('the recorded expect.status is not reproduced by the replay')
   }

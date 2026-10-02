@@ -50,6 +50,19 @@ if (variant === 'note') f.note = 'free text'
 fs.writeFileSync(out, JSON.stringify(f, null, 2) + '\n')
 JS
 
+# rinfo <fixture> <js expression over r>: replays the fixture against the real engine and prints the expression
+# as JSON (r = { result, logs, calls, sites }, as returned by replayFixture)
+cat > "$TMP/rinfo.cjs" <<'JS'
+const fs = require('fs')
+const path = require('path')
+const root = process.env.ROOT
+const { stripExports, buildPipelineRunner, replayFixture } = require(path.join(root, 'scripts/run-offline.cjs'))
+const run = buildPipelineRunner(stripExports(fs.readFileSync(path.join(root, 'workflows/deliver-pipeline.js'), 'utf8')))
+const fx = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'))
+replayFixture(fx, run, { sites: true }).then((r) => { process.stdout.write(JSON.stringify(eval(process.argv[3]))) })
+JS
+rinfo() { node "$TMP/rinfo.cjs" "$1" "$2"; }
+
 # pub [args...]: run the publisher; sets OUT (stdout), ERR (stderr) and RC
 pub() {
   OUT=$(bash scripts/publish-fixture.sh "$@" 2>"$TMP/stderr.txt"); RC=$?
@@ -96,6 +109,16 @@ if [ "$PUBLISHED" = yes ]; then
     ok "protected and flow-selecting fields survive"
   else
     bad "protected or flow-selecting field lost (mode, proceedThrough or the preflight headRef)"
+  fi
+
+  # the oracle pins the SHAPE of the result too: a neutralization that moves worktreeBehind or opens a failure path is refused
+  rb=$(rinfo "$RAW" 'r.result.worktreeBehind'); pb=$(rinfo "$PUB" 'r.result.worktreeBehind')
+  rl=$(rinfo "$RAW" 'r.logs.length'); pl=$(rinfo "$PUB" 'r.logs.length')
+  rk=$(rinfo "$RAW" 'Object.keys(r.result).sort()'); pk=$(rinfo "$PUB" 'Object.keys(r.result).sort()')
+  if [ "$rb" = "0" ] && [ "$pb" = "0" ] && [ "$rl" = "$pl" ] && [ "$rk" = "$pk" ]; then
+    ok "result shape is preserved (worktreeBehind, keys, log count)"
+  else
+    bad "result shape changed by minimization: worktreeBehind raw=$rb pub=$pb logs raw=$rl pub=$pl"
   fi
 
   rawcmd=$(jsf "$RAW" 'f.calls["probe-123-provision-provision-r0"].line.match(/cmd=([0-9a-f]{64})/)[1]')
@@ -178,6 +201,10 @@ printf '{"name":"1-s","args":{"p":"/opt/zzz-secret"},"calls":{},"expect":{"statu
 
 D11="$(newdir out-flaky)"
 refusal_case "when the baseline replay is not deterministic" "not deterministic" "$D11" "$RAWD/124-flaky.json" --fp "$TMP/stub-flaky.js" --out-dir "$D11"
+
+printf '%s\n' "globalThis.__pf3 = (globalThis.__pf3 || 0) + 1" "return { status: globalThis.__pf3 % 3 === 0 ? 'b' : 'a' }" > "$TMP/stub-flaky3.js"
+D11b="$(newdir out-flaky3)"
+refusal_case "when the baseline is stable for two replays but not three" "not deterministic" "$D11b" "$RAWD/124-flaky.json" --fp "$TMP/stub-flaky3.js" --out-dir "$D11b"
 
 D12="$(newdir out-path)"
 refusal_case "when redaction changes the outcome" "outcome changed after redaction" "$D12" "$RAWD/125-path.json" --fp "$TMP/stub-path.js" --out-dir "$D12"

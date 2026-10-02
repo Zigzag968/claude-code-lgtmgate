@@ -75,8 +75,12 @@ existing file is never overwritten). Any step that cannot reach an identical out
 cause and writes nothing.
 
 - Every string value of `args` and `calls` is replaced by a typed neutral token (zeros for a hash, `1` for
-  a number, `_` otherwise), and a replacement is kept only if the replay outcome is identical: status,
-  reason, exact trace, ordered call labels and the engine's log, agent and phase call sites.
+  a number, `_` otherwise), and a replacement is kept only if the replay outcome is identical. The outcome is: status,
+  reason, exact trace, the ordered `agent()` call labels, the engine's ordered log and phase call sites, the FORM of the
+  rest of the result (keys, array lengths, numbers, booleans and nulls exactly; a string only as empty or not, or exactly
+  when it equals a token of the engine's own vocabulary) and the number of log lines. Free text of the result is outside
+  the oracle. Every `agent()` call resolves to one engine site (`callAgent`), so the ordered labels carry the order of the
+  agents and the log and phase sites carry the path through the engine. The baseline is replayed three times and must agree.
 - Protected args (`mode`, `entryStage`, `proceedThrough`, `issueType`, `resumeReason`, `planFreshness`,
   `config.planFreshness`, `config.preflight.envSymlink`) are never neutralized.
 - The `cmd=` hash of a PROBE answer coupled to the args is recomputed after every change.
