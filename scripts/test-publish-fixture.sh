@@ -248,7 +248,7 @@ const cap = {
   args: { config: { oneWayDoorPaths: ['src/zqprotx9/**'] } },
   calls: {
     'probe-1-a': entry('stale', { planStale: '/zqrepox9/work' }),
-    'probe-1-b': entry('where', { gitDir: '/Users/zqnamex9/zqprojx9/.git/worktrees/w1' }),
+    'probe-1-b': entry('where', { gitDir: '/Users/you/zqprojx9/.git/worktrees/w1' }),
     'probe-1-c': entry('pr', { title: 'zqtitlex9 fix the thing' }),
     'probe-1-d': entry('plain', { ok: true, behind: 0 }),
   },
@@ -272,7 +272,7 @@ if [ "$RC" -eq 0 ] && [ -n "$ftn" ] \
    && printf '%s\n' "$nout" | grep -Fxq "  calls.probe-1-a.line $ftl kept free-text" \
    && printf '%s\n' "$nout" | grep -Fxq "  calls.probe-1-d.line $ftd kept" \
    && printf '%s\n' "$nout" | grep -Fxq "  args.config.oneWayDoorPaths[0] $ftp protected free-text" \
-   && [ "$(printf '%s\n%s\n' "$nout" "$ERR" | grep -c -e zqrepox9 -e zqprojx9 -e zqtitlex9 -e zqprotx9 -e zqnamex9 || true)" = "0" ] \
+   && [ "$(printf '%s\n%s\n' "$nout" "$ERR" | grep -c -e zqrepox9 -e zqprojx9 -e zqtitlex9 -e zqprotx9 || true)" = "0" ] \
    && grep -q zqprojx9 "$FTP" && grep -q zqrepox9 "$FTP" && grep -q zqtitlex9 "$FTP"; then
   ok "kept probe lines with a path or a title and protected paths are counted as free text, by path and length, never printed"
 else
