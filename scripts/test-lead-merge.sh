@@ -480,5 +480,59 @@ D="$(setup pre-junk)"; set_version "$D" other main banana; run "$D" "$BASE/good.
 [ "$rc" -ne 0 ] && grep -qF 'not semver' "$D/out" && [ ! -s "$D/pushes" ] && ! grep -qE 'pr merge|pr checks' "$D/log" \
   && ok "non-semver version on main: refused before any bump, push or merge" || bad "non-semver version (rc=$rc): $(tail -3 "$D/out")"
 
+# 19. R2 waivers must be declared (#174): in an engine repo (engineRepo on origin/main), a PR that closes/refs a type:bug issue
+# and changes workflows/ must add fixtures/incidents/<N>-*.json, or carry a valid declared exception (step 1b validates it)
+r2_main_cfg() { # <dir> <json>: commit .claude/pipeline.config.json on origin/main (second clone, like main_commit)
+  local d="$1"
+  [ -d "$d/other" ] || git clone -q "$d/origin.git" "$d/other" 2>/dev/null
+  ( cd "$d/other" && git config user.email t@t && git config user.name t && git checkout -q main \
+    && mkdir -p .claude && printf '%s\n' "$2" > .claude/pipeline.config.json && git add -A && git commit -qm "main: config" && git push -q origin main ) >/dev/null 2>&1
+}
+r2_branch() { # <dir> [fixture-file] [debt-n]: feat/x touches workflows/, optionally adds a fixture and a DEBT marker
+  local d="$1"
+  ( cd "$d/work" && echo '// fix' >> workflows/deliver-pipeline.js \
+    && if [ -n "${3:-}" ]; then echo "// DEBT(#$3): fixture owed" >> workflows/deliver-pipeline.js; fi \
+    && if [ -n "${2:-}" ]; then mkdir -p fixtures/incidents && echo '{}' > "fixtures/incidents/$2"; fi \
+    && git add -A && git commit -qm "fix: r2" && git push -q origin feat/x ) >/dev/null 2>&1
+}
+r2_prep() { # <name> <first-line> <exception-line|""> <labels-of-issue-30> -> sets D and the body file $R2_BODY
+  D="$(setup "$1")"; mkdir -p "$D/issues"
+  printf '%s\n' "$4" > "$D/issues/30.labels"
+  R2_BODY="$BASE/$1.md"
+  printf '%s\n<!-- acceptance:start -->\n- [x] a\n%s\n<!-- acceptance:end -->\n' "$2" "$3" > "$R2_BODY"
+}
+r2_go() { run "$D" "$R2_BODY"; rc=$?; }
+r2_refused() { # <label>
+  [ "$rc" -ne 0 ] && grep -q 'FAIL: r2-waiver:' "$D/out" && grep -q '#30' "$D/out" \
+    && [ ! -s "$D/pushes" ] && ! grep -qE 'pr merge|pr checks' "$D/log" && [ "$(git -C "$D/work" log --format=%s | head -1)" != "chore: bump 0.8.81 (lead-merge)" ] \
+    && ok "r2-waiver: $1" || bad "r2-waiver: $1 (rc=$rc): $(tail -3 "$D/out")"
+}
+r2_merges() { # <label>
+  [ "$rc" -eq 0 ] && grep -q 'pr merge' "$D/log" && ! grep -q 'FAIL: r2-waiver' "$D/out" \
+    && ok "r2-waiver: $1" || bad "r2-waiver: $1 (rc=$rc): $(tail -3 "$D/out")"
+}
+R2_ENGINE='{"engineRepo": true}'
+R2_EXC="$(printf -- '- [x] exception: R2 fixture waived \xe2\x80\x94 replay needs a recorded run \xe2\x80\x94 #9')"
+r2_prep r2-nofix 'Refs #30' '' 'open type:bug'; r2_main_cfg "$D" "$R2_ENGINE"; r2_branch "$D"; r2_go
+r2_refused "no fixture, no exception: refused"
+r2_prep r2-exc 'Refs #30' "$R2_EXC" 'open type:bug'; printf 'open tech-debt\n' > "$D/issues/9.labels"; r2_main_cfg "$D" "$R2_ENGINE"; r2_branch "$D" "" 9; r2_go
+r2_merges "no fixture, valid exception line and open tech-debt follow-up: merges"
+r2_prep r2-fix 'Refs #30' '' 'open type:bug'; r2_main_cfg "$D" "$R2_ENGINE"; r2_branch "$D" 30-replay.json; r2_go
+r2_merges "fixture fixtures/incidents/30-*.json in the diff: merges"
+r2_prep r2-otherfix 'Refs #30' '' 'open type:bug'; r2_main_cfg "$D" "$R2_ENGINE"; r2_branch "$D" 31-x.json; r2_go
+r2_refused "fixture for another issue: refused"
+r2_prep r2-closes 'Closes #30' '' 'open type:bug'; r2_main_cfg "$D" "$R2_ENGINE"; r2_branch "$D"; r2_go
+r2_refused "closing keyword (Closes #30) is covered like Refs: refused"
+r2_prep r2-feature 'Refs #30' '' 'open type:feature'; r2_main_cfg "$D" "$R2_ENGINE"; r2_branch "$D"; r2_go
+r2_merges "issue not type:bug: merges"
+r2_prep r2-outside 'Refs #30' '' 'open type:bug'; r2_main_cfg "$D" "$R2_ENGINE"; r2_go
+r2_merges "diff outside workflows/: merges"
+r2_prep r2-consumer 'Refs #30' '' 'open type:bug'; r2_branch "$D"; r2_go
+r2_merges "consumer repo (no engineRepo on main): merges"
+r2_prep r2-tamper 'Refs #30' '' 'open type:bug'; r2_main_cfg "$D" "$R2_ENGINE"; r2_branch "$D"
+( cd "$D/work" && mkdir -p .claude && echo '{"engineRepo": false}' > .claude/pipeline.config.json && git add -A && git commit -qm "cfg off" && git push -q origin feat/x ) >/dev/null 2>&1
+r2_go
+r2_refused "PR switches engineRepo off in its own config: still refused (config read from origin/main)"
+
 echo "[lead-merge test] passed=$PASS failed=$FAIL"
 [ "$FAIL" -eq 0 ]
