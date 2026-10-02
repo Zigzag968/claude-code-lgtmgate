@@ -240,9 +240,40 @@ let provisionCmdPreview = null
 // #110: set by callAgent when an agent call stayed cut off by a classifier outage past its retry
 // bound; finish() then names the cause on the resulting `*-died` status.
 let classifierOutageDeath = false
-const finish = (o) => ({ buildStamp: BUILD_STAMP, ...(simulate ? { nickPromptPreview, provisionCmdPreview, preflightFixPromptPreview } : {}),
-  ...(classifierOutageDeath && String(o.status).endsWith('-died')
-    ? { reason: 'classifier-outage: resume with resumeFromRunId' } : {}), ...o })
+// Status registry (#180) — every outcome a run can return, one entry per status, in pipeline order.
+// finish(def, extra) is the only way out of the run, so no status reaches a return as a string
+// literal; `resumable` belongs to the status (a `*-died` run, or one parked for the Lead, resumes
+// through resumeFromRunId), never to a call site. scripts/guards.cjs (status-table) checks these keys
+// against the Lead's table in commands/deliver.md §5, both ways. agentDeathRouting() below keeps its
+// own role -> status table (pure, extractable); its values are keys of this registry.
+const STATUS = Object.freeze({
+  'dry-run-ok': { status: 'dry-run-ok' },
+  'provision-died': { status: 'provision-died', resumable: true },
+  'escalate': { status: 'escalate' },
+  'already-done': { status: 'already-done' },
+  'diagnose-died': { status: 'diagnose-died', resumable: true },
+  'diagnosis-refuted': { status: 'diagnosis-refuted' },
+  'lane-refused': { status: 'lane-refused' },
+  'design-step-required': { status: 'design-step-required' },
+  'plan-died': { status: 'plan-died', resumable: true },
+  'no-go': { status: 'no-go' },
+  'plan-check-died': { status: 'plan-check-died', resumable: true },
+  'plan-audit-died': { status: 'plan-audit-died', resumable: true },
+  'plan-ready': { status: 'plan-ready' },
+  'dev-died': { status: 'dev-died', resumable: true },
+  'dev-done': { status: 'dev-done' },
+  'delivered-no-pr': { status: 'delivered-no-pr' },
+  'preflight-died': { status: 'preflight-died', resumable: true },
+  'preflight-stuck': { status: 'preflight-stuck' },
+  'review-died': { status: 'review-died', resumable: true },
+  'needs-revision': { status: 'needs-revision' },
+  'verified-untickable': { status: 'verified-untickable', resumable: true },
+  'ready-pending-human': { status: 'ready-pending-human', resumable: true },
+  'ready': { status: 'ready' },
+})
+const finish = (def, extra = {}) => ({ buildStamp: BUILD_STAMP, ...(simulate ? { nickPromptPreview, provisionCmdPreview, preflightFixPromptPreview } : {}),
+  ...(classifierOutageDeath && def.status.endsWith('-died')
+    ? { reason: 'classifier-outage: resume with resumeFromRunId' } : {}), ...def, ...extra })
 
 const {
   issue, brief, pmReview = false, issueType = null, wtPath,
@@ -346,7 +377,7 @@ const planAuditModel = models.planAudit ?? modelsCfg.planAudit ?? 'sonnet'
 const morganModel = models.morgan ?? modelsCfg.morgan ?? 'sonnet'
 // Probe-run gate (#80): version of the PROBES registry (the call-site names declared at `const PROBES`).
 const PROBES_VERSION = 2
-if (dryRun) return finish({ status: 'dry-run-ok', probesVersion: PROBES_VERSION, issue, mode, entryStage, planAudit: planAuditEnabled, planFreshness: planFreshnessMode, maxAuditRounds, maxAuditRoundsOverrideReason: auditBudgetOverrideReason || null, maxPlanAmendRounds, models: { scout: scoutModel, planAudit: planAuditModel, morgan: morganModel } })
+if (dryRun) return finish(STATUS['dry-run-ok'], { probesVersion: PROBES_VERSION, issue, mode, entryStage, planAudit: planAuditEnabled, planFreshness: planFreshnessMode, maxAuditRounds, maxAuditRoundsOverrideReason: auditBudgetOverrideReason || null, maxPlanAmendRounds, models: { scout: scoutModel, planAudit: planAuditModel, morgan: morganModel } })
 
 const trace = []
 if (auditBudgetOverridden) {
@@ -1471,9 +1502,10 @@ function auditConvergenceNote(auditTrace) {
 // Routes a callAgentSafe-caught agent death (thrown error or null/undefined result) to
 // retry-once or a terminal, resumable `<stage>-died` status. Pure: no I/O, no closure over
 // simulate/config/trace. Side-effectful roles (nick, morgan) are never retried — see the
-// call-site table above for why. mia/alreadyDoneCheck are deliberately absent from
-// STATUS: both sites DEGRADE on death (continue the run) and never return a status, so a dead
-// map entry there would mislead the next reader.
+// call-site table above for why. Its STATUS table (role -> status, values are keys of the run's
+// STATUS registry near finish()) deliberately omits mia/alreadyDoneCheck: both sites DEGRADE on
+// death (continue the run) and never return a status, so a dead map entry there would mislead the
+// next reader.
 function agentDeathRouting(role, attempt, maxAttempts = 2) {
   const RETRY_SAFE = new Set([
     'provision', 'theo', 'mia', 'sam', 'planCheck', 'audit', 'alreadyDoneCheck', 'preflight', 'probe',
@@ -1941,7 +1973,7 @@ async function prWrite(op, label, round, argv) {
 // probeOnly (#80): reach probe() from a run-offline fixture while no call site exists yet.
 if (probeOnly) {
   const r = await probe(probeOnly.name, probeOnly.cmd, { ...probeOnly })
-  return finish({ status: 'dry-run-ok', reason: 'probe-only', issue, probesVersion: PROBES_VERSION, probe: r, trace })
+  return finish(STATUS['dry-run-ok'], { reason: 'probe-only', issue, probesVersion: PROBES_VERSION, probe: r, trace })
 }
 
 // ---------------------------------------------------------------------------
@@ -2012,12 +2044,12 @@ if (probeOnly) {
         }
       })()
   if (provision?.probeFailed === 'agent-death') {
-    return finish({ status: 'provision-died', issue, trace, resumable: true })
+    return finish(STATUS['provision-died'], { issue, trace })
   }
   if (provision?.probeFailed) {
     log(`Provisioning probe failed (${provision.probeFailed}) — failing closed` + (PROBE_REASON_HINTS[provision.probeFailed] ? `: ${PROBE_REASON_HINTS[provision.probeFailed]}` : ''))
     await updateStatus('Blocked')
-    return finish({ status: 'escalate', reason: 'provision-failed', issue, missing: [], exitCode: null, probeReason: provision.probeFailed, probeHint: PROBE_REASON_HINTS[provision.probeFailed] || null, trace })
+    return finish(STATUS['escalate'], { reason: 'provision-failed', issue, missing: [], exitCode: null, probeReason: provision.probeFailed, probeHint: PROBE_REASON_HINTS[provision.probeFailed] || null, trace })
   }
   log(`Provision: ok=${provision?.ok}, exitCode=${provision?.exitCode ?? 'unknown'}, ` +
     `skipped=${provision?.skipped === true}, ` +
@@ -2028,7 +2060,7 @@ if (probeOnly) {
   if (provision?.ok !== true) {
     log(`Provisioning failed — missing source(s): ${(provision?.missing || []).join(', ') || 'unknown'}`)
     await updateStatus('Blocked')
-    return finish({ status: 'escalate', reason: 'provision-failed', issue, missing: provision?.missing || [], exitCode: provision?.exitCode ?? null, trace })
+    return finish(STATUS['escalate'], { reason: 'provision-failed', issue, missing: provision?.missing || [], exitCode: provision?.exitCode ?? null, trace })
   }
 }
 
@@ -2070,7 +2102,7 @@ if (entryStage === 'plan') {
     log(`Provision-freshness: worktree is ${provisionBehind} commit(s) behind origin/${baseBranch} at dispatch (own commits: ${ownCommits ?? 'unknown'}) — escalating before any planning spend; run: ${mergeCommand}`)
     trace.push(`provision-stale:${provisionBehind}`)
     await updateStatus('Blocked')
-    return finish({ status: 'escalate', reason: 'provision-stale', issue, behind: provisionBehind, ownCommits, mergeCommand, baseBranch, wtPath, trace })
+    return finish(STATUS['escalate'], { reason: 'provision-stale', issue, behind: provisionBehind, ownCommits, mergeCommand, baseBranch, wtPath, trace })
   }
 }
 
@@ -2120,20 +2152,20 @@ if (after('plan', entryStage)) {
     },
   )
   if (isAgentDeath(diag)) {
-    return finish({ status: 'diagnose-died', issue, trace, resumable: true })
+    return finish(STATUS['diagnose-died'], { issue, trace })
   }
 
   if (!diag.confirmed) {
     log(`Diagnosis refuted: ${diag.evidence}`)
     await updateStatus('Blocked')
-    return finish({ status: 'diagnosis-refuted', evidence: diag.evidence, actualCause: diag.actualCause || null, issue, trace })
+    return finish(STATUS['diagnosis-refuted'], { evidence: diag.evidence, actualCause: diag.actualCause || null, issue, trace })
   }
   log(`Diagnosis confirmed: ${diag.evidence}`)
 
   if (diag.laneOk === false) {
     log(`Lane refused: user-visible issue on the '${scoutAgent}' lane — requires ${diag.requiredScout || 'the product scout'}`)
     await updateStatus('Blocked')
-    return finish({ status: 'lane-refused', requiredScout: diag.requiredScout || null, evidence: diag.evidence, issue, trace })
+    return finish(STATUS['lane-refused'], { requiredScout: diag.requiredScout || null, evidence: diag.evidence, issue, trace })
   }
 
   // Design-step-trigger gate (B1-B3) — computed by the SCRIPT from Theo's raw
@@ -2149,8 +2181,7 @@ if (after('plan', entryStage)) {
   if (designStepTriggered && !architectureDecisionApproved && proceedThrough !== 'plan') {
     log(`Design-step trigger fired (signals: ${designStepSignalCount}/3 + immatureVendorApi=${!!diag.immatureVendorApiSignal}) — architecture decision not yet approved`)
     await updateStatus('Blocked')
-    return finish({
-      status: 'design-step-required',
+    return finish(STATUS['design-step-required'], {
       issue, trace,
       designStepSignalCount,
       immatureVendorApiSignal: !!diag.immatureVendorApiSignal,
@@ -2283,13 +2314,13 @@ if (after('plan', entryStage)) {
         { agentType: scoutAgent, phase: 'Plan', schema: SAM, label: `scout-issue-${issue}-${planPass}`, model: scoutModel },
       )
       if (isAgentDeath(sam)) {
-        return finish({ status: 'plan-died', issue, planPath, trace, resumable: true })
+        return finish(STATUS['plan-died'], { issue, planPath, trace })
       }
 
       if (sam.decision === 'NO-GO') {
         log(`Sam: NO-GO — ${sam.rationale || 'see report'}`)
         await updateStatus('Blocked')
-        return finish({ status: 'no-go', reason: sam.rationale, plan: sam.plan, trace })
+        return finish(STATUS['no-go'], { reason: sam.rationale, plan: sam.plan, trace })
       }
 
       // Capture the plan into the script variable — the hand-off payload for Dev + Review.
@@ -2320,7 +2351,7 @@ if (after('plan', entryStage)) {
         planPass,
       )
       if (isAgentDeath(planCheck)) {
-        return finish({ status: 'plan-check-died', issue, planPath, trace, resumable: true })
+        return finish(STATUS['plan-check-died'], { issue, planPath, trace })
       }
 
       if (planCheck.verdict === 'CONFORMING') break
@@ -2328,7 +2359,7 @@ if (after('plan', entryStage)) {
       if (planAttempt >= maxPlanAttempts) {
         log(`Plan-verification gate: NOT_CONFORMING after ${planAttempt} attempt(s) — escalating`)
         await updateStatus('Blocked')
-        return finish({ status: 'escalate', reason: 'plan-not-conforming', issue, planCheckIssues: planCheck.issues || [], trace })
+        return finish(STATUS['escalate'], { reason: 'plan-not-conforming', issue, planCheckIssues: planCheck.issues || [], trace })
       }
 
       checkIssues = planCheck.issues || []
@@ -2366,7 +2397,7 @@ if (after('plan', entryStage)) {
       auditRound,
     )
     if (isAgentDeath(auditResult)) {
-      return finish({ status: 'plan-audit-died', issue, auditRounds: auditRound, trace, resumable: true })
+      return finish(STATUS['plan-audit-died'], { issue, auditRounds: auditRound, trace })
     }
     trace.push(`plan-audit:${auditResult?.verdict ?? 'malformed'}`)
 
@@ -2391,8 +2422,8 @@ if (after('plan', entryStage)) {
     if (routing.action === 'escalate') {
       log(`Plan audit: ${routing.reason} after ${auditRound} round(s) — escalating`)
       await updateStatus('Blocked')
-      return finish({
-        status: 'escalate', reason: routing.reason, issue,
+      return finish(STATUS['escalate'], {
+        reason: routing.reason, issue,
         auditVerdict: auditResult?.verdict ?? null,
         auditFindings: auditResult?.findings ?? [],
         auditRounds: auditRound, trace,
@@ -2414,16 +2445,15 @@ if (after('plan', entryStage)) {
     log(`R3 one-way-door: plan adds ${oneWayDoor.kinds.join(' + ')} — design step required`)
     trace.push(`one-way-door:${oneWayDoor.kinds.join('+')}`)
     await updateStatus('Blocked')
-    return finish({
-      status: 'design-step-required',
+    return finish(STATUS['design-step-required'], {
       issue, trace, planPath,
       oneWayDoorHits: oneWayDoor.kinds,
       reason: oneWayDoor.summary.join('\n'),
     })
   }
 
-  if (gate('plan')) return finish({
-    status: 'plan-ready', plan: sam.plan, planPath, issue, trace,
+  if (gate('plan')) return finish(STATUS['plan-ready'], {
+    plan: sam.plan, planPath, issue, trace,
     auditVerdict: auditResult?.verdict ?? null,
     auditFindings: auditResult?.findings ?? [],
     auditRounds: auditRound,
@@ -2509,7 +2539,7 @@ if (entryStage === 'dev' || entryStage === 'review') {
     const verdict = acceptAlreadyDone(guard, expectedHead, stamp ? new Date(Number(stamp)).toISOString() : '')
     if (verdict.accepted) {
       log(`Already-done guard: issue #${issue} is ${verdict.reason} — aborting relaunch`)
-      return finish({ status: 'already-done', issue, mergedAt: verdict.reason === 'merged' ? (guard.mergedAt || null) : null, trace })
+      return finish(STATUS['already-done'], { issue, mergedAt: verdict.reason === 'merged' ? (guard.mergedAt || null) : null, trace })
     }
     if (guard?.isAlreadyDone === true || guard?.checkFailed === true) {
       log(`Already-done guard ERROR: unverified already-done claim rejected (${verdict.reason})${guard?.error ? ` — gh: ${guard.error}` : ''}. Proceeding with the run; the guard is a safety net, never a merge gate.`)
@@ -2587,16 +2617,12 @@ const assertBranchConformance = async (prNum, nickBranchFallback) => {
     } else {
       log(`Branch mismatch: PR #${prNum} head is "${headRef}", expected "${expectedBranch}"`)
       trace.push(`branch-mismatch:${headRef}`)
-      // Named (not returned as a bare object literal) so this intermediate escalate value — which
-      // the caller always wraps in finish() before it ever leaves the pipeline — doesn't trip the
-      // stamp-placement guard's textual scan for unstamped status-object returns
-      // (test-canonical-guards.sh); same shape/keys, no behavior change.
-      const branchMismatch = {
-        status: 'escalate', reason: 'branch-mismatch',
+      // The escalate payload without its status: both callers pass it to finish(STATUS['escalate'], ...).
+      return {
+        reason: 'branch-mismatch',
         expectedBranch, actualBranch: headRef,
         pr: prNum ?? null, issue, trace,
       }
-      return branchMismatch
     }
   }
   return null
@@ -2633,7 +2659,7 @@ if (after('dev', entryStage)) {
       log(`Plan freshness: ${planStaleFiles.length} target file(s) changed upstream on origin/${baseBranch} since the frozen base — ${planStaleFiles.join(', ')}`)
       if (planFreshnessMode === 'gate') {
         await updateStatus('Blocked')
-        return finish({ status: 'escalate', reason: 'plan-stale', staleFiles: planStaleFiles, planTargetsChecked, issue, trace })
+        return finish(STATUS['escalate'], { reason: 'plan-stale', staleFiles: planStaleFiles, planTargetsChecked, issue, trace })
       }
     }
   }
@@ -2675,7 +2701,7 @@ if (after('dev', entryStage)) {
     trace.push(`worktree-git-dir-not-writable:${gitDirProbe.gitDir || 'unknown'}`)
     log(`Worktree write-access preflight: git-dir "${gitDirProbe.gitDir}" is not writable — escalating before Nick spawn`)
     await updateStatus('Blocked')
-    return finish({ status: 'escalate', reason: 'worktree-git-dir-not-writable', gitDir: gitDirProbe.gitDir, issue, wtPath, trace })
+    return finish(STATUS['escalate'], { reason: 'worktree-git-dir-not-writable', gitDir: gitDirProbe.gitDir, issue, wtPath, trace })
   }
 
   const epicRef = subGate.blocked ? `(see #${issue})` : 'Closes #' + issue
@@ -2710,13 +2736,13 @@ if (after('dev', entryStage)) {
     { agentType: 'Nick', phase: 'Dev', schema: NICK, label: `nick-issue-${issue}`, model: 'sonnet' },
   )
   if (isAgentDeath(nick)) {
-    return finish({ status: 'dev-died', issue, trace, resumable: true })
+    return finish(STATUS['dev-died'], { issue, trace })
   }
 
   const branchGuardResult = await assertBranchConformance(nick?.prNumber, nick?.branch)
-  if (branchGuardResult) { await updateStatus('Blocked'); return finish(branchGuardResult) }
+  if (branchGuardResult) { await updateStatus('Blocked'); return finish(STATUS['escalate'], branchGuardResult) }
 
-  if (gate('dev')) return finish({ status: 'dev-done', pr: nick.prNumber, issue, planStaleFiles, planTargetsChecked, subIssuesUncovered, trace })
+  if (gate('dev')) return finish(STATUS['dev-done'], { pr: nick.prNumber, issue, planStaleFiles, planTargetsChecked, subIssuesUncovered, trace })
 }
 
 // ---------------------------------------------------------------------------
@@ -2739,7 +2765,7 @@ if (after('review', entryStage)) {
       trace.push('delivered-no-pr')
       const leadAction = `Lead: if the branch was not pushed (SSH blocked in the sandbox, #108), push it with \`${httpsPushCmdFor(expectedBranchName)}\`, then open the PR with \`gh pr create --draft${prFlag} --base ${baseBranch} --head ${expectedBranchName}\` and relaunch with entryStage:"review" + prNumber.`
       log(`delivered-no-pr: ${leadAction}`)
-      return finish({ status: 'delivered-no-pr', issue, summary: nick.summary, leadAction, trace })
+      return finish(STATUS['delivered-no-pr'], { issue, summary: nick.summary, leadAction, trace })
     }
     // Dev-stage failure with no evidence and no PR (lgtmgate#262) — whatever the cause
     // (permission gap, agent crash, anything), stay inside the pipeline's normal status
@@ -2748,7 +2774,7 @@ if (after('review', entryStage)) {
     log('Review phase: no PR number and no delivery evidence (nick + prNumber both null) — escalating')
     trace.push('dev-stage-no-pr')
     await updateStatus('Blocked')
-    return finish({ status: 'escalate', reason: 'dev-stage-no-pr', issue, trace })
+    return finish(STATUS['escalate'], { reason: 'dev-stage-no-pr', issue, trace })
   }
 
   // Branch-conformance guard, resume path (lgtmgate#45) — `entryStage:'review'` is the only
@@ -2762,7 +2788,7 @@ if (after('review', entryStage)) {
   // seed; it only matters as the harness default when a test does not simulate branchCheckRaw.
   if (entryStage === 'review') {
     const branchGuardResult = await assertBranchConformance(pr, `${expectedBranchName}`)
-    if (branchGuardResult) { await updateStatus('Blocked'); return finish(branchGuardResult) }
+    if (branchGuardResult) { await updateStatus('Blocked'); return finish(STATUS['escalate'], branchGuardResult) }
   }
 
   // PR comment hygiene — hidden HTML marker the pipeline injects into its OWN posted
@@ -3122,7 +3148,7 @@ if (after('review', entryStage)) {
     preflightCallCount++
     logTestCmdRun(pf)
     if (isAgentDeath(pf)) {
-      return finish({ status: 'preflight-died', pr, issue, round: currentRound, trace, resumable: true })
+      return finish(STATUS['preflight-died'], { pr, issue, round: currentRound, trace })
     }
     if (pf?.pass !== false) return true
 
@@ -3150,7 +3176,7 @@ if (after('review', entryStage)) {
       currentRound,
     )
     if (isAgentDeath(nickFix)) {
-      return finish({ status: 'dev-died', pr, issue, round: currentRound, trace, resumable: true })
+      return finish(STATUS['dev-died'], { pr, issue, round: currentRound, trace })
     }
 
     const pf2 = await callAgentSafe(
@@ -3162,12 +3188,12 @@ if (after('review', entryStage)) {
     preflightCallCount++
     logTestCmdRun(pf2)
     if (isAgentDeath(pf2)) {
-      return finish({ status: 'preflight-died', pr, issue, round: currentRound, trace, resumable: true })
+      return finish(STATUS['preflight-died'], { pr, issue, round: currentRound, trace })
     }
     if (pf2?.pass !== false) return true
 
     log(`Preflight still failing after retry — escalating as preflight-stuck`)
-    return finish({ status: 'preflight-stuck', pr, issue, round: currentRound, issues: foldFailedChecks(pf2), trace })
+    return finish(STATUS['preflight-stuck'], { pr, issue, round: currentRound, issues: foldFailedChecks(pf2), trace })
   }
 
   let prevRoundItems = null
@@ -3224,9 +3250,9 @@ if (after('review', entryStage)) {
     log(`Verified-untickable: ${untickable.length} box(es) proven but not tickable (permissions)${rest.length > 0 ? ` + ${rest.length} human-gate` : ''} — parking for the Lead, no Nick round`)
     await updateStatus('Pending Tick')   // best-effort; logs + skips if the option is unconfigured
     if (rest.length === 0) {
-      return finish({ status: 'verified-untickable', pr, issue, round, untickableItems: untickable, trace, decisionLog, resumable: true })
+      return finish(STATUS['verified-untickable'], { pr, issue, round, untickableItems: untickable, trace, decisionLog })
     }
-    return finish({ status: 'ready-pending-human', pr, issue, round, humanGateItems: rest, untickableItems: untickable, trace, decisionLog, resumable: true })
+    return finish(STATUS['ready-pending-human'], { pr, issue, round, humanGateItems: rest, untickableItems: untickable, trace, decisionLog })
   }
 
   // syncAcceptanceBlock (issue #97) — deterministic, FAIL-CLOSED sync of Sam's amended acceptance
@@ -3329,7 +3355,7 @@ if (after('review', entryStage)) {
   // Null guard (item 1) — Morgan agent death on initial call
   if (v === null) {
     log('Morgan died (null result) — run is resumable via resumeFromRunId (same-args crash-retry only)')
-    return finish({ status: 'review-died', pr, issue, round: 0, trace, resumable: true })
+    return finish(STATUS['review-died'], { pr, issue, round: 0, trace })
   }
 
   await recordDecision(round, v.verdict, v.items)
@@ -3344,12 +3370,12 @@ if (after('review', entryStage)) {
   if (v.verdict === 'REQUIRED_CHANGES' && allHumanGate(v.items)) {
     log(`Ready pending human: only human-gate items remain (${v.items.length})`)
     await updateStatus('Pending Human')   // best-effort; no-ops if the option is unconfigured
-    return finish({ status: 'ready-pending-human', pr, issue, round, humanGateItems: v.items, trace, decisionLog, resumable: true })
+    return finish(STATUS['ready-pending-human'], { pr, issue, round, humanGateItems: v.items, trace, decisionLog })
   }
 
   while (v.verdict !== 'LGTM' && round < 3) {
     if (gate('review', v.verdict)) {
-      return finish({ status: 'needs-revision', round, items: v.items, pr, issue, trace })
+      return finish(STATUS['needs-revision'], { round, items: v.items, pr, issue, trace })
     }
     prevRoundItems = v.items || []
     round++
@@ -3378,19 +3404,19 @@ if (after('review', entryStage)) {
         round,
       )
       if (isAgentDeath(samAmend)) {
-        return finish({ status: 'plan-died', issue, planPath, trace, resumable: true })
+        return finish(STATUS['plan-died'], { issue, planPath, trace })
       }
       if (samAmend.decision === 'NO-GO') {
         log(`Sam (plan amendment): NO-GO — ${samAmend.rationale || 'see report'}`)
         await updateStatus('Blocked')
-        return finish({ status: 'no-go', reason: samAmend.rationale, plan: samAmend.plan, trace })
+        return finish(STATUS['no-go'], { reason: samAmend.rationale, plan: samAmend.plan, trace })
       }
       samPlan = samAmend.plan
       refreshPlanBlock()
       const acceptanceSynced = await syncAcceptanceBlock(samAmend.acceptanceChecklist, round)
       if (!acceptanceSynced) {
         await updateStatus('Blocked')
-        return finish({ status: 'escalate', reason: 'acceptance-sync-failed', pr, issue, round, trace })
+        return finish(STATUS['escalate'], { reason: 'acceptance-sync-failed', pr, issue, round, trace })
       }
       nickItems = codeItems
       planRouted = true
@@ -3416,13 +3442,13 @@ if (after('review', entryStage)) {
         round,
       )
       if (isAgentDeath(nickFixRound)) {
-        return finish({ status: 'dev-died', pr, issue, round, trace, resumable: true })
+        return finish(STATUS['dev-died'], { pr, issue, round, trace })
       }
       const after = await prSignature('after', round)
       if (after.sha === before.sha && after.body === before.body) {
         log(`Round ${round}: Nick no-op — SHA+body unchanged (${after.sha}). Escalating without re-review.`)
         await updateStatus('Blocked')
-        return finish({ status: 'escalate', reason: 'nick-no-op', round, pr, issue, trace, sha: after.sha })
+        return finish(STATUS['escalate'], { reason: 'nick-no-op', round, pr, issue, trace, sha: after.sha })
       }
       if (after.sha === before.sha) {
         trace.push(`nick-body-only-fix:${round}`)
@@ -3456,7 +3482,7 @@ if (after('review', entryStage)) {
     // Null guard (item 1) — Morgan agent death in loop
     if (v === null) {
       log(`Morgan died (null result) on round ${round} — run is resumable via resumeFromRunId (same-args crash-retry only)`)
-      return finish({ status: 'review-died', pr, issue, round, trace, resumable: true })
+      return finish(STATUS['review-died'], { pr, issue, round, trace })
     }
 
     await recordDecision(round, v.verdict, v.items)
@@ -3471,7 +3497,7 @@ if (after('review', entryStage)) {
     if (v.verdict === 'REQUIRED_CHANGES' && allHumanGate(v.items)) {
       log(`Ready pending human: only human-gate items remain (${v.items.length})`)
       await updateStatus('Pending Human')   // best-effort; no-ops if the option is unconfigured
-      return finish({ status: 'ready-pending-human', pr, issue, round, humanGateItems: v.items, trace, decisionLog, resumable: true })
+      return finish(STATUS['ready-pending-human'], { pr, issue, round, humanGateItems: v.items, trace, decisionLog })
     }
 
     // Plan-defect-persists escalation (issue #97, S13) — evaluated BEFORE same-blocker-twice, and
@@ -3484,8 +3510,8 @@ if (after('review', entryStage)) {
       if (freshPlanRoutes.length > 0) {
         log(`Plan-defect-persists: round ${round} still classifies ${freshPlanRoutes.length} item(s) as plan defect(s) after ${planAmendRounds} amendment round(s) — escalating`)
         await updateStatus('Blocked')
-        return finish({
-          status: 'escalate', reason: 'plan-defect-persists', pr, issue, round,
+        return finish(STATUS['escalate'], {
+          reason: 'plan-defect-persists', pr, issue, round,
           items: freshPlanRoutes.map(r => r.item), trace,
         })
       }
@@ -3495,7 +3521,7 @@ if (after('review', entryStage)) {
     if (round > 0 && v.verdict === 'REQUIRED_CHANGES' && isSubset(prevRoundItems, v.items)) {
       log(`Same-blocker-twice: round ${round} items ⊇ round ${round - 1} items — escalating`)
       await updateStatus('Blocked')
-      return finish({ status: 'escalate', reason: 'same-blocker-twice', pr, issue, round, items: v.items, trace })
+      return finish(STATUS['escalate'], { reason: 'same-blocker-twice', pr, issue, round, items: v.items, trace })
     }
   }
 
@@ -3557,14 +3583,13 @@ if (after('review', entryStage)) {
       trace.push(`mergeable-conflicting:${mergeState.mergeStateStatus || 'DIRTY'}`)
       log(`Mergeability recheck: PR #${pr} reports mergeable=CONFLICTING (mergeStateStatus=${mergeState.mergeStateStatus}) despite LGTM — escalating instead of a false-positive ready (#91/#119)`)
       await updateStatus('Blocked')
-      return finish({ status: 'escalate', reason: 'mergeable-conflicting', pr, issue, round, mergeStateStatus: mergeState.mergeStateStatus || null, trace, decisionLog })
+      return finish(STATUS['escalate'], { reason: 'mergeable-conflicting', pr, issue, round, mergeStateStatus: mergeState.mergeStateStatus || null, trace, decisionLog })
     }
     await squashBeforeHandoff()
   }
 
   await updateStatus(v.verdict === 'LGTM' ? 'PR Ready' : 'Blocked')
-  return finish({
-    status: v.verdict === 'LGTM' ? 'ready' : 'escalate',
+  return finish(v.verdict === 'LGTM' ? STATUS['ready'] : STATUS['escalate'], {
     pr,
     branch: nick?.branch ?? '<unavailable>',
     rounds: round,
