@@ -630,7 +630,7 @@ EOF
     { cat "$PWD_/body.md"; printf '\n%s\n' "$FOPEN"; [ -z "$FINNER" ] || printf '%s\n' "$FINNER"; printf '%s\n%s\n' "$EX" "$FCLOSE"; } > "$PWD_/body2.md" && cp "$PWD_/body2.md" "$PWD_/body.md"
     OUT="$(run_pw body-splice --pr 9 --mode tick --text "$TK_TXT" --ids 1,3 --keep 2)"
     ok=0; [ "$(res "$OUT")" = "written/-" ] && grep -qxF -- '- [x] <!-- ac:1 --> first' "$PWD_/body.md" && grep -qxF -- '- [x] <!-- ac:3 --> third' "$PWD_/body.md" \
-      && [ "$(grep -c -F -- '- [ ] an example box' "$PWD_/body.md")" = 1 ] && ok=1
+      && [ "$(grep -c -F -- 'ac:1' "$PWD_/body.md")" = 1 ] && [ "$(tail -n 4 "$PWD_/body.md" | head -n 3)" = "$EX" ] && ok=1
     check "[183] pr-write.sh tick: a $FNAME fence after the block keeps its example pair out of the tick" "$ok"
   done 3<<'EOF'
 tilde|~~~||~~~

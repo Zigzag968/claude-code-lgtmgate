@@ -15,7 +15,8 @@
 # "now" comes from `date -u` HERE: the workflow script itself may not read the wall clock (harness ban on
 # argless new Date(), claude-agent-pipeline#144/#135), and no LLM interprets it any more (incident #14).
 # acceptanceChecked (#183): the ids of the acceptance boxes ticked in the body (templates/pr-body-splice.cjs, op checked: the
-# same fence-aware block reader the tick uses); null when the body or node could not be read.
+# same fence-aware block reader the tick uses); null when the body or node could not be read. The engine reads it for the
+# human-gate boxes only: a gate is settled iff its id is listed here (a person ticked it); any other box needs a proof of the round.
 # openIssues is read only with --since (open issues created at or after ISO). The scan keeps its
 # server-side `created:>=` bound; REVIEWER_WINDOW_SCAN_SAFETY_LIMIT is a belt-and-suspenders ceiling:
 # a result of exactly that many issues is the truncation signal -> openIssues null, openIssuesTruncated
