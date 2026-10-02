@@ -286,6 +286,85 @@ node "$TMP/gen.cjs" "$NOTERAW" note
 D15="$(newdir out-note)"
 refusal_case "a capture with a free-text top-level key" "outside name, args, calls, expect" "$D15" "$NOTERAW" --out-dir "$D15"
 
+# ---- the write: never a partial file at the final name -----------------------------------------------
+
+# a preload that kills the publisher (SIGKILL) halfway through its first write into KILL_DIR
+cat > "$TMP/killwrite.cjs" <<'JS'
+const fs = require('fs')
+const dir = process.env.KILL_DIR
+const fds = new Map()
+const open = fs.openSync
+fs.openSync = function (p, ...rest) {
+  const fd = open.call(this, p, ...rest)
+  if (dir && typeof p === 'string' && p.startsWith(dir)) fds.set(fd, p)
+  return fd
+}
+const write = fs.writeSync
+fs.writeSync = function (fd, buf, off, len, ...rest) {
+  if (fds.has(fd)) { write.call(this, fd, buf, off, Math.floor(len / 2)); process.kill(process.pid, 'SIGKILL') }
+  return write.call(this, fd, buf, off, len, ...rest)
+}
+JS
+DK="$(newdir out-kill)"
+KRC=$(KILL_DIR="$DK" NODE_OPTIONS="--require $TMP/killwrite.cjs" bash -c 'bash scripts/publish-fixture.sh "$@" >/dev/null 2>&1; echo $?' _ "$RAW" --out-dir "$DK" 2>/dev/null)
+kfinal=no; [ -e "$DK/123-auto.json" ] && kfinal=yes
+pub "$RAW" --out-dir "$DK"
+if [ "$KRC" -ne 0 ] && [ "$kfinal" = no ] && [ "$RC" -eq 0 ] && [ -f "$DK/123-auto.json" ] \
+   && [ "$(node scripts/run-offline.cjs "$DK/123-auto.json" 2>&1 | tail -n 1)" = "[offline] status=ok passed=1 failed=0" ]; then
+  ok "a kill during the write leaves no file at the final name, and a rerun publishes"
+else
+  bad "kill during the write: killed-rc=$KRC final-after-kill=$kfinal rerun-rc=$RC"
+fi
+
+if [ "$PUBLISHED" = yes ]; then
+  only=$(ls -A "$OUTD")
+  if [ "$only" = "123-auto.json" ]; then ok "the output directory holds the published file and no temporary file"; else bad "output directory holds: $only"; fi
+fi
+
+# a symbolic link at the final name (even a dangling one) is refused and its target never created
+DL="$(newdir out-link)"
+ln -s "$TMP/never-created.json" "$DL/123-auto.json"
+pub "$RAW" --out-dir "$DL"
+if [ "$RC" -eq 1 ] && [ "$(last_line)" = "[publish-fixture] status=refused" ] && [ ! -e "$TMP/never-created.json" ] && [ -L "$DL/123-auto.json" ] \
+   && [ "$(ls -A "$DL")" = "123-auto.json" ] && printf '%s\n' "$ERR" | grep -q '^refused: .*exists'; then
+  ok "refuses a symbolic link at the output name"
+else
+  bad "refuses a symbolic link: rc=$RC target=$([ -e "$TMP/never-created.json" ] && echo created || echo absent) err=$ERR"
+fi
+
+# a missing output directory is refused
+pub "$RAW" --out-dir "$TMP/no-such-dir"
+if [ "$RC" -eq 1 ] && [ "$(last_line)" = "[publish-fixture] status=refused" ] && [ ! -e "$TMP/no-such-dir" ] \
+   && printf '%s\n' "$ERR" | grep -q '^refused: the output directory does not exist'; then
+  ok "refuses a missing output directory"
+else
+  bad "refuses a missing output directory: rc=$RC err=$ERR"
+fi
+
+# a file that appears at the final name during the run is never overwritten (the engine stub plants it)
+printf '%s\n' "const fs = process.mainModule.require('fs')" "try { fs.writeFileSync(args.victim, 'precious\n', { flag: 'wx' }) } catch (e) {}" "return { status: 'a' }" > "$TMP/stub-race.js"
+DR="$(newdir out-race)"
+printf '{"name":"1-s","args":{"victim":"%s"},"calls":{},"expect":{"status":"a"}}\n' "$DR/130-race.json" > "$RAWD/130-race.json"
+pub "$RAWD/130-race.json" --fp "$TMP/stub-race.js" --out-dir "$DR"
+if [ "$RC" -eq 1 ] && [ "$(last_line)" = "[publish-fixture] status=refused" ] && [ "$(cat "$DR/130-race.json")" = "precious" ] \
+   && [ "$(ls -A "$DR")" = "130-race.json" ] && printf '%s\n' "$ERR" | grep -q '^refused: .*never overwritten'; then
+  ok "refuses to overwrite a file that appeared during the run"
+else
+  bad "race on the output name: rc=$RC content=$(cat "$DR/130-race.json" 2>/dev/null) listing=$(ls -A "$DR") err=$ERR"
+fi
+
+# an unwritable output directory ends as status=error with nothing left behind
+DW="$(newdir out-readonly)"
+chmod 555 "$DW"
+pub "$RAW" --out-dir "$DW"
+wleft=$(ls -A "$DW" | wc -l | tr -d ' ')
+chmod 755 "$DW"
+if [ "$RC" -eq 1 ] && [ "$(last_line)" = "[publish-fixture] status=error" ] && [ "$wleft" = "0" ]; then
+  ok "an unwritable output directory is an error and leaves nothing"
+else
+  bad "unwritable output directory: rc=$RC last='$(last_line)' left=$wleft"
+fi
+
 # ---- usage errors (exit 2, before any filesystem access) ----------------------------------------------
 
 pub

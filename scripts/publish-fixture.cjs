@@ -4,8 +4,9 @@
 // Publish a PRIVATE raw capture as a minimized, redacted, public fixture (E3.10, #189).
 //
 // Input: a raw capture written by scripts/capture-incident.cjs (fixture format of run-offline.cjs:
-// name, args, calls, expect). Output: fixtures/incidents/<issue>-<label>.json, written exclusively
-// (an existing file is never overwritten) and only after every step below held.
+// name, args, calls, expect). Output: fixtures/incidents/<issue>-<label>.json, written to a temporary file next to it,
+// fsynced, then linked at its name (the link fails if the name exists: an existing file is never overwritten, and a kill
+// never leaves a partial file at the final name), only after every step below held.
 //
 // Usage:
 //   node scripts/publish-fixture.cjs <raw capture> [<out name>] [--out-dir DIR] [--fp FILE]
@@ -209,7 +210,8 @@ function runNode(args, env) {
 
 // ---- main -----------------------------------------------------------------------------------
 
-let createdOut = null // set once the output file is created, so an unexpected error can remove it
+let createdOut = null // set once the output name is linked, so an unexpected error can remove it
+let tmpOut = null // the temporary file next to the target, removed on any end
 
 async function main() {
   const { capture, outName, outDir, fp } = parseArgs(process.argv.slice(2))
@@ -423,15 +425,16 @@ async function main() {
     try { fs.rmSync(tmpDir, { recursive: true, force: true }) } catch (e) { /* best effort, the directory is ours */ }
   }
 
-  // ---- exclusive write ----
+  // ---- write: a temporary file next to the target, then a link that fails if the name exists ----
+  // A kill at any point leaves at worst a hidden `.<name>.json.tmp-*` file, never a partial file at the final name.
+  tmpOut = path.join(outDir, `.${outName}.json.tmp-${process.pid}-${crypto.randomBytes(4).toString('hex')}`)
   let fd
   try {
-    fd = fs.openSync(outPath, 'wx', 0o644)
+    fd = fs.openSync(tmpOut, 'wx', 0o600)
   } catch (e) {
-    if (e && e.code === 'EEXIST') refuse(`the output file ${outPath} exists; a published fixture is never overwritten`)
+    tmpOut = null // never created by us: nothing to remove
     throw e
   }
-  createdOut = outPath
   try {
     const buf = Buffer.from(text)
     let off = 0
@@ -441,9 +444,19 @@ async function main() {
       off += n
     }
     fs.fchmodSync(fd, 0o644)
+    fs.fsyncSync(fd)
   } finally {
     fs.closeSync(fd)
   }
+  try {
+    fs.linkSync(tmpOut, outPath)
+  } catch (e) {
+    if (e && e.code === 'EEXIST') refuse(`the output file ${outPath} exists; a published fixture is never overwritten`)
+    throw e
+  }
+  createdOut = outPath
+  fs.unlinkSync(tmpOut)
+  tmpOut = null
 
   // ---- what remains: field names and counts, never a value ----
   // A kept string with a space, a newline or a path separator is free text (a plan line, a reason, a file path), unless it
@@ -482,6 +495,7 @@ async function main() {
 }
 
 main().catch((e) => {
+  if (tmpOut) { try { fs.unlinkSync(tmpOut) } catch (u) { /* already gone */ } }
   if (e instanceof Usage) {
     process.stderr.write(`usage-error: ${e.message}\n${USAGE}\n`)
     process.stdout.write('[publish-fixture] status=usage-error\n')
