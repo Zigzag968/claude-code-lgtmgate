@@ -5239,6 +5239,59 @@ await testCase('T183z a human-gate box is settled by the body alone: ticked by a
   return e1 || e2 || e3 || e4 || e4b || e5 || e5b || e6 || e7 || e8 || e9 || e10 || e11 || e12 || { ok: true }
 })
 
+await testCase('T183za the fence scanner: tilde and longer fences, a fence inside the block, a fence never closed (the tick fails closed with no-markers)', async () => {
+  const E = '<!-- acceptance:start -->\n- [ ] an example box\n<!-- acceptance:end -->\n'
+  const real = '<!-- acceptance:start -->\n' + T183_L3.join('\n') + '\n<!-- acceptance:end -->\n'
+  const ticked3 = T183_L3.map((l) => '- [x] ' + l.slice(6)).join('\n')
+  // The example comes AFTER the real block, so an unfenced reading of it would make it "the last pair" and the tick would hit it.
+  const after = (fence) => 'Closes #183\n\n' + real + '\n' + fence + '\n'
+  const shapes = {
+    tilde: after('~~~\n' + E + '~~~'),
+    'tilde, longer than 3': after('~~~~~\n' + E + '~~~~~'),
+    '4 backticks holding a 3-backtick fence': after('````\n```\n' + E + '```\n````'),
+    'backticks holding a tilde line': after('```\n~~~\n' + E + '```'),
+    'tildes holding a backtick line': after('~~~\n```\n' + E + '~~~'),
+    'indented by 3 spaces': after('   ```\n' + E + '   ```'),
+    'never closed, after the block': after('```\n' + E.trimEnd()),
+  }
+  const fns = t183Splice()
+  for (const [name, body] of Object.entries(shapes)) {
+    const r = await t183Review({ prBody: body, morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, true, true) }] })
+    const p = String(r.prBodyPreview || '')
+    const e1 = eq(name + ': status', r.status, 'ready')
+    const e2 = eq(name + ': the 3 real boxes ticked', t183Ticked(p).length, 3)
+    const e3 = includes(name + ': the example is intact', p, '<!-- acceptance:start -->\n- [ ] an example box\n<!-- acceptance:end -->')
+    const e4 = includes(name + ': the real block is the ticked one', p, '<!-- acceptance:start -->\n' + ticked3 + '\n<!-- acceptance:end -->')
+    if (e1 || e2 || e3 || e4) return e1 || e2 || e3 || e4
+    if (!fns) continue
+    const e5 = eq(name + ': checked ids are the real block\'s', fns.checkedAcceptanceIds(p), [1, 2, 3])
+    const e6 = includes(name + ': splice replaces the real block only', fns.spliceAcceptanceBlock(body, '- [ ] <!-- ac:1 --> new'), real.replace(T183_L3.join('\n'), '- [ ] <!-- ac:1 --> new'))
+    if (e5 || e6) return e5 || e6
+  }
+  // A fence inside the block itself: the marker pair it holds (the start would cut the block) is no marker, and the id-looking line it holds is no box.
+  const inner = '```\n<!-- acceptance:start -->\n- [ ] <!-- ac:2 --> fenced id example\n<!-- acceptance:end -->\n```'
+  const body = 'Closes #183\n\n<!-- acceptance:start -->\n' + [T183_L3[0], inner, T183_L3[1], T183_L3[2]].join('\n') + '\n<!-- acceptance:end -->\n'
+  const r = await t183Review({ prBody: body, morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, true, true) }] })
+  const p = String(r.prBodyPreview || '')
+  const e7 = eq('fence in the block: status', r.status, 'ready')
+  const e8 = includes('fence in the block: rendered boxes ticked, the fence kept after them', p, '<!-- acceptance:start -->\n' + ticked3 + '\n' + inner + '\n<!-- acceptance:end -->')
+  if (e7 || e8) return e7 || e8
+  if (fns) {
+    const e9 = eq('fence in the block: checked ids', fns.checkedAcceptanceIds(body.replace('- [ ] <!-- ac:2 --> fenced id example', '- [x] <!-- ac:2 --> fenced id example')), [])
+    if (e9) return e9
+  }
+  // A fence never closed BEFORE the block swallows it: no block, the tick fails closed, the run is parked with its reason.
+  const open = 'Closes #183\n\n```\nan example, never closed\n\n' + real
+  const o = await t183Review({ prBody: open, morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, true, true) }] })
+  const e10 = eq('never closed before the block: status', o.status, 'verified-untickable')
+  const e11 = eq('never closed before the block: tickReason', o.tickReason, 'no-markers')
+  const e12 = includes('never closed before the block: trace', o.trace || [], 'acceptance-tick-reason:no-markers')
+  const e13 = eq('never closed before the block: the body is untouched', o.prBodyPreview === undefined || o.prBodyPreview === null || String(o.prBodyPreview).includes('- [x]') === false, true)
+  if (!fns) return e10 || e11 || e12 || e13 || t182Skip('T183za')
+  const e14 = eq('never closed before the block: block level', fns.tickAcceptanceBlock(open, T183_L3.join('\n'), [1, 2, 3], []), null)
+  return e10 || e11 || e12 || e13 || e14 || { ok: true }
+})
+
 // T123 (#42) — every test ID is unique across the suite. Must stay the LAST case so `results`
 // holds every other case name. Includes a negative control proving the detector really detects.
 await testCase('T123 test IDs are unique across the suite (no duplicated T<n>)', async () => {

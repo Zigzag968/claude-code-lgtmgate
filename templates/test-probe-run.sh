@@ -618,6 +618,45 @@ EOF
   ok=0; [ "$(res "$OUT")" = "written/-" ] && grep -qxF -- '- [x] <!-- ac:1 --> first' "$PWD_/body.md" && grep -qxF -- '- [ ] an example box' "$PWD_/body.md" \
     && [ "$(grep -c -F -- '- [ ] an example box' "$PWD_/body.md")" = 2 ] && ok=1
   check "[183] pr-write.sh tick ignores marker pairs inside fenced code blocks (before and after the block)" "$ok"
+  # [183] second review round (G4): the fence kinds the scanner knows, each holding an example pair AFTER the real block
+  # (read unfenced, that example would be "the last pair" and the tick would hit it instead of the real block)
+  EX='<!-- acceptance:start -->
+- [ ] an example box
+<!-- acceptance:end -->'
+  while IFS='|' read -r FNAME FOPEN FINNER FCLOSE <&3; do
+    tk_body '- [ ] <!-- ac:1 --> first
+- [ ] <!-- ac:2 --> [human-gate] second
+- [ ] <!-- ac:3 --> third'
+    { cat "$PWD_/body.md"; printf '\n%s\n' "$FOPEN"; [ -z "$FINNER" ] || printf '%s\n' "$FINNER"; printf '%s\n%s\n' "$EX" "$FCLOSE"; } > "$PWD_/body2.md" && cp "$PWD_/body2.md" "$PWD_/body.md"
+    OUT="$(run_pw body-splice --pr 9 --mode tick --text "$TK_TXT" --ids 1,3 --keep 2)"
+    ok=0; [ "$(res "$OUT")" = "written/-" ] && grep -qxF -- '- [x] <!-- ac:1 --> first' "$PWD_/body.md" && grep -qxF -- '- [x] <!-- ac:3 --> third' "$PWD_/body.md" \
+      && [ "$(grep -c -F -- '- [ ] an example box' "$PWD_/body.md")" = 1 ] && ok=1
+    check "[183] pr-write.sh tick: a $FNAME fence after the block keeps its example pair out of the tick" "$ok"
+  done 3<<'EOF'
+tilde|~~~||~~~
+5-tilde|~~~~~||~~~~~
+4-backtick holding a 3-backtick fence|````|```|````
+backtick holding a tilde line|```|~~~|```
+tilde holding a backtick line|~~~|```|~~~
+EOF
+  # a fence inside the block holds a marker pair and an id-looking line: neither cuts the block nor is a box
+  tk_body '- [ ] <!-- ac:1 --> first
+```
+<!-- acceptance:start -->
+- [ ] <!-- ac:2 --> fenced example
+<!-- acceptance:end -->
+```
+- [ ] <!-- ac:2 --> [human-gate] second
+- [ ] <!-- ac:3 --> third'
+  OUT="$(run_pw body-splice --pr 9 --mode tick --text "$TK_TXT" --ids 1,3 --keep 2)"
+  ok=0; [ "$(res "$OUT")" = "written/-" ] && grep -qxF -- '- [x] <!-- ac:3 --> third' "$PWD_/body.md" && grep -qxF -- '- [ ] <!-- ac:2 --> fenced example' "$PWD_/body.md" \
+    && [ "$(grep -c -F -- 'ac:2' "$PWD_/body.md")" = 2 ] && ok=1
+  check "[183] pr-write.sh tick: a fence inside the block keeps its marker pair and its id-looking line as they are" "$ok"
+  # a fence never closed before the block swallows it: failed/no-markers, never appends, no edit
+  { printf 'Closes #1\n\n```\nan example, never closed\n\n'; printf '<!-- acceptance:start -->\n%s\n<!-- acceptance:end -->\n' "$TK_TXT"; } > "$PWD_/body.md"
+  OUT="$(run_pw body-splice --pr 9 --mode tick --text "$TK_TXT" --ids 1,3 --keep 2)"
+  ok=0; [ "$(res "$OUT")" = "failed/no-markers" ] && [ "$(no_call 'pr edit')" = 1 ] && ok=1
+  check "[183] pr-write.sh tick: a fence never closed before the block -> failed/no-markers, no edit" "$ok"
   tk_body '- [x] <!-- ac:1 --> first
 - [ ] <!-- ac:2 --> [human-gate] second
 - [x] <!-- ac:3 --> third'
