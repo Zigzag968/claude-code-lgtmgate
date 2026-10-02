@@ -45,6 +45,7 @@ f.calls['nick-issue-123'].summary = `opened PR #42, ${process.env.W_SUMM} inside
 f.args.brief = `fix slugify accents, ${process.env.W_BRIEF} customer`
 f.args.proceedThrough = 'review'
 if (variant === 'pem') f.args.issueType = process.env.PEM_HEADER
+if (variant === 'oneway') f.args.config = { oneWayDoorKinds: ['status', 'seam'], oneWayDoorPaths: ['workflows/**', '!docs/'] }
 if (variant === 'badstatus') f.expect.status = 'escalate'
 if (variant === 'note') f.note = 'free text'
 fs.writeFileSync(out, JSON.stringify(f, null, 2) + '\n')
@@ -172,6 +173,18 @@ refusal_case() {
     *) bad "refuses $name: stderr does not name '$want': rc=$RC err=$ERR";;
   esac
 }
+
+# the R3 configuration (oneWayDoorKinds / oneWayDoorPaths) is a switch of the engine the oracle cannot always see: it survives
+OWRAW="$RAWD/128-oneway.json"
+node "$TMP/gen.cjs" "$OWRAW" oneway
+D16="$(newdir out-oneway)"
+pub "$OWRAW" 128-oneway --out-dir "$D16"
+owc=$(jsf "$D16/128-oneway.json" 'f.args.config' 2>/dev/null)
+if [ "$RC" -eq 0 ] && [ "$owc" = '{"oneWayDoorKinds":["status","seam"],"oneWayDoorPaths":["workflows/**","!docs/"]}' ]; then
+  ok "protected R3 config (oneWayDoorKinds, oneWayDoorPaths) survives"
+else
+  bad "R3 config lost or publication failed: rc=$RC config=$owc err=$ERR"
+fi
 
 # the redactor refuses on residue: a PEM header in a protected arg (minimization never touches it)
 PEMRAW="$RAWD/123-pem.json"

@@ -55,7 +55,8 @@ const MAX_REHASH = 8
 
 // Args the engine validates or branches on as an enum or a switch. The oracle cannot always see them (a `_` in
 // `proceedThrough` or `issueType` leaves a nominal run identical), so they are never neutralized. A new enum or
-// switch arg in the engine must be added here. Dotted paths from the args root; anchors in workflows/deliver-pipeline.js:
+// switch arg in the engine must be added here. Dotted paths from the args root (a path protects its whole subtree,
+// array elements included); anchors in workflows/deliver-pipeline.js:
 const PROTECTED_ARGS = [
   'mode', // run mode, the flow selector
   'entryStage', // 'plan' | 'dev' | 'review', validated at the top of the body
@@ -65,6 +66,9 @@ const PROTECTED_ARGS = [
   'planFreshness', // 'advisory' | 'gate' | 'off', validated
   'config.planFreshness', // same, project default
   'config.preflight.envSymlink', // 'required' | 'forbidden' | 'ignore', validated
+  'config.oneWayDoorKinds', // R3: the kinds (status|agent|hook|seam) Sam announces; read by oneWayDoorKindsOf
+  'config.oneWayDoorPaths', // R3: the paths/globs of targetFiles that stop the run at the design step
+  'probeOnly.name', // the probe-run parser the probe is routed to (`--parser <name>`)
 ]
 
 class Refusal extends Error {
@@ -189,7 +193,9 @@ function neutralOf(v) {
 const isNeutral = (v) => v === '' || neutralOf(v) === v
 
 function isProtected(segs) {
-  return segs[0] === 'args' && PROTECTED_ARGS.includes(segs.slice(1).join('.'))
+  if (segs[0] !== 'args') return false
+  const dotted = segs.slice(1).join('.')
+  return PROTECTED_ARGS.some((p) => dotted === p || dotted.startsWith(`${p}.`))
 }
 
 // ---- redaction and strict replay (the sanctioned spawns) --------------------------------------

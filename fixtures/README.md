@@ -82,7 +82,8 @@ cause and writes nothing.
   the oracle. Every `agent()` call resolves to one engine site (`callAgent`), so the ordered labels carry the order of the
   agents and the log and phase sites carry the path through the engine. The baseline is replayed three times and must agree.
 - Protected args (`mode`, `entryStage`, `proceedThrough`, `issueType`, `resumeReason`, `planFreshness`,
-  `config.planFreshness`, `config.preflight.envSymlink`) are never neutralized.
+  `config.planFreshness`, `config.preflight.envSymlink`, `config.oneWayDoorKinds`, `config.oneWayDoorPaths`,
+  `probeOnly.name`; a path protects its whole subtree) are never neutralized.
 - The `cmd=` hash of a PROBE answer coupled to the args is recomputed after every change.
 - `scripts/redact-fixture.cjs` runs next (it refuses on residue), then its `--check`, then a strict replay.
 - The published `expect` is rebuilt from the replay: `status`, `reason`, `trace` with `traceExact`, `callLabels`.
