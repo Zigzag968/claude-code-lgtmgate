@@ -4090,7 +4090,7 @@ const t182Block = () => {
   const block = extractBetween(src, '// --- acceptanceItems:start ---', '// --- acceptanceItems:end ---')
   if (!block) throw new Error('acceptanceItems:start/:end markers not found in the pipeline source')
   // eslint-disable-next-line no-new-func
-  return new Function(block + '\nreturn { numberItems, renderLine, renderChecklist, parseChecklist, itemsFromPlan, holdsCommandSpan, validateAcceptanceItems, planLacksItems, mapBoxes, nickBlockNote, morganBoxesNote }')()
+  return new Function(block + '\nreturn { numberItems, renderLine, renderChecklist, parseChecklist, itemsFromPlan, validateAcceptanceItems, planLacksItems, mapBoxes, nickBlockNote, morganBoxesNote }')()
 }
 const T182_ITEMS = [
   { text: '`node scripts/guards.cjs; echo $?` prints `0` as its last line', humanGate: false },
@@ -4127,8 +4127,8 @@ await testCase('T182a acceptance items round-trip: parse(render(x)) deep-equals 
   const flagLost = fns.parseChecklist(fns.renderChecklist(x)).map((it) => ({ ...it, humanGate: false }))
   const control = eq('negative control (a reader that drops the human-gate flag)', JSON.stringify(flagLost) === JSON.stringify(x), false)
   if (control) return control
-  // The property. Fragments that the validator must refuse (id comment, tag, checkbox prefix, a gate with a command
-  // span) are in the alphabet: those entries are skipped, so the generator is checked too (refused > 0, kept >= 200).
+  // The property. Fragments that the validator must refuse (id comment, tag, checkbox prefix) are in the alphabet:
+  // those entries are skipped, so the generator is checked too (refused > 0, kept >= 200).
   let seed = 182
   const rnd = (n) => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return Math.floor((seed / 4294967296) * n) }
   const alphabet = ['a', 'b', 'Z', '0', '7', ' ', ' ', '`', ':', '[', ']', '<', '>', '!', '-', '-->', '—', 'é', 'à', 'ß', '|', '$', ';', '(', ')', '#',
@@ -4203,19 +4203,27 @@ await testCase('T182b parseChecklist reads a body with or without ids to the sam
   return e1 || e2 || e3 || e4 || e5 || e6 || e7 || e8 || { ok: true }
 })
 
-// T182c (#182, closes #169) — a human-gate item that carries a command is not a human gate. It is refused by the script
-// (never by the plan-check model, which is permissive here) through the existing NOT_CONFORMING loop, then the plan passes
-// once amended. Both carriers: the structured `command` field and a backticked command in the item's text.
-await testCase('T182c a human-gate item carrying a command is refused NOT_CONFORMING, then passes once amended (command field and backticked command)', async () => {
+// T182c (#182, closes #169) — a human-gate item that carries a command is not a human gate, refused NOT_CONFORMING then
+// passing once amended. The structured `command` field is refused by the script (the plan-check model is permissive
+// here); a command written in the item's text passes the script and is refused by the plan-check model (simulated
+// NOT_CONFORMING on the first pass, the sentence of HUMAN_GATE_CHECK_NOTE), through the same loop.
+await testCase('T182c a human-gate item carrying a command is refused NOT_CONFORMING, then passes once amended (command field by the script, command in the text by the plan check)', async () => {
   const withCommand = T182_ITEMS.map((it) => (it.humanGate ? { ...it, command: 'node scripts/guards.cjs' } : it))
+  const r1 = await run({ mode: 'semi', simulate: { sam: { 1: t182Sam(withCommand), 2: t182Sam(T182_ITEMS) }, planCheck: T182_CONFORMING } })
+  const e1 = eq('command field: status', r1.status, 'plan-ready')
+  const e2 = eq('command field: refusals', t182Refusals(r1), ['acceptance-items-refused:1'])
   const withSpan = T182_ITEMS.map((it) => (it.humanGate ? { ...it, text: 'the maintainer confirms `node scripts/guards.cjs` is the right check' } : it))
-  const errs = []
-  for (const [carrier, refusedItems] of [['command field', withCommand], ['backticked command in the text', withSpan]]) {
-    const r = await run({ mode: 'semi', simulate: { sam: { 1: t182Sam(refusedItems), 2: t182Sam(T182_ITEMS) }, planCheck: T182_CONFORMING } })
-    const e = eq(`${carrier}: status`, r.status, 'plan-ready') || eq(`${carrier}: refusals`, t182Refusals(r), ['acceptance-items-refused:1'])
-    if (e) errs.push(e.msg)
-  }
-  return errs.length ? { ok: false, msg: errs.join('; ') } : { ok: true }
+  const judged = 'item 2: a human-gate item whose text holds a command that decides it'
+  const refusedTwice = { 1: { verdict: 'NOT_CONFORMING', issues: [judged] }, 2: { verdict: 'NOT_CONFORMING', issues: [judged] } }
+  const r2 = await run({ mode: 'semi', simulate: { sam: { 1: t182Sam(withSpan), 2: t182Sam(withSpan) }, planCheck: refusedTwice } })
+  const e3 = eq('command in the text, kept: status', r2.status, 'escalate')
+  const e4 = eq('command in the text, kept: the issues are the plan check\'s', r2.planCheckIssues, [judged])
+  const e5 = eq('command in the text, kept: no script refusal', t182Refusals(r2), [])
+  const amended = { 1: { verdict: 'NOT_CONFORMING', issues: [judged] }, 2: { verdict: 'CONFORMING' } }
+  const r3 = await run({ mode: 'semi', simulate: { sam: { 1: t182Sam(withSpan), 2: t182Sam(T182_ITEMS) }, planCheck: amended } })
+  const e6 = eq('command in the text, amended: status', r3.status, 'plan-ready')
+  const e7 = eq('command in the text, amended: no script refusal', t182Refusals(r3), [])
+  return e1 || e2 || e3 || e4 || e5 || e6 || e7 || { ok: true }
 })
 
 // T182d (#182) — a genuine human gate (a judgement, no command) passes the plan gate untouched, and the block the
@@ -4262,22 +4270,23 @@ await testCase('T182e Morgan boxes are mapped by id to the rendered items, in it
   return e1 || e2 || e3 || e4 || { ok: true }
 })
 
-// T182f (#182, #169) — the refusal is not a one-off: a gate item whose text holds a backticked command with arguments is
-// refused on every attempt, so the existing escalation applies (plan-not-conforming) and names the item and the command.
-// Controls: a single-token span (a path) is not a command, and a proven item may carry its command.
-await testCase('T182f a human-gate item with a backticked command is refused on every attempt -> escalate plan-not-conforming; a single-token span and a proven item with a command pass', async () => {
-  const cmdSpan = [{ text: 'the maintainer reads `node -e "1"` and judges the wording', humanGate: true }]
-  const r1 = await run({ mode: 'auto', simulate: { sam: { 1: t182Sam(cmdSpan), 2: t182Sam(cmdSpan) }, planCheck: T182_CONFORMING } })
+// T182f (#182, #169) — the refusal is not a one-off: a gate item that carries a `command` field is refused on every
+// attempt, so the existing escalation applies (plan-not-conforming) and names the item and the command. Controls: the
+// same command written only in the gate item's text passes the script (the plan-check model, permissive here, judges
+// it), and a proven item may carry its command.
+await testCase('T182f a human-gate item with a command field is refused on every attempt -> escalate plan-not-conforming; the command in the text alone and a proven item with a command pass the script', async () => {
+  const cmdField = [{ text: 'the maintainer reads the output and judges the wording', humanGate: true, command: 'node -e "1"' }]
+  const r1 = await run({ mode: 'auto', simulate: { sam: { 1: t182Sam(cmdField), 2: t182Sam(cmdField) }, planCheck: T182_CONFORMING } })
   const first = String((r1.planCheckIssues || [])[0] || '')
   const e1 = eq('status', r1.status, 'escalate')
   const e2 = eq('reason', r1.reason, 'plan-not-conforming')
   const e3 = includes('planCheckIssues[0] names the item', first, 'item 1')
   const e4 = includes('planCheckIssues[0] quotes the command', first, 'node -e "1"')
   const e5 = eq('refusals', t182Refusals(r1), ['acceptance-items-refused:1', 'acceptance-items-refused:2'])
-  const singleToken = [{ text: 'the maintainer reads `README.md` and judges the wording', humanGate: true }]
-  const r2 = await run({ mode: 'semi', simulate: { sam: { 1: t182Sam(singleToken) }, planCheck: T182_CONFORMING } })
-  const e6 = eq('single-token span: status', r2.status, 'plan-ready')
-  const e7 = eq('single-token span: refusals', t182Refusals(r2), [])
+  const inText = [{ text: 'the maintainer reads `node -e "1"` and judges the wording', humanGate: true }]
+  const r2 = await run({ mode: 'semi', simulate: { sam: { 1: t182Sam(inText) }, planCheck: T182_CONFORMING } })
+  const e6 = eq('command in the text only: status', r2.status, 'plan-ready')
+  const e7 = eq('command in the text only: refusals', t182Refusals(r2), [])
   const proven = [{ text: '`bash scripts/x.sh` exits 0', humanGate: false, command: 'bash scripts/x.sh' }]
   const r3 = await run({ mode: 'semi', simulate: { sam: { 1: t182Sam(proven) }, planCheck: T182_CONFORMING } })
   const e8 = eq('proven item with a command: status', r3.status, 'plan-ready')
@@ -4303,8 +4312,8 @@ await testCase('T182g validateAcceptanceItems: each refused shape names its item
     ['the tag in the text, any case', [{ text: 'judge it [Human-Gate]' }], 'item 1: text must not carry'],
     ['a non-boolean humanGate', [{ text: 'ok', humanGate: 'yes' }], 'item 1: humanGate must be true or false'],
     ['a non-string command', [{ text: 'ok', command: 5 }], 'item 1: command must be a string'],
-    ['a gate item with a command', [{ text: 'a person judges it', humanGate: true, command: 'node x.js' }], 'item 1: flagged humanGate but carries the command'],
-    ['a gate item with a backticked command', [{ text: 'a person runs `bash x.sh` first', humanGate: true }], 'item 1: flagged humanGate but its text holds the backticked command'],
+    ['a gate item with a command', [{ text: 'a person judges it', humanGate: true, command: 'node x.js' }], 'item 1: flagged humanGate but carries the command `node x.js`'],
+    ['a gate item with a padded command', [{ text: 'ok' }, { text: 'a person judges it', humanGate: true, command: '  mvn test ' }], 'item 2: flagged humanGate but carries the command `mvn test`'],
   ]
   for (const [label, entries, want] of refused) {
     const issues = fns.validateAcceptanceItems(entries)
@@ -4316,6 +4325,8 @@ await testCase('T182g validateAcceptanceItems: each refused shape names its item
     ['a blank command on a gate item', [{ text: 'a person judges it', humanGate: true, command: '  ' }]],
     ['a single-token span on a gate item', [{ text: 'a person reads `README.md` first', humanGate: true }]],
     ['an unterminated backtick on a gate item', [{ text: 'a person reads `README.md and then judges', humanGate: true }]],
+    ['a command in a gate item\'s text (the plan check judges it)', [{ text: 'a person runs `bash x.sh` first', humanGate: true }]],
+    ['a command on an item whose humanGate is false', [{ text: 'a person judges it', humanGate: false, command: 'dotnet test' }]],
     ['an arrow inside the text', [{ text: 'the --> arrow is fine', humanGate: false }, { text: 'so is this --> one', humanGate: true }]],
   ]
   for (const [label, entries] of accepted) {
@@ -4324,10 +4335,7 @@ await testCase('T182g validateAcceptanceItems: each refused shape names its item
   }
   const both = fns.validateAcceptanceItems([{ text: '' }, { text: 'fine' }, { text: 'x', humanGate: 'no' }])
   const e1 = eq('one issue per bad item, in item order', both.map((s) => s.split(':')[0]), ['item 1', 'item 3'])
-  // PR #190 review: a span is a command by the closed rule (executable or path first, a flag, a shell operator), not
-  // by holding a space, so the prose span `b c` is no longer one; `npm test` and `y --z` are.
-  const e2 = eq('holdsCommandSpan', [fns.holdsCommandSpan('a `npm test` d'), fns.holdsCommandSpan('a `b` d'), fns.holdsCommandSpan('a `b c'), fns.holdsCommandSpan('`x` and `y --z`'), fns.holdsCommandSpan('a `b c` d')], ['npm test', null, null, 'y --z', null])
-  return e1 || e2 || { ok: true }
+  return e1 || { ok: true }
 })
 
 // T182h (#182) — source-anchored: the new text is interpolated where the contract needs it, once per site, and the two
@@ -4342,7 +4350,7 @@ await testCase('T182h source: ACCEPTANCE_ITEMS_RULE once, the Nick note once, th
   const e3 = eq('morganBoxesNote interpolations (initial + re-review)', count('${morganBoxesNote(acceptanceBlock)}'), 2)
   const e4 = eq('HUMAN_GATE_CHECK_NOTE interpolations (plan-check + plan-audit)', count('${HUMAN_GATE_CHECK_NOTE}'), 2)
   const rule = src.split('\n').find((l) => l.startsWith('const ACCEPTANCE_ITEMS_RULE = ')) || ''
-  const missing = ['acceptanceItems', '<!-- ac:N -->', '[human-gate]', 'backticked command'].filter((w) => !rule.includes(w))
+  const missing = ['acceptanceItems', '<!-- ac:N -->', '[human-gate]', 'a command written in its text is judged by the plan check'].filter((w) => !rule.includes(w))
   const e5 = missing.length ? { ok: false, msg: `ACCEPTANCE_ITEMS_RULE lacks ${JSON.stringify(missing)}` } : null
   const e6 = eq('both notes are empty without a block', [fns.nickBlockNote(''), fns.nickBlockNote(undefined), fns.morganBoxesNote(''), fns.morganBoxesNote(undefined)], ['', '', '', ''])
   const block = t182Lines(T182_ITEMS).join('\n')
@@ -4481,19 +4489,19 @@ await testCase('T182n a relaunch with a legacy planText (no ids): no rendered bl
   return e1 || e2 || e3 || e4 || e5 || { ok: true }
 })
 
-// T182o-p (#169, PR #190 review) — what counts as a command in a human-gate item is a closed rule: a backticked span
-// (any backtick run length) of two or more words whose first word is a known executable or a path, or that holds a flag
-// or a shell operator; or, outside the spans, a bare known executable followed by a flag, a path or a quote. UI copy and
-// a Markdown heading in backticks are judgements, not commands.
+// T182o-p (#169, PR #190 review) — the human-gate validator checks structure: the #169 incident, double-backtick
+// commands, a path, a flag or a pipe written in a gate item's text all pass the script (the plan-check model judges a
+// command in the text, HUMAN_GATE_CHECK_NOTE); the same item carrying that command in its `command` field is refused,
+// quoting it. UI copy, a Markdown heading and a judgement pass either way.
 const T182_INCIDENT = 'Visual check: the PR body pastes verbatim the output of node -e \'…render(…, { locale: "fr-FR" })\' … and the human confirms both'
 const T182_UI_COPY = 'The empty-state copy `No items yet` reads naturally on a small screen'
 const T182_HEADING = 'The `## What this ships` section reads well to a third party'
-await testCase('T182o validator: the #169 incident text and a double-backtick command are refused; UI copy, a heading and a judgement pass', async () => {
+await testCase('T182o validator: a command in a gate item\'s text passes the script, the same command in its command field is refused; UI copy, a heading and a judgement pass', async () => {
   const fns = t182Block()
   if (!fns) return t182Skip('T182o')
-  const gate = (text) => fns.validateAcceptanceItems([{ text, humanGate: true }])
-  const refused = [
-    ['the #169 incident (bare invocation)', T182_INCIDENT, 'node -e'],
+  const gate = (text, command) => fns.validateAcceptanceItems([command === undefined ? { text, humanGate: true } : { text, humanGate: true, command }])
+  const commands = [
+    ['the #169 incident (bare invocation)', T182_INCIDENT, 'node -e \'…render(…, { locale: "fr-FR" })\''],
     ['a double-backtick command', 'the maintainer judges the output of ``npm test`` by eye', 'npm test'],
     ['a double-backtick span holding a backtick', 'a person reads ``git log --format=`%h` `` and judges', 'git log --format=`%h`'],
     ['a span whose first word is a path', 'a person runs `./build.sh release` and looks', './build.sh release'],
@@ -4501,10 +4509,12 @@ await testCase('T182o validator: the #169 incident text and a double-backtick co
     ['a span with a pipe', 'a person reads `cat x | head` and judges', 'cat x | head'],
     ['a bare executable then a path', 'a person runs bash scripts/x.sh and judges the colours', 'bash scripts/x.sh'],
   ]
-  for (const [label, text, cmd] of refused) {
-    const issues = gate(text)
-    if (issues.length !== 1 || !issues[0].startsWith('item 1: flagged humanGate but its text holds') || !issues[0].includes(cmd)) {
-      return { ok: false, msg: `${label}: expected one refusal quoting ${JSON.stringify(cmd)}, got ${JSON.stringify(issues)}` }
+  for (const [label, text, cmd] of commands) {
+    const inText = gate(text)
+    if (inText.length !== 0) return { ok: false, msg: `${label}, in the text only: expected no refusal from the script, got ${JSON.stringify(inText)}` }
+    const inField = gate(text, cmd)
+    if (inField.length !== 1 || !inField[0].startsWith('item 1: flagged humanGate but carries the command') || !inField[0].includes(cmd)) {
+      return { ok: false, msg: `${label}, in the command field: expected one refusal quoting ${JSON.stringify(cmd)}, got ${JSON.stringify(inField)}` }
     }
   }
   const accepted = [
@@ -4521,16 +4531,70 @@ await testCase('T182o validator: the #169 incident text and a double-backtick co
   }
   return { ok: true }
 })
-await testCase('T182p plan gate: the #169 incident item is refused NOT_CONFORMING then passes once amended; UI-copy and heading gates pass first time', async () => {
-  const incident = T182_ITEMS.map((it) => (it.humanGate ? { ...it, text: T182_INCIDENT } : it))
+await testCase('T182p plan gate: the #169 incident carried as a command field is refused NOT_CONFORMING then passes once amended; written in the text only, it reaches the plan check; UI-copy and heading gates pass first time', async () => {
+  const incident = T182_ITEMS.map((it) => (it.humanGate ? { ...it, command: 'node -e \'…render(…, { locale: "fr-FR" })\'' } : it))
   const r1 = await run({ mode: 'semi', simulate: { sam: { 1: t182Sam(incident), 2: t182Sam(T182_ITEMS) }, planCheck: T182_CONFORMING } })
-  const e1 = eq('incident: status', r1.status, 'plan-ready')
-  const e2 = eq('incident: refusals', t182Refusals(r1), ['acceptance-items-refused:1'])
-  const judged = [{ text: T182_UI_COPY, humanGate: true }, { text: T182_HEADING, humanGate: true }]
-  const r2 = await run({ mode: 'semi', simulate: { sam: { 1: t182Sam(judged) }, planCheck: T182_CONFORMING } })
-  const e3 = eq('UI copy and heading: status', r2.status, 'plan-ready')
-  const e4 = eq('UI copy and heading: refusals', t182Refusals(r2), [])
+  const e1 = eq('incident as a command field: status', r1.status, 'plan-ready')
+  const e2 = eq('incident as a command field: refusals', t182Refusals(r1), ['acceptance-items-refused:1'])
+  const inText = T182_ITEMS.map((it) => (it.humanGate ? { ...it, text: T182_INCIDENT } : it))
+  const judged = 'item 2: the human gate holds the node -e command that decides it'
+  const r2 = await run({ mode: 'semi', simulate: { sam: { 1: t182Sam(inText), 2: t182Sam(inText) }, planCheck: { 1: { verdict: 'NOT_CONFORMING', issues: [judged] }, 2: { verdict: 'NOT_CONFORMING', issues: [judged] } } } })
+  const e3 = eq('incident in the text: status', r2.status, 'escalate')
+  const e4 = eq('incident in the text: the issues are the plan check\'s', r2.planCheckIssues, [judged])
+  const e5 = eq('incident in the text: no script refusal', t182Refusals(r2), [])
+  const judgedOk = [{ text: T182_UI_COPY, humanGate: true }, { text: T182_HEADING, humanGate: true }]
+  const r3 = await run({ mode: 'semi', simulate: { sam: { 1: t182Sam(judgedOk) }, planCheck: T182_CONFORMING } })
+  const e6 = eq('UI copy and heading: status', r3.status, 'plan-ready')
+  const e7 = eq('UI copy and heading: refusals', t182Refusals(r3), [])
+  return e1 || e2 || e3 || e4 || e5 || e6 || e7 || { ok: true }
+})
+
+// T182q (#169, PR #190 review round 2) — the validator checks STRUCTURE only: a human-gate item is refused for a
+// non-empty `command` field, never for its prose. Ordinary text with backticks or program-like words passes the script,
+// at the validator and through the plan gate (a command written in the text is the plan-check model's to judge, see
+// HUMAN_GATE_CHECK_NOTE); the same item carrying a `command` is refused, then the plan passes once amended.
+const T182_PROSE = [
+  'The empty-state copy `No items yet` reads naturally on a small screen',
+  'The `## What this ships` section reads well to a third party',
+  'the user can find "Export" in the share sheet',
+  'make "Continue" the obvious next step',
+  'go "back" returns to the list without losing the draft',
+  'the team agrees the README keeps bundle exec rspec as its entry point',
+]
+await testCase('T182q validator checks structure only: prose with backticks or program-like words passes; a human-gate item with a command field is refused', async () => {
+  const fns = t182Block()
+  if (!fns) return t182Skip('T182q')
+  for (const text of T182_PROSE) {
+    const issues = fns.validateAcceptanceItems([{ text, humanGate: true }])
+    if (issues.length !== 0) return { ok: false, msg: `${JSON.stringify(text)}: expected no refusal, got ${JSON.stringify(issues)}` }
+    const withCommand = fns.validateAcceptanceItems([{ text, humanGate: true, command: 'bundle exec rspec' }])
+    if (withCommand.length !== 1 || !withCommand[0].startsWith('item 1: flagged humanGate but carries the command `bundle exec rspec`')) {
+      return { ok: false, msg: `${JSON.stringify(text)} with a command field: expected one refusal quoting it, got ${JSON.stringify(withCommand)}` }
+    }
+  }
+  const prose = T182_PROSE.map((text) => ({ text, humanGate: true }))
+  const r1 = await run({ mode: 'semi', simulate: { sam: { 1: t182Sam(prose) }, planCheck: T182_CONFORMING } })
+  const e1 = eq('prose gates: status', r1.status, 'plan-ready')
+  const e2 = eq('prose gates: refusals', t182Refusals(r1), [])
+  const withCommand = prose.map((it, i) => (i === 2 ? { ...it, command: 'bundle exec rspec' } : it))
+  const r2 = await run({ mode: 'semi', simulate: { sam: { 1: t182Sam(withCommand), 2: t182Sam(prose) }, planCheck: T182_CONFORMING } })
+  const e3 = eq('a gate with a command field: status', r2.status, 'plan-ready')
+  const e4 = eq('a gate with a command field: refusals', t182Refusals(r2), ['acceptance-items-refused:1'])
   return e1 || e2 || e3 || e4 || { ok: true }
+})
+
+// T182s (#169, PR #190 review round 2) — source-anchored: the judgement of a command written in a human-gate item's text
+// is the plan-check model's, through HUMAN_GATE_CHECK_NOTE, which says so plainly; the engine keeps no program-name list,
+// path-prefix list, shell-operator list or prose/backtick parser for it (neutrality: no stack is known to the engine).
+await testCase('T182s source: the human-gate note sends a command in the text to the plan check; no program-name list or prose parser in the engine', async () => {
+  const src = SUITE_ARGS.fpSource
+  if (!src) return t182Skip('T182s')
+  const note = src.split('\n').find((l) => l.startsWith('const HUMAN_GATE_CHECK_NOTE = ')) || ''
+  const missing = ['NOT conforming when its text contains a command that could decide it', 'a judgement about wording, layout or taste is conforming'].filter((w) => !note.includes(w))
+  const e1 = missing.length ? { ok: false, msg: `HUMAN_GATE_CHECK_NOTE lacks ${JSON.stringify(missing)}` } : null
+  const banned = ['COMMAND_NAMES', 'PATH_PREFIXES', 'SHELL_OPERATORS', 'holdsBareCommand', 'holdsCommandSpan', 'isCommandSpan', 'codeSpans'].filter((w) => src.includes(w))
+  const e2 = eq('prose heuristics left in the engine', banned, [])
+  return e1 || e2 || { ok: true }
 })
 
 // T123 (#42) — every test ID is unique across the suite. Must stay the LAST case so `results`
