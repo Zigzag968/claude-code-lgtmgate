@@ -46,6 +46,8 @@ jobs:
         run: OFFLINE_STRICT=1 node scripts/run-offline.cjs --all fixtures
       - name: run-offline self-test
         run: bash scripts/test-run-offline.sh
+      - name: redact-fixture self-test
+        run: bash scripts/test-redact-fixture.sh
       - name: Stop-supervise watchdog regression test
         run: bash hooks/test-Stop-supervise-runs.sh
       - name: deny-destructive-git hook regression test
