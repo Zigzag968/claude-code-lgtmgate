@@ -82,6 +82,8 @@ cause and writes nothing.
   when it equals a token of the engine's own vocabulary) and the number of log lines. Free text of the result is outside
   the oracle. Every `agent()` call resolves to one engine site (`callAgent`), so the ordered labels carry the order of the
   agents and the log and phase sites carry the path through the engine. The baseline is replayed three times and must agree.
+- A string that is exactly a token of the engine's own vocabulary (a single-word literal of `workflows/deliver-pipeline.js`:
+  `GO`, `LGTM`, `ready`...) is public and is not neutralized.
 - Protected args (`mode`, `entryStage`, `proceedThrough`, `issueType`, `resumeReason`, `planFreshness`,
   `config.planFreshness`, `config.preflight.envSymlink`, `config.oneWayDoorKinds`, `config.oneWayDoorPaths`,
   `probeOnly.name`; a path protects its whole subtree) are never neutralized.

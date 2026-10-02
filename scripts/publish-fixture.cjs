@@ -27,7 +27,8 @@
 //   3. MINIMIZE: every string value of args and calls is replaced by a typed neutral token (zeros for a hash, `1`
 //      for a number, `_` otherwise), one at a time in JSON order, and the replacement is kept only if the outcome
 //      stays identical. Then, for a multi-line string that is still not neutral, each line to `_`. Passes repeat
-//      to a fixpoint (3 at most). PROTECTED_ARGS are never neutralized. A weak oracle (status plus trace) silently
+//      to a fixpoint (3 at most). PROTECTED_ARGS and a value that is exactly a token of the engine's own vocabulary
+//      (a single-word literal of the engine file) are never neutralized. A weak oracle (status plus trace) silently
 //      drops behaviour (probes became placeholders and the engine took fail-open paths), hence the strict one.
 //      The sites and the ordered labels pin the engine's path: every agent() call resolves to one site (callAgent),
 //      so the labels carry the order of the agents, and the log and phase sites carry the path through the engine.
