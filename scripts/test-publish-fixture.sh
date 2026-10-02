@@ -339,7 +339,7 @@ refusal_case "a capture with a free-text top-level key" "outside name, args, cal
 
 # ---- the write: never a partial file at the final name -----------------------------------------------
 
-# a preload that kills the publisher (SIGKILL) halfway through its first write into KILL_DIR
+# a preload that signals the publisher (KILL_SIG, default SIGKILL) halfway through its first write into KILL_DIR
 cat > "$TMP/killwrite.cjs" <<'JS'
 const fs = require('fs')
 const dir = process.env.KILL_DIR
@@ -350,9 +350,14 @@ fs.openSync = function (p, ...rest) {
   if (dir && typeof p === 'string' && p.startsWith(dir)) fds.set(fd, p)
   return fd
 }
+const sig = process.env.KILL_SIG || 'SIGKILL'
 const write = fs.writeSync
 fs.writeSync = function (fd, buf, off, len, ...rest) {
-  if (fds.has(fd)) { write.call(this, fd, buf, off, Math.floor(len / 2)); process.kill(process.pid, 'SIGKILL') }
+  if (fds.has(fd)) {
+    write.call(this, fd, buf, off, Math.floor(len / 2))
+    if (sig !== 'SIGKILL') fds.delete(fd) // a catchable signal is handled later; the write goes on
+    process.kill(process.pid, sig)
+  }
   return write.call(this, fd, buf, off, len, ...rest)
 }
 JS
@@ -366,6 +371,43 @@ if [ "$KRC" -ne 0 ] && [ "$kfinal" = no ] && [ "$RC" -eq 0 ] && [ -f "$DK/123-au
 else
   bad "kill during the write: killed-rc=$KRC final-after-kill=$kfinal rerun-rc=$RC"
 fi
+
+# SIGTERM halfway through the write: the temporary file is removed and the run ends as an error, nothing at the final name
+DS="$(newdir out-sigterm)"; TS="$(newdir tmp-sigterm)"
+SOUT=$(KILL_DIR="$DS" KILL_SIG=SIGTERM TMPDIR="$TS" NODE_OPTIONS="--require $TMP/killwrite.cjs" bash scripts/publish-fixture.sh "$RAW" --out-dir "$DS" 2>"$TMP/stderr.txt"); SRC=$?
+SERR=$(cat "$TMP/stderr.txt")
+if [ "$SRC" -eq 1 ] && [ "$(printf '%s\n' "$SOUT" | tail -n 1)" = "[publish-fixture] status=error" ] && [ -z "$(ls -A "$DS")" ] && [ -z "$(ls -A "$TS")" ] \
+   && printf '%s\n' "$SERR" | grep -q '^error: interrupted by SIGTERM'; then
+  ok "a SIGTERM during the write removes the temporary file and ends as an error"
+else
+  bad "SIGTERM during the write: rc=$SRC last='$(printf '%s\n' "$SOUT" | tail -n 1)' out-dir=$(ls -A "$DS" | tr '\n' ' ') tmp=$(ls -A "$TS" | tr '\n' ' ') err=$SERR"
+fi
+
+# SIGINT / SIGTERM after the redactor ran: the private candidate directory is removed and nothing is written
+cat > "$TMP/sigphase.cjs" <<'JS'
+const cp = require('child_process')
+const spawnSync = cp.spawnSync
+let sent = false
+cp.spawnSync = function (cmd, args, ...rest) {
+  const r = spawnSync.call(this, cmd, args, ...rest)
+  if (!sent && process.env.PF_SIG && Array.isArray(args) && /redact-fixture\.cjs$/.test(String(args[0])) && !args.includes('--check')) {
+    sent = true
+    process.kill(process.pid, process.env.PF_SIG)
+  }
+  return r
+}
+JS
+for sg in SIGINT SIGTERM; do
+  DP="$(newdir out-$sg)"; TP="$(newdir tmp-$sg)"
+  POUT=$(PF_SIG=$sg TMPDIR="$TP" NODE_OPTIONS="--require $TMP/sigphase.cjs" bash scripts/publish-fixture.sh "$RAW" --out-dir "$DP" 2>"$TMP/stderr.txt"); PRC=$?
+  PERR=$(cat "$TMP/stderr.txt")
+  if [ "$PRC" -eq 1 ] && [ "$(printf '%s\n' "$POUT" | tail -n 1)" = "[publish-fixture] status=error" ] && [ -z "$(ls -A "$DP")" ] && [ -z "$(ls -A "$TP")" ] \
+     && printf '%s\n' "$PERR" | grep -q "^error: interrupted by $sg"; then
+    ok "a $sg during the redaction removes the private copy and writes nothing"
+  else
+    bad "$sg during the redaction: rc=$PRC last='$(printf '%s\n' "$POUT" | tail -n 1)' out-dir=$(ls -A "$DP" | tr '\n' ' ') tmp=$(ls -A "$TP" | tr '\n' ' ') err=$PERR"
+  fi
+done
 
 if [ "$PUBLISHED" = yes ]; then
   only=$(ls -A "$OUTD")
@@ -640,6 +682,20 @@ D38="$(newdir out-fsync)"
 : > "$TMP/fsync-mark"
 PF_MARK="$TMP/fsync-mark" PF_FAULT=track-fsync NODE_OPTIONS="--require $TMP/fault.cjs" bash scripts/publish-fixture.sh "$RAW" --out-dir "$D38" >/dev/null 2>&1
 if [ -f "$D38/123-auto.json" ] && [ "$(grep -c fsync "$TMP/fsync-mark")" -ge 1 ]; then ok "the candidate is fsynced before it is linked"; else bad "no fsync before the link"; fi
+
+# SIGTERM while the minimization runs: it stops before the next replay (a long run can be interrupted), nothing is written
+printf '%s\n' "const fs = process.mainModule.require('fs')" "const first = !fs.existsSync(process.env.COUNT_FILE)" \
+  "fs.appendFileSync(process.env.COUNT_FILE, 'x')" "if (first) process.kill(process.pid, 'SIGTERM')" "return { status: 'a' }" > "$TMP/stub-sigmin.js"
+mkcap "$RAWD/144-sigmin.json" "$(node -e 'const a={};for(let i=0;i<20;i++)a["k"+i]="zqword"+i;process.stdout.write(JSON.stringify(a))')"
+DN="$(newdir out-sigmin)"; TN="$(newdir tmp-sigmin)"
+COUNT_FILE="$TN/count"; export COUNT_FILE
+NOUT=$(TMPDIR="$TN" bash scripts/publish-fixture.sh "$RAWD/144-sigmin.json" --fp "$TMP/stub-sigmin.js" --out-dir "$DN" 2>"$TMP/stderr.txt"); NRC=$?
+ncount=$(wc -c < "$COUNT_FILE" 2>/dev/null | tr -d ' ')
+if [ "$NRC" -eq 1 ] && [ "$(printf '%s\n' "$NOUT" | tail -n 1)" = "[publish-fixture] status=error" ] && [ -z "$(ls -A "$DN")" ] && [ "${ncount:-99}" -le 2 ]; then
+  ok "a SIGTERM during the minimization stops it before the next replay and writes nothing"
+else
+  bad "SIGTERM during the minimization: rc=$NRC replays=$ncount last='$(printf '%s\n' "$NOUT" | tail -n 1)' out-dir=$(ls -A "$DN" | tr '\n' ' ')"
+fi
 
 # ---- usage errors (exit 2, before any filesystem access) ----------------------------------------------
 

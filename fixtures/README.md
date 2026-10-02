@@ -72,8 +72,10 @@ bash scripts/publish-fixture.sh <raw capture> [<out name>] [--out-dir DIR]
 
 It turns the private capture into `fixtures/incidents/<issue>-<label>.json`, written to a temporary file in the
 same directory and linked at its name (an existing file, a symbolic link included, is never overwritten; a kill
-never leaves a partial file at the final name). Any step that cannot reach an identical outcome refuses with its
-cause and writes nothing.
+never leaves a partial file at the final name). SIGINT and SIGTERM remove the temporary file and the private copy of the
+candidate and end with `status=error`; SIGKILL cannot be handled and may leave a hidden `.<name>.json.tmp-*` file in the
+output directory (delete it by hand; it is never at the final name). Any step that cannot reach an identical outcome
+refuses with its cause and writes nothing.
 
 - Every string value of `args` and `calls` is replaced by a typed neutral token (zeros for a hash, `1` for
   a number, `_` otherwise), and a replacement is kept only if the replay outcome is identical. The outcome is: status,

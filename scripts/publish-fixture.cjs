@@ -6,7 +6,8 @@
 // Input: a raw capture written by scripts/capture-incident.cjs (fixture format of run-offline.cjs:
 // name, args, calls, expect). Output: fixtures/incidents/<issue>-<label>.json, written to a temporary file next to it,
 // fsynced, then linked at its name (the link fails if the name exists: an existing file is never overwritten, and a kill
-// never leaves a partial file at the final name), only after every step below held.
+// never leaves a partial file at the final name), only after every step below held. SIGINT and SIGTERM remove the
+// temporary files and end with `status=error`; SIGKILL cannot be handled and may leave a hidden `.<name>.json.tmp-*` file.
 //
 // Usage:
 //   node scripts/publish-fixture.cjs <raw capture> [<out name>] [--out-dir DIR] [--fp FILE]
@@ -207,8 +208,28 @@ function runNode(args, env) {
 
 let createdOut = null // set once the output name is linked, so an unexpected error can remove it
 let tmpOut = null // the temporary file next to the target, removed on any end
+let tmpDirOut = null // the private directory of the redaction copy, removed on any end
+let finished = false // the publication is complete: a late signal changes nothing
+
+// One turn of the event loop, so that a pending SIGINT / SIGTERM is handled between two steps (the replays and the write
+// are otherwise a single uninterrupted run of microtasks and synchronous calls).
+const turn = () => new Promise((resolve) => setImmediate(resolve))
+
+// SIGINT / SIGTERM: remove our temporary file and directory, end with the usual status line. A signal that arrives inside a
+// synchronous step (a spawned redactor, the final link) is handled at the next turn, after that step. SIGKILL cannot be
+// handled: a hidden `.<name>.json.tmp-*` file may remain in the output directory (never a partial file at the final name).
+function onSignal(sig) {
+  if (finished) return
+  if (tmpOut) { try { fs.unlinkSync(tmpOut) } catch (e) { /* already gone */ } }
+  if (tmpDirOut) { try { fs.rmSync(tmpDirOut, { recursive: true, force: true }) } catch (e) { /* best effort */ } }
+  process.stderr.write(`error: interrupted by ${sig}\n`)
+  process.stdout.write('[publish-fixture] status=error\n')
+  process.exit(1)
+}
 
 async function main() {
+  process.on('SIGINT', () => onSignal('SIGINT'))
+  process.on('SIGTERM', () => onSignal('SIGTERM'))
   const { capture, outName, outDir, fp } = parseArgs(process.argv.slice(2))
   const outPath = path.join(outDir, `${outName}.json`)
 
@@ -226,6 +247,7 @@ async function main() {
   let replays = 0
   const replay = async (fx) => {
     if (++replays > MAX_REPLAYS) refuse(`replay budget of ${MAX_REPLAYS} exhausted before the minimization settled`)
+    await turn()
     return replayFixture(fx, run, { sites: true, prompts: true })
   }
   // The comparable outcome of a replay; null when the replay is not a clean run. Status, reason and trace exactly,
@@ -383,6 +405,7 @@ async function main() {
 
   // ---- redact, re-hash, check, strict replay (a private 0600 copy, removed in `finally`) ----
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'publish-fixture-'))
+  tmpDirOut = tmpDir
   let text
   try {
     const tmp = path.join(tmpDir, 'candidate.json')
@@ -415,10 +438,12 @@ async function main() {
     cand.expect = fx2.expect
   } finally {
     try { fs.rmSync(tmpDir, { recursive: true, force: true }) } catch (e) { /* best effort, the directory is ours */ }
+    tmpDirOut = null
   }
 
   // ---- write: a temporary file next to the target, then a link that fails if the name exists ----
-  // A kill at any point leaves at worst a hidden `.<name>.json.tmp-*` file, never a partial file at the final name.
+  // A kill at any point leaves at worst a hidden `.<name>.json.tmp-*` file, never a partial file at the final name; SIGINT and
+  // SIGTERM remove it (onSignal), SIGKILL cannot be handled.
   tmpOut = path.join(outDir, `.${outName}.json.tmp-${process.pid}-${crypto.randomBytes(4).toString('hex')}`)
   let fd
   try {
@@ -435,6 +460,7 @@ async function main() {
       if (!(n > 0)) throw new Error('short write: no progress')
       off += n
     }
+    await turn() // a pending SIGINT / SIGTERM is handled here, with the temporary file in place (onSignal removes it)
     fs.fchmodSync(fd, 0o644)
     fs.fsyncSync(fd)
   } finally {
@@ -492,6 +518,7 @@ async function main() {
   out.push(`pruned: ${pruned} unconsumed call entries`)
   process.stdout.write(`${out.join('\n')}\n`)
   process.stdout.write(`[publish-fixture] status=ok out=${outPath}\n`)
+  finished = true
 }
 
 main().catch((e) => {
