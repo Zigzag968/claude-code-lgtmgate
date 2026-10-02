@@ -29,10 +29,12 @@ Morgan runs / inspects each item, then :
 - An absent or empty acceptance block (no `acceptance:start`/`acceptance:end` marker pair, or no
   `- [ ]`/`- [x]` line between them) is **REQUIRED_CHANGES**, never LGTM; Morgan's `items` carries the
   literal line `Acceptance block absent or empty`.
-- If the tick is refused by session permissions while the proof passes: do not check it, never post
-  "Ready to merge", cite the proof and classify the box as `proven-untickable`. The workflow renders
-  `verified-untickable` (no Nick round) ; the Lead re-verifies the proof and checks it by hand. A
-  `[human-gate]` box is never checked through this path.
+- With ids (an `<!-- ac:N -->` comment after each checkbox) Morgan does not edit the body: she returns
+  `boxes` (`{id, proven, proof}` per box) and the workflow ticks the proven ids through the write probe
+  (never a `[human-gate]` box). If the write is refused the workflow parks the run itself
+  (`verified-untickable`, no Nick round, `untickableItems[]` = `{id, item, proof}`); the Lead re-verifies
+  the proofs and checks the boxes by hand. A run without ids keeps the manual tick: Morgan checks the box
+  after the proof, and a refused tick is left open with a one-line `tick pending (permissions)` entry.
 
 ### Markers (mandatory)
 The acceptance block lives between two HTML markers in the body :
