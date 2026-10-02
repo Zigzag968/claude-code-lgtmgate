@@ -24,7 +24,8 @@ Morgan runs / inspects each item, then :
 - Checks the box `- [x]` in the PR body (`gh pr edit <N> --body ...`) **only** after having seen
   the proof.
 - Cites that proof (command + output, or the artifact) in his review comment.
-- Only renders **LGTM once every box is checked.** A single remaining `- [ ]`, or a box that
+- Only renders **LGTM once every box is checked** (with ids: once every box is proven in `boxes`, the
+  workflow doing the checking). A single remaining `- [ ]` (with ids: a box not proven), or a box that
   contradicts the diff, is **REQUIRED_CHANGES** — never LGTM.
 - An absent or empty acceptance block (no `acceptance:start`/`acceptance:end` marker pair, or no
   `- [ ]`/`- [x]` line between them) is **REQUIRED_CHANGES**, never LGTM; Morgan's `items` carries the

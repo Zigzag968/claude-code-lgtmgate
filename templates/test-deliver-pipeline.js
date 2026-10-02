@@ -606,7 +606,7 @@ const t182Block = () => {
   const block = extractBetween(src, '// --- acceptanceItems:start ---', '// --- acceptanceItems:end ---')
   if (!block) throw new Error('acceptanceItems:start/:end markers not found in the pipeline source')
   // eslint-disable-next-line no-new-func
-  return new Function(block + '\nreturn { numberItems, renderLine, renderChecklist, parseChecklist, itemsFromPlan, validateAcceptanceItems, planLacksItems, mapBoxes, nickBlockNote, morganBoxesNote, boxLineId, lineKey, humanGateLine, onlyHumanGateLines, parkUntickable }')()
+  return new Function(block + '\nreturn { numberItems, renderLine, renderChecklist, parseChecklist, itemsFromPlan, validateAcceptanceItems, planLacksItems, mapBoxes, nickBlockNote, morganBoxesNote, boxLineId, lineKey, humanGateLine, onlyHumanGateLines, parkUntickable, morganItemsRule }')()
 }
 const T182_ITEMS = [
   { text: '`node scripts/guards.cjs; echo $?` prints `0` as its last line', humanGate: false },
@@ -666,6 +666,26 @@ await testCase('T19 mixed round loops on real blocker then human-gate terminates
   const e2 = eq('round', r.round, 1)
   const e3 = eq('humanGateItems.length', r.humanGateItems?.length, 1)
   return e1 || e2 || e3 || { ok: true }
+})
+
+// 20. T20 — normalization catches cosmetic rewording (Part 2)
+// Two cosmetically-reworded copies of one id-less blocker trigger same-blocker-twice escalate (#183: the key of a line
+// without an `<!-- ac:N -->` id is its lowercased, whitespace-collapsed text without trailing punctuation).
+// Would fail under an exact-string key, passes under the normalized one.
+await testCase('T20 normalization catches cosmetic rewording → same-blocker-twice escalate', async () => {
+  const r = await run({
+    mode: 'auto',
+    simulate: {
+      sam: 'GO',
+      morgan: [
+        { verdict: 'REQUIRED_CHANGES', items: ['Fix URL validation regex'] },
+        { verdict: 'REQUIRED_CHANGES', items: ['fix  url validation regex.'] },
+      ],
+    },
+  })
+  const e1 = eq('status', r.status, 'escalate')
+  const e2 = eq('reason', r.reason, 'same-blocker-twice')
+  return (e1 || e2) ? (e1 || e2) : { ok: true }
 })
 
 // 21. T21 — genuinely different blockers still loop (no false early-stop from normalization)
@@ -4189,15 +4209,16 @@ await testCase('T182c a human-gate item carrying a command is refused NOT_CONFOR
 })
 
 // T182d (#182) — a genuine human gate (a judgement, no command) passes the plan gate untouched, and the block the
-// script rendered reaches Nick verbatim, ids and tag included. A run without Morgan boxes carries no `boxes`.
+// script rendered reaches Nick verbatim, ids and tag included. An LGTM carries its `boxes` (#183: without them no box is
+// proven, see T183n); the payload then carries them mapped by id.
 await testCase('T182d a genuine human-gate item passes the plan gate; the rendered block reaches Nick verbatim', async () => {
-  const r = await run({ mode: 'auto', simulate: { sam: { 1: t182Sam(T182_ITEMS) }, morgan: [{ verdict: 'LGTM' }] } })
+  const r = await run({ mode: 'auto', simulate: { sam: { 1: t182Sam(T182_ITEMS) }, morgan: [{ verdict: 'LGTM', boxes: [{ id: 1, proven: true, proof: 'p1' }, { id: 2, proven: true, proof: 'p2' }, { id: 3, proven: true, proof: 'p3' }] }] } })
   const p = String(r.nickPromptPreview || '')
   const e1 = eq('status', r.status, 'ready')
   const e2 = eq('refusals', t182Refusals(r), [])
   const e3 = includes('Nick prompt carries the rendered lines', p, t182Lines(T182_ITEMS).join('\n'))
   const e4 = includes('Nick prompt asks for them verbatim', p, 'paste exactly these lines between the markers')
-  const e5 = eq('boxes', r.boxes, undefined)
+  const e5 = eq('boxes ids', (r.boxes || []).map((b) => b.id), [1, 2, 3])
   return e1 || e2 || e3 || e4 || e5 || { ok: true }
 })
 
@@ -4366,7 +4387,7 @@ await testCase('T182k plan amendment with items: valid items feed the sync (read
       samAcceptanceChecklist: '',
       morgan: [
         { verdict: 'REQUIRED_CHANGES', items: [wording], itemOwners: [{ item: wording, itemOwner: 'checklist-wording-defect', proof: 'the command prints 1, the item says 0' }] },
-        { verdict: 'LGTM' },
+        { verdict: 'LGTM', boxes: [{ id: 1, proven: true, proof: 'p1' }, { id: 2, proven: true, proof: 'p2' }, { id: 3, proven: true, proof: 'p3' }] },
       ],
     },
   })
@@ -4397,7 +4418,7 @@ const t182PlanText = (ids = true) => '## Plan\n- [ ] step one: a task, not an ac
 await testCase('T182l a semi relaunch at entryStage dev with an id-bearing planText: the rebuilt block reaches Nick', async () => {
   const fns = t182Block()
   if (!fns) return t182Skip('T182l')
-  const r = await run({ mode: 'semi', entryStage: 'dev', planText: t182PlanText(), simulate: { morgan: [{ verdict: 'LGTM' }] } })
+  const r = await run({ mode: 'semi', entryStage: 'dev', planText: t182PlanText(), simulate: { morgan: [{ verdict: 'LGTM', boxes: [{ id: 1, proven: true, proof: 'p1' }, { id: 2, proven: true, proof: 'p2' }, { id: 3, proven: true, proof: 'p3' }] }] } })
   const p = String(r.nickPromptPreview || '')
   const e1 = eq('status', r.status, 'ready')
   const e2 = includes('Nick prompt carries exactly the rendered block', p, fns.nickBlockNote(t182Lines(T182_ITEMS).join('\n')))
@@ -4692,7 +4713,7 @@ await testCase('T183f a human gate is told by its id, not by a [human-gate] tag 
   const e2 = eq('humanGateItems.length', r.humanGateItems?.length, 1)
   // Control: the tag alone, on a line with no id comment, is no gate. It is a code blocker (Nick round, then LGTM).
   const tagOnly = '- [ ] [human-gate] ' + T182_ITEMS[1].text
-  const c = await run({ mode: 'auto', simulate: { sam: { 1: t182Sam(T182_ITEMS) }, morgan: [{ verdict: 'REQUIRED_CHANGES', items: [tagOnly] }, { verdict: 'LGTM' }] } })
+  const c = await run({ mode: 'auto', simulate: { sam: { 1: t182Sam(T182_ITEMS) }, morgan: [{ verdict: 'REQUIRED_CHANGES', items: [tagOnly] }, { verdict: 'LGTM', boxes: t183Boxes(true, true, true) }] } })
   const e3 = eq('control: status', c.status, 'ready')
   const e4 = c.humanGateItems === undefined ? null : { ok: false, msg: 'control: a tag without an id was taken for a human gate' }
   return e1 || e2 || e3 || e4 || { ok: true }
@@ -4763,7 +4784,7 @@ await testCase('T183i the same id reworded in two rounds is the same blocker →
       morgan: [
         { verdict: 'REQUIRED_CHANGES', items: [mk(1, 'fix A')] },
         { verdict: 'REQUIRED_CHANGES', items: [mk(2, 'fix B')] },
-        { verdict: 'LGTM' },
+        { verdict: 'LGTM', boxes: t183Boxes(true, true, true) },
       ],
     },
   })
@@ -4811,6 +4832,281 @@ await testCase('T183k source: the normalisation and the textual gates are gone; 
   const e3 = includes('Morgan note: Morgan does not edit the body', note, 'You do not edit the PR body')
   const e4 = includes('Morgan note: a gate is proven only when a person checked it', note, 'only when the PR body already shows it checked by a person')
   return e1 || e2 || e3 || e4 || { ok: true }
+})
+
+// ---------------------------------------------------------------------------
+// #183 — review round: the tick keeps what it does not own, reads Morgan's boxes strictly, and says why it was refused
+// ---------------------------------------------------------------------------
+// Each case below was written red against the first #183 implementation (PR #198, review), then made green. Defects
+// are the reviewer's: F1 lines Nick added to the block, F2 fenced marker examples, F3 LGTM without `boxes`, F4 ids
+// renumbered by an amendment, F6 a proof-less "proven", F7 unproven boxes hidden by a refused tick, F8 a box a person
+// already ticked, F9 the reason of a refused write, F10 a rejected artifact proof naming no box, F12 CRLF bodies, F13
+// contradicting duplicate ids.
+const t183Splice = () => {
+  const src = SUITE_ARGS.fpSource
+  if (!src) return null
+  const block = extractBetween(src, '// --- prBodySplice:start ---', '// --- prBodySplice:end ---')
+  if (!block) throw new Error('prBodySplice:start/:end markers not found in the pipeline source')
+  // eslint-disable-next-line no-new-func
+  return new Function(block + '\nreturn { spliceAcceptanceBlock, tickAcceptanceBlock, checkedAcceptanceIds }')()
+}
+const T183_L3 = t182Lines(T183_PLAIN)
+const T183_R2_LINE = '- [ ] fixture `fixtures/incidents/1-*.json` present, replayed red on the base and green on the branch by `scripts/run-offline.cjs`'
+// A semi review of PR #190 on the 3 plain boxes, the body and Morgan's verdicts given.
+const t183Review = (simulate, extra = {}) => run({ mode: 'semi', entryStage: 'review', prNumber: 190, planText: t182Sam(T183_PLAIN).plan, simulate, ...extra })
+const t183Ticked = (p) => p.split('\n').filter((l) => l.startsWith('- [x] '))
+
+await testCase('T183l a line Nick added to the acceptance block (no id) survives the tick, untouched and never ticked', async () => {
+  const r = await t183Review({ prBody: t183Body([...T183_L3, T183_R2_LINE]), morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, true, true) }] })
+  const p = String(r.prBodyPreview || '')
+  const e1 = eq('status', r.status, 'ready')
+  const e2 = eq('the 3 id boxes ticked', t183Ticked(p).length, 3)
+  const e3 = eq('the extra line, open, once, after the rendered lines', p.split('\n').filter((l) => l === T183_R2_LINE), [T183_R2_LINE])
+  const e4 = eq('order: rendered lines then the extra line', p.indexOf(T183_R2_LINE) > p.indexOf('- [x] <!-- ac:3 -->'), true)
+  // Control: a line a person already ticked stays ticked.
+  const c = await t183Review({ prBody: t183Body([...T183_L3, '- [x] a note a person ticked']), morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, true, true) }] })
+  const e5 = includes('control: a ticked id-less line stays ticked', String(c.prBodyPreview || ''), '\n- [x] a note a person ticked\n')
+  // The same at the block level (the engine block is the one pr-body-splice.cjs carries).
+  const fns = t183Splice()
+  if (!fns) return t182Skip('T183l')
+  const out = fns.tickAcceptanceBlock(t183Body([...T183_L3, T183_R2_LINE]), T183_L3.join('\n'), [1, 2, 3], [])
+  const e6 = includes('block level', out, '- [x] <!-- ac:3 --> ' + T183_PLAIN[2].text + '\n' + T183_R2_LINE + '\n<!-- acceptance:end -->')
+  return e1 || e2 || e3 || e4 || e5 || e6 || { ok: true }
+})
+
+await testCase('T183m marker pairs inside a fenced code block are ignored, before or after the real block: the real block is the one ticked', async () => {
+  const fence = '```\n<!-- acceptance:start -->\n- [ ] an example box\n<!-- acceptance:end -->\n```\n'
+  const real = '<!-- acceptance:start -->\n' + T183_L3.join('\n') + '\n<!-- acceptance:end -->\n'
+  const shapes = {
+    before: 'Closes #183\n\n' + fence + '\n' + real,
+    after: 'Closes #183\n\n' + real + '\n' + fence,
+    both: 'Closes #183\n\n' + fence + '\n' + real + '\n' + fence,
+  }
+  for (const [name, body] of Object.entries(shapes)) {
+    const r = await t183Review({ prBody: body, morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, true, true) }] })
+    const p = String(r.prBodyPreview || '')
+    const e1 = eq(name + ': status', r.status, 'ready')
+    const e2 = eq(name + ': the 3 real boxes ticked', t183Ticked(p).length, 3)
+    const e3 = includes(name + ': the example is intact', p, fence)
+    if (e1 || e2 || e3) return e1 || e2 || e3
+  }
+  const fns = t183Splice()
+  if (!fns) return t182Skip('T183m')
+  const e4 = eq('splice acceptance: the real block replaced, the example intact', fns.spliceAcceptanceBlock(shapes.both, '- [ ] <!-- ac:1 --> new'),
+    'Closes #183\n\n' + fence + '\n<!-- acceptance:start -->\n- [ ] <!-- ac:1 --> new\n<!-- acceptance:end -->\n\n' + fence)
+  const e5 = eq('a body whose only pair is fenced has no block', fns.tickAcceptanceBlock('x\n' + fence, T183_L3.join('\n'), [1], []), null)
+  return e4 || e5 || { ok: true }
+})
+
+await testCase('T183n an LGTM without `boxes` is an LGTM with no box proven: needs-revision, every box blocks', async () => {
+  const absent = await t183Review({ prBody: t183Body(T183_L3), morgan: [{ verdict: 'LGTM' }] })
+  const empty = await t183Review({ prBody: t183Body(T183_L3), morgan: [{ verdict: 'LGTM', boxes: [] }] })
+  const e1 = eq('absent: status', absent.status, 'needs-revision')
+  const e2 = eq('absent: items', absent.items, T183_L3)
+  const e3 = eq('absent: trace', (absent.trace || []).filter((t) => /^(boxes-|acceptance-)/.test(String(t))), ['boxes-missing:1', 'boxes-missing:2', 'boxes-missing:3', 'acceptance-open-lgtm:0'])
+  const e4 = eq('same trace as boxes: []', (empty.trace || []).filter((t) => /^(boxes-|acceptance-)/.test(String(t))), (absent.trace || []).filter((t) => /^(boxes-|acceptance-)/.test(String(t))))
+  const e5 = eq('same items as boxes: []', empty.items, absent.items)
+  const e6 = eq('no box ticked', t183Ticked(String(absent.prBodyPreview || '')), [])
+  return e1 || e2 || e3 || e4 || e5 || e6 || { ok: true }
+})
+
+await testCase('T183o a plan amendment resets the blocker history: a different box now carrying the old id is not the same blocker', async () => {
+  const A = [{ text: '`a` exits 0', humanGate: false }, { text: '`b` exits 0 (wording wrong)', humanGate: false }, { text: '`c` exits 0', humanGate: false }]
+  const B = [{ text: '`b` exits 0', humanGate: false }, { text: '`c` exits 0', humanGate: false }, { text: '`d` exits 0', humanGate: false }]
+  const la = t182Lines(A)
+  const lb = t182Lines(B)
+  const r = await run({
+    mode: 'auto',
+    maxPlanAmendRounds: 1,
+    simulate: {
+      sam: { 1: t182Sam(A), 2: { ...t182Sam(B), decision: 'GO' } },
+      planCheck: T182_CONFORMING,
+      morgan: [
+        { verdict: 'REQUIRED_CHANGES', items: [la[1]], boxes: t183Boxes(true, false, true), itemOwners: [{ item: la[1], itemOwner: 'checklist-wording-defect', proof: 'the box says (wording wrong) and the command passes' }] },
+        { verdict: 'REQUIRED_CHANGES', items: [lb[1]], boxes: t183Boxes(true, false, true) },
+        { verdict: 'LGTM', boxes: t183Boxes(true, true, true) },
+      ],
+    },
+  })
+  const e1 = eq('status', r.status, 'ready')
+  const e2 = includes('the amendment happened', r.trace || [], 'plan-amend-round:1')
+  // Control: with no amendment between them, the same id in two rounds is still the same blocker.
+  const c = await run({ mode: 'auto', simulate: { sam: { 1: t182Sam(A) }, morgan: [{ verdict: 'REQUIRED_CHANGES', items: [la[1]] }, { verdict: 'REQUIRED_CHANGES', items: [la[1]] }] } })
+  const e3 = eq('control: status', c.status, 'escalate')
+  const e4 = eq('control: reason', c.reason, 'same-blocker-twice')
+  return e1 || e2 || e3 || e4 || { ok: true }
+})
+
+await testCase('T183p a box is proven only with a proof: proven:true with an empty, blank or absent proof is not ticked, whatever the verdict', async () => {
+  const fns = t182Block()
+  if (!fns) return t182Skip('T183p')
+  const items = fns.numberItems(T183_PLAIN)
+  const m = fns.mapBoxes(items, [{ id: 1, proven: true, proof: '' }, { id: 2, proven: true }, { id: 3, proven: true, proof: '   \n' }])
+  const e1 = eq('mapBoxes: none proven', m.boxes.map((b) => b.proven), [false, false, false])
+  const ok = fns.mapBoxes(items, [{ id: 1, proven: true, proof: 'exit 0' }])
+  const e2 = eq('mapBoxes control: a real proof is proven', ok.boxes.map((b) => [b.id, b.proven, b.proof]), [[1, true, 'exit 0']])
+  const r = await t183Review({ prBody: t183Body(T183_L3), morgan: [{ verdict: 'LGTM', boxes: [{ id: 1, proven: true, proof: '' }, { id: 2, proven: true }, { id: 3, proven: true, proof: '   ' }] }] })
+  const e3 = eq('flow: status', r.status, 'needs-revision')
+  const e4 = eq('flow: items', r.items, T183_L3)
+  const e5 = eq('flow: no box ticked', t183Ticked(String(r.prBodyPreview || '')), [])
+  return e1 || e2 || e3 || e4 || e5 || { ok: true }
+})
+
+await testCase('T183q unproven boxes are judged before the tick: a refused tick no longer hides them (needs-revision, or ready-pending-human for a gate)', async () => {
+  // A non-gate box not proven, the others proven, the tick refused: the box blocks, the run is no verified-untickable.
+  const y = await t183Review({ prBody: t183Body(T183_L3), acceptanceSync: false, morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, false, true) }] })
+  const e1 = eq('semi: status', y.status, 'needs-revision')
+  const e2 = eq('semi: items start with the unproven box', (y.items || [])[0], T183_L3[1])
+  const e3 = includes('semi: trace', y.trace || [], 'acceptance-open-lgtm:0')
+  // Auto: the Nick round happens for the unproven box; only when everything is proven does the refusal park the run.
+  const lines = T183_L3
+  const a = await run({
+    mode: 'auto',
+    simulate: {
+      sam: { 1: t182Sam(T183_PLAIN) },
+      acceptanceSync: false,
+      morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, false, true) }, { verdict: 'LGTM', boxes: t183Boxes(true, true, true) }],
+    },
+  })
+  const e4 = eq('auto: status', a.status, 'verified-untickable')
+  const e5 = eq('auto: one Nick round happened for the unproven box', a.round, 1)
+  const e6 = eq('auto: untickableItems', (a.untickableItems || []).map((i) => i.item), lines)
+  // A human gate not proven, the tick refused: ready-pending-human carrying the gate and the proven boxes.
+  const g = await run({ mode: 'auto', simulate: { sam: { 1: t182Sam(T182_ITEMS) }, acceptanceSync: false, morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, false, true) }] } })
+  const e7 = eq('gate: status', g.status, 'ready-pending-human')
+  const e8 = eq('gate: humanGateItems', g.humanGateItems, [t182Lines(T182_ITEMS)[1]])
+  const e9 = eq('gate: untickableItems ids', (g.untickableItems || []).map((i) => i.id), [1, 3])
+  // Everything proven and the write refused is still verified-untickable (T183e), with the box 2 REQUIRED_CHANGES form too.
+  const p = await run({ mode: 'auto', simulate: { sam: { 1: t182Sam(T183_PLAIN) }, acceptanceSync: false, morgan: [{ verdict: 'REQUIRED_CHANGES', items: [lines[1]], boxes: t183Boxes(true, false, true) }, { verdict: 'LGTM', boxes: t183Boxes(true, true, true) }] } })
+  const e10 = eq('all proven last: status', p.status, 'verified-untickable')
+  return e1 || e2 || e3 || e4 || e5 || e6 || e7 || e8 || e9 || e10 || { ok: true }
+})
+
+await testCase('T183r a box a person already ticked keeps its state when Morgan returns no entry for it, and is not counted missing', async () => {
+  const body = t183Body(['- [x] ' + T183_L3[0].slice(6), T183_L3[1], T183_L3[2]])
+  const r = await t183Review({ prBody: body, morgan: [{ verdict: 'LGTM', boxes: [{ id: 2, proven: true, proof: 'p2' }, { id: 3, proven: true, proof: 'p3' }] }] })
+  const p = String(r.prBodyPreview || '')
+  const e1 = eq('status', r.status, 'ready')
+  const e2 = includes('box 1 stays ticked', p, '- [x] <!-- ac:1 --> ' + T183_PLAIN[0].text)
+  const e3 = eq('3 ticked', t183Ticked(p).length, 3)
+  const e4 = eq('no boxes-missing', (r.trace || []).filter((t) => String(t).startsWith('boxes-missing')), [])
+  // REQUIRED_CHANGES form: the ticked box is not reopened.
+  const w = await t183Review({ prBody: body, morgan: [{ verdict: 'REQUIRED_CHANGES', items: [T183_L3[1]], boxes: [{ id: 3, proven: true, proof: 'p3' }] }] })
+  const wp = String(w.prBodyPreview || '')
+  const e5 = includes('REQUIRED_CHANGES: box 1 stays ticked', wp, '- [x] <!-- ac:1 --> ')
+  const e6 = eq('REQUIRED_CHANGES: no boxes-missing:1', (w.trace || []).filter((t) => t === 'boxes-missing:1'), [])
+  // Control: the box open in the body and returned by no one is missing; an LGTM then blocks on it.
+  const c = await t183Review({ prBody: t183Body(T183_L3), morgan: [{ verdict: 'LGTM', boxes: [{ id: 2, proven: true, proof: 'p2' }, { id: 3, proven: true, proof: 'p3' }] }] })
+  const e7 = eq('control: status', c.status, 'needs-revision')
+  const e8 = includes('control: boxes-missing:1', c.trace || [], 'boxes-missing:1')
+  // A box Morgan explicitly says is not proven is reopened even when the body shows it ticked.
+  const u = await t183Review({ prBody: body, morgan: [{ verdict: 'REQUIRED_CHANGES', items: [T183_L3[0]], boxes: t183Boxes(false, true, true) }] })
+  const e9 = includes('explicitly unproven: reopened', String(u.prBodyPreview || ''), '- [ ] <!-- ac:1 --> ')
+  // The block-level helper: ids of a body that are ticked.
+  const fns = t183Splice()
+  if (!fns) return t182Skip('T183r')
+  const e10 = eq('checkedAcceptanceIds', fns.checkedAcceptanceIds(body), [1])
+  return e1 || e2 || e3 || e4 || e5 || e6 || e7 || e8 || e9 || e10 || { ok: true }
+})
+
+await testCase('T183s a refused tick carries the probe reason (tickReason) and a stale-read is retried once before parking', async () => {
+  const sims = (acceptanceSync) => ({ sam: { 1: t182Sam(T183_PLAIN) }, acceptanceSync, morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, true, true) }] })
+  // A refusal that is not a stale read: no retry, the reason is in the result and the trace.
+  const w = await run({ mode: 'auto', simulate: sims('write-failed') })
+  const e1 = eq('write-failed: status', w.status, 'verified-untickable')
+  const e2 = eq('write-failed: tickReason', w.tickReason, 'write-failed')
+  const e3 = eq('write-failed: no retry', (w.trace || []).filter((t) => String(t).startsWith('acceptance-tick-retry')), [])
+  const e4 = includes('write-failed: trace', w.trace || [], 'acceptance-tick-reason:write-failed')
+  const n = await run({ mode: 'auto', simulate: sims('no-markers') })
+  const e5 = eq('no-markers: tickReason', n.tickReason, 'no-markers')
+  const f = await run({ mode: 'auto', simulate: sims(false) })
+  const e6 = eq('refused (no reason given): status', f.status, 'verified-untickable')
+  const e7 = eq('refused (no reason given): tickReason', f.tickReason, 'write-failed')
+  // A stale read that stays stale: retried once, then parked with its reason.
+  const s = await run({ mode: 'auto', simulate: sims(['stale-read', 'stale-read']) })
+  const e8 = eq('stale twice: status', s.status, 'verified-untickable')
+  const e9 = eq('stale twice: tickReason', s.tickReason, 'stale-read')
+  const e10 = eq('stale twice: exactly one retry', (s.trace || []).filter((t) => String(t).startsWith('acceptance-tick-retry')), ['acceptance-tick-retry:0'])
+  // A stale read the retry heals: the tick landed, the run is ready, no tickReason.
+  const h = await run({ mode: 'auto', simulate: sims(['stale-read', true]) })
+  const e11 = eq('stale then written: status', h.status, 'ready')
+  const e12 = eq('stale then written: no tickReason', h.tickReason, undefined)
+  const e13 = includes('stale then written: ticked', h.trace || [], 'acceptance-ticked:0')
+  // A probe that gave no usable answer at all.
+  const u = await run({ mode: 'auto', simulate: sims('probe-unavailable') })
+  const e14 = eq('probe unavailable: tickReason', u.tickReason, 'probe-unavailable')
+  // The reason also rides the semi needs-revision of a refused tick with an unproven box.
+  const y = await t183Review({ prBody: t183Body(T183_L3), acceptanceSync: 'guard-failed-restored', morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, false, true) }] })
+  const e15 = eq('needs-revision: tickReason', y.tickReason, 'guard-failed-restored')
+  return e1 || e2 || e3 || e4 || e5 || e6 || e7 || e8 || e9 || e10 || e11 || e12 || e13 || e14 || e15 || { ok: true }
+})
+
+await testCase('T183t a rejected artifact proof that names no box ticks nothing this round; one that names a box un-proves only that box', async () => {
+  const proof = (item) => [{ item, path: 'report.md', exists: false, mtime: '2026-01-02T00:00:00Z', bytes: 1 }]
+  const none = await t183Review({ prBody: t183Body(T183_L3), artifactFloor: '2026-01-01T00:00:00Z', morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, true, true), artifactProofs: proof('report.md was produced') }] })
+  const e1 = eq('no box named: status', none.status, 'needs-revision')
+  const e2 = eq('no box named: items', none.items, ['report.md was produced'])
+  const e3 = eq('no box named: nothing ticked', t183Ticked(String(none.prBodyPreview || '')), [])
+  const unknown = await t183Review({ prBody: t183Body(T183_L3), artifactFloor: '2026-01-01T00:00:00Z', morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, true, true), artifactProofs: proof('- [ ] <!-- ac:9 --> no such box') }] })
+  const e4 = eq('an id no box carries: nothing ticked', t183Ticked(String(unknown.prBodyPreview || '')), [])
+  const named = await t183Review({ prBody: t183Body(T183_L3), artifactFloor: '2026-01-01T00:00:00Z', morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, true, true), artifactProofs: proof(T183_L3[1]) }] })
+  const e5 = eq('box 2 named: status', named.status, 'needs-revision')
+  const e6 = eq('box 2 named: items', named.items, [T183_L3[1]])
+  const e7 = eq('box 2 named: boxes 1 and 3 ticked', t183Ticked(String(named.prBodyPreview || '')).length, 2)
+  return e1 || e2 || e3 || e4 || e5 || e6 || e7 || { ok: true }
+})
+
+await testCase('T183u a CRLF body keeps its line breaks through the tick and the splice, and a tick that changes nothing writes the same bytes', async () => {
+  const fns = t183Splice()
+  if (!fns) return t182Skip('T183u')
+  const crlf = (s) => s.split('\n').join('\r\n')
+  const rendered = T183_L3.join('\n')
+  const body = crlf('x\n<!-- acceptance:start -->\n- [x] <!-- ac:1 --> ' + T183_PLAIN[0].text + '\n' + T183_L3[1] + '\n' + T183_L3[2] + '\n<!-- acceptance:end -->\ny\n')
+  const e1 = eq('tick that changes nothing is byte-identical', fns.tickAcceptanceBlock(body, rendered, [1], []), body)
+  const ticked = fns.tickAcceptanceBlock(body, rendered, [1, 2], [])
+  const e2 = eq('a real tick: every line break of the output is CRLF', ticked.split('\r\n').join('').includes('\n'), false)
+  const e3 = includes('a real tick ticked box 2', ticked, '- [x] <!-- ac:2 --> ')
+  const spliced = fns.spliceAcceptanceBlock(body, '- [ ] <!-- ac:1 --> new\n- [ ] <!-- ac:2 --> new2')
+  const e4 = eq('splice: every line break of the output is CRLF', spliced.split('\r\n').join('').includes('\n'), false)
+  // An LF body stays LF.
+  const lf = 'x\n<!-- acceptance:start -->\n' + rendered + '\n<!-- acceptance:end -->\n'
+  const e5 = eq('LF body stays LF', fns.tickAcceptanceBlock(lf, rendered, [], []).includes('\r'), false)
+  // An id-less line of a CRLF block survives with the body's line break.
+  const withExtra = crlf('x\n<!-- acceptance:start -->\n' + rendered + '\n' + T183_R2_LINE + '\n<!-- acceptance:end -->\n')
+  const e6 = eq('CRLF body with an extra line is stable', fns.tickAcceptanceBlock(withExtra, rendered, [], []), withExtra)
+  return e1 || e2 || e3 || e4 || e5 || e6 || { ok: true }
+})
+
+await testCase('T183v two entries for one id that contradict each other: the box is not proven', async () => {
+  const fns = t182Block()
+  if (!fns) return t182Skip('T183v')
+  const items = fns.numberItems(T183_PLAIN)
+  const a = fns.mapBoxes(items, [{ id: 1, proven: true, proof: 'ok' }, { id: 1, proven: false, proof: '' }])
+  const b = fns.mapBoxes(items, [{ id: 1, proven: false, proof: '' }, { id: 1, proven: true, proof: 'ok' }])
+  const e1 = eq('proven then unproven', a.boxes.map((x) => [x.id, x.proven]), [[1, false]])
+  const e2 = eq('unproven then proven', b.boxes.map((x) => [x.id, x.proven]), [[1, false]])
+  const c = fns.mapBoxes(items, [{ id: 1, proven: true, proof: 'ok' }, { id: 1, proven: true, proof: 'again' }])
+  const e3 = eq('control: two agreeing entries', c.boxes.map((x) => [x.id, x.proven]), [[1, true]])
+  const r = await t183Review({ prBody: t183Body(T183_L3), morgan: [{ verdict: 'LGTM', boxes: [{ id: 1, proven: true, proof: 'ok' }, { id: 1, proven: false }, { id: 2, proven: true, proof: 'p' }, { id: 3, proven: true, proof: 'p' }] }] })
+  const e4 = eq('flow: status', r.status, 'needs-revision')
+  const e5 = eq('flow: boxes 2 and 3 ticked, 1 open', t183Ticked(String(r.prBodyPreview || '')).length, 2)
+  return e1 || e2 || e3 || e4 || e5 || { ok: true }
+})
+
+await testCase('T183w in an id run Morgan is told she ticks nothing and LGTM needs every box proven; the run without ids keeps its text', async () => {
+  const src = SUITE_ARGS.fpSource
+  const fns = t182Block()
+  if (!src || !fns) return t182Skip('T183w')
+  const idRule = fns.morganItemsRule(t182Lines(T182_ITEMS).join('\n'))
+  const e1 = includes('id run: Morgan ticks nothing', idRule, 'you tick none')
+  const e2 = includes('id run: boxes by id', idRule, 'every box reads [ ]')
+  const e3 = includes('id run: LGTM needs every box proven', idRule, 'LGTM only when EVERY box is proven')
+  const legacy = fns.morganItemsRule('')
+  const e4 = includes('no ids: the historical sentence', legacy, 'Emit `REQUIRED_CHANGES` whenever any box is unticked (human-gate or not). ')
+  const e5 = eq('no ids: starts like it always did', legacy.startsWith('For each remaining unticked acceptance box, put in `items` the **verbatim checklist line** it blocks on'), true)
+  const e6 = eq('both Morgan prompts interpolate the rule', src.split('${morganItemsRule(acceptanceBlock)}').length - 1, 2)
+  const e7 = eq('the historical sentence is written once (in the rule)', src.split('Emit `REQUIRED_CHANGES` whenever any box is unticked').length - 1, 1)
+  return e1 || e2 || e3 || e4 || e5 || e6 || e7 || { ok: true }
 })
 
 // T123 (#42) — every test ID is unique across the suite. Must stay the LAST case so `results`

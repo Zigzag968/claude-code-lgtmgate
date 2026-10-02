@@ -155,6 +155,10 @@ let classifierOutageDeath = false
 // #182: Morgan's `boxes` mapped by id to the rendered acceptance items (set in callMorganGuarded); finish() carries
 // them as `boxes`. Declared before `const finish`: the dryRun return calls finish before the later `let`s run.
 let boxesMapped = null
+// #183: the ids Morgan returned no box for that the PR body already shows ticked (a person's tick): the tick keeps them.
+let boxesKept = []
+// #183: why the last pr-write probe call gave no usable answer (null while it did), read by tickAcceptanceBoxes.
+let prWriteFailure = null
 // simulate-only: the PR body as the run composed it (tick, decision log, acceptance sync); finish() exposes it on every terminal.
 let prBodyPreview = null
 // Status registry (#180) — every outcome a run can return, one entry per status, in pipeline order.
@@ -591,43 +595,90 @@ function upsertDecisionLog(body, entries) {
 // MUST already exist (he copies it verbatim from Sam's checklist at PR-open time per
 // pr-acceptance.md) — a missing pair means something upstream is already broken, and silently
 // appending a second acceptance block would corrupt the gate block-merge-unchecked.sh reads.
-// Selects the LAST marker pair for the SAME reason the decision-log regexes do: a plan artifact
-// (this very file's own doc comments included) can contain an earlier, illustrative/fenced copy
-// of the marker pair.
+// Selects the LAST marker pair OUTSIDE a fenced code block (#183): a plan artifact or a PR body (this very file's own
+// doc comments included) can hold an illustrative copy of the marker pair, before or after the real block, and such a
+// copy is always fenced.
 const ACCEPTANCE_START = '<!-- acceptance:start -->'
 const ACCEPTANCE_END = '<!-- acceptance:end -->'
-const ACCEPTANCE_START_RE = /^<!-- acceptance:start -->[ \t]*$/gm
-const ACCEPTANCE_END_RE = /^<!-- acceptance:end -->[ \t]*$/gm
-// Pure. Replaces the acceptance-block CONTENTS (between the LAST marker pair) with `checklist`
-// (the verbatim `- [ ] ...` lines Sam returns for an amendment round). Returns null — NEVER
-// appends — when `checklist` is empty/blank or either marker is missing from `body`.
+// Pure. Replaces the acceptance-block CONTENTS (between the LAST unfenced marker pair) with `checklist`
+// (the verbatim `- [ ] ...` lines Sam returns for an amendment round), joined with the line break the body uses.
+// Returns null — NEVER appends — when `checklist` is empty/blank or either marker is missing from `body`.
 function spliceAcceptanceBlock(body, checklist) {
   const list = String(checklist ?? '').trim()
   if (!list) return null
   const src = String(body ?? '')
   const span = acceptanceSpan(src)
   if (span === null) return null
-  return src.slice(0, span.from) + '\n' + list + '\n' + src.slice(span.to)
+  return src.slice(0, span.from) + span.eol + list.split('\r\n').join('\n').split('\n').join(span.eol) + span.eol + src.slice(span.to)
 }
-// The contents of the acceptance block of `src`, as { from, to } offsets (just after the start marker line, at the start
-// of the end marker line): the LAST marker pair, null when a marker is missing or the end does not follow the start.
+// The contents of the acceptance block of `src`, as { from, to, eol } (`from`: just after the start marker line, before its
+// line break; `to`: the start of the end marker line; `eol`: the line break the body puts after the start marker, "\r\n"
+// or "\n"): the LAST marker pair outside a fenced code block (a line opening with 3+ backticks or tildes, up to 3 spaces of
+// indent, until a line closing it with the same character, at least as long), null when a marker is missing or the end
+// does not follow the start. String operations only.
 function acceptanceSpan(src) {
   let s = -1
-  let sLen = ACCEPTANCE_START.length
-  ACCEPTANCE_START_RE.lastIndex = 0
-  let m
-  while ((m = ACCEPTANCE_START_RE.exec(src))) { s = m.index; sLen = m[0].length }
+  let sEnd = -1
   let e = -1
-  ACCEPTANCE_END_RE.lastIndex = 0
-  while ((m = ACCEPTANCE_END_RE.exec(src))) e = m.index
+  let fence = ''
+  let pos = 0
+  for (const raw of src.split('\n')) {
+    const line = raw.endsWith('\r') ? raw.slice(0, -1) : raw
+    const t = line.trimStart()
+    const c = t[0]
+    let run = 0
+    if ((c === '`' || c === '~') && line.length - t.length <= 3) while (t[run] === c) run += 1
+    if (fence !== '') {
+      if (run >= fence.length && c === fence[0] && t.slice(run).trim() === '') fence = ''
+    } else if (run >= 3 && !(c === '`' && t.slice(run).includes('`'))) {
+      fence = c.repeat(run)
+    } else {
+      let end = line.length
+      while (end > 0 && (line[end - 1] === ' ' || line[end - 1] === '\t')) end -= 1
+      const marker = line.slice(0, end)
+      if (marker === ACCEPTANCE_START) { s = pos; sEnd = pos + line.length } else if (marker === ACCEPTANCE_END) e = pos
+    }
+    pos += raw.length + 1
+  }
   if (s === -1 || e === -1 || e <= s) return null
-  return { from: s + sLen, to: e }
+  return { from: sEnd, to: e, eol: src.startsWith('\r\n', sEnd) ? '\r\n' : '\n' }
+}
+// The boxes of the acceptance block text `text`: { checkedById: Map id -> ticked (a `- [ ]` / `- [x]` line carrying a
+// well-formed `<!-- ac:N -->` comment), extra: the checkbox lines without an id, verbatim }. String operations only.
+function acceptanceBoxes(text) {
+  const checkedById = new Map()
+  const extra = []
+  for (const raw of String(text).split('\n')) {
+    const l = raw.endsWith('\r') ? raw.slice(0, -1) : raw
+    const t = l.trimStart()
+    const head = t.slice(0, 5)
+    const ticked = head === '- [x]' || head === '- [X]'
+    if (!(ticked || head === '- [ ]') || !(t.length === 5 || t[5] === ' ' || t[5] === '\t')) continue
+    const rest = t.slice(5).trimStart()
+    if (!rest.startsWith('<!-- ac:')) { extra.push(l); continue }
+    const end = rest.indexOf('-->')
+    const digits = end > 0 ? rest.slice(8, end).trim() : ''
+    if (digits !== '' && [...digits].every((d) => d >= '0' && d <= '9')) checkedById.set(Number(digits), ticked)
+    else extra.push(l)
+  }
+  return { checkedById, extra }
+}
+// The ids of the boxes of the acceptance block of `body` that are ticked, ascending (the LAST unfenced marker pair);
+// [] when there is no block. Pure.
+function checkedAcceptanceIds(body) {
+  const src = String(body ?? '')
+  const span = acceptanceSpan(src)
+  if (span === null) return []
+  const { checkedById } = acceptanceBoxes(src.slice(span.from, span.to))
+  return [...checkedById].filter(([, ticked]) => ticked).map(([id]) => id).sort((a, b) => a - b)
 }
 // Ticks the acceptance block by id (#183). Pure. `rendered` is the canonical block (every box open, `<!-- ac:N -->` ids);
-// the block of `body` (the LAST marker pair) is replaced by it with each box set by its id: `[x]` for an id of `tickIds`;
-// an id of `keepIds` (a human gate) keeps the state the body has, so a person's tick survives and the engine never writes a
-// gate `[x]`; any other id is open, so a stale `[x]` is reopened. null, like spliceAcceptanceBlock, when `rendered` is
-// blank or a marker is missing. String operations only.
+// the block of `body` (the LAST unfenced marker pair) is replaced by it with each box set by its id: `[x]` for an id of
+// `tickIds`; an id of `keepIds` (a human gate, or a box nobody returned that a person ticked) keeps the state the body
+// has, so a person's tick survives and the engine never writes a gate `[x]`; any other id is open, so a stale `[x]` is
+// reopened. The checkbox lines of the block that carry no id (the line a project's rule has Nick add) are kept as they
+// stand, after the rendered lines, and never ticked. null, like spliceAcceptanceBlock, when `rendered` is blank or a
+// marker is missing. String operations only.
 function tickAcceptanceBlock(body, rendered, tickIds, keepIds) {
   const list = String(rendered ?? '').trim()
   const src = String(body ?? '')
@@ -639,14 +690,7 @@ function tickAcceptanceBlock(body, rendered, tickIds, keepIds) {
     const digits = end > 0 ? rest.slice(8, end).trim() : ''
     return digits !== '' && [...digits].every((c) => c >= '0' && c <= '9') ? Number(digits) : null
   }
-  const checkedById = new Map()
-  for (const l of src.slice(span.from, span.to).split('\n')) {
-    const t = l.trimStart()
-    const checked = t.startsWith('- [x] ') || t.startsWith('- [X] ')
-    if (!checked && !t.startsWith('- [ ] ')) continue
-    const id = idOf(t.slice(6).trimStart())
-    if (id !== null) checkedById.set(id, checked)
-  }
+  const { checkedById, extra } = acceptanceBoxes(src.slice(span.from, span.to))
   const tick = Array.isArray(tickIds) ? tickIds : []
   const keep = Array.isArray(keepIds) ? keepIds : []
   const lines = list.split('\n').map((line) => {
@@ -656,7 +700,7 @@ function tickAcceptanceBlock(body, rendered, tickIds, keepIds) {
     const checked = keep.includes(id) ? checkedById.get(id) === true : tick.includes(id)
     return checked ? '- [x] ' + line.slice(6) : line
   })
-  return spliceAcceptanceBlock(src, lines.join('\n'))
+  return spliceAcceptanceBlock(src, [...lines, ...extra].join('\n'))
 }
 
 // Post-write byte/marker guard (issue #87) — protects a PR body read-modify-write against a
@@ -736,10 +780,22 @@ function boxLineId(line) {
   if (!(t.startsWith('- [ ]') || t.startsWith('- [x]') || t.startsWith('- [X]'))) return null
   return leadingId(t.slice(5).trim())
 }
-// A blocker's identity across rounds (#183): `ac:N` for a box line carrying its id comment, else the exact string.
+// A blocker's identity across rounds (#183): `ac:N` for a box line carrying its id comment; for any other line (a code
+// blocker Morgan wrote in her own words) `text:` and its lowercased text with the whitespace collapsed and the trailing
+// punctuation dropped, so a cosmetic rewording is the same blocker. String operations only.
 function lineKey(line) {
   const id = boxLineId(line)
-  return id === null ? String(line) : 'ac:' + id
+  if (id !== null) return 'ac:' + id
+  let text = ''
+  let gap = false
+  for (const ch of String(line).toLowerCase()) {
+    if (ch.trim() === '') { gap = true; continue }
+    if (gap && text !== '') text += ' '
+    gap = false
+    text += ch
+  }
+  while (text.length > 0 && '.,;:!?'.includes(text[text.length - 1])) text = text.slice(0, -1)
+  return 'text:' + text
 }
 // True when `line` is the box line of a human-gate item: decided by the id comment against the items, never by text.
 function humanGateLine(items, line) {
@@ -836,18 +892,31 @@ function planLacksItems(plan, items) {
   return items.filter((item) => !text.includes(renderLine(item)) && !text.includes(renderLine(item, false))).map((item) => renderLine(item))
 }
 // Morgan's `boxes` [{ id, proven, proof }] mapped by id to the rendered items: { boxes: [{ id, text, humanGate, proven,
-// proof }] in item order, unknown: ids no item carries (dropped), missing: item ids Morgan returned no box for }.
-function mapBoxes(items, boxes) {
+// proof }] in item order, unknown: ids no item carries (dropped), missing: item ids Morgan returned no box for and the
+// body does not show ticked, kept: item ids she returned no box for that `checked` (the ids ticked in the body) shows
+// ticked, a person's tick the tick leaves alone }. A box is proven only with `proven: true` AND a proof that is not blank;
+// two entries for one id are proven only when both are.
+function mapBoxes(items, boxes, checked) {
   const byId = new Map(items.map((item) => [item.id, item]))
   const seen = new Map()
   const unknown = []
   for (const b of Array.isArray(boxes) ? boxes : []) {
     const item = b && Number.isInteger(b.id) ? byId.get(b.id) : undefined
     if (!item) { unknown.push(b && b.id !== undefined ? String(b.id) : '?'); continue }
-    if (seen.has(b.id)) continue
-    seen.set(b.id, { id: item.id, text: item.text, humanGate: item.humanGate, proven: b.proven === true, proof: typeof b.proof === 'string' ? b.proof : '' })
+    const proof = typeof b.proof === 'string' ? b.proof : ''
+    const proven = b.proven === true && proof.trim() !== ''
+    const prev = seen.get(b.id)
+    if (prev) { if (!proven) prev.proven = false; continue }
+    seen.set(b.id, { id: item.id, text: item.text, humanGate: item.humanGate, proven, proof })
   }
-  return { boxes: items.filter((item) => seen.has(item.id)).map((item) => seen.get(item.id)), unknown, missing: items.filter((item) => !seen.has(item.id)).map((item) => item.id) }
+  const ticked = Array.isArray(checked) ? checked : []
+  const omitted = items.filter((item) => !seen.has(item.id))
+  return {
+    boxes: items.filter((item) => seen.has(item.id)).map((item) => seen.get(item.id)),
+    unknown,
+    missing: omitted.filter((item) => !ticked.includes(item.id)).map((item) => item.id),
+    kept: omitted.filter((item) => ticked.includes(item.id)).map((item) => item.id),
+  }
 }
 // The two prompt notes carrying the rendered block; '' without a block so a legacy run's prompts stay byte-identical.
 function nickBlockNote(block) {
@@ -860,6 +929,18 @@ function morganBoxesNote(block) {
     'Quote a box line exactly as it stands in the PR body, its <!-- ac:n --> comment included, wherever you quote one (items, itemOwners). ' +
     'Besides items, return boxes: one { id, proven, proof } per box above; proven is true only when you ran its verification and it passed; proof is the command and its verbatim output. ' +
     'You do not edit the PR body\'s boxes: the workflow ticks by id the boxes you return as proven and never ticks a [human-gate] box, so a [human-gate] box is proven only when the PR body already shows it checked by a person. items carries the quoted line of every box you did not prove. '
+}
+// The sentence of both Morgan prompts that tells her what to put in `items` and when to emit REQUIRED_CHANGES. Without a
+// block (a run with no ids) it is the historical text, byte for byte; with a block the workflow ticks, so no box reads
+// `[x]` when she reads the body: she ticks none, returns `boxes`, and LGTM needs every box proven.
+function morganItemsRule(block) {
+  if (block) {
+    return 'In this run the workflow ticks the boxes, you tick none: every box reads [ ] when you read the PR body, and LGTM only when EVERY box is proven (returned in `boxes` with proven true and its proof). ' +
+      'For each box you did not prove, put in `items` the **verbatim checklist line** it blocks on (copy the box line exactly, its <!-- ac:n --> comment included — do NOT paraphrase — so a persistent blocker reads identically across rounds). ' +
+      'A box whose line contains the tag `[human-gate]` is a **human-only** item: you cannot verify it and MUST NOT ask Nick to fix it — copy its line verbatim into `items` (tag preserved) and treat it as a human gate, not a code defect; it is proven only when the PR body already shows it checked by a person. ' +
+      'Emit `REQUIRED_CHANGES` whenever any box is not proven (human-gate or not). '
+  }
+  return 'For each remaining unticked acceptance box, put in `items` the **verbatim checklist line** it blocks on (copy the box text exactly — do NOT paraphrase — so a persistent blocker reads identically across rounds). Any box whose line contains the tag `[human-gate]` is a **human-only** item: you cannot verify it and MUST NOT tick it or ask Nick to fix it — copy its line verbatim into `items` (tag preserved) and treat it as a human gate, not a code defect. Emit `REQUIRED_CHANGES` whenever any box is unticked (human-gate or not). '
 }
 // --- acceptanceItems:end ---
 
@@ -2090,6 +2171,7 @@ async function preflightProbe(mode, label, argv) {
 // The result line is always logged so fixtures can assert on it.
 async function prWrite(op, label, round, argv) {
   let out = null
+  prWriteFailure = null
   try {
     const script = probeScriptPath('pr-write.sh')
     const args = [...argv, '--wt', wtPath, ...(repo ? ['--repo', repo] : [])]
@@ -2098,11 +2180,12 @@ async function prWrite(op, label, round, argv) {
       label,
       round,
       noReuse: true,   // a write is never replayed from a stored record (#85)
-      onFail: (reason) => { log(`pr-write ${op} (${label}, round ${round}): probe failed (${reason}) — fail-open`); return null },
+      onFail: (reason) => { prWriteFailure = reason; log(`pr-write ${op} (${label}, round ${round}): probe failed (${reason}) — fail-open`); return null },
     })
     if (r && r.json && !r.json.error) out = r.json
-    else if (r) log(`pr-write ${op} (${label}, round ${round}): unusable result (${r.json && r.json.error}) — fail-open`)
+    else if (r) { prWriteFailure = 'unusable-result'; log(`pr-write ${op} (${label}, round ${round}): unusable result (${r.json && r.json.error}) — fail-open`) }
   } catch (e) {
+    prWriteFailure = 'probe-error'
     log(`pr-write ${op} (${label}, round ${round}): failed (${e.message}) — fail-open`)
   }
   if (out) log(`pr-write ${op} (${label}, round ${round}): ${out.result}${out.reason ? ' — ' + out.reason : ''}`)
@@ -3157,9 +3240,16 @@ if (after('review', entryStage)) {
     // verdict has none clears the previous round's). An id no item carries is dropped and traced, so is an item she
     // returned no box for. #183: the boxes then drive the tick (tickAcceptanceBoxes).
     boxesMapped = null
-    if (samAcceptanceItems && Array.isArray(v.boxes)) {
-      const mapped = mapBoxes(samAcceptanceItems, v.boxes)
+    boxesKept = []
+    if (samAcceptanceItems) {
+      // A verdict with no `boxes` is a verdict with no box proven. The ids ticked in the body (read now, after Morgan
+      // ran) are what a person ticked: a box she returned nothing for is kept as it stands, not reopened.
+      const ticked = simulate
+        ? checkedAcceptanceIds(simBody() ?? '')
+        : (endState && Array.isArray(endState.acceptanceChecked) ? endState.acceptanceChecked : [])
+      const mapped = mapBoxes(samAcceptanceItems, v.boxes, ticked)
       boxesMapped = mapped.boxes
+      boxesKept = mapped.kept
       for (const id of mapped.unknown) trace.push(`boxes-unknown-id:${id}`)
       for (const id of mapped.missing) trace.push(`boxes-missing:${id}`)
     }
@@ -3174,62 +3264,70 @@ if (after('review', entryStage)) {
       const line = b.item || `Unverified run artifact (${b.reason}): stat the named artifact and cite path + mtime + size`
       if (!merged.includes(line)) merged.push(line)
       // A box named by a rejected proof (its line carries the id comment) is not proven, whatever Morgan returned for it.
+      // A rejected proof that names no box leaves no way to tell which box rested on it: none is ticked this round.
       const named = boxLineId(b.item)
-      if (named !== null && boxesMapped) boxesMapped = boxesMapped.map((box) => (box.id === named ? { ...box, proven: false } : box))
+      if (boxesMapped) {
+        const designates = named !== null && boxesMapped.some((box) => box.id === named)
+        boxesMapped = boxesMapped.map((box) => (!designates || box.id === named ? { ...box, proven: false } : box))
+      }
     }
     log(`callMorganGuarded round ${round}: overturned verdict ${v.verdict} -> REQUIRED_CHANGES ` +
       `(${blockers.length} stale/absent artifact proof(s): ${blockers.map(b => b.reason).join(', ')})`)
     return await tickAcceptanceBoxes({ ...v, verdict: 'REQUIRED_CHANGES', items: merged }, round)
   }
 
-  // tickAcceptanceBoxes (#183) — the workflow ticks, Morgan only returns `boxes`. In an id run (items from Sam AND a
-  // `boxes` array in the verdict) one pr-write call re-splices the rendered block with the proven non-gate boxes
-  // `[x]` by id (a human-gate id keeps the state the body has: the engine never writes a gate `[x]`). The tick has
-  // landed when the probe answered written or skipped; anything else (no answer, failed/<reason>) is "not ticked".
-  // Not ticked while a non-gate box is proven: a LGTM becomes REQUIRED_CHANGES carrying those boxes' canonical lines and
-  // `untickable` [{ id, item, proof }] (reviewParkedTerminal parks the run from them). A LGTM with a box not proven (or
-  // missing from `boxes`) is REQUIRED_CHANGES whatever the tick did. Returns the verdict, possibly rewritten.
+  // tickAcceptanceBoxes (#183) — the workflow ticks, Morgan only returns `boxes`. In an id run (items from Sam; a verdict
+  // with no `boxes` is a verdict with none proven) one pr-write call re-splices the rendered block with the proven
+  // non-gate boxes `[x]` by id (a human-gate id, and a box a person ticked that Morgan returned nothing for, keep the
+  // state the body has: the engine never writes a gate `[x]`). The tick has landed when the probe answered written or
+  // skipped; anything else is "not ticked" and names its reason (`tickReason`: the probe's own, 'probe-unavailable'-like
+  // when it gave no answer); a `stale-read` is retried once, the body being read afresh by the script.
+  // The boxes not proven are judged FIRST: a LGTM with one is REQUIRED_CHANGES carrying its canonical line, whatever
+  // the tick does. Then, not ticked while a non-gate box is proven: a LGTM becomes REQUIRED_CHANGES carrying those boxes'
+  // canonical lines and `untickable` [{ id, item, proof }] (reviewParkedTerminal parks the run from them, only when
+  // nothing else blocks). Returns the verdict, possibly rewritten.
   const tickAcceptanceBoxes = async (v, round) => {
     if (!samAcceptanceItems || !boxesMapped) return v
     const proven = boxesMapped.filter((b) => b.proven)
     const tickBoxes = proven.filter((b) => !b.humanGate)
     const tickIds = tickBoxes.map((b) => b.id)
-    const keepIds = samAcceptanceItems.filter((i) => i.humanGate).map((i) => i.id)
+    const keepIds = [...samAcceptanceItems.filter((i) => i.humanGate).map((i) => i.id), ...boxesKept]
     const rendered = renderChecklist(samAcceptanceItems)
-    let landed
-    if (simulate) {
-      const base = simBody()
-      if (simulate.probes?.acceptanceSync === false) landed = false
-      else if (base === undefined || base === null) landed = true
-      else {
+    // One try: null when the tick landed, else the reason it did not. simulate.probes.acceptanceSync: false (refused),
+    // a reason string, or a list of those answered one per try (true / absent: the real tickAcceptanceBlock on the body).
+    let tries = 0
+    const tryTick = async (label) => {
+      if (simulate) {
+        const sim = simulate.probes?.acceptanceSync
+        const answers = Array.isArray(sim) ? sim : [sim]
+        const answer = answers[Math.min(tries, answers.length - 1)]
+        tries += 1
+        if (answer === false) return 'write-failed'
+        if (typeof answer === 'string') return answer
+        const base = simBody()
+        if (base === undefined || base === null) return null
         const out = tickAcceptanceBlock(base, rendered, tickIds, keepIds)
-        landed = out !== null
-        if (landed) prBodyPreview = out
+        if (out === null) return 'no-markers'
+        prBodyPreview = out
+        return null
       }
-    } else {
-      const res = await prWrite('body-splice', 'acceptance-tick', round, ['--pr', pr, '--mode', 'tick', '--text', rendered, '--ids', tickIds.join(','), '--keep', keepIds.join(',')])
-      landed = !!res && (res.result === 'written' || res.result === 'skipped')
+      const res = await prWrite('body-splice', label, round, ['--pr', pr, '--mode', 'tick', '--text', rendered, '--ids', tickIds.join(','), '--keep', keepIds.join(',')])
+      if (res && (res.result === 'written' || res.result === 'skipped')) return null
+      return res ? (res.reason || 'write-failed') : (prWriteFailure || 'probe-unavailable')
+    }
+    let reason = await tryTick('acceptance-tick')
+    if (reason === 'stale-read') {
+      trace.push(`acceptance-tick-retry:${round}`)
+      log(`tickAcceptanceBoxes round ${round}: the body changed under the tick (stale-read) — retrying once`)
+      reason = await tryTick('acceptance-tick-retry')
     }
     let verdict = v.verdict
     const items = Array.isArray(v.items) ? [...v.items] : []
     let changed = false
     const addLine = (item) => { if (!items.some((l) => lineKey(l) === 'ac:' + item.id)) { items.push(renderLine(item)); changed = true } }
-    let untickable
-    if (landed) {
-      if (tickIds.length > 0) trace.push(`acceptance-ticked:${round}`)
-    } else if (tickBoxes.length > 0) {
-      trace.push(`acceptance-tick-refused:${round}`)
-      log(`tickAcceptanceBoxes round ${round}: the tick of box(es) ${tickIds.join(',')} was refused by the write probe — parking for the Lead`)
-      if (verdict === 'LGTM') { verdict = 'REQUIRED_CHANGES'; changed = true }
-      untickable = tickBoxes.map((b) => {
-        const item = samAcceptanceItems.find((i) => i.id === b.id)
-        addLine(item)
-        return { id: b.id, item: renderLine(item), proof: b.proof }
-      })
-    }
     if (verdict === 'LGTM') {
-      const provenIds = proven.map((b) => b.id)
-      const open = samAcceptanceItems.filter((i) => !provenIds.includes(i.id))
+      const settled = [...proven.map((b) => b.id), ...boxesKept]
+      const open = samAcceptanceItems.filter((i) => !settled.includes(i.id))
       if (open.length > 0) {
         trace.push(`acceptance-open-lgtm:${round}`)
         log(`tickAcceptanceBoxes round ${round}: LGTM with ${open.length} box(es) not proven (${open.map((i) => i.id).join(',')}) — REQUIRED_CHANGES`)
@@ -3238,7 +3336,23 @@ if (after('review', entryStage)) {
         open.forEach(addLine)
       }
     }
-    return changed || untickable ? { ...v, verdict, items, ...(untickable ? { untickable } : {}) } : v
+    let untickable
+    let tickReason
+    if (reason === null) {
+      if (tickIds.length > 0) trace.push(`acceptance-ticked:${round}`)
+    } else if (tickBoxes.length > 0) {
+      trace.push(`acceptance-tick-refused:${round}`)
+      trace.push(`acceptance-tick-reason:${reason}`)
+      log(`tickAcceptanceBoxes round ${round}: the tick of box(es) ${tickIds.join(',')} was refused (${reason}) — parking for the Lead`)
+      if (verdict === 'LGTM') { verdict = 'REQUIRED_CHANGES'; changed = true }
+      tickReason = reason
+      untickable = tickBoxes.map((b) => {
+        const item = samAcceptanceItems.find((i) => i.id === b.id)
+        addLine(item)
+        return { id: b.id, item: renderLine(item), proof: b.proof }
+      })
+    }
+    return changed || untickable ? { ...v, verdict, items, ...(untickable ? { untickable, tickReason } : {}) } : v
   }
 
   // Regression guard — baseline SET-DIFF, not a grep/function-count check.
@@ -3503,9 +3617,9 @@ if (after('review', entryStage)) {
     log(`Verified-untickable: ${untickable.length} box(es) proven but not tickable — parking for the Lead, no Nick round${rest.length > 0 ? ` (+ ${rest.length} human-gate)` : ''}`)
     await updateStatus('Pending Tick')   // best-effort; logs + skips if the option is unconfigured
     if (rest.length === 0) {
-      return finish(STATUS['verified-untickable'], { pr, issue, round, untickableItems: untickable, trace, decisionLog })
+      return finish(STATUS['verified-untickable'], { pr, issue, round, untickableItems: untickable, ...(v.tickReason ? { tickReason: v.tickReason } : {}), trace, decisionLog })
     }
-    return finish(STATUS['ready-pending-human'], { pr, issue, round, humanGateItems: rest, untickableItems: untickable, trace, decisionLog })
+    return finish(STATUS['ready-pending-human'], { pr, issue, round, humanGateItems: rest, untickableItems: untickable, ...(v.tickReason ? { tickReason: v.tickReason } : {}), trace, decisionLog })
   }
 
   // syncAcceptanceBlock (issue #97) — deterministic, FAIL-CLOSED sync of Sam's amended acceptance
@@ -3600,7 +3714,7 @@ if (after('review', entryStage)) {
         : ''}` +
       `Confirm CI is green via the GitHub checks ${ciChecks.join(' + ')} (gh pr checks ${pr}${prFlag}), ` +
       `then POST your verdict (LGTM | REQUIRED_CHANGES | REGRESSION_DETECTED) as a comment on PR #${pr}. Prefix that posted comment EXACTLY with the pipeline-review-round marker \`${reviewVerdictMarker}\` as its own first line${reviewShaRule} (hidden HTML marker; do NOT let it leak into \`items\`). ` +
-      `For each remaining unticked acceptance box, put in \`items\` the **verbatim checklist line** it blocks on (copy the box text exactly — do NOT paraphrase — so a persistent blocker reads identically across rounds). Any box whose line contains the tag \`[human-gate]\` is a **human-only** item: you cannot verify it and MUST NOT tick it or ask Nick to fix it — copy its line verbatim into \`items\` (tag preserved) and treat it as a human gate, not a code defect. Emit \`REQUIRED_CHANGES\` whenever any box is unticked (human-gate or not). ` +
+      `${morganItemsRule(acceptanceBlock)}` +
       `For each item in \`items\`, ALSO classify it in \`itemOwners\` ({item, itemOwner, proof}): 'code-defect' is the DEFAULT whenever you are uncertain — a plan owner ('plan-defect'|'checklist-wording-defect') REQUIRES a concrete \`proof\` quoting the exact contradiction between the plan/checklist and reality, and NEVER excuses unfinished code. ${ACCEPTANCE_PRESENCE_RULE}A box whose verification failed or was not run stays 'code-defect'.`,
     { agentType: 'Morgan', phase: 'Review', schema: MORGAN, label: `morgan-pr-${issue}-${pr}-r${round}`, model: morganModel },
     round,
@@ -3629,7 +3743,7 @@ if (after('review', entryStage)) {
 
   while (v.verdict !== 'LGTM' && round < 3) {
     if (gate('review', v.verdict)) {
-      return finish(STATUS['needs-revision'], { round, items: v.items, pr, issue, trace })
+      return finish(STATUS['needs-revision'], { round, items: v.items, pr, issue, ...(v.tickReason ? { tickReason: v.tickReason } : {}), trace })
     }
     prevRoundItems = v.items || []
     round++
@@ -3667,6 +3781,9 @@ if (after('review', entryStage)) {
       }
       samPlan = samAmend.plan
       refreshPlanBlock()
+      // The amendment renumbers the boxes (an id is a position): the blockers of the rounds before it are not the same
+      // boxes as the ones after it, so the history that same-blocker-twice compares is dropped.
+      prevRoundItems = null
       // #182: the amended checklist as items, checked and rendered like the first one; the legacy string is the fallback.
       const amendEntries = Array.isArray(samAmend.acceptanceItems) ? samAmend.acceptanceItems : null
       const amendIssues = amendEntries ? validateAcceptanceItems(amendEntries) : []
@@ -3736,7 +3853,7 @@ if (after('review', entryStage)) {
         `${freshnessStep}` +
         `${morganBoxesNote(acceptanceBlock)}` +
         `Then post the new verdict (LGTM | REQUIRED_CHANGES | REGRESSION_DETECTED) as a comment on the PR. Prefix that posted comment EXACTLY with the pipeline-review-round marker \`${reviewVerdictMarker}\` as its own first line${reviewShaRule} (hidden HTML marker; do NOT let it leak into \`items\`). ` +
-        `For each remaining unticked acceptance box, put in \`items\` the **verbatim checklist line** it blocks on (copy the box text exactly — do NOT paraphrase — so a persistent blocker reads identically across rounds). Any box whose line contains the tag \`[human-gate]\` is a **human-only** item: you cannot verify it and MUST NOT tick it or ask Nick to fix it — copy its line verbatim into \`items\` (tag preserved) and treat it as a human gate, not a code defect. Emit \`REQUIRED_CHANGES\` whenever any box is unticked (human-gate or not). ` +
+        `${morganItemsRule(acceptanceBlock)}` +
         `For each item in \`items\`, ALSO classify it in \`itemOwners\` ({item, itemOwner, proof}): 'code-defect' is the DEFAULT whenever you are uncertain — a plan owner ('plan-defect'|'checklist-wording-defect') REQUIRES a concrete \`proof\` quoting the exact contradiction between the plan/checklist and reality, and NEVER excuses unfinished code. ${ACCEPTANCE_PRESENCE_RULE}A box whose verification failed or was not run stays 'code-defect'.\n\n${planBlock}`,
       { agentType: 'Morgan', phase: 'Review', schema: MORGAN, label: `morgan-pr-${issue}-${pr}-r${round}`, model: morganModel },
       round,

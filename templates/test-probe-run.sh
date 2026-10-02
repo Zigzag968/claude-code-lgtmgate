@@ -265,6 +265,10 @@ if command -v jq >/dev/null 2>&1; then
 [ -n "${GH_FAIL:-}" ] && exit 1
 case "$*" in
   *"pr view"*)
+    if [ -n "${GH_ACC:-}" ]; then
+      jq -nc --arg b "$GH_ACC" '{headRefName:"feat/issue-84",headRefOid:"abc123",body:$b,commits:[],comments:[]}'
+      exit 0
+    fi
     cat <<'JSON'
 {"headRefName":"feat/issue-84","headRefOid":"abc123","body":"hello body","mergeable":"MERGEABLE","mergeStateStatus":"CLEAN",
  "commits":[{"committedDate":"2026-01-01T00:10:00Z"},{"committedDate":"2026-01-01T00:20:00Z"}],
@@ -321,6 +325,38 @@ GHEOF
     && [ "$(printf '%s' "$OUT4" | jq -c '[.headRefOid, .bodyDigest, .commitCount, .reviewCommentIds, .openIssues]')" = '[null,null,null,null,null]' ] \
     && printf '%s' "$OUT4" | jq -e '.now | length > 0' >/dev/null 2>&1 && ok=1
   check "pr-state.sh: failing gh -> nulls but now still set, exit 0, one line" "$ok"
+
+  # [183] acceptanceChecked: the ids ticked in the body's acceptance block (the fence-aware reader of the tick), [] without a block
+  ok=0
+  [ "$(printf '%s' "$OUT" | jq -c '.acceptanceChecked')" = '[]' ] && ok=1
+  check "[183] pr-state.sh: acceptanceChecked is [] for a body without an acceptance block" "$ok"
+  ACC_BODY='x
+<!-- acceptance:start -->
+- [x] <!-- ac:3 --> c
+- [ ] <!-- ac:2 --> b
+- [x] <!-- ac:1 --> a
+- [x] ticked line without an id
+<!-- acceptance:end -->
+```
+<!-- acceptance:start -->
+- [x] <!-- ac:9 --> an example
+<!-- acceptance:end -->
+```'
+  OUT6="$(GH_ACC="$ACC_BODY" PATH="$PSD/bin:$PATH" bash "$PS" --pr 7 --wt "$PSD/wt" --repo o/r)"
+  ok=0
+  [ "$(printf '%s' "$OUT6" | jq -c '.acceptanceChecked')" = '[1,3]' ] && ok=1
+  check "[183] pr-state.sh: acceptanceChecked lists the ticked ids of the real block, ascending, not the fenced example's" "$ok"
+  ok=0
+  [ "$(printf '%s' "$OUT4" | jq -c '.acceptanceChecked')" = 'null' ] && ok=1
+  check "[183] pr-state.sh: failing gh -> acceptanceChecked null" "$ok"
+  ok=0
+  out6="$(printf '%s\n' "$OUT6" | node -e '
+    const { PARSERS } = require(process.argv[1])
+    const v = PARSERS["pr-state"](require("fs").readFileSync(0, "utf8"), "", 0)
+    process.stdout.write(v.error ? "ERR" : JSON.stringify(v.acceptanceChecked))
+  ' "$PR")"
+  [ "$out6" = "[1,3]" ] && ok=1
+  check "[183] pr-state parser keeps acceptanceChecked (a list of positive integers, else null)" "$ok"
 
   ok=0
   out5="$(PATH="$PSD/bin:$PATH" bash "$PS" --pr 7 --wt "$PSD/wt" --repo o/r | node -e '
@@ -526,6 +562,46 @@ text")"
   OUT="$(run_pw body-splice --pr 9 --mode tick --text "$TK_TXT" --ids 1,x --keep 2)"
   ok=0; [ "$(res "$OUT")" = "failed/bad-args" ] && [ "$(no_call 'pr view')" = 1 ] && ok=1
   check "[183] pr-write.sh tick with a non-digit id: failed/bad-args, nothing read" "$ok"
+  # [183] review round: a line Nick added to the block survives, a fenced example is never the block, CRLF is kept
+  R2L='- [ ] fixture `fixtures/incidents/9-*.json` present, replayed red on the base and green on the branch'
+  tk_body "- [ ] <!-- ac:1 --> first
+- [ ] <!-- ac:2 --> [human-gate] second
+- [ ] <!-- ac:3 --> third
+$R2L"
+  OUT="$(run_pw body-splice --pr 9 --mode tick --text "$TK_TXT" --ids 1,3 --keep 2)"
+  ok=0; [ "$(res "$OUT")" = "written/-" ] && grep -qxF -- '- [x] <!-- ac:3 --> third' "$PWD_/body.md" && grep -qxF -- "$R2L" "$PWD_/body.md" \
+    && [ "$(awk -v l="$R2L" '$0 == l { n++ } END { print n + 0 }' "$PWD_/body.md")" = 1 ] \
+    && [ "$(grep -n -F -- "$R2L" "$PWD_/body.md" | cut -d: -f1)" -gt "$(grep -n -F -- '- [x] <!-- ac:3 --> third' "$PWD_/body.md" | cut -d: -f1)" ] && ok=1
+  check "[183] pr-write.sh tick keeps a box line without an id: once, open, after the rendered lines" "$ok"
+  OUT="$(run_pw body-splice --pr 9 --mode tick --text "$TK_TXT" --ids 1,3 --keep 2)"
+  ok=0; [ "$(res "$OUT")" = "skipped/unchanged" ] && [ "$(no_call 'pr edit')" = 1 ] && ok=1
+  check "[183] pr-write.sh tick again over the kept line: skipped/unchanged, no edit" "$ok"
+  FENCE='```
+<!-- acceptance:start -->
+- [ ] an example box
+<!-- acceptance:end -->
+```'
+  tk_body '- [ ] <!-- ac:1 --> first
+- [ ] <!-- ac:2 --> [human-gate] second
+- [ ] <!-- ac:3 --> third'
+  { printf '%s\n' "$FENCE"; cat "$PWD_/body.md"; printf '\n%s\n' "$FENCE"; } > "$PWD_/body2.md" && cp "$PWD_/body2.md" "$PWD_/body.md"
+  OUT="$(run_pw body-splice --pr 9 --mode tick --text "$TK_TXT" --ids 1,3 --keep 2)"
+  ok=0; [ "$(res "$OUT")" = "written/-" ] && grep -qxF -- '- [x] <!-- ac:1 --> first' "$PWD_/body.md" && grep -qxF -- '- [ ] an example box' "$PWD_/body.md" \
+    && [ "$(grep -c -F -- '- [ ] an example box' "$PWD_/body.md")" = 2 ] && ok=1
+  check "[183] pr-write.sh tick ignores marker pairs inside fenced code blocks (before and after the block)" "$ok"
+  tk_body '- [x] <!-- ac:1 --> first
+- [ ] <!-- ac:2 --> [human-gate] second
+- [x] <!-- ac:3 --> third'
+  sed 's/$/\r/' "$PWD_/body.md" > "$PWD_/body2.md" && cp "$PWD_/body2.md" "$PWD_/body.md"
+  OUT="$(run_pw body-splice --pr 9 --mode tick --text "$TK_TXT" --ids 1,3 --keep 2)"
+  ok=0; [ "$(res "$OUT")" = "skipped/unchanged" ] && [ "$(no_call 'pr edit')" = 1 ] && ok=1
+  check "[183] pr-write.sh tick over a CRLF body that is already right: skipped/unchanged, no edit" "$ok"
+  sed 's/$/\r/' <<< "$(printf 'Closes #1\n\n## What this ships\n- a summary line long enough that rewording two boxes stays far under the ten percent guard\n- another summary line of the same kind, so the body is not only the checklist\n\n<!-- acceptance:start -->\n- [ ] <!-- ac:1 --> first\n- [ ] <!-- ac:2 --> [human-gate] second\n- [ ] <!-- ac:3 --> third\n<!-- acceptance:end -->')" > "$PWD_/body.md"
+  OUT="$(run_pw body-splice --pr 9 --mode tick --text "$TK_TXT" --ids 1,3 --keep 2)"
+  ok=0; [ "$(res "$OUT")" = "written/-" ] && grep -qxF -- "$(printf -- '- [x] <!-- ac:1 --> first\r')" "$PWD_/body.md" \
+    && [ "$(tr -d '\r' < "$PWD_/body.md" | wc -c | tr -d ' ')" -lt "$(wc -c < "$PWD_/body.md" | tr -d ' ')" ] \
+    && [ "$(grep -c "$(printf '\r$')" "$PWD_/body.md")" = "$(wc -l < "$PWD_/body.md" | tr -d ' ')" ] && ok=1
+  check "[183] pr-write.sh tick over a CRLF body writes CRLF line breaks only" "$ok"
 
   # parser round trip and the engine/helper block parity
   OUT="$(GH_MINIMIZED=true run_pw minimize --id IC_1)"
