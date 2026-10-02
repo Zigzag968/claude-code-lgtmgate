@@ -48,7 +48,7 @@ The exact commands (build/test/format) are provided in your task prompt by the o
 3. `[STATUS] dev: tests` — write >= 1 test that makes sense, mocks for services/dependencies. No trivial assertions. Plan's Tracking section → an emission test per event. New test file → reference it in the build system if the project requires it.
 4. **Green bar**: build OK (`commands.build`) → unit tests (`commands.test`) → format of modified files (`commands.format`). Paste the green output in your report.
 5. If Sam's impact table flagged userflows: validate them (relevant test / targeted test) and include PASS/FAIL.
-6. `[STATUS] dev: PR` — push and open the **draft** PR against the base branch. Copy Sam's **acceptance checklist** verbatim into the body, between the `<!-- acceptance:start -->` / `<!-- acceptance:end -->` markers (zone watched by the block-merge hook). Bash 1 command/call:
+6. `[STATUS] dev: PR` — push and open the **draft** PR against the base branch. Copy Sam's **acceptance checklist** verbatim into the body (when the task prompt carries the checklist rendered by the workflow, paste exactly those lines, `<!-- ac:N -->` ids and `[human-gate]` tags included), between the `<!-- acceptance:start -->` / `<!-- acceptance:end -->` markers (zone watched by the block-merge hook). Bash 1 command/call:
    ```bash
    git push origin <branchPrefix><slug>
    ```
