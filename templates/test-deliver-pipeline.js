@@ -4624,6 +4624,51 @@ await testCase('T182s source: the human-gate note sends a command in the text to
   return e1 || e2 || { ok: true }
 })
 
+// T182t (#182, PR #190 review round 3) — itemsFromPlan rebuilds a list only when the plan holds ONE checklist: every run of
+// id-bearing checkbox lines is normalised to its { id, text, humanGate } sequence, and two runs that differ in any way
+// (an example block before the real list, a stale copy with an extra line) give null, never a guess of which one is real.
+// The same list written twice (artifact + index copy) stays accepted. No fence is parsed.
+const t182Fenced = (lines) => '```\n' + lines.join('\n') + '\n```\n'
+const T182_EXAMPLE = [
+  '- [ ] <!-- ac:1 --> `node a.js` prints 3',
+  '- [ ] <!-- ac:2 --> [human-gate] wording reads well',
+  '- [ ] <!-- ac:3 --> `node b.js` exits 0',
+  '- [ ] <!-- ac:4 --> an example fourth item',
+]
+const t182ExampleThenReal = '## Plan\nThe PR body has this shape:\n\n' + t182Fenced(T182_EXAMPLE) + '\n## Acceptance checklist\n' + t182Lines(T182_ITEMS).join('\n') + '\n'
+const t182RealThenStale = '## Acceptance checklist\n' + t182Lines(T182_ITEMS).join('\n') + '\n\n## Index copy (stale)\n' +
+  [...t182Lines(T182_ITEMS), '- [ ] <!-- ac:4 --> a stale fourth item'].join('\n') + '\n'
+const t182Twice = '## Acceptance checklist\n' + t182Lines(T182_ITEMS).join('\n') + '\n\n## Index copy\n' + t182Lines(T182_ITEMS).join('\n') + '\n'
+const t182Once = '## Plan\n- [ ] step one: a task, not an acceptance item\n\n## Acceptance checklist\n' + t182Lines(T182_ITEMS).join('\n') + '\n'
+await testCase('T182t itemsFromPlan: two different id\'d checklists in a plan give null (example block then real list, real list then stale copy); the same list twice and a single list give the 3 items; a semi relaunch gets no block note and no boxes', async () => {
+  const fns = t182Block()
+  if (!fns) return t182Skip('T182t')
+  const e1 = eq('example block before the real checklist -> null', fns.itemsFromPlan(t182ExampleThenReal), null)
+  const e2 = eq('real checklist then a stale copy with an extra ac:4 line -> null', fns.itemsFromPlan(t182RealThenStale), null)
+  const e3 = eq('same checklist written twice -> the 3 items', fns.itemsFromPlan(t182Twice), T182_CANON)
+  const e4 = eq('a single checklist -> the 3 items', fns.itemsFromPlan(t182Once), T182_CANON)
+  // Any difference between two runs refuses: a flag, a text, an id order alone.
+  const flagged = '## A\n' + t182Lines(T182_ITEMS).join('\n') + '\n\n## B\n' + t182Lines([T182_ITEMS[0], { ...T182_ITEMS[1], humanGate: false }, T182_ITEMS[2]]).join('\n') + '\n'
+  const reworded = '## A\n' + t182Lines(T182_ITEMS).join('\n') + '\n\n## B\n' + t182Lines([{ ...T182_ITEMS[0], text: T182_ITEMS[0].text + ' today' }, T182_ITEMS[1], T182_ITEMS[2]]).join('\n') + '\n'
+  const e5 = eq('copies differing by a flag / by a word -> null', [fns.itemsFromPlan(flagged), fns.itemsFromPlan(reworded)], [null, null])
+  // The flow: a semi relaunch at entryStage dev with the example-then-real plan keeps no items.
+  const r = await run({
+    mode: 'semi',
+    entryStage: 'dev',
+    planText: t182ExampleThenReal,
+    simulate: { morgan: [{ verdict: 'LGTM', boxes: [{ id: 1, proven: true, proof: '0' }, { id: 2, proven: true, proof: 'x' }, { id: 3, proven: true, proof: 'failed=0' }] }] },
+  })
+  const e6 = eq('status', r.status, 'ready')
+  const e7 = String(r.nickPromptPreview || '').includes('rendered the acceptance checklist') ? { ok: false, msg: 'Nick prompt carries a rendered block for a plan holding two different checklists' } : null
+  const e8 = eq('boxes', r.boxes, undefined)
+  const bad = (r.trace || []).find((t) => String(t).startsWith('boxes-'))
+  const e9 = bad ? { ok: false, msg: `unexpected trace entry ${JSON.stringify(bad)}` } : null
+  // Control: the same flow with the identical list written twice rebuilds the 3 items.
+  const c = await run({ mode: 'semi', entryStage: 'dev', planText: t182Twice, simulate: { morgan: [{ verdict: 'LGTM' }] } })
+  const e10 = includes('control: Nick prompt carries the block for the list written twice', String(c.nickPromptPreview || ''), fns.nickBlockNote(t182Lines(T182_ITEMS).join('\n')))
+  return e1 || e2 || e3 || e4 || e5 || e6 || e7 || e8 || e9 || e10 || { ok: true }
+})
+
 // T123 (#42) — every test ID is unique across the suite. Must stay the LAST case so `results`
 // holds every other case name. Includes a negative control proving the detector really detects.
 await testCase('T123 test IDs are unique across the suite (no duplicated T<n>)', async () => {

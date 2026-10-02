@@ -700,11 +700,12 @@ function leadingId(rest) {
 }
 // The items of a plan handed to a resumed run (entryStage dev/review, PR #190 review). The checklist is every run of
 // consecutive checkbox lines of `plan` that holds an `<!-- ac:N -->` id (a task list without ids is not the checklist),
-// parsed by parseChecklist so each item keeps its id and [human-gate] flag, the first line per id kept (a checklist
-// written twice, artifact + index copy, reads once). All or nothing: a line of the checklist without a valid id, or ids
-// that are not exactly 1..N in order (ids are positions), give null, never a partial list that would drop an item from
-// the block Nick pastes. null too when no line carries an id (a plan written before #182): the resumed run then keeps no
-// items and its prompts stay byte-identical.
+// each run normalised by parseChecklist to its { id, text, humanGate } sequence. One sequence, written once or the very
+// same one several times (artifact + index copy), is the checklist; two runs that differ in any way (an example block,
+// a stale copy) give null, the engine never guesses which one is real. All or nothing too: a line of a run without a
+// valid id, or ids that are not exactly 1..N in order (ids are positions), give null, never a partial list that would
+// drop an item from the block Nick pastes. null as well when no line carries an id (a plan written before #182): the
+// resumed run then keeps no items and its prompts stay byte-identical.
 function itemsFromPlan(plan) {
   const isBox = (t) => t.startsWith('- [ ]') || t.startsWith('- [x]') || t.startsWith('- [X]')
   const hasId = (t) => leadingId(t.slice(5).trim()) !== null
@@ -714,10 +715,11 @@ function itemsFromPlan(plan) {
     if (isBox(t)) runs[runs.length - 1].push(t)
     else if (runs[runs.length - 1].length > 0) runs.push([])
   }
-  const checklist = runs.filter((run) => run.some(hasId))
-  if (checklist.some((run) => !run.every(hasId))) return null
-  const seen = new Set()
-  const items = parseChecklist(checklist.flat().join('\n')).filter((item) => !seen.has(item.id) && seen.add(item.id))
+  const checklists = runs.filter((run) => run.some(hasId))
+  if (checklists.some((run) => !run.every(hasId))) return null
+  const sequences = checklists.map((run) => parseChecklist(run.join('\n')))
+  if (sequences.length === 0 || sequences.some((seq) => JSON.stringify(seq) !== JSON.stringify(sequences[0]))) return null
+  const items = sequences[0]
   return items.length > 0 && items.every((item, i) => item.id === i + 1) ? items : null
 }
 // The deterministic plan-check for Sam's `acceptanceItems` (#182, #169): [] when the entries are valid, else one
