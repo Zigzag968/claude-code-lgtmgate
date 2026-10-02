@@ -10,10 +10,9 @@ Sam drafts the checklist in the plan (posted on the issue). Every item MUST be :
 - **Verifiable by Morgan** — a concrete command Morgan can run, or an artifact he can inspect.
   Never an item Morgan cannot verify (no "looks good", no manual step out of his reach).
 - **Marked `[human-gate]` only when no command can decide it** — a judgement, an external system out
-  of reach or a product decision. The plan check refuses a `[human-gate]` item that carries a command,
-  in its `command` field or in its text: a backticked span of two or more words whose first word is a
-  known executable or a path, or that holds a flag or a shell operator, or a bare executable followed by
-  a flag, a path or a quote. UI copy or a heading in backticks (`No items yet`) is not a command.
+  of reach or a product decision. A human-gate item carries no `command`; a command written in its text is
+  judged by the plan check (a command that could decide the item is not conforming; a judgement about
+  wording, layout or taste is).
 
 Each item is a `- [ ]` line. Nick copies the checklist **verbatim** into the PR body when it opens,
 **between the markers** `<!-- acceptance:start -->` and `<!-- acceptance:end -->`.
