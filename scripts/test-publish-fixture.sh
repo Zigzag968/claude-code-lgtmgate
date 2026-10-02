@@ -23,8 +23,8 @@ RAWD="$TMP/raw"
 RAW="$RAWD/123-auto.json"
 mkdir -p "$RAWD"
 
-W_PLAN=zqplanx9; W_EVID=zqevidx9; W_SUMM=zqsummx9; W_BRIEF=zqbriefx9
-export W_PLAN W_EVID W_SUMM W_BRIEF
+W_PLAN=zqplanx9; W_EVID=zqevidx9; W_SUMM=zqsummx9; W_BRIEF=zqbriefx9; W_LABEL=zqlabelx9
+export W_PLAN W_EVID W_SUMM W_BRIEF W_LABEL
 
 cat > "$TMP/gen.cjs" <<'JS'
 // node gen.cjs <out file> <variant>   variants: base | pem | badstatus | note
@@ -44,8 +44,17 @@ f.calls['diagnose-issue-123'].evidence = para(process.env.W_EVID, 30)
 f.calls['nick-issue-123'].summary = `opened PR #42, ${process.env.W_SUMM} inside`
 f.args.brief = `fix slugify accents, ${process.env.W_BRIEF} customer`
 f.args.proceedThrough = 'review'
+// an entry the replay never consumes (its label names a private branch) and the unconsumed tail of an array
+f.calls[`unused-${process.env.W_LABEL}-feat-branch`] = { someKey: 'someValue', n: 777777, b: true }
+f.calls['plan-check-123-1'] = [f.calls['plan-check-123-1'], { verdict: 'CONFORMING', issues: [] }]
 if (variant === 'pem') f.args.issueType = process.env.PEM_HEADER
 if (variant === 'oneway') f.args.config = { oneWayDoorKinds: ['status', 'seam'], oneWayDoorPaths: ['workflows/**', '!docs/'] }
+if (variant === 'nogo') {
+  // the run stops at the scout and Sam's free-text rationale becomes result.reason
+  f.calls['scout-issue-123-1'].decision = 'NO-GO'
+  f.calls['scout-issue-123-1'].rationale = 'adds ZQCUSTOMERSTATUS for Acme'
+  f.expect.status = 'no-go'
+}
 if (variant === 'badstatus') f.expect.status = 'escalate'
 if (variant === 'note') f.note = 'free text'
 fs.writeFileSync(out, JSON.stringify(f, null, 2) + '\n')
@@ -62,6 +71,18 @@ const run = buildPipelineRunner(stripExports(fs.readFileSync(path.join(root, 'wo
 const fx = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'))
 replayFixture(fx, run, { sites: true }).then((r) => { process.stdout.write(JSON.stringify(eval(process.argv[3]))) })
 JS
+# counts <fixture>: prints "<key names> <non-string scalars>" over args and calls
+cat > "$TMP/counts.cjs" <<'JS'
+const f = JSON.parse(require('fs').readFileSync(process.argv[2], 'utf8'))
+let k = 0; let n = 0
+const walk = (v) => {
+  if (Array.isArray(v)) v.forEach(walk)
+  else if (v !== null && typeof v === 'object') for (const key of Object.keys(v)) { k++; walk(v[key]) }
+  else if (typeof v !== 'string') n++
+}
+walk(f.args); walk(f.calls)
+process.stdout.write(`${k} ${n}`)
+JS
 rinfo() { node "$TMP/rinfo.cjs" "$1" "$2"; }
 
 # pub [args...]: run the publisher; sets OUT (stdout), ERR (stderr) and RC
@@ -71,7 +92,7 @@ pub() {
 }
 last_line() { printf '%s\n' "$OUT" | tail -n 1; }
 # planted_in <file>...: counts the planted words found in the given files
-planted_in() { cat "$@" 2>/dev/null | grep -c -e "$W_PLAN" -e "$W_EVID" -e "$W_SUMM" -e "$W_BRIEF" || true; }
+planted_in() { cat "$@" 2>/dev/null | grep -c -e "$W_PLAN" -e "$W_EVID" -e "$W_SUMM" -e "$W_BRIEF" -e "$W_LABEL" || true; }
 # jsf <file> <js expression over f>: evaluates against the JSON file, prints the result as JSON
 jsf() {
   node -e 'const f=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(JSON.stringify(eval(process.argv[2])))' "$1" "$2"
@@ -132,12 +153,27 @@ if [ "$PUBLISHED" = yes ]; then
   fi
 
   printf '%s\n' "$OUT" > "$TMP/stdout.txt"
-  leaks=$(cat "$TMP/stdout.txt" "$TMP/stderr.txt" | grep -c -e "$W_PLAN" -e "$W_EVID" -e "$W_SUMM" -e "$W_BRIEF" -e 'features/issue-123' || true)
+  leaks=$(cat "$TMP/stdout.txt" "$TMP/stderr.txt" | grep -c -e "$W_PLAN" -e "$W_EVID" -e "$W_SUMM" -e "$W_BRIEF" -e "$W_LABEL" -e 'features/issue-123' || true)
   if grep -Eq '^remains: [0-9]+ strings, [0-9]+ characters \(was [0-9]+\)$' "$TMP/stdout.txt" \
      && grep -Eq '^  args\.mode [0-9]+ protected$' "$TMP/stdout.txt" && [ "$leaks" = "0" ]; then
     ok "printed remainder lists field names and counts, never values"
   else
     bad "printed remainder: leaks=$leaks stdout=$OUT"
+  fi
+
+  # F2: entries the final replay never consumed leave the published file, and what is NOT neutralized is counted
+  if ! grep -q 'unused-' "$PUB" && [ "$(jsf "$PUB" 'Array.isArray(f.calls["plan-check-123-1"]) ? f.calls["plan-check-123-1"].length : -1')" = "1" ] \
+     && ! node scripts/run-offline.cjs "$PUB" --report-unused 2>&1 | grep -q 'unused:'; then
+    ok "unconsumed call entries are pruned from the published file"
+  else
+    bad "unconsumed entries survive in the published file"
+  fi
+  want=$(node "$TMP/counts.cjs" "$PUB")
+  got=$(sed -n -E 's/^kept as is: ([0-9]+) key names, ([0-9]+) non-string scalars .*$/\1 \2/p' "$TMP/stdout.txt")
+  if [ -n "$got" ] && [ "$got" = "$want" ] && grep -Eq '^pruned: [1-9][0-9]* unconsumed call entries$' "$TMP/stdout.txt"; then
+    ok "printed counts of kept key names and non-string scalars match the published file"
+  else
+    bad "printed counts: got='$got' want='$want' stdout=$OUT"
   fi
 
   OUT2D="$(newdir out2)"
@@ -173,6 +209,24 @@ refusal_case() {
     *) bad "refuses $name: stderr does not name '$want': rc=$RC err=$ERR";;
   esac
 }
+
+# F3: free text that the engine copies into result.reason is published as is, so it is reported by path and length
+NGRAW="$RAWD/129-nogo.json"
+node "$TMP/gen.cjs" "$NGRAW" nogo
+D17="$(newdir out-nogo)"
+pub "$NGRAW" 129-nogo --out-dir "$D17"
+rlen=$(node -e 'process.stdout.write(String("adds ZQCUSTOMERSTATUS for Acme".length))')
+nout=$(printf '%s\n' "$OUT")
+if [ "$RC" -eq 0 ] && printf '%s\n' "$nout" | grep -Fxq "  expect.reason $rlen free-text" \
+   && printf '%s\n' "$nout" | grep -Fxq "  calls.scout-issue-123-1.rationale $rlen kept free-text" \
+   && printf '%s\n' "$nout" | grep -Eq '^free text: [1-9][0-9]* field\(s\), [0-9]+ characters ' \
+   && ! printf '%s\n%s\n' "$nout" "$ERR" | grep -q 'ZQCUSTOMERSTATUS' \
+   && grep -q 'ZQCUSTOMERSTATUS' "$D17/129-nogo.json" \
+   && [ "$(node scripts/run-offline.cjs "$D17/129-nogo.json" 2>&1 | tail -n 1)" = "[offline] status=ok passed=1 failed=0" ]; then
+  ok "free text copied into expect.reason and kept fields is reported by path and length"
+else
+  bad "free-text report: rc=$RC err=$ERR out=$OUT"
+fi
 
 # the R3 configuration (oneWayDoorKinds / oneWayDoorPaths) is a switch of the engine the oracle cannot always see: it survives
 OWRAW="$RAWD/128-oneway.json"

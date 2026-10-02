@@ -34,7 +34,10 @@
 //      re-hashed after every change of args (the command is parsed from the prompt the engine already builds).
 //   5. scripts/redact-fixture.cjs (exit 3 refuses on residue), re-hash, `--check`, a strict replay (in process, then
 //      run-offline.cjs with OFFLINE_STRICT=1): the outcome must still be the baseline's.
-//   6. the file is written, and what remains is printed as field names and character counts, never values.
+//   6. the entries of `calls` the final replay never consumed are dropped, the file is written, and what remains is
+//      printed as JSON paths and character counts, never values: kept strings (free text flagged, with the published
+//      expect.reason), then the number of key names and non-string scalars kept as they are (never neutralized) and
+//      the number of entries pruned.
 // The published `expect` is built from the baseline: status, reason (if any), trace with traceExact, callLabels.
 // Nothing here calls a model, the network or the Claude Code projects directory.
 
@@ -362,8 +365,22 @@ async function main() {
     if (JSON.stringify(cand) === before) break
   }
 
-  const fin = await replay(cand)
-  if (oracleOf(fin) !== base) refuse('minimization ended on a different outcome (internal)')
+  const fin0 = await replay(cand)
+  if (oracleOf(fin0) !== base) refuse('minimization ended on a different outcome (internal)')
+  // Whatever the final replay did not consume (a label never asked, the tail of an array) is dropped: it is dead
+  // weight whose label can still name a private branch.
+  let pruned = 0
+  {
+    const asked = new Set(fin0.calls.map((c) => c.label))
+    for (const label of Object.keys(cand.calls)) {
+      if (!asked.has(label)) { delete cand.calls[label]; pruned++; continue }
+      const entry = cand.calls[label]
+      const used = fin0.cursors.get(label) || 0
+      if (Array.isArray(entry) && used < entry.length) { pruned += entry.length - used; entry.length = used }
+    }
+  }
+  const fin = pruned ? await replay(cand) : fin0
+  if (oracleOf(fin) !== base) refuse('pruning the unconsumed entries changed the outcome (internal)')
   cand.expect = { status: fin.result.status }
   if (fin.result.reason !== undefined) cand.expect.reason = fin.result.reason
   cand.expect.trace = Array.isArray(fin.result.trace) ? fin.result.trace : []
@@ -429,14 +446,37 @@ async function main() {
   }
 
   // ---- what remains: field names and counts, never a value ----
+  // A kept string with a space, a newline or a path separator is free text (a plan line, a reason, a file path), unless it
+  // is a PROBE / VERIFY answer line. The published expect.reason is always the engine's own copy of the run's text.
+  const isFreeText = (v) => !/^(PROBE|VERIFY) /.test(v) && /[\s/\\]/.test(v)
   const rem = [...collectLeaves(cand.args, 'args'), ...collectLeaves(cand.calls, 'calls')]
     .map((l) => ({ p: pathOf(l.segs), n: l.parent[l.key].length, v: l.parent[l.key], prot: isProtected(l.segs) }))
     .filter((x) => !isNeutral(x.v))
     .sort((a, b) => b.n - a.n || (a.p < b.p ? -1 : a.p > b.p ? 1 : 0))
   const out = [`remains: ${rem.length} strings, ${rem.reduce((n, x) => n + x.n, 0)} characters (was ${charsBefore})`]
-  for (const x of rem) out.push(`  ${x.p} ${x.n} ${x.prot ? 'protected' : 'kept'}`)
-  if (typeof cand.expect.reason === 'string') out.push(`  expect.reason ${cand.expect.reason.length}`)
+  const free = []
+  for (const x of rem) {
+    const ft = !x.prot && isFreeText(x.v)
+    if (ft) free.push(x.n)
+    out.push(`  ${x.p} ${x.n} ${x.prot ? 'protected' : 'kept'}${ft ? ' free-text' : ''}`)
+  }
+  if (typeof cand.expect.reason === 'string' && cand.expect.reason !== '') {
+    free.push(cand.expect.reason.length)
+    out.push(`  expect.reason ${cand.expect.reason.length} free-text`)
+  }
   out.push(`  expect.trace ${cand.expect.trace.reduce((n, t) => n + String(t).length, 0)}`)
+  out.push(`free text: ${free.length} field(s), ${free.reduce((n, c) => n + c, 0)} characters (published as is, read them before publishing)`)
+  let keyNames = 0
+  let scalars = 0
+  const tally = (v) => {
+    if (Array.isArray(v)) v.forEach(tally)
+    else if (isObj(v)) for (const k of Object.keys(v)) { keyNames++; tally(v[k]) }
+    else if (typeof v !== 'string') scalars++
+  }
+  tally(cand.args)
+  tally(cand.calls)
+  out.push(`kept as is: ${keyNames} key names, ${scalars} non-string scalars (numbers, booleans, null); neither is ever neutralized`)
+  out.push(`pruned: ${pruned} unconsumed call entries`)
   process.stdout.write(`${out.join('\n')}\n`)
   process.stdout.write(`[publish-fixture] status=ok out=${outPath}\n`)
 }

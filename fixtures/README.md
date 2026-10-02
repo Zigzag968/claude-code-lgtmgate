@@ -86,15 +86,22 @@ cause and writes nothing.
   `probeOnly.name`; a path protects its whole subtree) are never neutralized.
 - The `cmd=` hash of a PROBE answer coupled to the args is recomputed after every change.
 - `scripts/redact-fixture.cjs` runs next (it refuses on residue), then its `--check`, then a strict replay.
+- Entries of `calls` the final replay never consumed (a label never asked, the tail of an array) are dropped.
 - The published `expect` is rebuilt from the replay: `status`, `reason`, `trace` with `traceExact`, `callLabels`.
-- It prints what remains as field names and character counts, never values.
+- It prints what remains as field names and character counts, never values: every kept string by JSON path, the kept
+  fields that hold free text (`free-text`: a plan line, a reason, a file path) and the published `expect.reason`, with their
+  length, then the number of key names and of non-string scalars kept as they are, and the number of entries pruned.
 
 For a bug fix, the Lead sets `expect` to the CORRECT outcome (and drops or corrects `reason`, `callLabels` and
 `traceExact`) before the PR: the fixture must fail on `origin/main` and pass on the fix branch.
 
 Declared limits:
-- The remainder still holds local paths, the repo slug and branch names, which the engine parses: read it
-  before the first publication from any consumer repo.
+- Key names and non-string values (numbers, booleans, null) are never neutralized: only the count is printed. Read the
+  published file before the first publication of a capture from any consumer repo (local paths, repo slug and branch names
+  are parsed by the engine and stay; the project folder name stays after a `.git/worktrees` path).
+- Free text the engine copies into `result.reason` (Sam's rationale, a target file path) is pinned as `expect.reason`, and
+  the plan lines, `targetFiles` and path patterns it keeps stay in `calls` and `args`: the output lists them by path and
+  length, it does not judge them. A token outside the patterns of `scripts/redact-fixture.cjs` is not caught by it.
 - A minimized fixture reproduces the OBSERVED outcome, not the correct one.
 - A weak oracle (status and trace only) silently drops behaviour, hence the strict one.
 - A new enum or switch arg in the engine must be added to `PROTECTED_ARGS` in `scripts/publish-fixture.cjs`.
