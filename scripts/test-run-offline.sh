@@ -132,6 +132,36 @@ JS
 out=$(node "$TMP/death.cjs" fixtures/incidents/195-stale-plugin-root.json 2>&1)
 if [ "$out" = '{"status":"provision-died","resumable":true,"reason":true,"attempts":2,"trace":["agent-died:probe:1","agent-died:probe:2"]}' ]; then ok "the death of the plugin version probe agent is the resumable provision-died after one retry"; else bad "version probe agent death: $out"; fi
 
+# Two-run fixtures (#185): runs[] replays each run against its own calls; carry hands run N-1's result to run N; phases and
+# callLabelsAbsent are the relaunch assertions. mk2.cjs derives mutants of the committed relaunch fixture.
+cat > "$TMP/mk2.cjs" <<'JS'
+const fs = require('fs')
+const base = () => JSON.parse(fs.readFileSync('fixtures/relaunch/dev-after-plan.json', 'utf8'))
+const w = (n, f) => fs.writeFileSync(process.argv[2] + '/' + n, JSON.stringify(f))
+let f = base(); f.runs[1].args.entryStage = 'plan'; w('relaunch-plan-entry.json', f)
+f = base(); f.runs[1].expect.callLabelsAbsent = ['nick-']; w('relaunch-absent.json', f)
+f = base(); f.runs[1].expect.phases = ['Setup', 'Diagnose', 'Dev']; w('relaunch-phases.json', f)
+f = base(); f.runs[1].carry = { planText: 'nope' }; w('relaunch-carry.json', f)
+f = base(); f.calls = {}; w('relaunch-mixed.json', f)
+JS
+node "$TMP/mk2.cjs" "$TMP"
+
+out=$(node scripts/run-offline.cjs fixtures/relaunch/dev-after-plan.json 2>&1 | tail -n 1)
+case "$out" in *"status=ok passed=1 failed=0"*) g1=1;; *) g1=0;; esac
+out=$(node scripts/run-offline.cjs "$TMP/relaunch-plan-entry.json" 2>&1)
+case "$out" in *"FAIL:"*"run 2: phases: expected"*"run 2: callLabelsAbsent: call \"diagnose-issue-123\""*) g2=1;; *) g2=0;; esac
+out=$(node scripts/run-offline.cjs "$TMP/relaunch-absent.json" 2>&1)
+case "$out" in *"FAIL:"*"run 2: callLabelsAbsent: call \"nick-issue-123\" starts with \"nick-\""*) g3=1;; *) g3=0;; esac
+out=$(node scripts/run-offline.cjs "$TMP/relaunch-phases.json" 2>&1)
+case "$out" in *"FAIL:"*"run 2: phases: expected [\"Setup\",\"Diagnose\",\"Dev\"], got [\"Setup\",\"Dev\"]"*) g4=1;; *) g4=0;; esac
+if [ "$g1$g2$g3$g4" = "1111" ]; then ok "two-run relaunch: the committed fixture replays green, and a relaunch that re-enters at plan, a present label prefix and a wrong phase list each fail"; else bad "two-run relaunch: green=$g1 plan-entry=$g2 absent=$g3 phases=$g4"; fi
+
+out=$(node scripts/run-offline.cjs "$TMP/relaunch-carry.json" 2>&1)
+case "$out" in *"FAIL:"*"run 2: carry \"planText\" <- result.nope"*) c1=1;; *) c1=0;; esac
+out=$(node scripts/run-offline.cjs "$TMP/relaunch-mixed.json" 2>&1)
+case "$out" in *"FAIL:"*"sets \"runs\" and also a top-level args/calls/expect"*) c2=1;; *) c2=0;; esac
+if [ "$c1$c2" = "11" ]; then ok "two-run carry: a field the previous run did not return fails the fixture, and runs mixed with top-level args/calls/expect is refused"; else bad "two-run carry: missing-field=$c1 mixed=$c2"; fi
+
 rm -rf "$TMP"
 STATUS=ok; [ "$FAIL" -gt 0 ] && STATUS=fail
 echo "[test-run-offline] status=$STATUS passed=$PASS failed=$FAIL"
