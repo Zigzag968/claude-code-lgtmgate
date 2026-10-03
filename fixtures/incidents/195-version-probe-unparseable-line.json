@@ -1,0 +1,33 @@
+{
+  "name": "195-version-probe-unparseable-line",
+  "note": "#195: the plugin version probe agent copied no PROBE line (an unresolved agent type, a probe-run.cjs that cannot run). The probe failed, the manifest was never read: the run ends as the documented provision-failed with probeReason unparseable-line, not as an unreadable plugin version.",
+  "args": {
+    "pluginRoot": "/cache/lgtmgate/current",
+    "issue": 195,
+    "brief": "a probe that printed no line must not be reported as an unreadable plugin version",
+    "wtPath": "/wt/root/issue-195",
+    "config": {},
+    "mode": "auto"
+  },
+  "calls": {
+    "probe-195-lines-plugin-version-r0": {
+      "line": "",
+      "verify": ""
+    }
+  },
+  "expect": {
+    "status": "escalate",
+    "reason": "provision-failed",
+    "trace": [
+      "branch-prefix-fallback-default",
+      "probe:lines:haiku"
+    ],
+    "traceExact": true,
+    "callLabels": [
+      "probe-195-lines-plugin-version-r0"
+    ],
+    "logsInclude": [
+      "Plugin version probe failed (unparseable-line)"
+    ]
+  }
+}

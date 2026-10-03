@@ -2125,7 +2125,6 @@ await testCase('T195c a missing or unreadable manifest, or no usable probe answe
     ['no line', v({ lines: [] }), '(no usable answer)'],
     ['two lines', v({ lines: ['PLUGIN-VERSION:' + V, 'extra'] }), '(no usable answer)'],
     ['command exit != 0', v({ exit: 127, lines: ['PLUGIN-VERSION:' + V] }), '(no usable answer)'],
-    ['probe failed', v({ probeFailed: 'unparseable-line', lines: undefined }), '(probe unparseable-line)'],
   ]
   for (const [name, got, cause] of cases) {
     const bad = eq(name + ': code', got && got.code, 'plugin-version-unreadable')
@@ -2136,6 +2135,26 @@ await testCase('T195c a missing or unreadable manifest, or no usable probe answe
     if (bad) return bad
   }
   return { ok: true }
+})
+await testCase('T195e a failure of the probe itself is the documented provision-failed, never plugin-version-unreadable (#195)', async () => {
+  const pv = pluginVersionPieces()
+  if (!pv) {
+    log('SKIP — T195e: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  if (pv.missing) return { ok: false, msg: 'pluginVersion markers or the BUILD version not found in pipeline source' }
+  const { V, pluginVersionVerdict } = pv
+  // the hooks off (no-attestation), an unresolved agent type, a copy that altered the command: the probe never ran
+  // to the point of reading the manifest, so the manifest is not what failed
+  for (const reason of ['no-attestation', 'unparseable-line', 'cmd-mismatch', 'unparseable-verify', 'verify-hash-mismatch', 'sha-mismatch', 'probe-run-not-found']) {
+    const got = pluginVersionVerdict({ engineVersion: V, pluginRoot: '/r', probeFailed: reason, lines: undefined })
+    const bad = eq(reason + ': code', got && got.code, 'provision-failed')
+      || eq(reason + ': reason is the documented one', got.reason, 'provision-failed')
+    if (bad) return bad
+  }
+  // a probe that ran but printed a non-conforming answer stays plugin-version-unreadable (the manifest is what failed)
+  const ran = pluginVersionVerdict({ engineVersion: V, pluginRoot: '/r', exit: 0, lines: ['PLUGIN-VERSION-ERROR:unreadable'] })
+  return eq('a non-conforming answer is unreadable', ran && ran.code, 'plugin-version-unreadable') || { ok: true }
 })
 await testCase('T195d the check runs first, only when the templates come from pluginRoot, and writes no label (#195)', async () => {
   const pv = pluginVersionPieces()
@@ -2153,6 +2172,7 @@ await testCase('T195d the check runs first, only when the templates come from pl
     eq('gate precedes the provision probe', iGate < iProvision, true),
     eq('gate reads the manifest through probe(lines) with noReuse', body.includes("probe('lines', pluginVersionCmd(pluginRoot), { label: 'plugin-version', noReuse: true"), true),
     eq('gate escalates on the existing status', body.includes("finish(STATUS['escalate'], { reason: skew.reason"), true),
+    eq('a failure of the probe itself keeps the provision-failed signature', body.includes("reason: 'provision-failed', issue, missing: [], exitCode: null, probeReason: pv.probeFailed, probeHint: PROBE_REASON_HINTS[pv.probeFailed]"), true),
     eq('gate writes no label (no updateStatus, no prWrite)', body.includes('updateStatus') || body.includes('prWrite'), false),
     eq('lines is registered in PROBES', src.includes("  'lines': 'lines',"), true),
   ]
