@@ -144,6 +144,10 @@ f = base(); f.runs[1].expect.phases = ['Setup', 'Diagnose', 'Dev']; w('relaunch-
 f = base(); f.runs[1].carry = { planText: 'nope' }; w('relaunch-carry.json', f)
 f = base(); f.calls = {}; w('relaunch-mixed.json', f)
 f = base(); delete f.runs[1].carry; w('relaunch-nocarry.json', f)
+f = base(); f.runs[1].expect.phases = ['Setup', 'Dev', 'Review']; w('relaunch-phases-longer.json', f)
+f = base(); f.runs[0].expect.status = 'ready'; f.runs[1].expect.status = 'ready'; w('relaunch-both-fail.json', f)
+f = base(); f.runs = [f.runs[0]]; w('relaunch-one-run.json', f)
+f = base(); f.runs[0].carry = {}; w('relaunch-carry-first.json', f)
 JS
 node "$TMP/mk2.cjs" "$TMP"
 
@@ -180,6 +184,29 @@ if node "$TMP/mut.cjs" "$TMP/ro-m3.cjs" 'args[argName] = clone(prev.result[field
   case "$out" in *"FAIL:"*"run 2: logs: missing \"acceptance item(s) rebuilt from the ids of planText\""*) n2=1;; *) n2=0;; esac
 else n2=0; fi
 if [ "$n1$n2" = "11" ]; then ok "two-run carry is observable: the relaunch fixture without carry fails, and so does a harness whose carry assignment does nothing"; else bad "carry observable: no-carry=$n1 no-op-harness=$n2"; fi
+
+# Harness gaps of the two-run path (#185 F2): each case below is the one that kills a mutant of runChain/check that the
+# cases above let survive (a prefix of the expected phases, a first run whose problems vanish or whose failure does not
+# end the chain, previous calls not aggregated, the 2-run minimum, `carry` on the first run).
+out=$(node scripts/run-offline.cjs "$TMP/relaunch-phases-longer.json" 2>&1)
+case "$out" in *"FAIL:"*"run 2: phases: expected [\"Setup\",\"Dev\",\"Review\"], got [\"Setup\",\"Dev\"]"*) ok "expect.phases rejects a list longer than the real phases (a strict prefix is not a match)";; *) bad "phases longer than real: $out";; esac
+
+out=$(node scripts/run-offline.cjs "$TMP/relaunch-both-fail.json" 2>&1)
+case "$out" in
+  *"FAIL:"*"run 1: status: expected \"ready\", got \"plan-ready\""*)
+    case "$out" in *"run 2:"*) bad "a failing run 1 did not end the chain (run 2 was reported): $out";; *) ok "a failing first run is reported with its run number and ends the chain (run 2 never runs)";; esac;;
+  *) bad "failing first run not reported: $out";;
+esac
+
+out=$(node scripts/run-offline.cjs fixtures/relaunch/dev-after-plan.json 2>&1)
+want=$(node -e 'const f=require(process.argv[1]);process.stdout.write(String(f.runs.reduce((n,r)=>n+Object.values(r.calls).reduce((m,v)=>m+(Array.isArray(v)?v.length:1),0),0)))' "$PWD/fixtures/relaunch/dev-after-plan.json")
+case "$out" in *" calls=$want"$'\n'*) ok "the calls of every run are aggregated (calls=$want, the sum over both runs)";; *) bad "aggregated calls: expected calls=$want in: $out";; esac
+
+out=$(node scripts/run-offline.cjs "$TMP/relaunch-one-run.json" 2>&1)
+case "$out" in *"FAIL:"*"\"runs\" must be an array of at least 2 runs"*) ok "a multi-run fixture with a single run is refused";; *) bad "single run not refused: $out";; esac
+
+out=$(node scripts/run-offline.cjs "$TMP/relaunch-carry-first.json" 2>&1)
+case "$out" in *"FAIL:"*"run 1 \"carry\" must be an object and needs an earlier run"*) ok "carry on the first run is refused, even an empty one";; *) bad "carry on the first run not refused: $out";; esac
 
 rm -rf "$TMP"
 STATUS=ok; [ "$FAIL" -gt 0 ] && STATUS=fail
