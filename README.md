@@ -28,7 +28,7 @@ flowchart LR
 
 Theo reproduces the reported problem before anyone touches code. Mia frames the feature in product terms, but only if asked. Sam writes the plan, anchored to files it actually read this run. Nick implements the plan and opens the PR. Morgan, a different agent than the one who wrote the code, reviews it and approves once every checklist item has evidence behind it. The PR is then mergeable: the Lead orchestrating the run merges it, never Nick or Morgan themselves. Role details are in [Agents](#agents).
 
-By default the pipeline runs in `semi` mode: it stops and reports back to you after Sam's plan and again after Nick opens the PR, and won't continue past either point until you tell the Lead to go ahead. `auto` runs straight through without those pauses; `manual` stops at every step.
+By default the pipeline runs in `semi` mode: it stops and reports back to you after Sam's plan and again after Nick opens the PR, and won't continue past either point until you tell the Lead to go ahead. `auto` runs straight through without those pauses unless a `proceedThrough` is set (an explicit `proceedThrough` is honoured in every mode); `manual` stops at every step.
 
 Each run is an independent Claude Code `Workflow`, not a script tied to your current chat session: it survives an interrupted session and resumes where it left off, and since every run lives in its own git worktree, the Lead can have several issues running at once. See [Supervision of runs in flight](#supervision-of-runs-in-flight) for the mechanics.
 

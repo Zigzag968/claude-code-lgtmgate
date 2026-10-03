@@ -1,0 +1,85 @@
+{
+  "name": "187-auto-proceedthrough-plan",
+  "note": "Synthetic shape built from the incident in issue 187 (the raw capture of the #181 relaunch is private and was not read). A design-step relaunch runs with mode auto and proceedThrough plan: Theo confirms two design-step signals, Sam returns GO with the one-pager, the plan check is CONFORMING. The run must stop at plan-ready for sign-off. The base engine returned no pause from gate() before reading proceedThrough in auto mode and entered Dev, so the Dev-phase answers (preflight, Nick without a PR) are present on purpose: the base reaches them and fails on the status, the branch never asks for them.",
+  "args": {
+    "pluginRoot": "/plugin",
+    "issue": 187,
+    "brief": "design-options one-pager only: how to store the session token",
+    "wtPath": "/wt/root/issue-187",
+    "config": {},
+    "mode": "auto",
+    "proceedThrough": "plan"
+  },
+  "calls": {
+    "diagnose-issue-187": {
+      "confirmed": true,
+      "evidence": "reproduced: the session table and the token check sit on an auth boundary",
+      "actualCause": "no storage decision yet",
+      "laneOk": true,
+      "persistentStateSignal": true,
+      "authSecurityBoundarySignal": true,
+      "deployConfigSignal": false,
+      "immatureVendorApiSignal": false,
+      "designStepSignalEvidence": "The domain model persists state; the token check is an auth boundary"
+    },
+    "scout-issue-187-1": {
+      "decision": "GO",
+      "plan": "## Design options (one-pager)\n1. Option A: keep the session table in the existing store\n2. Option B: add a dedicated token store\n\n## Acceptance checklist\n- [ ] <!-- ac:1 --> [human-gate] the maintainer picks option A or B in the one-pager\n",
+      "rationale": "",
+      "targetFiles": [
+        "docs/design-session-token.md"
+      ],
+      "absorbedIssues": [],
+      "acceptanceChecklist": "- [ ] <!-- ac:1 --> [human-gate] the maintainer picks option A or B in the one-pager",
+      "acceptanceItems": [
+        {
+          "text": "the maintainer picks option A or B in the one-pager",
+          "humanGate": true
+        }
+      ]
+    },
+    "plan-check-187-1": {
+      "verdict": "CONFORMING",
+      "issues": []
+    },
+    "nick-issue-187": {
+      "prNumber": 0,
+      "branch": "features/issue-187",
+      "testsPass": true,
+      "summary": "Declined: the plan is a design one-pager, there is nothing to implement. No PR opened."
+    },
+    "probe-187-lines-plugin-version-r0": {
+      "line": "PROBE name=lines exit=0 sha=4404d1779f84640da8cc12956741b1f3dc822de119714dc10643cb25f55649a5 cmd=2af1fd58e4141ac8977c54e48900baf5a81f43c1be46d2a1c6f38830f7582ec8 json={\"lines\":[\"PLUGIN-VERSION:@@ENGINE_VERSION@@\"]}",
+      "verify": "VERIFY ok line=PROBE name=lines exit=0 sha=4404d1779f84640da8cc12956741b1f3dc822de119714dc10643cb25f55649a5 cmd=2af1fd58e4141ac8977c54e48900baf5a81f43c1be46d2a1c6f38830f7582ec8 json={\"lines\":[\"PLUGIN-VERSION:@@ENGINE_VERSION@@\"]}"
+    },
+    "probe-187-provision-provision-r0": {
+      "line": "PROBE name=provision exit=0 sha=6a53faffc682ff23ac09011e330cfd4d706b6cd81cf5a2ad7ab5728d74c7cba7 cmd=6e41927ab8dfcb9bbd46d4a8a76e51c8c2d3096a49c513adc110ac114152a460 json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}",
+      "verify": "VERIFY ok line=PROBE name=provision exit=0 sha=6a53faffc682ff23ac09011e330cfd4d706b6cd81cf5a2ad7ab5728d74c7cba7 cmd=6e41927ab8dfcb9bbd46d4a8a76e51c8c2d3096a49c513adc110ac114152a460 json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}"
+    },
+    "probe-187-provision-freshness-provision-freshness-r0": {
+      "line": "PROBE name=provision-freshness exit=0 sha=47980a108d8c5e479fdd724133b7c1caa0a1dae18048d1e11a26769aa3b5a6d1 cmd=ecdcb971bf44ae2bd4a1f12cec16781d56a2637dfd061b630f4eae5ab7383e44 json={\"state\":\"fresh\",\"behind\":0,\"own\":0}",
+      "verify": "VERIFY ok line=PROBE name=provision-freshness exit=0 sha=47980a108d8c5e479fdd724133b7c1caa0a1dae18048d1e11a26769aa3b5a6d1 cmd=ecdcb971bf44ae2bd4a1f12cec16781d56a2637dfd061b630f4eae5ab7383e44 json={\"state\":\"fresh\",\"behind\":0,\"own\":0}"
+    },
+    "probe-187-preflight-dev-r0": {
+      "line": "PROBE name=preflight exit=0 sha=fba9cf99f4fe9617de364c0ded430e3bc6bf531be3796b9962e073d0e8065132 cmd=346ba53953571541f6caa8f06fcbbbbfea77fffd04a399a68c0365fd5a6106c8 json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/wt/root/.git/worktrees/issue-187\",\"writable\":true}",
+      "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=fba9cf99f4fe9617de364c0ded430e3bc6bf531be3796b9962e073d0e8065132 cmd=346ba53953571541f6caa8f06fcbbbbfea77fffd04a399a68c0365fd5a6106c8 json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/wt/root/.git/worktrees/issue-187\",\"writable\":true}"
+    }
+  },
+  "expect": {
+    "status": "plan-ready",
+    "trace": [
+      "branch-prefix-fallback-default",
+      "probe:lines:haiku",
+      "probe:provision:haiku",
+      "probe:provision-freshness:haiku"
+    ],
+    "callLabels": [
+      "probe-187-lines-plugin-version-r0",
+      "probe-187-provision-provision-r0",
+      "probe-187-provision-freshness-provision-freshness-r0",
+      "diagnose-issue-187",
+      "scout-issue-187-1",
+      "plan-check-187-1"
+    ]
+  }
+}
