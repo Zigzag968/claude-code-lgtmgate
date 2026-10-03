@@ -9,7 +9,7 @@
 #
 # Cases: `ok: relaunch ...` (final pass identified by agentId, captured entries replayed),
 # `ok: fail-closed ...` (each refusal names its cause and writes nothing), `ok: retried call ...` (a call the engine
-# retried: folded under its engine label, or refused), `ok: usage ...`.
+# retried: folded under its engine label, or refused), `ok: usage ...`, `ok: buildStamp ...` (the run's own stamp decides which version-probe answer is tokenized).
 # bash 3.2 compatible. Trailer: [test-capture-incident] status=<ok|fail> passed=<n> failed=<n>
 set -u
 cd "$(dirname "$0")/.."
@@ -44,7 +44,10 @@ fs.mkdirSync(path.dirname(recFile), { recursive: true })
 // A real run journals the literal engine version in the plugin version probe answer (#195); the public smoke fixture
 // quotes the token instead. liveversion: the run's engine is the repo's engine. oldrun: a run of an OLDER engine
 // (root and answer 1.0.0-beta.3, cmd hash recomputed for that root). skewrun: a captured plugin-version-skew incident
-// (the answer is the stale root's, the run ended on the skew).
+// (the answer is the stale root's, the run ended on the skew). stamp*: the run record carries the engine's own
+// `result.buildStamp` (#213) and a pluginRoot with no version segment: stampold (stamp and answer 1.0.0-beta.3), stampdiff (stamp
+// 1.0.0-beta.7, the answer differs, result ready), stampskew (a skew incident: the answer 1.0.0-beta.3, stamp = this engine),
+// stampbad (an unparseable stamp, root names 1.0.0-beta.3).
 const VPROBE = 'probe-123-lines-plugin-version-r0'
 const engineSrc = fs.readFileSync(path.join(process.env.ROOT, 'workflows/deliver-pipeline.js'), 'utf8')
 const ENGINE = /const BUILD = \{[^}]*\bversion: '([^']+)'/.exec(engineSrc)[1]
@@ -53,7 +56,14 @@ const cmdFor = (root) => {
   const blk = engineSrc.slice(engineSrc.indexOf('// --- pluginVersion:start ---'), engineSrc.indexOf('// --- pluginVersion:end ---'))
   return new Function(blk + '\nreturn pluginVersionCmd')()(root)
 }
-const live = { liveversion: [ENGINE, null], oldrun: ['1.0.0-beta.3', '/cache/lgtmgate/1.0.0-beta.3'], skewrun: ['1.0.0-beta.3', '/cache/lgtmgate/1.0.0-beta.3'] }[mut]
+const OLDROOT = '/cache/lgtmgate/1.0.0-beta.3'
+const live = {
+  liveversion: [ENGINE, null], oldrun: ['1.0.0-beta.3', OLDROOT], skewrun: ['1.0.0-beta.3', OLDROOT],
+  stampold: ['1.0.0-beta.3', '/main/checkout'], stampdiff: ['1.0.0-beta.3', '/main/checkout'],
+  stampskew: ['1.0.0-beta.3', '/main/checkout'], stampbad: ['1.0.0-beta.3', OLDROOT],
+}[mut]
+const stampOf = (v) => '[pipeline] lgtmgate@' + v + ' cutFrom=abc1234 workflow=deliver-pipeline'
+const STAMPS = { stampold: stampOf('1.0.0-beta.3'), stampdiff: stampOf('1.0.0-beta.7'), stampskew: stampOf(ENGINE), stampbad: 'garbage' }
 if (live) {
   const [ver, root] = live
   const e = JSON.parse(JSON.stringify(smoke.calls[VPROBE]))
@@ -64,7 +74,8 @@ if (live) {
   smoke.calls[VPROBE] = e
   if (root) smoke.args.pluginRoot = root
 }
-if (mut === 'skewrun') for (const l of Object.keys(smoke.calls)) if (l !== VPROBE) delete smoke.calls[l]
+const isSkew = mut === 'skewrun' || mut === 'stampskew'
+if (isSkew) for (const l of Object.keys(smoke.calls)) if (l !== VPROBE) delete smoke.calls[l]
 
 const rows = [{ type: 'launched' }]
 const started = (agentId, key, label) => ({ type: 'started', agentId, key, label, phase: 'p' })
@@ -141,12 +152,13 @@ for (const a of journalOrder) {
 
 const rec = {
   runId, status: 'completed', args: Object.assign({}, smoke.args, { simulate: { x: 1 } }),
-  result: mut === 'skewrun' ? { status: 'escalate', reason: 'plugin-version-skew: the plugin root holds lgtmgate 1.0.0-beta.3 but this engine is ' + ENGINE + '; pass the current plugin root and relaunch' } : { status: 'ready' }, agentCount: progress.length,
+  result: isSkew ? { status: 'escalate', reason: 'plugin-version-skew: the plugin root holds lgtmgate 1.0.0-beta.3 but this engine is ' + ENGINE + '; pass the current plugin root and relaunch' } : { status: 'ready' }, agentCount: progress.length,
   workflowProgress: [{ type: 'workflow_phase', title: 'p' }].concat(progress.map((a, i) => ({
     type: 'workflow_agent', index: i, label: a.recLabel || a.label, agentId: a.agentId, state: 'done',
   }))),
 }
 if (mut === 'cachedtrue') rec.workflowProgress[1].cached = true
+if (STAMPS[mut]) rec.result.buildStamp = STAMPS[mut]
 
 const lastResult = () => rows.map((r, i) => (r.type === 'result' && r.agentId === 'ag-' + (final.length - 1)) ? i : -1).filter((i) => i >= 0)[0]
 switch (mut) {
@@ -246,18 +258,64 @@ if expect_ok "live version"; then
   case "$out" in *"status=ok passed=1"*) ok "live version: the capture replays green against an engine whose version was bumped";; *) bad "live version: bumped replay: $out";; esac
   out=$(node scripts/run-offline.cjs "$CAP" 2>&1 | tail -n 1)
   case "$out" in *"status=ok passed=1"*) ok "live version: and against the engine of the repo";; *) bad "live version: replay: $out";; esac
+  case "$OUT" in *" version-source=checkout retries="*) ok "buildStamp absent: the checkout BUILD rule still tokenizes (version-source=checkout)";; *) bad "no stamp, live version: summary: $OUT";; esac
 fi
 
 newrun oldrun
 cap "$RUN" 181 t --out "$OUTD"
 if expect_ok "older run"; then
   [ "$(vprobe 'e.line.includes("PLUGIN-VERSION:@@ENGINE_VERSION@@")')" = "true" ] && ok "older run: the answer naming the run's pluginRoot version is the token (replays against today's engine)" || bad "older run: $(vprobe 'e')"
+  case "$OUT" in *" version-source=pluginRoot retries="*) ok "buildStamp absent: the pluginRoot segment rule still tokenizes (version-source=pluginRoot)";; *) bad "no stamp, older run: summary: $OUT";; esac
 fi
 
 newrun skewrun
 cap "$RUN" 181 t --out "$OUTD"
 if expect_ok "skew incident"; then
   [ "$(vprobe 'e.line.includes("PLUGIN-VERSION:1.0.0-beta.3") && !e.line.includes("@@")')" = "true" ] && ok "skew incident: the stale root's version stays literal (the incident is the difference)" || bad "skew incident: $(vprobe 'e')"
+fi
+
+# ---- #213: the run's own buildStamp decides which answer is the run's engine ----
+# The run record's `result.buildStamp` is the engine's declaration of its version. When it carries one, it is the only
+# authority: an answer equal to it is stored as the token (so a capture of an older engine's run replays against a later
+# engine), an answer that differs stays literal (a real skew replays as a skew). Without a usable stamp, the checkout BUILD /
+# pluginRoot rules above apply. The summary names the source, never an answer.
+newrun stampold
+cap "$RUN" 181 t --out "$OUTD"
+if expect_ok "stamp older run"; then
+  [ "$(vprobe 'e.line.includes("PLUGIN-VERSION:@@ENGINE_VERSION@@") && e.verify.includes("PLUGIN-VERSION:@@ENGINE_VERSION@@")')" = "true" ] && ok "buildStamp equal to the answer: line and verify are the token (the root names no version)" || bad "stamp old: $(vprobe 'e')"
+  case "$(cat "$CAP")" in *"1.0.0-beta.3"*) bad "buildStamp equal to the answer: the literal is still in the capture";; *) ok "buildStamp equal to the answer: no literal version left in the capture";; esac
+  case "$OUT" in *"[offline] status=ok"*"version-source=stamp retries="*) ok "buildStamp equal to the answer: the capture replays its own capture, version-source=stamp";; *) bad "stamp old: summary: $OUT";; esac
+  out=$(node scripts/run-offline.cjs "$CAP" --fp "$BUMPED" 2>&1 | tail -n 1)
+  case "$out" in *"status=ok passed=1"*) ok "buildStamp older run replays green against a bumped engine";; *) bad "stamp old: bumped replay: $out";; esac
+  out=$(node scripts/run-offline.cjs "$CAP" 2>&1 | tail -n 1)
+  case "$out" in *"status=ok passed=1"*) ok "buildStamp older run replays green against the engine of the repo";; *) bad "stamp old: replay: $out";; esac
+  summary=$(printf '%s\n' "$OUT" | grep '^\[capture-incident\] status=')
+  ENGV=$(node -e 'process.stdout.write(/const BUILD = \{[^}]*\bversion: \x27([^\x27]+)/.exec(require("fs").readFileSync(process.env.ROOT+"/workflows/deliver-pipeline.js","utf8"))[1])')
+  case "$summary" in *"1.0.0-beta.3"*|*"$ENGV"*|*"PLUGIN-VERSION"*) bad "buildStamp summary prints a version: $summary";; *"version-source=stamp"*) ok "buildStamp summary names the source and prints no answer";; *) bad "buildStamp summary: $summary";; esac
+fi
+
+newrun stampdiff
+cap "$RUN" 181 t --out "$OUTD"
+if [ "$RC" -eq 1 ] && [ -f "$CAP" ]; then
+  case "$OUT" in *"[capture-incident] status=refused"*) ok "buildStamp different from the answer: the capture refuses its own replay (a skew vs the recorded ready)";; *) bad "stamp diff: no refusal: $OUT";; esac
+  [ "$(vprobe 'e.line.includes("PLUGIN-VERSION:1.0.0-beta.3") && !e.line.includes("@@") && !e.verify.includes("@@")')" = "true" ] && ok "buildStamp different from the answer: the answer stays literal, the capture is kept" || bad "stamp diff: $(vprobe 'e')"
+else
+  bad "stamp diff: expected exit 1 with the capture kept, got exit $RC: $OUT"
+fi
+
+newrun stampskew
+cap "$RUN" 181 t --out "$OUTD"
+if expect_ok "stamp skew incident"; then
+  [ "$(vprobe 'e.line.includes("PLUGIN-VERSION:1.0.0-beta.3") && !e.line.includes("@@")')" = "true" ] && ok "buildStamp with a skew incident: the answer stays literal (the incident is the difference)" || bad "stamp skew: $(vprobe 'e')"
+  [ "$(jsq 'f.expect.status')" = '"escalate"' ] && ok "buildStamp with a skew incident: the capture replays as the recorded escalate" || bad "stamp skew: expect $(jsq 'f.expect')"
+  case "$OUT" in *" version-source=none retries="*) ok "buildStamp with a skew incident: version-source=none";; *) bad "stamp skew: summary: $OUT";; esac
+fi
+
+newrun stampbad
+cap "$RUN" 181 t --out "$OUTD"
+if expect_ok "stamp unparseable"; then
+  [ "$(vprobe 'e.line.includes("PLUGIN-VERSION:@@ENGINE_VERSION@@")')" = "true" ] && ok "buildStamp unparseable: falls back to the pluginRoot segment (token)" || bad "stamp bad: $(vprobe 'e')"
+  case "$OUT" in *" version-source=pluginRoot retries="*) ok "buildStamp unparseable: version-source=pluginRoot";; *) bad "stamp bad: summary: $OUT";; esac
 fi
 
 newrun ordering
