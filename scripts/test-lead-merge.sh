@@ -86,11 +86,12 @@ case "$1 $2" in
       *) echo "${FAKE_MERGED:-true}" ;;
     esac ;;
   "api repos/o/r/issues/"*)
-    [ -e "$FAKE_ISSUES/${2##*/}.fail" ] && { echo "gh: HTTP 502" >&2; exit 1; } # <n>.fail: the REST read of issue <n> errors (#174)
+    inum="$(printf '%s' "${2##*/}" | sed -E 's/^0+([0-9])/\1/')" # the real API serves issue 30 for /issues/030
+    [ -e "$FAKE_ISSUES/$inum.fail" ] && { echo "gh: HTTP 502" >&2; exit 1; } # <n>.fail: the REST read of issue <n> errors (#174)
     case "$*" in
       *comments*) cat "$FAKE_COMMENTS" 2>/dev/null || echo '[]' ;; # --tick-from-review (#9)
-      *labels*) n="${2##*/}"; cat "$FAKE_ISSUES/$n.labels" 2>/dev/null || echo "closed" ;; # declared-exception lookup (#122)
-      *) n="${2##*/}"; cat "$FAKE_ISSUES/$n" 2>/dev/null || echo open ;;
+      *labels*) n="$inum"; cat "$FAKE_ISSUES/$n.labels" 2>/dev/null || echo "closed" ;; # declared-exception lookup (#122)
+      *) n="$inum"; cat "$FAKE_ISSUES/$n" 2>/dev/null || echo open ;;
     esac ;;
   "api -X") case "$*" in
       *"PATCH repos/o/r/pulls/7"*) # --tick-from-review (#9): record the PATCH, update the served body
@@ -631,6 +632,31 @@ r2_prep r2-truthy 'Closes #30' '' 'open type:bug'; r2_main_cfg "$D" '{"engineRep
 r2_merges "engineRepo as the string \"true\" does not switch the gate on: merges"
 r2_prep r2-main-moved 'Closes #30' '' 'open type:bug'; r2_main_cfg "$D" "$R2_ENGINE"; r2_main_file "$D" workflows/other.js '// main only'; r2_doc "$D"; r2_go
 r2_merges "workflows/ changed on main after the branch was cut, not by the PR: merges"
+
+# 21. R2 waiver gate, second adversarial review (#174)
+r2_local() { ( cd "$1/work" && eval "$2" && git add -A && git commit -qm "local: r2" ) >/dev/null 2>&1; } # <dir> <shell snippet>: a commit left UNPUSHED on the local branch
+r2_build() { ( cd "$1/work" && printf '%s\n' "$2" > workflows/deliver-pipeline.js && git add -A && git commit -qm "build: r2" && git push -q origin feat/x ) >/dev/null 2>&1; }
+r2_exc_refused() { # <label>
+  [ "$rc" -ne 0 ] && grep -q 'FAIL: declared-exception:' "$D/out" && [ ! -s "$D/pushes" ] && ! grep -qE 'pr merge|pr checks' "$D/log" \
+    && ok "declared-exception: $1" || bad "declared-exception: $1 (rc=$rc): $(tail -3 "$D/out")"
+}
+R2_WF_LINE="echo '// local fix' >> workflows/deliver-pipeline.js"
+R2_FIX_LINE="mkdir -p fixtures/incidents && echo '{}' > fixtures/incidents/30-l.json"
+# F5 paths with non-ASCII characters are not quoted by git
+r2_prep r2-fix-accent 'Closes #30' '' 'open type:bug'; r2_main_cfg "$D" "$R2_ENGINE"; r2_pr_fixture "$D" 'fixtures/incidents/30-é.json' '{"a":1}'; r2_go
+r2_merges "valid fixture with a non-ASCII file name: merges"
+# F6 leading zeros: #030 is issue 30
+r2_prep r2-zero-fix 'Closes #030' '' 'open type:bug'; r2_main_cfg "$D" "$R2_ENGINE"; r2_pr_fixture "$D" fixtures/incidents/30-x.json '{}'; r2_go
+r2_merges "Closes #030 with fixtures/incidents/30-x.json: merges"
+r2_prep r2-zero-nofix 'Closes #030' '' 'open type:bug'; r2_main_cfg "$D" "$R2_ENGINE"; r2_branch "$D"; r2_go
+r2_refused "Closes #030 without a fixture: refused, naming issue #30"
+# G the fixture name is matched whole: suffix, prefix and subfolder do not count
+r2_prep r2-fix-bak 'Closes #30' '' 'open type:bug'; r2_main_cfg "$D" "$R2_ENGINE"; r2_pr_fixture "$D" fixtures/incidents/30-x.json.bak '{}'; r2_go
+r2_refused "fixtures/incidents/30-x.json.bak does not count"
+r2_prep r2-fix-prefixed 'Closes #30' '' 'open type:bug'; r2_main_cfg "$D" "$R2_ENGINE"; r2_pr_fixture "$D" docs/fixtures/incidents/30-x.json '{}'; r2_go
+r2_refused "docs/fixtures/incidents/30-x.json does not count"
+r2_prep r2-fix-subdir 'Closes #30' '' 'open type:bug'; r2_main_cfg "$D" "$R2_ENGINE"; r2_pr_fixture "$D" fixtures/incidents/30-a/b.json '{}'; r2_go
+r2_refused "fixtures/incidents/30-a/b.json (a subfolder) does not count"
 
 echo "[lead-merge test] passed=$PASS failed=$FAIL"
 [ "$FAIL" -eq 0 ]

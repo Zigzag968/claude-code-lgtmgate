@@ -223,6 +223,17 @@ fi
 # commit rewrites is not a workflows/ change (a re-run after a partial run carries that bump). Local tests first: no gh call
 # unless engine holds.
 r2_fail() { echo "FAIL: r2-waiver: $*" >&2; die "PR #$PR R2 waiver not declared; nothing bumped, nothing merged"; }
+# r2_fixtures_of <tip> <n>: the files fixtures/incidents/<n>-<name>.json (that exact path, no subfolder) the PR added or modified
+# between origin/main and <tip>, NUL-separated. `-z` keeps non-ASCII names unquoted; renames are split into their parts.
+r2_fixtures_of() {
+  git diff -z --no-renames --name-status "origin/main...$1" | N="$2" python3 -c '
+import os, re, sys
+parts = sys.stdin.buffer.read().split(b"\0")
+pat = re.compile(rb"fixtures/incidents/" + re.escape(os.environ["N"].encode()) + rb"-[^/]+\.json")
+for status, path in zip(parts[0::2], parts[1::2]):
+    if status in (b"A", b"M") and pat.fullmatch(path):
+        sys.stdout.buffer.write(path + b"\0")'
+}
 if [ -z "$exc_lines" ]; then
   r2_engine=0
   if git show origin/main:.claude/pipeline.config.json > "$lm_tmp/base-config.json" 2>/dev/null \
@@ -252,20 +263,20 @@ for line in sys.stdin.read().split("\n"):
 print(1 if any(h != own or not seen or not lines or ext or any(not build.match(l) for l in lines) for h, seen, lines, ext in blocks) else 0)')" \
       || die "cannot diff the PR against origin/main"
     if [ "$r2_wf" = 1 ]; then
-      r2_fixtures="$(git diff --no-renames --name-status "$r2_range" | awk -F'\t' '$1 == "A" || $1 == "M" { print $2 }')" \
-        || die "cannot diff the PR against origin/main"
       r2_refs="$({ printf '%s\0' "$body"; git log -z --format=%B "origin/main..$lm_head_ref"; } \
         | issue_refs 'close[sd]?|fix(?:e[sd])?|resolve[sd]?|refs?' all "$REPO")" || die "cannot parse issue references"
+      r2_seen=" "
       for n in $r2_refs; do
+        n="$(printf '%s' "$n" | sed -E 's/^0+([0-9])/\1/')"   # #030 is issue 30 for the API and for the fixture name
+        case "$r2_seen" in *" $n "*) continue ;; esac
+        r2_seen="$r2_seen$n "
         info="$(gh api "repos/$REPO/issues/$n" --jq '.state + " " + ([.labels[].name] | join(","))')" || r2_fail "cannot read issue #$n"
         case ",${info#* }," in *,type:bug,*) ;; *) continue ;; esac
         covered=0
-        while IFS= read -r fx; do
-          [ -n "$fx" ] || continue
+        r2_fixtures_of "$lm_head_ref" "$n" > "$lm_tmp/fixtures.list" || die "cannot diff the PR against origin/main"
+        while IFS= read -r -d '' fx; do
           if git show "$lm_head_ref:$fx" 2>/dev/null | python3 -c 'import json,sys; json.load(sys.stdin)' >/dev/null 2>&1; then covered=1; break; fi
-        done <<EOX
-$(printf '%s\n' "$r2_fixtures" | grep -E "^fixtures/incidents/$n-[^/]+\.json\$" || true)
-EOX
+        done < "$lm_tmp/fixtures.list"
         if [ "$covered" -eq 1 ]; then continue; fi
         r2_fail "issue #$n is type:bug and the PR changes workflows/ but adds or modifies no valid (non-empty JSON) fixtures/incidents/$n-*.json; add the fixture (replayed red on base, green on the branch) or declare the waiver with 'exception: <what> — <why> — #M' in the acceptance block (#M an open tech-debt issue, DEBT(#M) marker in the diff)"
       done
