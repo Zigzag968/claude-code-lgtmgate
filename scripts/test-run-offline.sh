@@ -132,6 +132,97 @@ JS
 out=$(node "$TMP/death.cjs" fixtures/incidents/195-stale-plugin-root.json 2>&1)
 if [ "$out" = '{"status":"provision-died","resumable":true,"reason":true,"attempts":2,"trace":["agent-died:probe:1","agent-died:probe:2"]}' ]; then ok "the death of the plugin version probe agent is the resumable provision-died after one retry"; else bad "version probe agent death: $out"; fi
 
+# Two-run fixtures (#185): runs[] replays each run against its own calls; carry hands run N-1's result to run N; phases and
+# callLabelsAbsent are the relaunch assertions. mk2.cjs derives mutants of the committed relaunch fixture.
+cat > "$TMP/mk2.cjs" <<'JS'
+const fs = require('fs')
+const base = () => JSON.parse(fs.readFileSync('fixtures/relaunch/dev-after-plan.json', 'utf8'))
+const w = (n, f) => fs.writeFileSync(process.argv[2] + '/' + n, JSON.stringify(f))
+let f = base(); f.runs[1].args.entryStage = 'plan'; w('relaunch-plan-entry.json', f)
+f = base(); f.runs[1].expect.callLabelsAbsent = ['nick-']; w('relaunch-absent.json', f)
+f = base(); f.runs[1].expect.phases = ['Setup', 'Diagnose', 'Dev']; w('relaunch-phases.json', f)
+f = base(); f.runs[1].carry = { planText: 'nope' }; w('relaunch-carry.json', f)
+f = base(); f.calls = {}; w('relaunch-mixed.json', f)
+f = base(); delete f.runs[1].carry; w('relaunch-nocarry.json', f)
+f = base(); f.runs[1].expect.phases = ['Setup', 'Dev', 'Review']; w('relaunch-phases-longer.json', f)
+f = base(); f.runs[0].expect.status = 'ready'; f.runs[1].expect.status = 'ready'; delete f.runs[1].carry; w('relaunch-both-fail.json', f)
+f = base(); f.runs = [f.runs[0]]; w('relaunch-one-run.json', f)
+f = base(); f.runs[0].carry = {}; w('relaunch-carry-first.json', f)
+f = base(); f.runs[1].expect.callLabelsAbsent = []; w('relaunch-absent-empty.json', f)
+f = base(); f.runs[1].expect.callLabelsAbsent = 'diagnose-'; w('relaunch-absent-string.json', f)
+f = base(); f.runs[1].carries = f.runs[1].carry; delete f.runs[1].carry; w('relaunch-carries.json', f)
+JS
+node "$TMP/mk2.cjs" "$TMP"
+
+out=$(node scripts/run-offline.cjs fixtures/relaunch/dev-after-plan.json 2>&1 | tail -n 1)
+case "$out" in *"status=ok passed=1 failed=0"*) g1=1;; *) g1=0;; esac
+out=$(node scripts/run-offline.cjs "$TMP/relaunch-plan-entry.json" 2>&1)
+case "$out" in *"FAIL:"*"run 2: phases: expected"*"run 2: callLabelsAbsent: call \"diagnose-issue-123\""*) g2=1;; *) g2=0;; esac
+out=$(node scripts/run-offline.cjs "$TMP/relaunch-absent.json" 2>&1)
+case "$out" in *"FAIL:"*"run 2: callLabelsAbsent: call \"nick-issue-123\" starts with \"nick-\""*) g3=1;; *) g3=0;; esac
+out=$(node scripts/run-offline.cjs "$TMP/relaunch-phases.json" 2>&1)
+case "$out" in *"FAIL:"*"run 2: phases: expected [\"Setup\",\"Diagnose\",\"Dev\"], got [\"Setup\",\"Dev\"]"*) g4=1;; *) g4=0;; esac
+if [ "$g1$g2$g3$g4" = "1111" ]; then ok "two-run relaunch: the committed fixture replays green, and a relaunch that re-enters at plan, a present label prefix and a wrong phase list each fail"; else bad "two-run relaunch: green=$g1 plan-entry=$g2 absent=$g3 phases=$g4"; fi
+
+out=$(node scripts/run-offline.cjs "$TMP/relaunch-carry.json" 2>&1)
+case "$out" in *"FAIL:"*"run 2: carry \"planText\" <- result.nope"*) c1=1;; *) c1=0;; esac
+[ "$(printf '%s\n' "$out" | /usr/bin/grep -c 'run 2:')" = "1" ] || c1=0
+out=$(node scripts/run-offline.cjs "$TMP/relaunch-mixed.json" 2>&1)
+case "$out" in *"FAIL:"*"sets \"runs\" and also a top-level args/calls/expect"*) c2=1;; *) c2=0;; esac
+if [ "$c1$c2" = "11" ]; then ok "two-run carry: a field the previous run did not return fails the fixture, and runs mixed with top-level args/calls/expect is refused"; else bad "two-run carry: missing-field=$c1 mixed=$c2"; fi
+
+# The carry is observable (#185 F1): run 1's plan holds an acceptance id line, so a relaunch that received it logs the rebuilt
+# items. The same fixture without `carry` fails on that log, and so does the harness when its carry assignment does nothing.
+cat > "$TMP/mut.cjs" <<'JS'
+const fs = require('fs')
+const [, , out, from, to] = process.argv
+const src = fs.readFileSync('scripts/run-offline.cjs', 'utf8')
+const n = src.split(from).length - 1
+if (n !== 1) { console.error('mutation target found ' + n + ' time(s): ' + from); process.exit(2) }
+fs.writeFileSync(out, src.replace(from, () => to))
+JS
+out=$(node scripts/run-offline.cjs "$TMP/relaunch-nocarry.json" 2>&1)
+case "$out" in *"FAIL:"*"run 2: logs: missing \"acceptance item(s) rebuilt from the ids of planText\""*) n1=1;; *) n1=0;; esac
+if node "$TMP/mut.cjs" "$TMP/ro-m3.cjs" 'args[argName] = clone(prev.result[field])' 'void 0'; then
+  out=$(node "$TMP/ro-m3.cjs" fixtures/relaunch/dev-after-plan.json 2>&1)
+  case "$out" in *"FAIL:"*"run 2: logs: missing \"acceptance item(s) rebuilt from the ids of planText\""*) n2=1;; *) n2=0;; esac
+else n2=0; fi
+if [ "$n1$n2" = "11" ]; then ok "two-run carry is observable: the relaunch fixture without carry fails, and so does a harness whose carry assignment does nothing"; else bad "carry observable: no-carry=$n1 no-op-harness=$n2"; fi
+
+# Harness gaps of the two-run path (#185 F2): each case below is the one that kills a mutant of runChain/check that the
+# cases above let survive (a prefix of the expected phases, a first run whose problems vanish or whose failure does not
+# end the chain, previous calls not aggregated, the 2-run minimum, `carry` on the first run).
+out=$(node scripts/run-offline.cjs "$TMP/relaunch-phases-longer.json" 2>&1)
+case "$out" in *"FAIL:"*"run 2: phases: expected [\"Setup\",\"Dev\",\"Review\"], got [\"Setup\",\"Dev\"]"*) ok "expect.phases rejects a list longer than the real phases (a strict prefix is not a match)";; *) bad "phases longer than real: $out";; esac
+
+out=$(node scripts/run-offline.cjs "$TMP/relaunch-both-fail.json" 2>&1)
+case "$out" in
+  *"FAIL:"*"run 1: status: expected \"ready\", got \"plan-ready\""*)
+    case "$out" in *"run 2:"*) bad "a failing run 1 did not end the chain (run 2 was reported): $out";; *) ok "a failing first run is reported with its run number and ends the chain (run 2 never runs)";; esac;;
+  *) bad "failing first run not reported: $out";;
+esac
+
+out=$(node scripts/run-offline.cjs fixtures/relaunch/dev-after-plan.json 2>&1)
+want=$(node -e 'const f=require(process.argv[1]);process.stdout.write(String(f.runs.reduce((n,r)=>n+Object.values(r.calls).reduce((m,v)=>m+(Array.isArray(v)?v.length:1),0),0)))' "$PWD/fixtures/relaunch/dev-after-plan.json")
+case "$out" in *" calls=$want"$'\n'*) ok "the calls of every run are aggregated (calls=$want, the sum over both runs)";; *) bad "aggregated calls: expected calls=$want in: $out";; esac
+
+out=$(node scripts/run-offline.cjs "$TMP/relaunch-one-run.json" 2>&1)
+case "$out" in *"FAIL:"*"\"runs\" must be an array of at least 2 runs"*) ok "a multi-run fixture with a single run is refused";; *) bad "single run not refused: $out";; esac
+
+out=$(node scripts/run-offline.cjs "$TMP/relaunch-carry-first.json" 2>&1)
+case "$out" in *"FAIL:"*"run 1 \"carry\" must be an object and needs an earlier run"*) ok "carry on the first run is refused, even an empty one";; *) bad "carry on the first run not refused: $out";; esac
+
+# Fail closed on the two-run path (#185 F3): an empty or non-array callLabelsAbsent is a vacuous assertion, and a misspelled
+# run key (`carries`) would silently drop the carry. Unknown `expect` keys are left as they are (36 fixtures rely on that).
+out=$(node scripts/run-offline.cjs "$TMP/relaunch-absent-empty.json" 2>&1)
+case "$out" in *"FAIL:"*"callLabelsAbsent: must be a non-empty array of non-empty label prefixes"*) f1=1;; *) f1=0;; esac
+out=$(node scripts/run-offline.cjs "$TMP/relaunch-absent-string.json" 2>&1)
+case "$out" in *"FAIL:"*"callLabelsAbsent: must be a non-empty array of non-empty label prefixes"*) f2=1;; *) f2=0;; esac
+if [ "$f1$f2" = "11" ]; then ok "callLabelsAbsent refuses an empty list and a non-array (a vacuous absence assertion proves nothing)"; else bad "callLabelsAbsent refusal: empty=$f1 string=$f2"; fi
+
+out=$(node scripts/run-offline.cjs "$TMP/relaunch-carries.json" 2>&1)
+case "$out" in *"FAIL:"*"run 2 has unknown key \"carries\" (allowed: args, calls, expect, carry)"*) ok "a misspelled run key is refused with the allowed keys listed";; *) bad "unknown run key not refused: $out";; esac
+
 rm -rf "$TMP"
 STATUS=ok; [ "$FAIL" -gt 0 ] && STATUS=fail
 echo "[test-run-offline] status=$STATUS passed=$PASS failed=$FAIL"

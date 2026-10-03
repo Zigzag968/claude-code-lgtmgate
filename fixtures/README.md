@@ -7,6 +7,7 @@ before it is committed, and the `no-private-refs` invariant scans the whole trac
 |---|---|---|
 | `smoke/` | one nominal run per mode, every `agent()` call answered with a raw value | `run-offline.cjs --all fixtures` (CI) |
 | `incidents/` | one file per real incident, named `<issue>-<label>.json`; the replay asserts the status the fix must produce | same, plus the acceptance item of every engine bug fix (doctrine R2) |
+| `relaunch/` | harness cases that replay several runs of one issue (`runs`), e.g. a relaunch | `run-offline.cjs --all fixtures` (CI) |
 | `probes/` | raw stdout of a real `gh`/`git` command (`*.raw`), consumed by `templates/test-probe-run.sh` once the probe layer exists (E2.2) | `test-probe-run.sh` |
 
 ## Fixture format
@@ -27,7 +28,13 @@ before it is committed, and the `no-private-refs` invariant scans the whole trac
 `expect` keys: `status` (required), `reason` (exact), `trace` (PREFIX match on `result.trace`), `logsInclude`
 (substrings of the log), `throws` (the run must throw an error containing it, instead of `status`) and two opt-in
 exactness keys that change no fixture that does not set them: `traceExact: true` (the trace must have exactly as many
-entries as `trace`) and `callLabels` (the ordered labels of the `agent()` calls, exact equality).
+entries as `trace`) and `callLabels` (the ordered labels of the `agent()` calls, exact equality). Two more opt-in keys:
+`phases` (the ordered `phase()` titles of the run, exact equality) and `callLabelsAbsent` (a non-empty list of label
+prefixes no `agent()` call may start with; an empty list or a non-array is refused).
+
+- `runs` (see `relaunch/dev-after-plan.json`): at least 2 runs, each with its own `args`, `calls` and `expect` (plus `carry`); no other key on a run (a misspelled one is refused), no top-level `args`/`calls`/`expect`.
+- `carry` on a run: `{ "<arg>": "<field of the previous run's result>" }`, e.g. `"planText": "plan"`; a field the previous run did not return fails the fixture.
+- `result.trace` holds engine events, not phase names (`probe:lines:haiku`, ...): assert the path through the phases with `phases`.
 
 - `calls` is keyed by the `label` of each `agent()` call. A migrated probe (#82: provision, provision
   freshness, review-phase behind-count) is keyed `probe-<issue>-<parser>-<label>-r<round>` and answered
