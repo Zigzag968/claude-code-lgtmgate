@@ -57,6 +57,7 @@ if (mut === 'ordering') {
   extra.push({ label: 'decoy-repeat', agentId: 'ag-r2', key: 'v2:r2', value: 'second' })
 }
 if (mut === 'arrayvalue') extra.push({ label: 'decoy-array', agentId: 'ag-a1', key: 'v2:a1', value: ['a', 'b'] })
+const SCOUT = final.find((a) => a.label === 'scout-issue-123-1').agentId // by label: the smoke fixture's call order is not a contract
 const progress = final.concat(extra)
 const journalOrder = mut === 'ordering' ? final.concat(extra.slice().reverse()) : progress
 for (const a of journalOrder) {
@@ -75,7 +76,7 @@ if (mut === 'cachedtrue') rec.workflowProgress[1].cached = true
 
 const lastResult = () => rows.map((r, i) => (r.type === 'result' && r.agentId === 'ag-' + (final.length - 1)) ? i : -1).filter((i) => i >= 0)[0]
 switch (mut) {
-  case 'unlabeled': { const r = rows.find((x) => x.type === 'started' && x.agentId === 'ag-3'); delete r.label; break }
+  case 'unlabeled': { const r = rows.find((x) => x.type === 'started' && x.agentId === SCOUT); delete r.label; break }
   case 'orphan': rows.push(result('ag-x', 'v2:zzz', 'x')); break
   case 'unfinished': rows.splice(lastResult(), 1); break
   case 'failedonly': rows[lastResult()] = { type: 'failed', agentId: 'ag-' + (final.length - 1), key: final[final.length - 1].key }; break
@@ -85,21 +86,21 @@ switch (mut) {
   case 'countmismatch': rec.agentCount += 1; break
   case 'noresultstatus': rec.result = {}; break
   case 'noagentid': delete rec.workflowProgress[2].agentId; break
-  // ag-3 (scout-issue-123-1, key K): the LAST event of K among result/failed rows decides.
-  case 'failedlast': { // started old-3 K, result K OLD, started ag-3 K, failed K
-    const si = rows.findIndex((x) => x.type === 'started' && x.agentId === 'ag-3')
+  // SCOUT (scout-issue-123-1, key K): the LAST event of K among result/failed rows decides.
+  case 'failedlast': { // started old-3 K, result K OLD, started SCOUT K, failed K
+    const si = rows.findIndex((x) => x.type === 'started' && x.agentId === SCOUT)
     const K = rows[si].key
-    rows.splice(si, 2, started('old-3', K, rows[si].label), result('old-3', K, { decoy: 'OLD' }), rows[si], { type: 'failed', agentId: 'ag-3', key: K })
+    rows.splice(si, 2, started('old-3', K, rows[si].label), result('old-3', K, { decoy: 'OLD' }), rows[si], { type: 'failed', agentId: SCOUT, key: K })
     break
   }
-  case 'failedafter': { // started ag-3 K, result K, failed K
-    const si = rows.findIndex((x) => x.type === 'started' && x.agentId === 'ag-3')
-    rows.splice(si + 2, 0, { type: 'failed', agentId: 'ag-3', key: rows[si].key })
+  case 'failedafter': { // started SCOUT K, result K, failed K
+    const si = rows.findIndex((x) => x.type === 'started' && x.agentId === SCOUT)
+    rows.splice(si + 2, 0, { type: 'failed', agentId: SCOUT, key: rows[si].key })
     break
   }
-  case 'failedretry': { // started ag-3 K, failed K, result K (a retry)
-    const si = rows.findIndex((x) => x.type === 'started' && x.agentId === 'ag-3')
-    rows.splice(si + 1, 0, { type: 'failed', agentId: 'ag-3', key: rows[si].key })
+  case 'failedretry': { // started SCOUT K, failed K, result K (a retry)
+    const si = rows.findIndex((x) => x.type === 'started' && x.agentId === SCOUT)
+    rows.splice(si + 1, 0, { type: 'failed', agentId: SCOUT, key: rows[si].key })
     break
   }
   default: break
@@ -144,7 +145,8 @@ if expect_ok "relaunch base"; then
   case "$OUT" in *"[offline] status=ok"*) ok "relaunch capture replays status=ok";; *) bad "relaunch replay: $OUT";; esac
   case "$OUT" in *"unanswered call"*) bad "relaunch has an unanswered call: $OUT";; *) ok "relaunch no unanswered call";; esac
   case "$OUT" in *"next: scripts/publish-fixture.sh"*) ok "next step printed";; *) bad "no next step: $OUT";; esac
-  case "$OUT" in *"calls=15 cached=0"*) ok "relaunch cached absent is false (cached=0, calls=15)";; *) bad "cached count: $OUT";; esac
+  NCALLS=$(node -e 'process.stdout.write(String(Object.keys(require(process.env.ROOT+"/fixtures/smoke/auto-lgtm.json").calls).length))')
+  case "$OUT" in *"calls=$NCALLS cached=0"*) ok "relaunch cached absent is false (cached=0, calls=$NCALLS)";; *) bad "cached count: $OUT";; esac
   case "$(cat "$CAP")" in *cached*) bad "relaunch capture carries a cached key";; *) ok "relaunch capture carries no run metadata";; esac
 fi
 
@@ -327,8 +329,9 @@ else
 fi
 
 # a failed call whose LAST event for its key is `failed` is refused, even with an earlier result for that key
+SCOUT_KEY=$(node -e 'const l=Object.keys(require(process.env.ROOT+"/fixtures/smoke/auto-lgtm.json").calls);process.stdout.write("v2:"+(1000+l.indexOf("scout-issue-123-1")).toString(16))') # same key rule as gen.cjs
 failed_refusal() { # name mutation
-  refusal "$1" "$2" "failed call scout-issue-123-1 key v2:3eb"
+  refusal "$1" "$2" "failed call scout-issue-123-1 key $SCOUT_KEY"
 }
 failed_refusal "failed after an earlier pass result" failedlast
 failed_refusal "failed after its own result" failedafter
