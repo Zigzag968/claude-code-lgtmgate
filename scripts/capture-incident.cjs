@@ -15,7 +15,7 @@
 //     --out    default <cwd>/.pipeline/captures   (must be git-ignored, inside a work tree)
 //     --from   projects directory; default $CLAUDE_PROJECTS_DIR, else ~/.claude/projects
 // Last stdout line (always): `[capture-incident] status=<ok|refused|error|usage-error>`
-// (ok adds `out=<path> calls=<n> cached=<n>`). Detail goes to stderr. Exit 0 ok, 1 refused or error
+// (ok adds `out=<path> calls=<n> cached=<n> retries=<n>`). Detail goes to stderr. Exit 0 ok, 1 refused or error
 // (error = an unexpected file-system failure, one `error: <code>: <message>` stderr line, stack only
 // with CAPTURE_INCIDENT_DEBUG=1, nothing left written), 2 usage.
 //
@@ -33,6 +33,9 @@
 // The final pass of a relaunched run is the set of agentId values in the record's workflowProgress,
 // never journal order. A result is joined to its start by `key`. A key whose LAST result/failed row
 // is `failed` is refused (a `failed` followed by a later `result`, a retry, is accepted).
+// A call the engine retried is named `<label> (retry N)` in the record and `<label>` in the journal: it is captured once
+// under `<label>` with the answer of its last attempt that did not die (`retries=<n>` counts the folded attempts); a call
+// whose every attempt died, and any other difference between the two labels, still refuses.
 
 const fs = require('fs')
 const os = require('os')
@@ -199,6 +202,8 @@ function readRecord(file) {
 
 // ---- final pass -----------------------------------------------------------------------------
 
+const RETRY_SUFFIX = /^(.*) \(retry (\d+)\)$/
+
 function finalPass(journalFile, rows, agents) {
   const startedKeys = new Set()
   const resultByKey = new Map()
@@ -218,29 +223,59 @@ function finalPass(journalFile, rows, agents) {
   const died = []
   const failedLast = []
   const finalIds = new Set(agents.map((a) => a.agentId))
+  // Pass A: one group per engine call, in record order. The engine names a retried attempt `<label> (retry N)` in the
+  // record while the journal keeps `<label>`; that exact suffix is folded into the group of the call it retries, and any
+  // other difference between the two labels still refuses.
+  const groups = []
   for (const a of agents) {
     const s = startedByAgent.get(a.agentId)
     if (!s) refuse(`layout: ${journalFile}: missing started for workflowProgress agentId ${a.agentId}`)
-    if (s.row.label !== a.label) {
+    const m = RETRY_SUFFIX.exec(a.label)
+    const label = m ? m[1] : a.label
+    if (s.row.label !== label) {
       refuse(`layout: ${journalFile}: label mismatch for agentId ${a.agentId} (journal "${s.row.label}", record "${a.label}") [line ${s.line}]`)
     }
-    const res = resultByKey.get(s.row.key)
-    if (!res) { died.push(`${a.label} key ${s.row.key} [line ${s.line}]`); continue }
-    const last = lastEventByKey.get(s.row.key)
-    if (last.type === 'failed') { failedLast.push(`${a.label} key ${s.row.key} [line ${last.line}]`); continue }
-    calls.push({ label: a.label, value: res.result, cached: a.cached })
+    let group
+    if (m) {
+      for (let i = groups.length - 1; i >= 0 && !group; i--) if (groups[i].label === label) group = groups[i]
+      if (!group) {
+        refuse(`layout: ${journalFile}: retry attempt "${a.label}" (agentId ${a.agentId}) has no earlier attempt "${label}" in the run record [line ${s.line}]`)
+      }
+    } else {
+      group = { label, attempts: [] }
+      groups.push(group)
+    }
+    group.attempts.push({ a, s })
+  }
+  // Pass B: the answer of a call is the one of its last attempt that did not die.
+  let retries = 0
+  const notes = []
+  for (const { label, attempts } of groups) {
+    const answered = attempts.filter((t) => resultByKey.has(t.s.row.key))
+    const used = answered[answered.length - 1]
+    if (!used) {
+      died.push(attempts.map((t) => `${label} key ${t.s.row.key} [line ${t.s.line}]`).join(', '))
+      continue
+    }
+    const key = used.s.row.key
+    const last = lastEventByKey.get(key)
+    if (last.type === 'failed') { failedLast.push(`${label} key ${key} [line ${last.line}]`); continue }
+    if (attempts.length > 1) {
+      retries += attempts.length - 1
+      notes.push(`note: ${journalFile}: folded retried call ${label}: ${attempts.length} attempts, answer of agentId ${used.a.agentId} used`)
+    }
+    calls.push({ label, value: resultByKey.get(key).result, cached: used.a.cached })
   }
   const causes = []
   if (died.length) causes.push(`died call ${died.join('; died call ')}`)
   if (failedLast.length) causes.push(`failed call ${failedLast.join('; failed call ')} (the key's last event is failed, an earlier result is not used)`)
   if (causes.length) refuse(`${journalFile}: ${causes.join('; ')}`)
-  const notes = []
   for (const [agentId, { row, line }] of startedByAgent) {
     if (!finalIds.has(agentId) && !resultByKey.has(row.key)) {
       notes.push(`note: ${journalFile}: died call ${row.label} key ${row.key} [line ${line}] belongs to an earlier pass, not captured`)
     }
   }
-  return { calls, notes }
+  return { calls, notes, retries }
 }
 
 // The plugin version probe answer (#195) names the engine version of the run, which lead-merge bumps at every merge: it is
@@ -339,7 +374,7 @@ function main() {
   const journalFile = path.join(runDir, 'journal.jsonl')
   const rows = readJournal(journalFile)
   const record = readRecord(recordPathFor(runDir))
-  const { calls, notes } = finalPass(journalFile, rows, record.agents)
+  const { calls, notes, retries } = finalPass(journalFile, rows, record.agents)
   for (const n of notes) process.stderr.write(`${n}\n`)
   const fixture = buildFixture(issue, label, record, calls)
   fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 })
@@ -347,7 +382,7 @@ function main() {
   replay(file)
   process.stdout.write(`next: scripts/publish-fixture.sh ${file}\n`)
   const cached = calls.filter((c) => c.cached).length
-  process.stdout.write(`[capture-incident] status=ok out=${file} calls=${calls.length} cached=${cached}\n`)
+  process.stdout.write(`[capture-incident] status=ok out=${file} calls=${calls.length} cached=${cached} retries=${retries}\n`)
 }
 
 try {
