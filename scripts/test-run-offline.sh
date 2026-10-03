@@ -143,6 +143,7 @@ f = base(); f.runs[1].expect.callLabelsAbsent = ['nick-']; w('relaunch-absent.js
 f = base(); f.runs[1].expect.phases = ['Setup', 'Diagnose', 'Dev']; w('relaunch-phases.json', f)
 f = base(); f.runs[1].carry = { planText: 'nope' }; w('relaunch-carry.json', f)
 f = base(); f.calls = {}; w('relaunch-mixed.json', f)
+f = base(); delete f.runs[1].carry; w('relaunch-nocarry.json', f)
 JS
 node "$TMP/mk2.cjs" "$TMP"
 
@@ -161,6 +162,24 @@ case "$out" in *"FAIL:"*"run 2: carry \"planText\" <- result.nope"*) c1=1;; *) c
 out=$(node scripts/run-offline.cjs "$TMP/relaunch-mixed.json" 2>&1)
 case "$out" in *"FAIL:"*"sets \"runs\" and also a top-level args/calls/expect"*) c2=1;; *) c2=0;; esac
 if [ "$c1$c2" = "11" ]; then ok "two-run carry: a field the previous run did not return fails the fixture, and runs mixed with top-level args/calls/expect is refused"; else bad "two-run carry: missing-field=$c1 mixed=$c2"; fi
+
+# The carry is observable (#185 F1): run 1's plan holds an acceptance id line, so a relaunch that received it logs the rebuilt
+# items. The same fixture without `carry` fails on that log, and so does the harness when its carry assignment does nothing.
+cat > "$TMP/mut.cjs" <<'JS'
+const fs = require('fs')
+const [, , out, from, to] = process.argv
+const src = fs.readFileSync('scripts/run-offline.cjs', 'utf8')
+const n = src.split(from).length - 1
+if (n !== 1) { console.error('mutation target found ' + n + ' time(s): ' + from); process.exit(2) }
+fs.writeFileSync(out, src.replace(from, () => to))
+JS
+out=$(node scripts/run-offline.cjs "$TMP/relaunch-nocarry.json" 2>&1)
+case "$out" in *"FAIL:"*"run 2: logs: missing \"acceptance item(s) rebuilt from the ids of planText\""*) n1=1;; *) n1=0;; esac
+if node "$TMP/mut.cjs" "$TMP/ro-m3.cjs" 'args[argName] = clone(prev.result[field])' 'void 0'; then
+  out=$(node "$TMP/ro-m3.cjs" fixtures/relaunch/dev-after-plan.json 2>&1)
+  case "$out" in *"FAIL:"*"run 2: logs: missing \"acceptance item(s) rebuilt from the ids of planText\""*) n2=1;; *) n2=0;; esac
+else n2=0; fi
+if [ "$n1$n2" = "11" ]; then ok "two-run carry is observable: the relaunch fixture without carry fails, and so does a harness whose carry assignment does nothing"; else bad "carry observable: no-carry=$n1 no-op-harness=$n2"; fi
 
 rm -rf "$TMP"
 STATUS=ok; [ "$FAIL" -gt 0 ] && STATUS=fail

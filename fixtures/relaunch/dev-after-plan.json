@@ -1,6 +1,6 @@
 {
   "name": "relaunch-dev-after-plan",
-  "note": "harness case, not an incident: run 1 stops at plan-ready (manual mode); run 2 is the Lead relaunch at entryStage dev with the plan carried over, and must run neither Theo nor Sam",
+  "note": "harness case, not an incident: run 1 stops at plan-ready (manual mode) with a plan that carries an acceptance id; run 2 is the Lead relaunch at entryStage dev with that plan carried over as planText (its log names the items rebuilt from it), and must run neither Theo nor Sam",
   "runs": [
     {
       "args": {
@@ -36,13 +36,20 @@
         },
         "scout-issue-123-1": {
           "decision": "GO",
-          "plan": "## Plan\n1. src/slugify.js: transliterate before stripping\n\n## Acceptance checklist\n- [ ] `npm test` passes",
+          "plan": "## Plan\n1. src/slugify.js: transliterate before stripping\n\n## Acceptance checklist\n- [ ] <!-- ac:1 --> `npm test` passes",
           "rationale": "",
           "targetFiles": [
             "src/slugify.js"
           ],
           "absorbedIssues": [],
-          "acceptanceChecklist": "- [ ] `npm test` passes"
+          "acceptanceChecklist": "- [ ] <!-- ac:1 --> `npm test` passes",
+          "acceptanceItems": [
+            {
+              "id": 1,
+              "text": "`npm test` passes",
+              "humanGate": false
+            }
+          ]
         },
         "plan-check-123-1": {
           "verdict": "CONFORMING",
@@ -130,6 +137,9 @@
           "scout-",
           "plan-check-",
           "plan-audit-"
+        ],
+        "logsInclude": [
+          "acceptance item(s) rebuilt from the ids of planText"
         ]
       }
     }
