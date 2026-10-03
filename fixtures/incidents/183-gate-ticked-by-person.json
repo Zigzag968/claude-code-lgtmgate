@@ -101,8 +101,8 @@
       "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=0774fad4714f3978deed785c2de6fd25ce5cf3d7d8c46b32d362616459f0cde0 cmd=073ad2dade7bd8cbf0ec2900f8e39315294bdc2c5661f1b280d2aa40d03f03d1 json={\"op\":\"body-splice\",\"result\":\"written\",\"reason\":null,\"bytes\":1234}"
     },
     "probe-123-pr-write-acceptance-tick-r0": {
-      "line": "PROBE name=pr-write exit=0 sha=d272e034505a9eea2bb36b11779eeb1fd77847a079c71cd583a11197d3a3eb42 cmd=d65635992c2807d6829f582622f5e7ead54c520d583fa647c74be5badfb0be84 json={\"op\":\"body-splice\",\"result\":\"skipped\",\"reason\":\"unchanged\",\"bytes\":null}",
-      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=d272e034505a9eea2bb36b11779eeb1fd77847a079c71cd583a11197d3a3eb42 cmd=d65635992c2807d6829f582622f5e7ead54c520d583fa647c74be5badfb0be84 json={\"op\":\"body-splice\",\"result\":\"skipped\",\"reason\":\"unchanged\",\"bytes\":null}"
+      "line": "PROBE name=pr-write exit=0 sha=d272e034505a9eea2bb36b11779eeb1fd77847a079c71cd583a11197d3a3eb42 cmd=c83d879ab146ba795f27dd08162601e302a663c880c2d6b565d9a354626455fb json={\"op\":\"body-splice\",\"result\":\"skipped\",\"reason\":\"unchanged\",\"bytes\":null}",
+      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=d272e034505a9eea2bb36b11779eeb1fd77847a079c71cd583a11197d3a3eb42 cmd=c83d879ab146ba795f27dd08162601e302a663c880c2d6b565d9a354626455fb json={\"op\":\"body-splice\",\"result\":\"skipped\",\"reason\":\"unchanged\",\"bytes\":null}"
     },
     "probe-123-pr-state-merge-r0": {
       "line": "PROBE name=pr-state exit=0 sha=a2ecf0cc9d123582b92813d2aaafa231fa1201ab8e083ba1ff8d690d08376805 cmd=a6068f1217b0ad386dd338d47c4801b97bb7ca8a67ef63eb999ea9f1b34d5c8d json={\"now\":\"2026-01-01T01:00:00Z\",\"headRefName\":\"features/issue-123\",\"headRefOid\":\"abc123def456\",\"bodyDigest\":\"0123456789ab\",\"acceptanceChecked\":[1],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-01-01T00:30:00Z\",\"commitCount\":1,\"reviewCommentIds\":[],\"openIssues\":[],\"openIssuesTruncated\":false}",

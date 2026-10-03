@@ -132,6 +132,38 @@ JS
 out=$(node "$TMP/death.cjs" fixtures/incidents/195-stale-plugin-root.json 2>&1)
 if [ "$out" = '{"status":"provision-died","resumable":true,"reason":true,"attempts":2,"trace":["agent-died:probe:1","agent-died:probe:2"]}' ]; then ok "the death of the plugin version probe agent is the resumable provision-died after one retry"; else bad "version probe agent death: $out"; fi
 
+# #212: the tick command the probe agent copies is ONE line without the block text (the block travels as a single base64
+# token) and carries the digest of the very command the engine composed (--expect-cmd), before --cmd.
+cat > "$TMP/tickcmd.cjs" <<'JS'
+const fs = require('fs')
+const path = require('path')
+const crypto = require('crypto')
+const { stripExports, buildPipelineRunner, replayFixture } = require(path.resolve('scripts/run-offline.cjs'))
+const run = buildPipelineRunner(stripExports(fs.readFileSync(path.resolve('workflows/deliver-pipeline.js'), 'utf8')))
+const fx = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'))
+replayFixture(fx, run, { prompts: true }).then((r) => {
+  const c = r.calls.find((x) => x.label === 'probe-185-pr-write-acceptance-tick-r0')
+  const prompt = c ? c.prompt : ''
+  const end = prompt.indexOf('\n2. cd ')
+  const start = prompt.indexOf(' --cmd ')
+  const q = start >= 0 && end > start ? prompt.slice(start + 7, end) : ''
+  const cmd = q.slice(1, -1).split("'\\''").join("'")
+  const m = prompt.slice(0, start).split(' --expect-cmd ')[1]
+  process.stdout.write(JSON.stringify({
+    oneLine: q.length > 2 && !q.includes('\n'),
+    noBacktick: !q.includes('`'),
+    b64: cmd.includes("'--text-b64'") && !cmd.includes("'--text'"),
+    noBlockText: !cmd.includes('<!-- ac:') && !cmd.includes('- [ ]'),
+    digest: m === crypto.createHash('sha256').update(cmd).digest('hex'),
+  }))
+})
+JS
+out=$(node "$TMP/tickcmd.cjs" fixtures/incidents/212-tick-cmd-mismatch.json 2>&1)
+if [ "$out" = '{"oneLine":true,"noBacktick":true,"b64":true,"noBlockText":true,"digest":true}' ] ; then
+  ok "tick-command is ONE line, no backtick, no block text, the block as --text-b64 ($out)"
+else bad "tick-command shape: $out"; fi
+case "$out" in *'"digest":true'*) ok "tick-command --expect-cmd equals the sha256 of the un-quoted command, placed before --cmd";; *) bad "tick-command digest: $out";; esac
+
 # Two-run fixtures (#185): runs[] replays each run against its own calls; carry hands run N-1's result to run N; phases and
 # callLabelsAbsent are the relaunch assertions. mk2.cjs derives mutants of the committed relaunch fixture.
 cat > "$TMP/mk2.cjs" <<'JS'

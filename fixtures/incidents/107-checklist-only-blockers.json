@@ -110,8 +110,8 @@
       "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=0774fad4714f3978deed785c2de6fd25ce5cf3d7d8c46b32d362616459f0cde0 cmd=f376e3fdb86b7d91e48693d506c2c881a7bb80543454bc86e5ab42208bf8a06a json={\"op\":\"body-splice\",\"result\":\"written\",\"reason\":null,\"bytes\":1234}"
     },
     "probe-123-pr-write-acceptance-tick-r0": {
-      "line": "PROBE name=pr-write exit=0 sha=0774fad4714f3978deed785c2de6fd25ce5cf3d7d8c46b32d362616459f0cde0 cmd=119923f2cfe0b789817483fa1b5a62aece0db60d42e94b0a31708e584d1e2059 json={\"op\":\"body-splice\",\"result\":\"written\",\"reason\":null,\"bytes\":1234}",
-      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=0774fad4714f3978deed785c2de6fd25ce5cf3d7d8c46b32d362616459f0cde0 cmd=119923f2cfe0b789817483fa1b5a62aece0db60d42e94b0a31708e584d1e2059 json={\"op\":\"body-splice\",\"result\":\"written\",\"reason\":null,\"bytes\":1234}"
+      "line": "PROBE name=pr-write exit=0 sha=0774fad4714f3978deed785c2de6fd25ce5cf3d7d8c46b32d362616459f0cde0 cmd=ac41dcf8ab9d8d3d68ee9295978a366310f6a33b052c9f093a67cb5831579dcf json={\"op\":\"body-splice\",\"result\":\"written\",\"reason\":null,\"bytes\":1234}",
+      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=0774fad4714f3978deed785c2de6fd25ce5cf3d7d8c46b32d362616459f0cde0 cmd=ac41dcf8ab9d8d3d68ee9295978a366310f6a33b052c9f093a67cb5831579dcf json={\"op\":\"body-splice\",\"result\":\"written\",\"reason\":null,\"bytes\":1234}"
     }
   },
   "expect": {
