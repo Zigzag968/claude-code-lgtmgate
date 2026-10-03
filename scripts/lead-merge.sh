@@ -246,7 +246,8 @@ if [ -z "$exc_lines" ]; then
     r2_wf="$(git diff --no-renames -U0 "$r2_range" -- workflows/ | WORKFLOW="$WORKFLOW" python3 -c '
 import os, re, sys
 own = "diff --git a/%s b/%s" % (os.environ["WORKFLOW"], os.environ["WORKFLOW"])
-build = re.compile(r"^[+-]const BUILD = \{[^}]*\}\s*;?\s*$")
+# the one line the bump writes (see step 4): known keys in order, quoted literals only (\x27 = the single quote), no code fits in it
+build = re.compile(r"[+-]const BUILD = \{\s*plugin:\s*\x27lgtmgate\x27\s*,\s*version:\s*\x27[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?\x27\s*,\s*cutFrom:\s*\x27[0-9A-Za-z._-]{1,40}\x27\s*\}\s*;?\s*")
 blocks = []   # [header, hunk seen, changed lines, extended header lines (mode change, new or deleted file, binary...)]
 for line in sys.stdin.read().split("\n"):
     if line.startswith("diff --git "):
@@ -260,7 +261,7 @@ for line in sys.stdin.read().split("\n"):
         elif line and not line.startswith(("index ", "--- ", "+++ ")):
             blocks[-1][3].append(line)
 # a file is a real change unless it is the workflow with hunks made only of BUILD lines (no mode change, not created or deleted)
-print(1 if any(h != own or not seen or not lines or ext or any(not build.match(l) for l in lines) for h, seen, lines, ext in blocks) else 0)')" \
+print(1 if any(h != own or not seen or not lines or ext or any(not build.fullmatch(l) for l in lines) for h, seen, lines, ext in blocks) else 0)')" \
       || die "cannot diff the PR against origin/main"
     if [ "$r2_wf" = 1 ]; then
       r2_refs="$({ printf '%s\0' "$body"; git log -z --format=%B "origin/main..$lm_head_ref"; } \

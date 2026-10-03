@@ -642,6 +642,36 @@ r2_exc_refused() { # <label>
 }
 R2_WF_LINE="echo '// local fix' >> workflows/deliver-pipeline.js"
 R2_FIX_LINE="mkdir -p fixtures/incidents && echo '{}' > fixtures/incidents/30-l.json"
+# F2 the BUILD exemption pins the exact line the bump writes: nothing executable fits in it
+i=0
+while IFS= read -r bl; do
+  i=$((i + 1))
+  r2_prep "r2-build-bad$i" 'Closes #30' '' 'open type:bug'; r2_main_cfg "$D" "$R2_ENGINE"; r2_build "$D" "$bl"; r2_go
+  r2_refused "BUILD-shaped line that is not the bump's ($bl): refused"
+done <<'EOB'
+const BUILD = { plugin: 'lgtmgate', version: '0.8.80', cutFrom: (process.exit(3), 'x') }
+const BUILD = { plugin: 'lgtmgate', version: '0.8.80', cutFrom: 'abc1234', evil: 1 }
+const BUILD = { version: '0.8.80', plugin: 'lgtmgate', cutFrom: 'abc1234' }
+const BUILD = { plugin: 'lgtmgate', version: '1.0', cutFrom: 'abc1234' }
+const BUILD = { plugin: 'lgtmgate', version: '0.8.80' + g(), cutFrom: 'abc1234' }
+const BUILD = { plugin: 'lgtmgate', version: '0.8.80', cutFrom: 'a(b)' }
+const BUILD = { plugin: 'lgtmgate', version: '0.8.80', cutFrom: '${x}' }
+const BUILD = { plugin: 'lgtmgate', version: '0.8.80', cutFrom: '`x`' }
+const BUILD = { plugin: 'lgtmgate', version: '0.8.80', cutFrom: "abc1234" }
+EOB
+i=0
+while IFS= read -r bl; do
+  i=$((i + 1))
+  r2_prep "r2-build-ok$i" 'Closes #30' '' 'open type:bug'; r2_main_cfg "$D" "$R2_ENGINE"; r2_build "$D" "$bl"; r2_go
+  r2_merges "the line the bump writes is exempt ($bl): merges"
+done <<'EOB'
+const BUILD = { plugin: 'lgtmgate', version: '0.9.0-beta.12', cutFrom: '0123abc' }
+const BUILD = { plugin: 'lgtmgate', version: '0.8.81', cutFrom: 'abc1234' };
+EOB
+r2_prep r2-build-otherfile 'Closes #30' '' 'open type:bug'; r2_main_cfg "$D" "$R2_ENGINE"
+r2_main_file "$D" workflows/other.js "const BUILD = { plugin: 'lgtmgate', version: '0.8.80', cutFrom: 'abc1234' }"; r2_pull_main "$D"
+( cd "$D/work" && echo "const BUILD = { plugin: 'lgtmgate', version: '0.8.81', cutFrom: 'abc1234' }" > workflows/other.js && git add -A && git commit -qm "other" && git push -q origin feat/x ) >/dev/null 2>&1; r2_go
+r2_refused "a BUILD-shaped line in another workflows/ file is a real change: refused"
 # F5 paths with non-ASCII characters are not quoted by git
 r2_prep r2-fix-accent 'Closes #30' '' 'open type:bug'; r2_main_cfg "$D" "$R2_ENGINE"; r2_pr_fixture "$D" 'fixtures/incidents/30-é.json' '{"a":1}'; r2_go
 r2_merges "valid fixture with a non-ASCII file name: merges"
