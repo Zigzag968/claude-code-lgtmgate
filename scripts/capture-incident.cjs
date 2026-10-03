@@ -19,6 +19,9 @@
 // (error = an unexpected file-system failure, one `error: <code>: <message>` stderr line, stack only
 // with CAPTURE_INCIDENT_DEBUG=1, nothing left written), 2 usage.
 //
+// The answer of the plugin version probe (#195) names the engine version, which lead-merge bumps at every merge: the
+// capture stores the token `@@ENGINE_VERSION@@` there when the answer is the run's engine (see engineVersionsOfRun).
+//
 // Observed layout (Claude Code does not document it; measured on real files by other users):
 //   journal  <projects>/<project>/<session>/subagents/workflows/<runId>/journal.jsonl
 //     rows: started {agentId,key,label}, result {key,result}, failed {key}; key = "v2:<hash>"
@@ -35,6 +38,7 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 const { spawnSync } = require('child_process')
+const { engineVersionOf, tokenizeVersionProbes } = require('./run-offline.cjs')
 
 class Refusal extends Error {}
 class Usage extends Error {}
@@ -190,7 +194,7 @@ function readRecord(file) {
     if (seen.has(a.agentId)) refuse(`${file}: duplicate agentId ${a.agentId} in workflowProgress`)
     seen.add(a.agentId)
   }
-  return { args: rec.args, status: rec.result.status, agents }
+  return { args: rec.args, status: rec.result.status, reason: typeof rec.result.reason === 'string' ? rec.result.reason : '', agents }
 }
 
 // ---- final pass -----------------------------------------------------------------------------
@@ -239,6 +243,21 @@ function finalPass(journalFile, rows, agents) {
   return { calls, notes }
 }
 
+// The plugin version probe answer (#195) names the engine version of the run, which lead-merge bumps at every merge: it is
+// stored as the token `@@ENGINE_VERSION@@`, so the capture still replays after the next bump. The answer is the run's
+// engine when it equals the BUILD version of this checkout's engine, or the version the run's pluginRoot names (the last
+// segment of the plugin cache path) - a run that went past the version check proves the two were equal. Not for a run that
+// ended on a plugin-version-* reason: there the answer differs from the engine, and the difference is the incident.
+function engineVersionsOfRun(record) {
+  if (record.reason.startsWith('plugin-version-')) return []
+  const out = []
+  try { out.push(engineVersionOf(fs.readFileSync(path.resolve(__dirname, '..', 'workflows', 'deliver-pipeline.js'), 'utf8'))) } catch (e) { /* no engine file: only the pluginRoot rule */ }
+  const root = typeof record.args.pluginRoot === 'string' ? record.args.pluginRoot.replace(/\/+$/, '') : ''
+  const last = root.slice(root.lastIndexOf('/') + 1)
+  if (/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(last)) out.push(last)
+  return out.filter(Boolean)
+}
+
 function buildFixture(issue, label, record, calls) {
   const byLabel = new Map()
   for (const c of calls) {
@@ -252,6 +271,7 @@ function buildFixture(issue, label, record, calls) {
   }
   const args = JSON.parse(JSON.stringify(record.args))
   delete args.simulate
+  tokenizeVersionProbes(out, engineVersionsOfRun(record))
   return { name: `${issue}-${label}`, args, calls: out, expect: { status: record.status } }
 }
 

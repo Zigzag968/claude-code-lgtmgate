@@ -1,0 +1,34 @@
+{
+  "name": "195-version-probe-no-attestation",
+  "note": "#195: the standard launch (pluginRoot, no probeRunPath) with the plugin hooks disabled. The plugin version probe is the first probe, so it is the one whose attestation is missing. The cause is the hooks, not the plugin root: the run ends as the documented provision-failed with probeReason no-attestation, and never says to pass the current plugin root.",
+  "args": {
+    "pluginRoot": "/cache/lgtmgate/current",
+    "issue": 195,
+    "brief": "a probe that was never attested must not be reported as an unreadable plugin version",
+    "wtPath": "/wt/root/issue-195",
+    "config": {},
+    "mode": "auto"
+  },
+  "calls": {
+    "probe-195-lines-plugin-version-r0": {
+      "line": "PROBE name=lines exit=0 sha=4b0b2f33b20b777393f4cb55ea1d47c45786b52ad36822582a5ed67647e54ed5 cmd=5a6484c6d492f57c4ff7081ac8e245d27ec5a8b8078109a3b799f969b56e2647 json={\"lines\":[\"PLUGIN-VERSION:@@ENGINE_VERSION@@\"]}",
+      "verify": "VERIFY fail reason=no-attestation"
+    }
+  },
+  "expect": {
+    "status": "escalate",
+    "reason": "provision-failed",
+    "trace": [
+      "branch-prefix-fallback-default",
+      "probe:lines:haiku"
+    ],
+    "traceExact": true,
+    "callLabels": [
+      "probe-195-lines-plugin-version-r0"
+    ],
+    "logsInclude": [
+      "Plugin version probe failed (no-attestation)",
+      "plugin hooks"
+    ]
+  }
+}

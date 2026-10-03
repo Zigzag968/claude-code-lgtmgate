@@ -703,6 +703,59 @@ ok=0
 [ -n "$SAN_LINE" ] && [ "$(node -e 'const f = new Function(process.argv[1] + "; return sanitizeProbeToken")(); process.stdout.write(f("PR Ready/Merged:x"))' "$SAN_LINE" 2>/dev/null)" = "PR-Ready-Merged-x" ] && ok=1
 check "[151] sanitizeProbeToken maps 'PR Ready/Merged:x' to 'PR-Ready-Merged-x'" "$ok"
 
+# (f2) #195: the plugin-version check. The REAL pluginVersionCmd runs through the REAL probe-run.cjs (parser `lines`)
+# against real manifests, and the PROBE line it prints feeds the REAL pluginVersionVerdict. The roots carry a space and a
+# single quote on purpose (quoting). The engine version is read from the `const BUILD` line, never hardcoded.
+PV_BLK="$(sed -n '/^\/\/ --- pluginVersion:start ---/,/^\/\/ --- pluginVersion:end ---/p' "$ROOT/workflows/deliver-pipeline.js")"
+PV_ENGINE="$(sed -n "s/.*const BUILD = {[^}]*version: '\([^']*\)'.*/\1/p" "$ROOT/workflows/deliver-pipeline.js" | head -n 1)"
+PV_ROOTS="$WORK/pv roots o'x"
+mkdir -p "$PV_ROOTS/same/.claude-plugin" "$PV_ROOTS/old/.claude-plugin" "$PV_ROOTS/bad/.claude-plugin" "$PV_ROOTS/nov/.claude-plugin"
+printf '{"name":"lgtmgate","version":"%s"}\n' "$PV_ENGINE" > "$PV_ROOTS/same/.claude-plugin/plugin.json"
+printf '{"name":"lgtmgate","version":"0.0.1-old"}\n' > "$PV_ROOTS/old/.claude-plugin/plugin.json"
+printf '{not json\n' > "$PV_ROOTS/bad/.claude-plugin/plugin.json"
+printf '{"name":"lgtmgate"}\n' > "$PV_ROOTS/nov/.claude-plugin/plugin.json"
+pv_verdict() {
+  node -e '
+    const { spawnSync } = require("child_process")
+    const [blk, pr, root, engine, out] = process.argv.slice(1)
+    const { pluginVersionCmd, pluginVersionVerdict } = new Function(blk + "\nreturn { pluginVersionCmd, pluginVersionVerdict }")()
+    const r = spawnSync("node", [pr, "--label", "pv", "--round", "0", "--out", out, "--parser", "lines", "--no-reuse", "--cmd", pluginVersionCmd(root)], { encoding: "utf8" })
+    const m = /^PROBE name=lines exit=(\d+) .* json=(.*)$/m.exec(r.stdout || "")
+    if (!m) { process.stdout.write("no-probe-line|" + r.stdout + r.stderr); process.exit(0) }
+    const v = pluginVersionVerdict({ engineVersion: engine, pluginRoot: root, exit: Number(m[1]), lines: JSON.parse(m[2]).lines })
+    process.stdout.write(v ? v.code + "|" + v.reason : "ok|")
+  ' "$PV_BLK" "$PR" "$1" "$PV_ENGINE" "$WORK/pv-out" 2>/dev/null
+}
+ok=0
+[ -n "$PV_BLK" ] && [ -n "$PV_ENGINE" ] && [ "$(pv_verdict "$PV_ROOTS/same")" = "ok|" ] && ok=1
+check "[195] a root holding the engine's version ($PV_ENGINE) passes (real command, real probe-run.cjs, real manifest)" "$ok"
+PV_OUT="$(pv_verdict "$PV_ROOTS/old")"
+ok=0
+case "$PV_OUT" in
+  *"pv roots"*) ok=0 ;;
+  "plugin-version-skew|"*"0.0.1-old"*"$PV_ENGINE"*"pass the current plugin root and relaunch") ok=1 ;;
+esac
+check "[195] a root holding another version is a plugin-version-skew naming both versions and the remedy, never the root path" "$ok"
+PV_OUT="$(pv_verdict "$PV_ROOTS/none")"
+ok=0
+case "$PV_OUT" in
+  *"pv roots"*) ok=0 ;;
+  "plugin-version-unreadable|"*".claude-plugin/plugin.json (missing)"*"pass the current plugin root and relaunch") ok=1 ;;
+esac
+check "[195] a root without a manifest fails closed as plugin-version-unreadable (missing), never naming the root path" "$ok"
+PV_OUT="$(pv_verdict "$PV_ROOTS/bad")"
+ok=0
+case "$PV_OUT" in
+  "plugin-version-unreadable|"*"(unreadable)"*"pass the current plugin root and relaunch") ok=1 ;;
+esac
+check "[195] a manifest that is not JSON fails closed as plugin-version-unreadable (unreadable)" "$ok"
+PV_OUT="$(pv_verdict "$PV_ROOTS/nov")"
+ok=0
+case "$PV_OUT" in
+  "plugin-version-unreadable|"*"(no-version)"*"pass the current plugin root and relaunch") ok=1 ;;
+esac
+check "[195] a manifest without a version fails closed as plugin-version-unreadable (no-version)" "$ok"
+
 # (g) agents/probe.md tools: lists exactly Bash
 TOOLS="$(awk '/^---$/{f++; next} f==1 && /^tools:/{t=1; next} f==1 && t && /^  - /{sub(/^  - /,""); print; next} f==1 && t{t=0}' "$ROOT/agents/probe.md" | tr '\n' ',')"
 [ "$TOOLS" = "Bash," ] && ok=1 || ok=0

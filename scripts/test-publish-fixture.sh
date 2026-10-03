@@ -64,6 +64,26 @@ if (variant === 'oneword') {
   f.args.repo = 'release'
   f.args.branchName = 'develop'
 }
+// #195: a capture of a REAL run holds the literal engine version in the plugin version probe answer (the public smoke
+// fixture quotes the token). liveversion: the run's engine is the repo's engine. skew: a captured plugin-version-skew
+// incident (the stale root's answer stays literal; the cmd hash is recomputed for that root).
+if (variant === 'liveversion' || variant === 'skew') {
+  const src = fs.readFileSync(path.join(process.env.ROOT, 'workflows/deliver-pipeline.js'), 'utf8')
+  const ENGINE = /const BUILD = \{[^}]*\bversion: '([^']+)'/.exec(src)[1]
+  const e = f.calls['probe-123-lines-plugin-version-r0']
+  const ver = variant === 'skew' ? '1.0.0-beta.3' : ENGINE
+  for (const k of ['line', 'verify']) e[k] = e[k].split('@@ENGINE_VERSION@@').join(ver)
+  if (variant === 'skew') {
+    const root = '/cache/lgtmgate/1.0.0-beta.3'
+    const blk = src.slice(src.indexOf('// --- pluginVersion:start ---'), src.indexOf('// --- pluginVersion:end ---'))
+    const cmd = new Function(blk + '\nreturn pluginVersionCmd')()(root)
+    const h = require('crypto').createHash('sha256').update(cmd).digest('hex')
+    for (const k of ['line', 'verify']) e[k] = e[k].replace(/cmd=[0-9a-f]{64}/, 'cmd=' + h)
+    f.args.pluginRoot = root
+    f.calls = { 'probe-123-lines-plugin-version-r0': e }
+    f.expect = { status: 'escalate' }
+  }
+}
 if (variant === 'badstatus') f.expect.status = 'escalate'
 if (variant === 'note') f.note = 'free text'
 fs.writeFileSync(out, JSON.stringify(f, null, 2) + '\n')
@@ -695,6 +715,48 @@ if [ "$NRC" -eq 1 ] && [ "$(printf '%s\n' "$NOUT" | tail -n 1)" = "[publish-fixt
   ok "a SIGTERM during the minimization stops it before the next replay and writes nothing"
 else
   bad "SIGTERM during the minimization: rc=$NRC replays=$ncount last='$(printf '%s\n' "$NOUT" | tail -n 1)' out-dir=$(ls -A "$DN" | tr '\n' ' ')"
+fi
+
+# ---- #195: the plugin version probe answer follows the engine version, never the version of the day --------
+# A real run journals the LITERAL engine version in that answer and lead-merge bumps it at every merge: a fixture published
+# with the literal goes red at the next bump. The publication writes the token when the answer is the engine's version.
+bumped_engine() { # <out file>: the engine with another BUILD version
+  node -e 'const fs=require("fs");const s=fs.readFileSync(process.env.ROOT+"/workflows/deliver-pipeline.js","utf8");fs.writeFileSync(process.argv[1],s.replace(/(const BUILD = \{[^}]*\bversion: \x27)[^\x27]+/,"$19.9.9-bumped"))' "$1"
+}
+BUMPED="$TMP/engine-bumped.js"
+bumped_engine "$BUMPED"
+ENGV=$(node -e 'process.stdout.write(/const BUILD = \{[^}]*\bversion: \x27([^\x27]+)/.exec(require("fs").readFileSync(process.env.ROOT+"/workflows/deliver-pipeline.js","utf8"))[1])')
+LIVE_RAW="$RAWD/123-live.json"
+node "$TMP/gen.cjs" "$LIVE_RAW" liveversion
+DLV="$(newdir out-live)"
+pub "$LIVE_RAW" --out-dir "$DLV"
+if [ "$RC" -eq 0 ] && [ -f "$DLV/123-live.json" ]; then
+  LV="$DLV/123-live.json"
+  [ "$(jsf "$LV" 'f.calls["probe-123-lines-plugin-version-r0"].line.includes("PLUGIN-VERSION:@@ENGINE_VERSION@@") && f.calls["probe-123-lines-plugin-version-r0"].verify.includes("PLUGIN-VERSION:@@ENGINE_VERSION@@")')" = "true" ] \
+    && ok "version probe: the published answer (line and verify) is the token" || bad "version probe: token missing in the published file"
+  case "$(cat "$LV")" in *"$ENGV"*) bad "version probe: the literal engine version $ENGV is still in the published file";; *) ok "version probe: no literal engine version left in the published file";; esac
+  out=$(node scripts/run-offline.cjs "$LV" --fp "$BUMPED" 2>&1 | tail -n 1)
+  case "$out" in *"status=ok passed=1"*) ok "version probe: the published fixture replays green against an engine whose version was bumped";; *) bad "version probe: bumped replay: $out";; esac
+  out=$(OFFLINE_STRICT=1 node scripts/run-offline.cjs "$LV" 2>&1 | tail -n 1)
+  case "$out" in *"status=ok passed=1"*) ok "version probe: and against the engine of the repo";; *) bad "version probe: replay: $out";; esac
+else
+  bad "version probe: publication of a live capture: rc=$RC out=$OUT err=$ERR"
+fi
+
+SKEW_RAW="$RAWD/123-skew.json"
+node "$TMP/gen.cjs" "$SKEW_RAW" skew
+DSK="$(newdir out-skew)"
+pub "$SKEW_RAW" --out-dir "$DSK"
+if [ "$RC" -eq 0 ] && [ -f "$DSK/123-skew.json" ]; then
+  SK="$DSK/123-skew.json"
+  [ "$(jsf "$SK" 'f.calls["probe-123-lines-plugin-version-r0"].line.includes("PLUGIN-VERSION:1.0.0-beta.3") && f.expect.status')" = '"escalate"' ] \
+    && ok "version probe: a skew incident keeps the stale root's version literal" || bad "version probe: the stale root's version was rewritten: $(jsf "$SK" 'f.calls')"
+  [ "$(jsf "$SK" 'f.expect.reason.startsWith("plugin-version-skew") && f.expect.reason.includes("@@ENGINE_VERSION@@") && !f.expect.reason.includes("'"$ENGV"'")')" = "true" ] \
+    && ok "version probe: the published expect.reason of a skew quotes the engine version as the token" || bad "version probe: expect.reason of the skew: $(jsf "$SK" 'f.expect.reason')"
+  out=$(node scripts/run-offline.cjs "$SK" --fp "$BUMPED" 2>&1 | tail -n 1)
+  case "$out" in *"status=ok passed=1"*) ok "version probe: the skew fixture replays green against an engine whose version was bumped";; *) bad "version probe: skew bumped replay: $out";; esac
+else
+  bad "version probe: publication of a skew capture: rc=$RC out=$OUT err=$ERR"
 fi
 
 # ---- usage errors (exit 2, before any filesystem access) ----------------------------------------------

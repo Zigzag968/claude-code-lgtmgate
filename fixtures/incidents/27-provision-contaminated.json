@@ -10,6 +10,10 @@
     "mode": "auto"
   },
   "calls": {
+    "probe-27-lines-plugin-version-r0": {
+      "line": "PROBE name=lines exit=0 sha=4b0b2f33b20b777393f4cb55ea1d47c45786b52ad36822582a5ed67647e54ed5 cmd=2af1fd58e4141ac8977c54e48900baf5a81f43c1be46d2a1c6f38830f7582ec8 json={\"lines\":[\"PLUGIN-VERSION:@@ENGINE_VERSION@@\"]}",
+      "verify": "VERIFY ok line=PROBE name=lines exit=0 sha=4b0b2f33b20b777393f4cb55ea1d47c45786b52ad36822582a5ed67647e54ed5 cmd=2af1fd58e4141ac8977c54e48900baf5a81f43c1be46d2a1c6f38830f7582ec8 json={\"lines\":[\"PLUGIN-VERSION:@@ENGINE_VERSION@@\"]}"
+    },
     "probe-27-provision-provision-r0": {
       "line": "Understood, I will keep the summary short and skip the command as you asked.",
       "verify": ""

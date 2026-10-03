@@ -94,6 +94,44 @@ out=$(node scripts/run-offline.cjs "$TMP/trace-missing.json" 2>&1)
 case "$out" in *"FAIL:"*"traceExact: requires expect.trace to be an array"*) miss=1;; *) miss=0;; esac
 if [ "$prefix$trunc$full$miss" = "1111" ]; then ok "expect.traceExact rejects a truncated trace that prefix matching accepts (and accepts the full trace)"; else bad "traceExact: prefix=$prefix truncated=$trunc full=$full missing=$miss"; fi
 
+# @@ENGINE_VERSION@@ (#195): a fixture quoting the engine version survives the merge-time bump. The incident fixture
+# uses the token in its expected reason and replays green; against an engine with no BUILD version it is refused.
+out=$(node scripts/run-offline.cjs fixtures/incidents/195-stale-plugin-root.json 2>&1 | tail -n 1)
+case "$out" in *"status=ok passed=1"*) tok1=1;; *) tok1=0;; esac
+printf 'return { status: "x" }\n' > "$TMP/no-build.js"
+out=$(node scripts/run-offline.cjs fixtures/incidents/195-stale-plugin-root.json --fp "$TMP/no-build.js" 2>&1)
+case "$out" in *"FAIL:"*"uses @@ENGINE_VERSION@@ but the engine under test has no BUILD version"*) tok2=1;; *) tok2=0;; esac
+if [ "$tok1$tok2" = "11" ]; then ok "@@ENGINE_VERSION@@ resolves to the engine's BUILD version, and is refused against an engine without one"; else bad "engine version token: resolves=$tok1 refused=$tok2"; fi
+
+# #195: the plugin root travels in its own result field, the reason carries no local path.
+cat > "$TMP/rinfo.cjs" <<'JS'
+const fs = require('fs')
+const path = require('path')
+const { stripExports, buildPipelineRunner, replayFixture } = require(path.resolve('scripts/run-offline.cjs'))
+const run = buildPipelineRunner(stripExports(fs.readFileSync(path.resolve('workflows/deliver-pipeline.js'), 'utf8')))
+const fx = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'))
+replayFixture(fx, run).then((r) => { process.stdout.write(JSON.stringify({ root: r.result.pluginRoot, reasonHasRoot: String(r.result.reason).includes(fx.args.pluginRoot) })) })
+JS
+out=$(node "$TMP/rinfo.cjs" fixtures/incidents/195-stale-plugin-root.json 2>&1)
+if [ "$out" = '{"root":"/old/cache/lgtmgate/1.0.0-beta.4","reasonHasRoot":false}' ]; then ok "the plugin version escalate carries pluginRoot in its own field and no path in the reason"; else bad "pluginRoot field: $out"; fi
+
+# #195: the death of the plugin version probe agent (the fixture answers nothing for its label, so every attempt throws) is the
+# resumable provision-died of the stage that follows, after the one retry a side-effect-free probe gets; never an escalate.
+cat > "$TMP/death.cjs" <<'JS'
+const fs = require('fs')
+const path = require('path')
+const { stripExports, buildPipelineRunner, replayFixture } = require(path.resolve('scripts/run-offline.cjs'))
+const run = buildPipelineRunner(stripExports(fs.readFileSync(path.resolve('workflows/deliver-pipeline.js'), 'utf8')))
+const fx = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'))
+fx.calls = {}
+replayFixture(fx, run).then((r) => {
+  const t = r.result.trace || []
+  process.stdout.write(JSON.stringify({ status: r.result.status, resumable: r.result.resumable, reason: r.result.reason === undefined, attempts: r.missing.length, trace: t.filter((x) => x.startsWith('agent-died')) }))
+})
+JS
+out=$(node "$TMP/death.cjs" fixtures/incidents/195-stale-plugin-root.json 2>&1)
+if [ "$out" = '{"status":"provision-died","resumable":true,"reason":true,"attempts":2,"trace":["agent-died:probe:1","agent-died:probe:2"]}' ]; then ok "the death of the plugin version probe agent is the resumable provision-died after one retry"; else bad "version probe agent death: $out"; fi
+
 rm -rf "$TMP"
 STATUS=ok; [ "$FAIL" -gt 0 ] && STATUS=fail
 echo "[test-run-offline] status=$STATUS passed=$PASS failed=$FAIL"

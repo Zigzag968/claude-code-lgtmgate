@@ -1,6 +1,6 @@
 {
   "name": "82-provision-no-attestation",
-  "note": "#82: the attest hook is not enabled, so the verify step reports no-attestation; provision fails closed with a reason telling the Lead to enable the plugin hooks",
+  "note": "#82, #195: the attest hook is not enabled, so the verify step reports no-attestation. With a pluginRoot and no probeRunPath the first probe of a run is the plugin version check (#195), so that is the probe that fails: the run fails closed with the documented provision-failed (probeReason no-attestation, a hint to enable the plugin hooks), never as an unreadable plugin version. Nothing past that probe is reached.",
   "args": {
     "pluginRoot": "/plugin",
     "issue": 82,
@@ -10,16 +10,24 @@
     "mode": "auto"
   },
   "calls": {
-    "probe-82-provision-provision-r0": {
-      "line": "PROBE name=provision exit=0 sha=98ea6e4f216f2fb4b69fff9b3a44842c38686ca685f3f55dc48c5d3fb1107be4 cmd=ce3197ee7068f250744193f75cd5008d6a1490e2703770759118416a1607b780 json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}",
+    "probe-82-lines-plugin-version-r0": {
+      "line": "PROBE name=lines exit=0 sha=4b0b2f33b20b777393f4cb55ea1d47c45786b52ad36822582a5ed67647e54ed5 cmd=2af1fd58e4141ac8977c54e48900baf5a81f43c1be46d2a1c6f38830f7582ec8 json={\"lines\":[\"PLUGIN-VERSION:@@ENGINE_VERSION@@\"]}",
       "verify": "VERIFY fail reason=no-attestation"
     }
   },
   "expect": {
     "status": "escalate",
     "reason": "provision-failed",
+    "trace": [
+      "branch-prefix-fallback-default",
+      "probe:lines:haiku"
+    ],
+    "traceExact": true,
+    "callLabels": [
+      "probe-82-lines-plugin-version-r0"
+    ],
     "logsInclude": [
-      "no-attestation",
+      "Plugin version probe failed (no-attestation)",
       "plugin hooks"
     ]
   }

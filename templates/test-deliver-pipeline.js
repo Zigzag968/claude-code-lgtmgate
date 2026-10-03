@@ -2056,6 +2056,185 @@ await testCase('T273 probe(): persona fallback wired, no-attestation and probe-r
   return checks.find(c => c) || { ok: true }
 })
 
+// T195 (#195) — a pluginRoot of another plugin version than the engine's build fails fast. The decision is
+// pluginVersionVerdict(), a pure function extracted from its source markers (no simulate seam: the probe that
+// reads the manifest has none, T273); the real command, the real probe-run.cjs and real manifests run in
+// templates/test-probe-run.sh, the replayed incident in fixtures/incidents/195-stale-plugin-root.json.
+const pluginVersionPieces = () => {
+  const src = SUITE_ARGS.fpSource
+  if (!src) return null
+  const block = extractBetween(src, '// --- pluginVersion:start ---', '// --- pluginVersion:end ---')
+  const m = /const BUILD = \{[^}]*\bversion: '([^']+)'/.exec(src)
+  if (!block || !m) return { missing: true, src }
+  // eslint-disable-next-line no-new-func
+  const fns = new Function(block + '\nreturn { pluginVersionCmd, pluginVersionVerdict, pluginVersionOrder }')()
+  return { ...fns, src, V: m[1] }
+}
+await testCase('T195a pluginRoot of the engine\'s own version passes unchanged (#195)', async () => {
+  const pv = pluginVersionPieces()
+  if (!pv) {
+    log('SKIP — T195a: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  if (pv.missing) return { ok: false, msg: 'pluginVersion:start/:end markers or the BUILD version not found in pipeline source' }
+  const { V, pluginVersionVerdict } = pv
+  const same = pluginVersionVerdict({ engineVersion: V, pluginRoot: '/plug', exit: 0, lines: ['PLUGIN-VERSION:' + V] })
+  const sim = await run({ mode: 'auto', pluginRoot: '/plug', simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] } })
+  const checks = [
+    eq('same version -> no verdict', same, null),
+    eq('a simulate run with a pluginRoot reaches ready as before', sim.status, 'ready'),
+    eq('and its trace is unchanged', sim.trace, ['Plan', 'Dev', 'Review', 'PR Ready']),
+  ]
+  return checks.find(c => c) || { ok: true }
+})
+await testCase('T195b a different plugin version escalates, the reason names both versions and the remedy (#195)', async () => {
+  const pv = pluginVersionPieces()
+  if (!pv) {
+    log('SKIP — T195b: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  if (pv.missing) return { ok: false, msg: 'pluginVersion markers or the BUILD version not found in pipeline source' }
+  const { V, pluginVersionVerdict } = pv
+  const older = pluginVersionVerdict({ engineVersion: V, pluginRoot: '/old/root', exit: 0, lines: ['PLUGIN-VERSION:0.0.1-old'] })
+  const newer = pluginVersionVerdict({ engineVersion: V, pluginRoot: '/new/root', exit: 0, lines: ['PLUGIN-VERSION:99.0.0'] })
+  const checks = [
+    eq('code', older && older.code, 'plugin-version-skew'),
+    includes('names the root version', older.reason, '0.0.1-old'),
+    includes('names the engine version', older.reason, V),
+    eq('the reason carries no local path (a path in a GitHub paste is refused by the scrub hook)', older.reason.includes('/old/root'), false),
+    includes('names the remedy', older.reason, 'pass the current plugin root and relaunch'),
+    eq('a newer root is a skew too', newer && newer.code, 'plugin-version-skew'),
+    includes('a newer root does not get the stale-root remedy', newer.reason, 'relaunch the workflow at the current version'),
+    eq('a newer root is not told to pass the current root', newer.reason.includes('pass the current plugin root'), false),
+    eq('the reason is never provision-failed', older.reason.startsWith('provision-failed'), false),
+  ]
+  return checks.find(c => c) || { ok: true }
+})
+await testCase('T195f the remedy follows the direction of the skew, a doubtful order gets the neutral one (#195)', async () => {
+  const pv = pluginVersionPieces()
+  if (!pv) {
+    log('SKIP — T195f: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  if (pv.missing) return { ok: false, msg: 'pluginVersion markers or the BUILD version not found in pipeline source' }
+  const { pluginVersionVerdict } = pv
+  const OLDER = 'pass the current plugin root and relaunch'
+  const NEWER = 'the engine is older than the plugin root: relaunch the workflow at the current version'
+  const NEUTRAL = 'align the plugin root and the engine version, then relaunch'
+  // [engine, root, remedy]: the order is numeric per field (beta.9 < beta.10), a release is above its pre-releases
+  const cases = [
+    ['1.0.0-beta.10', '1.0.0-beta.9', OLDER],
+    ['1.0.0-beta.9', '1.0.0-beta.10', NEWER],
+    ['1.0.0-beta.9', '0.9.9', OLDER],
+    ['1.0.0-beta.9', '1.0.0', NEWER],
+    ['1.0.0', '1.0.0-rc.1', OLDER],
+    ['1.0.0-beta.9', '1.0.1-beta.1', NEWER],
+    ['1.0.0-beta.9', '1.0.0-alpha.12', OLDER],
+    ['1.0.0-beta.9', '1.0.0-beta.9+build.5', NEUTRAL],
+    ['1.0.0-beta.9', 'not-a-version', NEUTRAL],
+    ['1.0.0-beta.9', '1.0', NEUTRAL],
+  ]
+  for (const [engine, root, remedy] of cases) {
+    const got = pluginVersionVerdict({ engineVersion: engine, exit: 0, lines: ['PLUGIN-VERSION:' + root] })
+    const others = [OLDER, NEWER, NEUTRAL].filter((r) => r !== remedy)
+    const bad = eq(`${root} vs engine ${engine}: a skew`, got && got.code, 'plugin-version-skew')
+      || includes(`${root} vs engine ${engine}: remedy`, got.reason, remedy)
+      || (others.some((o) => got.reason.includes(o)) ? { ok: false, msg: `${root} vs engine ${engine}: a remedy of another direction in "${got.reason}"` } : null)
+    if (bad) return bad
+  }
+  return { ok: true }
+})
+await testCase('T195g the version is compared whole, never by prefix (#195)', async () => {
+  const pv = pluginVersionPieces()
+  if (!pv) {
+    log('SKIP — T195g: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  if (pv.missing) return { ok: false, msg: 'pluginVersion markers or the BUILD version not found in pipeline source' }
+  const { pluginVersionVerdict } = pv
+  const v = (root) => pluginVersionVerdict({ engineVersion: '1.0.0-beta.9', exit: 0, lines: ['PLUGIN-VERSION:' + root] })
+  const checks = [
+    eq('the same version passes', v('1.0.0-beta.9'), null),
+    eq('beta.90 is not beta.9', v('1.0.0-beta.90') && v('1.0.0-beta.90').code, 'plugin-version-skew'),
+    eq('beta.9+x is not beta.9', v('1.0.0-beta.9+x') && v('1.0.0-beta.9+x').code, 'plugin-version-skew'),
+    eq('beta.9 with a trailing space is not beta.9', v('1.0.0-beta.9 ') && v('1.0.0-beta.9 ').code, 'plugin-version-skew'),
+    eq('a different case is not the same', v('1.0.0-BETA.9') && v('1.0.0-BETA.9').code, 'plugin-version-skew'),
+  ]
+  return checks.find(c => c) || { ok: true }
+})
+await testCase('T195c a missing or unreadable manifest, or no usable probe answer, fails closed with a readable reason (#195)', async () => {
+  const pv = pluginVersionPieces()
+  if (!pv) {
+    log('SKIP — T195c: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  if (pv.missing) return { ok: false, msg: 'pluginVersion markers or the BUILD version not found in pipeline source' }
+  const { V, pluginVersionVerdict } = pv
+  const v = (o) => pluginVersionVerdict({ engineVersion: V, pluginRoot: '/r', exit: 0, lines: [], ...o })
+  const cases = [
+    ['manifest missing', v({ lines: ['PLUGIN-VERSION-ERROR:missing'] }), '(missing)'],
+    ['manifest unreadable', v({ lines: ['PLUGIN-VERSION-ERROR:unreadable'] }), '(unreadable)'],
+    ['manifest without a version', v({ lines: ['PLUGIN-VERSION-ERROR:no-version'] }), '(no-version)'],
+    ['empty version', v({ lines: ['PLUGIN-VERSION:'] }), '(no usable answer)'],
+    ['no line', v({ lines: [] }), '(no usable answer)'],
+    ['two lines', v({ lines: ['PLUGIN-VERSION:' + V, 'extra'] }), '(no usable answer)'],
+    ['command exit != 0', v({ exit: 127, lines: ['PLUGIN-VERSION:' + V] }), '(no usable answer)'],
+  ]
+  for (const [name, got, cause] of cases) {
+    const bad = eq(name + ': code', got && got.code, 'plugin-version-unreadable')
+      || includes(name + ': cause', got.reason, cause)
+      || includes(name + ': names the manifest file', got.reason, '.claude-plugin/plugin.json')
+      || eq(name + ': the reason carries no local path', got.reason.includes('/r/'), false)
+      || includes(name + ': names the engine version', got.reason, V)
+      || includes(name + ': names the remedy', got.reason, 'pass the current plugin root and relaunch')
+    if (bad) return bad
+  }
+  return { ok: true }
+})
+await testCase('T195e a failure of the probe itself is the documented provision-failed, never plugin-version-unreadable (#195)', async () => {
+  const pv = pluginVersionPieces()
+  if (!pv) {
+    log('SKIP — T195e: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  if (pv.missing) return { ok: false, msg: 'pluginVersion markers or the BUILD version not found in pipeline source' }
+  const { V, pluginVersionVerdict } = pv
+  // the hooks off (no-attestation), an unresolved agent type, a copy that altered the command: the probe never ran
+  // to the point of reading the manifest, so the manifest is not what failed
+  for (const reason of ['no-attestation', 'unparseable-line', 'cmd-mismatch', 'unparseable-verify', 'verify-hash-mismatch', 'sha-mismatch', 'probe-run-not-found']) {
+    const got = pluginVersionVerdict({ engineVersion: V, pluginRoot: '/r', probeFailed: reason, lines: undefined })
+    const bad = eq(reason + ': code', got && got.code, 'provision-failed')
+      || eq(reason + ': reason is the documented one', got.reason, 'provision-failed')
+    if (bad) return bad
+  }
+  // a probe that ran but printed a non-conforming answer stays plugin-version-unreadable (the manifest is what failed)
+  const ran = pluginVersionVerdict({ engineVersion: V, pluginRoot: '/r', exit: 0, lines: ['PLUGIN-VERSION-ERROR:unreadable'] })
+  return eq('a non-conforming answer is unreadable', ran && ran.code, 'plugin-version-unreadable') || { ok: true }
+})
+await testCase('T195d the check runs first, only when the templates come from pluginRoot, and writes no label (#195)', async () => {
+  const pv = pluginVersionPieces()
+  if (!pv) {
+    log('SKIP — T195d: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const src = pv.src
+  const gate = "if (!simulate && pluginRoot && !config.probeRunPath) {"
+  const iGate = src.indexOf(gate)
+  const iProvision = src.indexOf("await probe('provision',")
+  if (iGate < 0) return { ok: false, msg: 'plugin-version gate not found in pipeline source' }
+  const body = src.slice(iGate, src.indexOf('\n}\n', iGate))
+  const checks = [
+    eq('gate precedes the provision probe', iGate < iProvision, true),
+    eq('gate reads the manifest through probe(lines) with noReuse', body.includes("probe('lines', pluginVersionCmd(pluginRoot), { label: 'plugin-version', noReuse: true"), true),
+    eq('gate escalates on the existing status', body.includes("finish(STATUS['escalate'], { reason: skew.reason"), true),
+    eq('the root path travels in its own result field, not in the reason', body.includes("{ reason: skew.reason, issue, pluginRoot, trace }"), true),
+    eq('a failure of the probe itself keeps the provision-failed signature', body.includes("reason: 'provision-failed', issue, missing: [], exitCode: null, probeReason: pv.probeFailed, probeHint: PROBE_REASON_HINTS[pv.probeFailed]"), true),
+    eq('gate writes no label (no updateStatus, no prWrite)', body.includes('updateStatus') || body.includes('prWrite'), false),
+    eq('lines is registered in PROBES', src.includes("  'lines': 'lines',"), true),
+  ]
+  return checks.find(c => c) || { ok: true }
+})
+
 await testCase('T214d callAgent( only invoked by callAgentSafe + morgan; callAgentSafe( widely wired', async () => {
   const src = SUITE_ARGS.fpSource
   if (!src) {

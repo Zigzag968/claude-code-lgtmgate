@@ -1,0 +1,39 @@
+{
+  "name": "195-stale-plugin-root",
+  "note": "#195: args.pluginRoot holds an older plugin version than the engine build (the long-session incident): the run stops before provisioning and before any label write, the reason names both versions and the remedy. The provision entry models the stale root's provision probe, which the fixed engine never reaches.",
+  "args": {
+    "pluginRoot": "/old/cache/lgtmgate/1.0.0-beta.4",
+    "issue": 195,
+    "brief": "a stale pluginRoot must be named, not reported as provision-failed",
+    "wtPath": "/wt/root/issue-195",
+    "config": {},
+    "mode": "auto"
+  },
+  "calls": {
+    "probe-195-lines-plugin-version-r0": {
+      "line": "PROBE name=lines exit=0 sha=035bec239aa0711df068ab7f9e9204762be43385c786faa85c6afb3b1ed0e14c cmd=bae4f6bcbffbe65c393ff7e120581e94449dce4fbb42ef1d1d887dae4b487fa3 json={\"lines\":[\"PLUGIN-VERSION:1.0.0-beta.4\"]}",
+      "verify": "VERIFY ok line=PROBE name=lines exit=0 sha=035bec239aa0711df068ab7f9e9204762be43385c786faa85c6afb3b1ed0e14c cmd=bae4f6bcbffbe65c393ff7e120581e94449dce4fbb42ef1d1d887dae4b487fa3 json={\"lines\":[\"PLUGIN-VERSION:1.0.0-beta.4\"]}"
+    },
+    "probe-195-provision-provision-r0": {
+      "line": "",
+      "verify": ""
+    }
+  },
+  "expect": {
+    "status": "escalate",
+    "reason": "plugin-version-skew: the plugin root holds lgtmgate 1.0.0-beta.4 but this engine is @@ENGINE_VERSION@@; pass the current plugin root and relaunch",
+    "trace": [
+      "branch-prefix-fallback-default",
+      "probe:lines:haiku"
+    ],
+    "traceExact": true,
+    "callLabels": [
+      "probe-195-lines-plugin-version-r0"
+    ],
+    "logsInclude": [
+      "1.0.0-beta.4",
+      "@@ENGINE_VERSION@@",
+      "pass the current plugin root and relaunch"
+    ]
+  }
+}

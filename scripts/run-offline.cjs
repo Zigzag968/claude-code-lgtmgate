@@ -30,6 +30,7 @@
 //       "logsInclude": ["..."]             // optional, each substring must appear in a log line
 //     }
 //   }
+// The token `@@ENGINE_VERSION@@` anywhere in a fixture resolves to the engine's BUILD version (refused if it has none).
 // A label absent from `calls` (or an exhausted array) throws with the label and the
 // first 200 chars of the prompt, so the missing entry is obvious. Nothing is defaulted.
 //
@@ -62,6 +63,51 @@ function parseArgs(argv) {
 
 function stripExports(src) {
   return src.replace(/^export\s+/mg, '')
+}
+
+// `@@ENGINE_VERSION@@` anywhere in a fixture (args, calls, expect) stands for the version of the engine under
+// test (the `version:` of its `const BUILD = { ... }` line, which scripts/lead-merge.sh bumps at every merge), so
+// a fixture that quotes it (the plugin-version probe answer, a reason naming it) survives a bump. A fixture that
+// uses the token against an engine with no BUILD version is refused, never run with the token left in.
+const ENGINE_VERSION_TOKEN = '@@ENGINE_VERSION@@'
+function engineVersionOf(src) {
+  const m = /const BUILD = \{[^}]*\bversion: '([^']+)'/.exec(String(src))
+  return m ? m[1] : null
+}
+function withEngineVersion(fixture, version) {
+  const raw = JSON.stringify(fixture)
+  if (!raw.includes(ENGINE_VERSION_TOKEN)) return fixture
+  if (!version) throw new Error(`[offline] fixture "${fixture.name}" uses ${ENGINE_VERSION_TOKEN} but the engine under test has no BUILD version`)
+  return JSON.parse(raw.split(ENGINE_VERSION_TOKEN).join(version))
+}
+
+// The answer of the plugin version probe (#195) is journaled with the LITERAL engine version, which lead-merge bumps at
+// every merge. A capture or a published fixture therefore stores the token instead, wherever the answer names the engine
+// of the run: `versions` lists the strings that are the run's engine version. Quote-delimited, so `1.0.0-beta.90` is not
+// `1.0.0-beta.9`. Rewrites `line` and `verify` of every `probe-<issue>-lines-plugin-version-r<round>` entry in place;
+// returns the number of strings rewritten. The PROBE `cmd=` hash is the hash of the command, which holds the root path and
+// no version, so it stays valid.
+const VERSION_PROBE_LABEL = /^probe-\d+-lines-plugin-version-r\d+$/
+function tokenizeVersionProbes(calls, versions) {
+  let n = 0
+  for (const label of Object.keys(calls || {})) {
+    if (!VERSION_PROBE_LABEL.test(label)) continue
+    const entries = Array.isArray(calls[label]) ? calls[label] : [calls[label]]
+    for (const e of entries) {
+      if (e === null || typeof e !== 'object') continue
+      for (const k of ['line', 'verify']) {
+        if (typeof e[k] !== 'string') continue
+        for (const v of versions) {
+          if (!v) continue
+          const from = `"PLUGIN-VERSION:${v}"`
+          if (!e[k].includes(from)) continue
+          e[k] = e[k].split(from).join(`"PLUGIN-VERSION:${ENGINE_VERSION_TOKEN}"`)
+          n++
+        }
+      }
+    }
+  }
+  return n
 }
 
 function listJson(dir) {
@@ -113,10 +159,12 @@ function clone(v) {
 
 function buildPipelineRunner(fpSrcStripped) {
   // eslint-disable-next-line no-new-func
-  return new Function(
+  const run = new Function(
     'args', 'agent', 'log', 'phase',
     'return (async () => {\n' + fpSrcStripped + '\n})()',
   )
+  run.engineVersion = engineVersionOf(fpSrcStripped)
+  return run
 }
 
 // Fixture entries the run never consumed: a label never asked, or the unconsumed tail of an array.
@@ -196,6 +244,7 @@ function engineSite() {
 //   prompts: each `calls[]` entry also carries the `prompt` string it was called with.
 // The fixture is not modified (args are deep-copied, a replay of the same object can be repeated).
 async function replayFixture(fixture, run, { sites = false, prompts = false } = {}) {
+  fixture = withEngineVersion(fixture, run.engineVersion)
   const logs = []
   const calls = []
   const missing = []
@@ -219,7 +268,7 @@ async function replayFixture(fixture, run, { sites = false, prompts = false } = 
 }
 
 async function runOne(fixturePath, fpSrcStripped) {
-  const fixture = JSON.parse(fs.readFileSync(fixturePath, 'utf-8'))
+  let fixture = JSON.parse(fs.readFileSync(fixturePath, 'utf-8'))
   if (!fixture.name) fixture.name = path.basename(fixturePath, '.json')
   if (!fixture.calls || typeof fixture.calls !== 'object') {
     throw new Error(`[offline] fixture "${fixture.name}" has no "calls" object`)
@@ -228,6 +277,7 @@ async function runOne(fixturePath, fpSrcStripped) {
     throw new Error(`[offline] fixture "${fixture.name}" sets args.simulate — this harness runs the REAL parsers, never simulate mode`)
   }
   const run = buildPipelineRunner(fpSrcStripped)
+  fixture = withEngineVersion(fixture, run.engineVersion)
   const r = await replayFixture(fixture, run)
   const { logs, calls, missing, cursors } = r
   const expThrows = fixture.expect && fixture.expect.throws
@@ -284,7 +334,7 @@ async function main() {
 }
 
 // Required by scripts/publish-fixture.cjs; run as a CLI otherwise (spawned or direct use is unchanged).
-module.exports = { stripExports, buildPipelineRunner, replayFixture }
+module.exports = { stripExports, buildPipelineRunner, replayFixture, engineVersionOf, tokenizeVersionProbes, ENGINE_VERSION_TOKEN }
 
 if (require.main === module) {
   main().catch((err) => {
