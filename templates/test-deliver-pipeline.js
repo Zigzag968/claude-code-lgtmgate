@@ -3056,6 +3056,57 @@ await testCase('T208g design-step relaunch: entry at review without approval is 
   return eq('status', r.status, 'design-step-required') || eq('oneWayDoorHits', JSON.stringify(r.oneWayDoorHits), JSON.stringify(['status'])) || { ok: true }
 })
 
+await testCase('T208h design-step relaunch: entry at dev|review without planText (absent, empty, blank) on a repo declaring kinds or paths → design-step-required naming planText; approval or no declaration proceeds as before', async () => {
+  const sim = { sam: 'GO', morgan: [{ verdict: 'LGTM' }] }
+  const configs = { kinds: T77_KCONFIG, paths: { ...CONFIG, oneWayDoorPaths: ['workflows/'] } }
+  for (const [label, config] of Object.entries(configs)) {
+    for (const [blank, extra] of [['absent', {}], ['empty', { planText: '' }], ['blank', { planText: '  \n ' }]]) {
+      for (const entry of [{ entryStage: 'dev' }, { entryStage: 'review', prNumber: 190 }]) {
+        const r = await run({ ...entry, mode: 'auto', config, ...extra, simulate: sim })
+        const reason = String(r.reason || '')
+        const err = eq(`status (${label}, ${blank}, ${entry.entryStage})`, r.status, 'design-step-required')
+          || (reason.includes('planText') && reason.includes('architectureDecisionApproved:true') ? null : { ok: false, msg: `reason must name planText and architectureDecisionApproved:true, got ${JSON.stringify(r.reason)}` })
+          || ((r.trace || []).includes('one-way-door-entry:no-plan-text') ? null : { ok: false, msg: `trace must carry one-way-door-entry:no-plan-text, got ${JSON.stringify(r.trace)}` })
+          || t208NoDev(r)
+        if (err) return err
+      }
+    }
+  }
+  const approved = await run({ entryStage: 'dev', mode: 'auto', config: T77_KCONFIG, architectureDecisionApproved: true, simulate: sim })
+  const undeclared = await run({ entryStage: 'dev', mode: 'auto', config: CONFIG, simulate: sim })
+  const emptyDeclared = await run({ entryStage: 'dev', mode: 'auto', config: { ...CONFIG, oneWayDoorKinds: [], oneWayDoorPaths: [] }, simulate: sim })
+  return eq('approved without planText', approved.status, 'ready')
+    || eq('nothing declared', undeclared.status, 'ready')
+    || eq('empty declarations', emptyDeclared.status, 'ready')
+    || { ok: true }
+})
+
+await testCase('T208i design-step relaunch: the already-done guard wins over the entry check (no Blocked write, status already-done)', async () => {
+  const r = await run({
+    entryStage: 'dev', mode: 'semi', config: T77_KCONFIG, planText: T208_PLAN,
+    simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }], alreadyDoneCheck: { isAlreadyDone: true, isIssueClosed: true, issueState: 'CLOSED', isMerged: false } },
+  })
+  const blocked = (r.trace || []).filter((t) => /one-way-door|Blocked/.test(String(t)))
+  return eq('status', r.status, 'already-done')
+    || (blocked.length === 0 ? null : { ok: false, msg: `no design-step trace nor Blocked write expected, got ${JSON.stringify(blocked)}` })
+    || { ok: true }
+})
+
+await testCase('T208j proceedThrough validation: every non-stage value (0, false, true, 1, [], {}, "") is refused with invalid-proceedThrough', async () => {
+  for (const v of [0, false, true, 1, [], {}, '']) {
+    const r = await run({ mode: 'auto', proceedThrough: v, simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] } })
+    const err = eq(`status for ${JSON.stringify(v)}`, r.status, 'escalate')
+      || (String(r.reason || '').startsWith('invalid-proceedThrough') ? null : { ok: false, msg: `reason must start with invalid-proceedThrough for ${JSON.stringify(v)}, got ${JSON.stringify(r.reason)}` })
+    if (err) return err
+  }
+  return { ok: true }
+})
+
+await testCase('T208k design-step one-way-door relaunch: proceedThrough:review at entryStage plan does not lift the stop either (only "plan" does)', async () => {
+  const r = await run({ mode: 'semi', proceedThrough: 'review', config: T77_KCONFIG, simulate: { theo: T77_THEO, sam: 'GO', samPlan: T208_PLAN } })
+  return eq('status', r.status, 'design-step-required') || t208NoDev(r) || { ok: true }
+})
+
 // T77e (#77) — the product-direction line goes to Sam and Morgan only: Nick's prompt carries none, and no
 // prompt of the engine names docs/codemap.md. The engine imports no doc: agents receive each repo's own
 // instructions natively. The rules themselves live in the repo's docs, never in the prompt (no DEBT marker).

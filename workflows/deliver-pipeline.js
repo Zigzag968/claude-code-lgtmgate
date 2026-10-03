@@ -44,7 +44,7 @@ export const meta = {
 // | `planFreshness` | optional, default 'advisory' (#103): before Dev, diff Sam's declared `targetFiles` against origin/<baseBranch> so a plan whose premise moved upstream since the worktree's frozen base is caught before Nick opens a PR. Resolution order: this arg, then config.planFreshness, then the 'advisory' fallback (arg wins per-run over the project default); a value outside 'advisory'\|'gate'\|'off' throws. 'advisory' warns Nick + traces `plan-stale:<n>`, no routing change. 'gate' escalates (reason:'plan-stale') before Nick is spawned. 'off' skips the probe. |
 // | `maxAuditRounds` | bound on the auditor <-> scout amendment loop (default 2, mirrors maxPlanAttempts). Must be a positive integer; a non-integer or < 1 throws. HARD CEILING: values above AUDIT_ROUNDS_CEILING (2) throw unless maxAuditRoundsOverrideReason is a non-empty string naming the risk class that justifies the extra round(s) — never config-reachable, arg-only, on every launch. The reason is echoed in the dryRun/escalate/plan-ready returns and pushed onto `trace` as `audit-budget-override:<n>`. |
 // | `maxAuditRoundsOverrideReason` | required non-empty string whenever maxAuditRounds > 2; ignored (trimmed to '') otherwise. See "HARD CEILING" above. |
-// | `architectureDecisionApproved` | asserts the design-step-trigger's architecture-only pass (see Theo's design-step signals below) already happened and was approved, so the design-step gate does not require proceedThrough:'plan' on this launch. Also required (#208) on an entryStage='dev'\|'review' launch whose `planText` announces a declared one-way-door kind: the entry answers design-step-required otherwise. |
+// | `architectureDecisionApproved` | asserts the design-step-trigger's architecture-only pass (see Theo's design-step signals below) already happened and was approved, so the design-step gate does not require proceedThrough:'plan' on this launch. Also required (#208) on an entryStage='dev'\|'review' launch whose `planText` announces a declared one-way-door kind: the entry answers design-step-required otherwise, and also when `planText` is blank on a repo that declares kinds or paths (the door cannot be read). |
 // | `maxPlanAmendRounds` | optional, DEFAULT 0 (issue #97): dark-launch kill-switch for routing a Morgan-classified PLAN defect (as opposed to a code defect) back to Sam for a plan amendment instead of forever re-dispatching Nick against a frozen, unfixable plan. 0 (the shipped default) is SHADOW MODE — Morgan's itemOwners classification is still computed and traced (`plan-route-shadow:<round>`), but every item is still routed to Nick as a code defect, so the off-path behaviour is byte-for-bit identical to before #97. Must be a non-negative integer; a non-integer or negative value throws. Flipped by the human only after observing shadow-mode `trace` evidence that the classification is trustworthy. |
 // | `simulate` | test fixture object; the only key the engine reads is `simulate.probes`, a map keyed by seam name (agent mocks sam/mia/nick/morgan/theo/audit/planCheck/preflight/alreadyDoneCheck, parsed-value probes such as headSha/prBody/mergeState/behindCount, agentTypeUnresolved, branchCheckRaw, ...). When set, no real agent is spawned and the trace is still recorded. The translation from the suite's flat keys to `probes` and every default live in run() of the flow suite (scripts/run-flow-suite.cjs runs it); the engine carries no `??` default on a seam. `simulate.probes[<role>] = 'DIE'` (the literal string) is the plain-death lever for a role, since `null` is nullish. An object value of `sam` is a per-attempt map of partial Sam returns (the plan-verification attempt, or the review round of a plan amendment), keyed like `planCheck`'s (#182). |
 // | `stamp` | optional epoch ms of the run (the harness bans an argless `new Date()`, which breaks resume): read by the already-done guard's future-merged check, the artifact-floor fallback and the preflight probes' `--stamp`; absent -> each degrades gracefully. |
@@ -2910,25 +2910,6 @@ const refreshPlanBlock = () => {
     : `Sam's plan artifact lives at "${planPath}" inside the worktree — read it from there (do NOT re-read it from GitHub issue comments).`
 }
 
-// #208 — a launch entering at dev|review skips Theo and Sam, so the plan-phase design-step stops never ran in this
-// process: the one the entry can still see is the one-way door announced in `planText`, read by the same parser and
-// the same declared kinds as the plan phase. Without architectureDecisionApproved the run answers the same status
-// instead of running Dev through the door. Theo's signals and the `targetFiles` paths are not available here (#221):
-// the Lead carries that approval on a dev|review relaunch.
-if ((entryStage === 'dev' || entryStage === 'review') && !architectureDecisionApproved) {
-  const entryDoor = oneWayDoorSignals(planText, [], { issue, planPath, paths: config.oneWayDoorPaths, kinds: config.oneWayDoorKinds })
-  if (entryDoor.kinds.length > 0) {
-    log(`R3 one-way-door at entryStage='${entryStage}': planText adds ${entryDoor.kinds.join(' + ')} — architecture decision not approved`)
-    trace.push(`one-way-door-entry:${entryDoor.kinds.join('+')}`)
-    await updateStatus('Blocked')
-    return finish(STATUS['design-step-required'], {
-      issue, trace, planPath,
-      oneWayDoorHits: entryDoor.kinds,
-      reason: entryDoor.summary.join('\n'),
-    })
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Already-done guard (item 7) — only for resume entries, not a fresh plan→dev flow
 // ---------------------------------------------------------------------------
@@ -2975,6 +2956,39 @@ if (entryStage === 'dev' || entryStage === 'review') {
     if (guard?.isAlreadyDone === true || guard?.checkFailed === true) {
       log(`Already-done guard ERROR: unverified already-done claim rejected (${verdict.reason})${guard?.error ? ` — gh: ${guard.error}` : ''}. Proceeding with the run; the guard is a safety net, never a merge gate.`)
     }
+  }
+}
+
+// #208 — a launch entering at dev|review skips Theo and Sam, so the plan-phase design-step stops never ran in this
+// process: the one the entry can still see is the one-way door announced in `planText`, read by the same parser and
+// the same declared kinds as the plan phase. Without architectureDecisionApproved the run answers the same status
+// instead of running Dev through the door. Theo's signals and the `targetFiles` paths are not available here (#221):
+// the Lead carries that approval on a dev|review relaunch. A blank `planText` on a repo that declares kinds or paths
+// cannot be read (the plan is then re-read from the artifact by an agent, the workflow has no filesystem): the door
+// cannot be ruled out, so the entry answers the same status asking for `planText` or the approval. Placed after the
+// already-done guard: a closed issue or a merged PR answers already-done, with no Project write.
+if ((entryStage === 'dev' || entryStage === 'review') && !architectureDecisionApproved) {
+  const declares = (Array.isArray(config.oneWayDoorKinds) && config.oneWayDoorKinds.length > 0)
+    || (Array.isArray(config.oneWayDoorPaths) && config.oneWayDoorPaths.length > 0)
+  if (declares && !(planText && String(planText).trim())) {
+    log(`R3 one-way-door at entryStage='${entryStage}': no planText to read the door from — architecture decision not approved`)
+    trace.push('one-way-door-entry:no-plan-text')
+    await updateStatus('Blocked')
+    return finish(STATUS['design-step-required'], {
+      issue, trace, planPath,
+      reason: `this repo declares one-way-door kinds or paths and the launch at entryStage='${entryStage}' carries no planText, so the door cannot be read: relaunch with planText (the plan, read for its one-way-door line) or with architectureDecisionApproved:true`,
+    })
+  }
+  const entryDoor = oneWayDoorSignals(planText, [], { issue, planPath, paths: config.oneWayDoorPaths, kinds: config.oneWayDoorKinds })
+  if (entryDoor.kinds.length > 0) {
+    log(`R3 one-way-door at entryStage='${entryStage}': planText adds ${entryDoor.kinds.join(' + ')} — architecture decision not approved`)
+    trace.push(`one-way-door-entry:${entryDoor.kinds.join('+')}`)
+    await updateStatus('Blocked')
+    return finish(STATUS['design-step-required'], {
+      issue, trace, planPath,
+      oneWayDoorHits: entryDoor.kinds,
+      reason: entryDoor.summary.join('\n'),
+    })
   }
 }
 
