@@ -642,6 +642,32 @@ r2_exc_refused() { # <label>
 }
 R2_WF_LINE="echo '// local fix' >> workflows/deliver-pipeline.js"
 R2_FIX_LINE="mkdir -p fixtures/incidents && echo '{}' > fixtures/incidents/30-l.json"
+# F1 the gate judges the tip that WILL be merged: the local commits step 2 pushes count, the remote head alone is not enough
+r2_prep r2-ahead-wf 'Closes #30' '' 'open type:bug'; r2_main_cfg "$D" "$R2_ENGINE"; r2_doc "$D"; r2_local "$D" "$R2_WF_LINE"; r2_go
+r2_refused "local branch ahead: an unpushed commit changes workflows/ with no fixture: refused"
+r2_prep r2-ahead-fix 'Closes #30' '' 'open type:bug'; r2_main_cfg "$D" "$R2_ENGINE"; r2_commit "$D" "fix: r2"; r2_local "$D" "$R2_FIX_LINE"; r2_go
+r2_merges "local branch ahead: the fixture is in the unpushed commit, the remote head changes workflows/: merges"
+r2_prep r2-ahead-badfix 'Closes #30' '' 'open type:bug'; r2_main_cfg "$D" "$R2_ENGINE"; r2_commit "$D" "fix: r2"
+r2_local "$D" "mkdir -p fixtures/incidents && echo 'garbage' > fixtures/incidents/30-l.json"; r2_go
+r2_refused "local branch ahead: the fixture of the unpushed commit is not valid JSON: refused"
+r2_prep r2-div-local-wf 'Closes #30' '' 'open type:bug'; r2_main_cfg "$D" "$R2_ENGINE"; r2_remote "$D" "echo docs > doc2.md"; r2_local "$D" "$R2_WF_LINE"; r2_go
+r2_refused "local and remote diverged: the local side changes workflows/ with no fixture: refused"
+r2_prep r2-div-remote-wf 'Closes #30' '' 'open type:bug'; r2_main_cfg "$D" "$R2_ENGINE"; r2_remote "$D" "echo '// fix' >> workflows/deliver-pipeline.js"; r2_local "$D" "$R2_FIX_LINE"; r2_go
+r2_refused "local and remote diverged: the remote side changes workflows/ with no fixture (the local fixture does not cover it): refused"
+r2_prep r2-div-ok 'Closes #30' '' 'open type:bug'; r2_main_cfg "$D" "$R2_ENGINE"; r2_remote "$D" "echo docs > doc2.md"; r2_local "$D" "$R2_WF_LINE && $R2_FIX_LINE"; r2_go
+{ [ "$rc" -ne 0 ] && grep -q 'have diverged' "$D/out" && ! grep -q 'FAIL: r2-waiver' "$D/out"; } \
+  && ok "r2-waiver: diverged branch with both sides covered: the gate passes, step 2 refuses the divergence" || bad "r2-waiver: diverged, covered (rc=$rc): $(tail -3 "$D/out")"
+# F1 (step 1b) the DEBT marker must be visible on the tip that will be merged
+R2_DEBT_LINE="echo '// DEBT(#9): owed' >> workflows/deliver-pipeline.js"
+r2_prep exc-ahead-marker 'Refs #30' "$R2_EXC" 'open type:bug'; printf 'open tech-debt\n' > "$D/issues/9.labels"; r2_main_cfg "$D" "$R2_ENGINE"; r2_commit "$D" "fix: r2"; r2_local "$D" "$R2_DEBT_LINE"; r2_go
+r2_merges "local branch ahead: the DEBT(#9) marker is in the unpushed commit only: merges"
+r2_prep exc-ahead-removed 'Refs #30' "$R2_EXC" 'open type:bug'; printf 'open tech-debt\n' > "$D/issues/9.labels"; r2_main_cfg "$D" "$R2_ENGINE"
+( cd "$D/work" && eval "$R2_DEBT_LINE" && git add -A && git commit -qm "fix: r2" && git push -q origin feat/x ) >/dev/null 2>&1
+r2_local "$D" "sed -i.bak '/DEBT(#9)/d' workflows/deliver-pipeline.js && rm -f workflows/*.bak"; r2_go
+r2_exc_refused "local branch ahead: an unpushed commit removes the DEBT(#9) marker the remote head has: refused"
+r2_prep exc-div-remote-marker 'Refs #30' "$R2_EXC" 'open type:bug'; printf 'open tech-debt\n' > "$D/issues/9.labels"; r2_main_cfg "$D" "$R2_ENGINE"
+r2_remote "$D" "$R2_DEBT_LINE"; r2_local "$D" "echo docs > doc3.md"; r2_go
+r2_exc_refused "diverged: the DEBT(#9) marker exists on the remote side only: refused"
 # F2 the BUILD exemption pins the exact line the bump writes: nothing executable fits in it
 i=0
 while IFS= read -r bl; do
