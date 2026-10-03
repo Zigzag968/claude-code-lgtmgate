@@ -2988,6 +2988,74 @@ await testCase('T77d R3 + architectureDecisionApproved:true → an announced dec
   return err ? err : { ok: true }
 })
 
+// T208 (#208) — the relaunch contract of the design-step stop. proceedThrough is validated up front (a typo
+// is refused with a readable reason on the existing escalate status) and echoed by dryRun; proceedThrough:'plan'
+// resolves the one-way-door stop exactly as it resolves Theo's trigger (stopping at plan-ready); a launch entering
+// at dev|review cannot bypass an unapproved one-way-door plan.
+const T208_PLAN = 'one-way-door: status — x\n' + T77_CK
+const t208NoDev = (r) => (r.trace || []).includes('Dev') ? { ok: false, msg: `trace must not include Dev, got ${JSON.stringify(r.trace)}` } : null
+await testCase('T208a proceedThrough validation: a typo ("Plan") is refused up front on escalate with a reason naming the value', async () => {
+  const r = await run({ mode: 'auto', proceedThrough: 'Plan', simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] } })
+  const e1 = eq('status', r.status, 'escalate')
+  const reason = String(r.reason || '')
+  const e2 = reason.includes('proceedThrough') && reason.includes('"Plan"') ? null : { ok: false, msg: `reason must name proceedThrough and "Plan", got ${JSON.stringify(r.reason)}` }
+  const e3 = r.plan === undefined ? null : { ok: false, msg: 'nothing must run: no plan field expected' }
+  return e1 || e2 || e3 || { ok: true }
+})
+
+await testCase('T208b proceedThrough validation: dryRun echoes the resolved value, and refuses a bad one too', async () => {
+  const set = await run({ dryRun: true, proceedThrough: 'plan' })
+  const none = await run({ dryRun: true })
+  const bad = await run({ dryRun: true, proceedThrough: 'ship' })
+  return eq('dry-run status', set.status, 'dry-run-ok')
+    || eq('echo of plan', set.proceedThrough, 'plan')
+    || eq('echo when absent', none.proceedThrough, null)
+    || eq('bad value status', bad.status, 'escalate')
+    || { ok: true }
+})
+
+await testCase('T208c design-step one-way-door relaunch: proceedThrough:plan → plan-ready carrying oneWayDoorHits, never Dev (semi and auto)', async () => {
+  for (const mode of ['semi', 'auto']) {
+    const r = await run({ mode, proceedThrough: 'plan', config: T77_KCONFIG, simulate: { theo: T77_THEO, sam: 'GO', samPlan: T208_PLAN } })
+    const err = eq(`status (${mode})`, r.status, 'plan-ready')
+      || eq(`oneWayDoorHits (${mode})`, JSON.stringify(r.oneWayDoorHits), JSON.stringify(['status']))
+      || t208NoDev(r)
+    if (err) return err
+  }
+  return { ok: true }
+})
+
+await testCase('T208d design-step one-way-door relaunch: proceedThrough:dev at entryStage plan does not lift the stop', async () => {
+  const r = await run({ mode: 'semi', proceedThrough: 'dev', config: T77_KCONFIG, simulate: { theo: T77_THEO, sam: 'GO', samPlan: T208_PLAN } })
+  return eq('status', r.status, 'design-step-required') || t208NoDev(r) || { ok: true }
+})
+
+await testCase('T208e design-step relaunch: entry at dev without approval, planText announcing a declared kind → design-step-required with a readable reason', async () => {
+  const r = await run({ entryStage: 'dev', mode: 'semi', config: T77_KCONFIG, planText: T208_PLAN, simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] } })
+  const reason = String(r.reason || '')
+  return eq('status', r.status, 'design-step-required')
+    || eq('oneWayDoorHits', JSON.stringify(r.oneWayDoorHits), JSON.stringify(['status']))
+    || (reason.includes('architectureDecisionApproved:true') ? null : { ok: false, msg: `reason must name architectureDecisionApproved:true, got ${JSON.stringify(r.reason)}` })
+    || t208NoDev(r)
+    || { ok: true }
+})
+
+await testCase('T208f design-step relaunch: entry at dev with architectureDecisionApproved:true proceeds; a plan announcing none, or a kind the repo did not declare, also proceeds', async () => {
+  const sim = { sam: 'GO', morgan: [{ verdict: 'LGTM' }] }
+  const approved = await run({ entryStage: 'dev', mode: 'semi', config: T77_KCONFIG, architectureDecisionApproved: true, planText: T208_PLAN, simulate: sim })
+  const none = await run({ entryStage: 'dev', mode: 'semi', config: T77_KCONFIG, planText: 'one-way-door: none\n' + T77_CK, simulate: sim })
+  const undeclared = await run({ entryStage: 'dev', mode: 'semi', config: CONFIG, planText: T208_PLAN, simulate: sim })
+  return eq('approved', approved.status, 'ready')
+    || eq('announces none', none.status, 'ready')
+    || eq('kind not declared', undeclared.status, 'ready')
+    || { ok: true }
+})
+
+await testCase('T208g design-step relaunch: entry at review without approval is refused too', async () => {
+  const r = await run({ entryStage: 'review', prNumber: 190, mode: 'semi', config: T77_KCONFIG, planText: T208_PLAN, simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] } })
+  return eq('status', r.status, 'design-step-required') || eq('oneWayDoorHits', JSON.stringify(r.oneWayDoorHits), JSON.stringify(['status'])) || { ok: true }
+})
+
 // T77e (#77) — the product-direction line goes to Sam and Morgan only: Nick's prompt carries none, and no
 // prompt of the engine names docs/codemap.md. The engine imports no doc: agents receive each repo's own
 // instructions natively. The rules themselves live in the repo's docs, never in the prompt (no DEBT marker).
