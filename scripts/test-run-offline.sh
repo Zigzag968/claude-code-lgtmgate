@@ -148,6 +148,9 @@ f = base(); f.runs[1].expect.phases = ['Setup', 'Dev', 'Review']; w('relaunch-ph
 f = base(); f.runs[0].expect.status = 'ready'; f.runs[1].expect.status = 'ready'; delete f.runs[1].carry; w('relaunch-both-fail.json', f)
 f = base(); f.runs = [f.runs[0]]; w('relaunch-one-run.json', f)
 f = base(); f.runs[0].carry = {}; w('relaunch-carry-first.json', f)
+f = base(); f.runs[1].expect.callLabelsAbsent = []; w('relaunch-absent-empty.json', f)
+f = base(); f.runs[1].expect.callLabelsAbsent = 'diagnose-'; w('relaunch-absent-string.json', f)
+f = base(); f.runs[1].carries = f.runs[1].carry; delete f.runs[1].carry; w('relaunch-carries.json', f)
 JS
 node "$TMP/mk2.cjs" "$TMP"
 
@@ -208,6 +211,17 @@ case "$out" in *"FAIL:"*"\"runs\" must be an array of at least 2 runs"*) ok "a m
 
 out=$(node scripts/run-offline.cjs "$TMP/relaunch-carry-first.json" 2>&1)
 case "$out" in *"FAIL:"*"run 1 \"carry\" must be an object and needs an earlier run"*) ok "carry on the first run is refused, even an empty one";; *) bad "carry on the first run not refused: $out";; esac
+
+# Fail closed on the two-run path (#185 F3): an empty or non-array callLabelsAbsent is a vacuous assertion, and a misspelled
+# run key (`carries`) would silently drop the carry. Unknown `expect` keys are left as they are (36 fixtures rely on that).
+out=$(node scripts/run-offline.cjs "$TMP/relaunch-absent-empty.json" 2>&1)
+case "$out" in *"FAIL:"*"callLabelsAbsent: must be a non-empty array of non-empty label prefixes"*) f1=1;; *) f1=0;; esac
+out=$(node scripts/run-offline.cjs "$TMP/relaunch-absent-string.json" 2>&1)
+case "$out" in *"FAIL:"*"callLabelsAbsent: must be a non-empty array of non-empty label prefixes"*) f2=1;; *) f2=0;; esac
+if [ "$f1$f2" = "11" ]; then ok "callLabelsAbsent refuses an empty list and a non-array (a vacuous absence assertion proves nothing)"; else bad "callLabelsAbsent refusal: empty=$f1 string=$f2"; fi
+
+out=$(node scripts/run-offline.cjs "$TMP/relaunch-carries.json" 2>&1)
+case "$out" in *"FAIL:"*"run 2 has unknown key \"carries\" (allowed: args, calls, expect, carry)"*) ok "a misspelled run key is refused with the allowed keys listed";; *) bad "unknown run key not refused: $out";; esac
 
 rm -rf "$TMP"
 STATUS=ok; [ "$FAIL" -gt 0 ] && STATUS=fail

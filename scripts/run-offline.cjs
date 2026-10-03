@@ -29,11 +29,12 @@
 //       "callLabels": ["probe-1-...", "..."], // optional: the ordered labels of the agent() calls, EXACT equality
 //       "logsInclude": ["..."],            // optional, each substring must appear in a log line
 //       "phases": ["Setup", "Dev"],        // optional: the ordered phase() titles of the run, EXACT equality
-//       "callLabelsAbsent": ["diagnose-"]  // optional: no agent() call label may start with any of these (non-empty strings)
+//       "callLabelsAbsent": ["diagnose-"]  // optional: no agent() call label may start with any of these (a non-empty list of non-empty strings)
 //     }
 //   }
 // Multi-run format (#185), e.g. a relaunch: `runs` replaces the top-level args/calls/expect (mixing them is refused), at
-// least 2 entries, each run replayed against its OWN calls and expect:
+// least 2 entries, each run replayed against its OWN calls and expect (a run holds only args, calls, expect and carry; any
+// other key is refused, so a misspelled one cannot be dropped in silence):
 //   { "name": "...", "runs": [ { "args": {...}, "calls": {...}, "expect": {...} },
 //                              { "args": {...}, "calls": {...}, "expect": {...}, "carry": { "planText": "plan" } } ] }
 // `carry` = { "<arg>": "<field>" }: arg of run N is set to that top-level field of run N-1's result (the way the Lead hands
@@ -233,8 +234,8 @@ function check(fixture, result, logs, calls = [], phases = []) {
     }
   }
   if (exp.callLabelsAbsent !== undefined) {
-    if (!Array.isArray(exp.callLabelsAbsent) || exp.callLabelsAbsent.some((p) => typeof p !== 'string' || p === '')) {
-      problems.push('callLabelsAbsent: must be an array of non-empty label prefixes')
+    if (!Array.isArray(exp.callLabelsAbsent) || exp.callLabelsAbsent.length === 0 || exp.callLabelsAbsent.some((p) => typeof p !== 'string' || p === '')) {
+      problems.push('callLabelsAbsent: must be a non-empty array of non-empty label prefixes')
     } else {
       for (const c of calls) {
         const hit = exp.callLabelsAbsent.find((p) => String(c.label).startsWith(p))
@@ -302,6 +303,7 @@ async function runOne(fixturePath, fpSrcStripped) {
 // A multi-run fixture replays its runs in order, each against its own calls and expect, through runSingle. What a later run
 // sees of the earlier one is only what its `carry` names: { "<arg>": "<field>" } sets that arg of run N to that top-level
 // field of run N-1's result (the way the Lead hands `plan` back as `planText` on a relaunch). A failing run ends the chain.
+const RUN_KEYS = ['args', 'calls', 'expect', 'carry']
 async function runChain(fixture, fpSrcStripped) {
   const problems = []
   const logs = []
@@ -319,6 +321,9 @@ async function runChain(fixture, fpSrcStripped) {
     const spec = fixture.runs[i]
     const tag = `run ${i + 1}`
     if (spec === null || typeof spec !== 'object') throw new Error(`[offline] fixture "${fixture.name}": ${tag} is not an object`)
+    for (const key of Object.keys(spec)) {
+      if (!RUN_KEYS.includes(key)) throw new Error(`[offline] fixture "${fixture.name}": ${tag} has unknown key "${key}" (allowed: ${RUN_KEYS.join(', ')})`)
+    }
     const args = JSON.parse(JSON.stringify(spec.args || {}))
     if (spec.carry !== undefined) {
       if (i === 0 || spec.carry === null || typeof spec.carry !== 'object') {
