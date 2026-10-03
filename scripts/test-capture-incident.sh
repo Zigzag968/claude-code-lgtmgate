@@ -8,7 +8,8 @@
 # Code's live storage: the first real capture validates the layout, loudly.
 #
 # Cases: `ok: relaunch ...` (final pass identified by agentId, captured entries replayed),
-# `ok: fail-closed ...` (each refusal names its cause and writes nothing), `ok: usage ...`.
+# `ok: fail-closed ...` (each refusal names its cause and writes nothing), `ok: retried call ...` (a call the engine
+# retried: folded under its engine label, or refused), `ok: usage ...`.
 # bash 3.2 compatible. Trailer: [test-capture-incident] status=<ok|fail> passed=<n> failed=<n>
 set -u
 cd "$(dirname "$0")/.."
@@ -76,25 +77,45 @@ if (mut === 'earlierdied') rows.push(started('stale-2', 'v2:bbb222', 'scout-issu
 
 // final pass
 const final = Object.keys(smoke.calls).map((label, i) => ({ label, agentId: 'ag-' + i, key: 'v2:' + (1000 + i).toString(16), value: smoke.calls[label] }))
+// A call the engine retried: the record names the answering attempt '<label> (retry 1)', the journal '<label>'.
+// retry: the first attempt died. retryfirstans: the first attempt answered a decoy, the retry answers. retrylastdied: the
+// first attempt answered, the retry died. retrysamekey: the first attempt shares the retry's key and is journaled failed.
+// retryalldied: neither answers. retrybadlabel: the record suffix is not the engine's. retrydiff: the retry's journal label
+// is another call's. retryorphan: a retry with no earlier attempt.
+if (mut.startsWith('retry')) {
+  const L0 = 'scout-issue-123-1'
+  const si = final.findIndex((a) => a.label === L0)
+  const scout = final[si]
+  const first = { label: L0, agentId: 'ag-ra', key: 'v2:ra1', value: { decoy: 'FIRST' }, noResult: true, first: true }
+  scout.recLabel = L0 + ' (retry 1)'
+  if (mut === 'retryfirstans') first.noResult = false
+  if (mut === 'retrylastdied') { first.noResult = false; first.value = scout.value; scout.noResult = true }
+  if (mut === 'retrysamekey') { first.key = scout.key; first.noResult = false; first.failedOnly = true }
+  if (mut === 'retryalldied') scout.noResult = true
+  if (mut === 'retrybadlabel') scout.recLabel = L0 + ' (retried 1)'
+  if (mut === 'retrydiff') scout.label = 'scout-issue-123-2'
+  if (mut !== 'retryorphan') final.splice(si, 0, first)
+}
 const extra = []
 if (mut === 'ordering') {
   extra.push({ label: 'decoy-repeat', agentId: 'ag-r1', key: 'v2:r1', value: 'first' })
   extra.push({ label: 'decoy-repeat', agentId: 'ag-r2', key: 'v2:r2', value: 'second' })
 }
 if (mut === 'arrayvalue') extra.push({ label: 'decoy-array', agentId: 'ag-a1', key: 'v2:a1', value: ['a', 'b'] })
-const SCOUT = (final.find((a) => a.label === 'scout-issue-123-1') || {}).agentId // by label: the smoke fixture's call order is not a contract
+const SCOUT = (final.find((a) => a.label === 'scout-issue-123-1' && !a.first) || {}).agentId // by label: the smoke fixture's call order is not a contract
 const progress = final.concat(extra)
 const journalOrder = mut === 'ordering' ? final.concat(extra.slice().reverse()) : progress
 for (const a of journalOrder) {
   rows.push(started(a.agentId, a.key, a.label))
-  rows.push(result(a.agentId, a.key, a.value))
+  if (a.failedOnly) rows.push({ type: 'failed', agentId: a.agentId, key: a.key })
+  else if (!a.noResult) rows.push(result(a.agentId, a.key, a.value))
 }
 
 const rec = {
   runId, status: 'completed', args: Object.assign({}, smoke.args, { simulate: { x: 1 } }),
   result: mut === 'skewrun' ? { status: 'escalate', reason: 'plugin-version-skew: the plugin root holds lgtmgate 1.0.0-beta.3 but this engine is ' + ENGINE + '; pass the current plugin root and relaunch' } : { status: 'ready' }, agentCount: progress.length,
   workflowProgress: [{ type: 'workflow_phase', title: 'p' }].concat(progress.map((a, i) => ({
-    type: 'workflow_agent', index: i, label: a.label, agentId: a.agentId, state: 'done',
+    type: 'workflow_agent', index: i, label: a.recLabel || a.label, agentId: a.agentId, state: 'done',
   }))),
 }
 if (mut === 'cachedtrue') rec.workflowProgress[1].cached = true
@@ -254,11 +275,11 @@ refusal() {
   if [ "$#" -gt 0 ]; then cap "$@"; else cap "$RUN" 181 t --out "$OUTD"; fi
   if [ "$RC" -eq 1 ]; then
     case "$OUT" in
-      *"$want"*) if [ -e "$CAP" ]; then bad "fail-closed $name: a capture was written"; else ok "fail-closed $name"; fi;;
-      *) bad "fail-closed $name: output does not name '$want': $OUT";;
+      *"$want"*) if [ -e "$CAP" ]; then bad "${KIND:-fail-closed} $name: a capture was written"; else ok "${KIND:-fail-closed} $name"; fi;;
+      *) bad "${KIND:-fail-closed} $name: output does not name '$want': $OUT";;
     esac
   else
-    bad "fail-closed $name: expected exit 1, got $RC: $OUT"
+    bad "${KIND:-fail-closed} $name: expected exit 1, got $RC: $OUT"
   fi
 }
 
@@ -404,6 +425,39 @@ if expect_ok "relaunch failed-then-result"; then
   got=$(jsq 'f.calls["scout-issue-123-1"]')
   [ "$got" = "$want" ] && ok "relaunch failed then a later result (retry) keeps the later result" || bad "relaunch retry: got=$got"
 fi
+
+# ---- #209: a call the engine retried is captured once, under its engine label ----------------------------
+# The record names the answering attempt '<label> (retry N)', the journal '<label>'. The capture holds one entry per engine
+# label, with the answer of the last attempt that did not die; any other label difference, and a call whose attempts all
+# died, still refuse.
+retry_fold() { # name mutation
+  newrun "$2"
+  cap "$RUN" 181 t --out "$OUTD"
+  if expect_ok "retried call $1"; then
+    want=$(node -e 'process.stdout.write(JSON.stringify(require(process.env.ROOT+"/fixtures/smoke/auto-lgtm.json").calls["scout-issue-123-1"]))')
+    got=$(jsq 'f.calls["scout-issue-123-1"]')
+    n=$(jsq 'Object.keys(f.calls).filter((k) => k.indexOf("scout-issue-123") === 0).length')
+    nwant=$(node -e 'process.stdout.write(String(Object.keys(require(process.env.ROOT+"/fixtures/smoke/auto-lgtm.json").calls).filter((k) => k.indexOf("scout-issue-123") === 0).length))')
+    last=$(printf '%s\n' "$OUT" | grep 'status=ok out=')
+    if [ "$got" = "$want" ] && [ "$n" = "$nwant" ] && ! grep -q '(retry' "$CAP" \
+       && case "$last" in *" retries=1") true;; *) false;; esac \
+       && case "$OUT" in *"folded retried call scout-issue-123-1: 2 attempts"*"[offline] status=ok"*) true;; *) false;; esac; then
+      ok "retried call $1: captured once under its engine label, retries=1, replays"
+    else
+      bad "retried call $1: got=$got entries=$n/$nwant last='$last' out=$OUT"
+    fi
+  fi
+}
+retry_fold "first attempt died" retry
+retry_fold "first attempt answered, the retry's answer is used" retryfirstans
+retry_fold "retry died, the first attempt's answer is used" retrylastdied
+retry_fold "first attempt shares the key and failed" retrysamekey
+KIND="retried call"
+refusal "record suffix is not the engine's (retried)" retrybadlabel 'journal "scout-issue-123-1", record "scout-issue-123-1 (retried 1)"'
+refusal "retry whose journal label is another call's" retrydiff 'journal "scout-issue-123-2", record "scout-issue-123-1 (retry 1)"'
+refusal "every attempt died" retryalldied "died call scout-issue-123-1 key v2:ra1"
+refusal "retry with no earlier attempt" retryorphan 'has no earlier attempt "scout-issue-123-1"'
+KIND=
 
 # unexpected file-system errors end as a status line, never a stack trace
 error_case() { # name; asserts the result of the last capsep
