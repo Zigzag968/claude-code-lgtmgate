@@ -654,6 +654,12 @@ r2_prep r2-div-local-wf 'Closes #30' '' 'open type:bug'; r2_main_cfg "$D" "$R2_E
 r2_refused "local and remote diverged: the local side changes workflows/ with no fixture: refused"
 r2_prep r2-div-remote-wf 'Closes #30' '' 'open type:bug'; r2_main_cfg "$D" "$R2_ENGINE"; r2_remote "$D" "echo '// fix' >> workflows/deliver-pipeline.js"; r2_local "$D" "$R2_FIX_LINE"; r2_go
 r2_refused "local and remote diverged: the remote side changes workflows/ with no fixture (the local fixture does not cover it): refused"
+r2_prep r2-div-both-wf-a 'Closes #30' '' 'open type:bug'; r2_main_cfg "$D" "$R2_ENGINE"
+r2_remote "$D" "echo '// fix' >> workflows/deliver-pipeline.js && mkdir -p fixtures/incidents && echo '{}' > fixtures/incidents/30-r.json"; r2_local "$D" "$R2_WF_LINE"; r2_go
+r2_refused "local and remote diverged, both change workflows/: the fixture is on the remote side only: refused"
+r2_prep r2-div-both-wf-b 'Closes #30' '' 'open type:bug'; r2_main_cfg "$D" "$R2_ENGINE"
+r2_remote "$D" "echo '// fix' >> workflows/deliver-pipeline.js"; r2_local "$D" "$R2_WF_LINE && $R2_FIX_LINE"; r2_go
+r2_refused "local and remote diverged, both change workflows/: the fixture is on the local side only: refused"
 r2_prep r2-div-ok 'Closes #30' '' 'open type:bug'; r2_main_cfg "$D" "$R2_ENGINE"; r2_remote "$D" "echo docs > doc2.md"; r2_local "$D" "$R2_WF_LINE && $R2_FIX_LINE"; r2_go
 { [ "$rc" -ne 0 ] && grep -q 'have diverged' "$D/out" && ! grep -q 'FAIL: r2-waiver' "$D/out"; } \
   && ok "r2-waiver: diverged branch with both sides covered: the gate passes, step 2 refuses the divergence" || bad "r2-waiver: diverged, covered (rc=$rc): $(tail -3 "$D/out")"
@@ -684,6 +690,8 @@ const BUILD = { plugin: 'lgtmgate', version: '0.8.80', cutFrom: 'a(b)' }
 const BUILD = { plugin: 'lgtmgate', version: '0.8.80', cutFrom: '${x}' }
 const BUILD = { plugin: 'lgtmgate', version: '0.8.80', cutFrom: '`x`' }
 const BUILD = { plugin: 'lgtmgate', version: '0.8.80', cutFrom: "abc1234" }
+const BUILD = { plugin: 'lgtmgate', version: '0.8.80', cutFrom: 'abc1234' }; evil()
+const BUILD = { plugin: 'lgtmgate', version: '0.8.80', cutFrom: 'abc1234' } // hi
 EOB
 i=0
 while IFS= read -r bl; do
