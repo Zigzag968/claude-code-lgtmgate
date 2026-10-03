@@ -18,6 +18,9 @@
 //   node pr-body-splice.cjs checked <bodyFile|->
 //       prints the ids of the boxes ticked in the acceptance block (comma-separated, ascending; empty when none or no
 //       block); `-` reads the body from stdin. Exit 0.
+//   node pr-body-splice.cjs entries <bodyFile|->
+//       prints the round lines (`- round ...`, trimmed) of the real decision-log block as ONE JSON array line; [] with no
+//       block; `-` reads the body from stdin. Exit 0.
 //   node pr-body-splice.cjs guard <preLen> <postFile>
 //       exit 0 = bodyWriteGuardOk (>= 90 % of the pre length and both acceptance markers), 1 = not ok.
 // No network, no regex outside the block.
@@ -40,6 +43,36 @@ function composeDecisionLogBlock(entries) {
   return `${DECISION_LOG_START}\n## Decision log\n${entries.join('\n')}\n${DECISION_LOG_END}`
 }
 
+// The real block of `src` as { s, e, eLen } (the block is src.slice(s, e + eLen)), null when there is none. s: the LAST
+// column-0 start marker. e: the LAST column-0 end marker when one follows it; else the first end marker after s that is
+// alone on its line, INDENTED (a block whose end marker lost its column: the column-0 reading found no end and appended a
+// second block on every run, lgtmgate#164). A copy of the markers inside a fenced/indented example never starts a block
+// (column 0 only), so the T44 shape is untouched. String operations for the fallback, no new regex.
+function decisionLogSpan(src) {
+  let s = -1
+  let m
+  DECISION_LOG_START_RE.lastIndex = 0
+  while ((m = DECISION_LOG_START_RE.exec(src))) s = m.index
+  if (s === -1) return null
+  let e = -1
+  let eLen = DECISION_LOG_END.length
+  DECISION_LOG_END_RE.lastIndex = 0
+  while ((m = DECISION_LOG_END_RE.exec(src))) { e = m.index; eLen = m[0].length }
+  if (e > s) return { s, e, eLen }
+  for (let at = src.indexOf(DECISION_LOG_END, s); at !== -1; at = src.indexOf(DECISION_LOG_END, at + 1)) {
+    const lineStart = src.lastIndexOf('\n', at - 1) + 1
+    if (lineStart > s && src.slice(lineStart, at).trim() === '') return { s, e: at, eLen: DECISION_LOG_END.length }
+  }
+  return null
+}
+// The round lines (`- round ...`, trimmed) the real block of `body` holds, in order; [] when there is no block. Pure.
+function decisionLogEntries(body) {
+  const src = String(body ?? '')
+  const span = decisionLogSpan(src)
+  if (span === null) return []
+  return src.slice(span.s + DECISION_LOG_START.length, span.e).split('\n').map((l) => l.trim()).filter((l) => l.startsWith('- round '))
+}
+
 // Idempotent splice of a pre-composed decision-log block into a body. Replaces an existing
 // block in place; appends at the end when the markers are absent (legacy/resumed PRs). Pure —
 // extracted from upsertDecisionLog (issue #87) so the SAME splice algorithm can be embedded
@@ -47,17 +80,8 @@ function composeDecisionLogBlock(entries) {
 // being hand-duplicated there.
 function spliceDecisionLogBlock(body, block) {
   const src = String(body ?? '')
-  let s = -1
-  let m
-  DECISION_LOG_START_RE.lastIndex = 0
-  while ((m = DECISION_LOG_START_RE.exec(src))) s = m.index
-  let e = -1
-  let eLen = DECISION_LOG_END.length
-  DECISION_LOG_END_RE.lastIndex = 0
-  while ((m = DECISION_LOG_END_RE.exec(src))) { e = m.index; eLen = m[0].length }
-  if (s !== -1 && e !== -1 && e > s) {
-    return src.slice(0, s) + block + src.slice(e + eLen)
-  }
+  const span = decisionLogSpan(src)
+  if (span !== null) return src.slice(0, span.s) + block + src.slice(span.e + span.eLen)
   return (src.endsWith('\n') ? src : src + '\n') + '\n' + block + '\n'
 }
 
@@ -247,6 +271,11 @@ function cli(argv) {
     process.stdout.write(checkedAcceptanceIds(body).join(',') + '\n')
     return 0
   }
+  if (mode === 'entries') {
+    const body = fs.readFileSync(argv[1] === '-' ? 0 : argv[1], 'utf8')
+    process.stdout.write(JSON.stringify(decisionLogEntries(body)) + '\n')
+    return 0
+  }
   if (mode === 'guard') {
     const preLen = Number(argv[1])
     const post = fs.readFileSync(argv[2], 'utf8')
@@ -261,4 +290,4 @@ if (require.main === module) {
   process.exit(rc)
 }
 
-module.exports = { spliceDecisionLogBlock, spliceAcceptanceBlock, tickAcceptanceBlock, checkedAcceptanceIds, bodyWriteGuardOk, composeDecisionLogBlock, upsertDecisionLog }
+module.exports = { decisionLogEntries, spliceDecisionLogBlock,spliceAcceptanceBlock, tickAcceptanceBlock, checkedAcceptanceIds, bodyWriteGuardOk, composeDecisionLogBlock, upsertDecisionLog }

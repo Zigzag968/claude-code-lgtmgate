@@ -150,6 +150,7 @@ const PARSERS = {
       headRefOid: str(v.headRefOid),
       bodyDigest: str(v.bodyDigest),
       acceptanceChecked: idArr(v.acceptanceChecked),
+      decisionLog: strArr(v.decisionLog),
       mergeable: str(v.mergeable),
       mergeStateStatus: str(v.mergeStateStatus),
       lastCommitDate: str(v.lastCommitDate),
