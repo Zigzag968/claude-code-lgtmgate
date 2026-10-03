@@ -9,18 +9,22 @@
 # Usage:
 #   bash pr-state.sh --pr N [--wt DIR] [--repo OWNER/REPO] [--since ISO]
 #
-# -> {"now":"<ISO>","headRefName":..,"headRefOid":..,"bodyDigest":"<12 hex>","mergeable":..,
-#     "mergeStateStatus":..,"lastCommitDate":..,"commitCount":N,"reviewCommentIds":["<id>",..],
+# -> {"now":"<ISO>","headRefName":..,"headRefOid":..,"bodyDigest":"<12 hex>","acceptanceChecked":[N,..]|null,
+#     "mergeable":..,"mergeStateStatus":..,"lastCommitDate":..,"commitCount":N,"reviewCommentIds":["<id>",..],
 #     "openIssues":[{"number":N,"createdAt":..,"url":..}]|null,"openIssuesTruncated":false}
 # "now" comes from `date -u` HERE: the workflow script itself may not read the wall clock (harness ban on
 # argless new Date(), claude-agent-pipeline#144/#135), and no LLM interprets it any more (incident #14).
+# acceptanceChecked (#183): the ids of the acceptance boxes ticked in the body (templates/pr-body-splice.cjs, op checked: the
+# same fence-aware block reader the tick uses); null when the body or node could not be read. The engine reads it for the
+# human-gate boxes only: a gate is settled iff its id is listed here (a person ticked it); any other box needs a proof of the round.
 # openIssues is read only with --since (open issues created at or after ISO). The scan keeps its
 # server-side `created:>=` bound; REVIEWER_WINDOW_SCAN_SAFETY_LIMIT is a belt-and-suspenders ceiling:
 # a result of exactly that many issues is the truncation signal -> openIssues null, openIssuesTruncated
 # true (lgtmgate#18).
-# Requires jq and gh. bash 3.2 compatible. Never uses rm.
+# Requires jq, gh and node (acceptanceChecked). bash 3.2 compatible. Never uses rm.
 
 REVIEWER_WINDOW_SCAN_SAFETY_LIMIT=1000
+SD="$(cd "$(dirname "$0")" 2>/dev/null && pwd)"
 
 PR=""; WT=""; REPO=""; SINCE=""
 while [ $# -gt 0 ]; do
@@ -35,14 +39,14 @@ while [ $# -gt 0 ]; do
 done
 
 main() {
-  local now view body digest pr_json issues n
+  local now view body digest pr_json issues n checked ac_json
   local repo_args=""
   local issues_json="null" truncated="false"
 
   now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   [ -n "$WT" ] && cd "$WT"
 
-  pr_json='{"headRefName":null,"headRefOid":null,"bodyDigest":null,"mergeable":null,"mergeStateStatus":null,"lastCommitDate":null,"commitCount":null,"reviewCommentIds":null}'
+  pr_json='{"headRefName":null,"headRefOid":null,"bodyDigest":null,"acceptanceChecked":null,"mergeable":null,"mergeStateStatus":null,"lastCommitDate":null,"commitCount":null,"reviewCommentIds":null}'
 
   if [ -n "$PR" ]; then
     if [ -n "$REPO" ]; then
@@ -53,17 +57,23 @@ main() {
     if [ -n "$view" ] && printf '%s' "$view" | jq -e 'type == "object"' >/dev/null 2>&1; then
       body="$(printf '%s' "$view" | jq -r '.body // ""')"
       digest="$(printf '%s\n' "$body" | { shasum -a 256 2>/dev/null || sha256sum; } | cut -c1-12)"
-      pr_json="$(printf '%s' "$view" | jq -c --arg digest "$digest" '{
+      ac_json=null
+      if checked="$(printf '%s' "$body" | node "$SD/pr-body-splice.cjs" checked - 2>/dev/null)"; then
+        ac_json="$(printf '%s\n' "$checked" | jq -Rc 'split(",") | map(select(length > 0) | tonumber)' 2>/dev/null)" || ac_json=null
+        [ -n "$ac_json" ] || ac_json=null
+      fi
+      pr_json="$(printf '%s' "$view" | jq -c --arg digest "$digest" --argjson ac "$ac_json" '{
         headRefName: (.headRefName // null),
         headRefOid: (.headRefOid // null),
         bodyDigest: (if $digest == "" then null else $digest end),
+        acceptanceChecked: $ac,
         mergeable: (.mergeable // null),
         mergeStateStatus: (.mergeStateStatus // null),
         lastCommitDate: (((.commits // []) | last | .committedDate) // null),
         commitCount: (if .commits == null then null else (.commits | length) end),
         reviewCommentIds: (if .comments == null then null else [.comments[] | select(.isMinimized == false) | select((.body // "") | startswith("<!-- pipeline-review-round")) | .id] end)
       }' 2>/dev/null)"
-      [ -n "$pr_json" ] || pr_json='{"headRefName":null,"headRefOid":null,"bodyDigest":null,"mergeable":null,"mergeStateStatus":null,"lastCommitDate":null,"commitCount":null,"reviewCommentIds":null}'
+      [ -n "$pr_json" ] || pr_json='{"headRefName":null,"headRefOid":null,"bodyDigest":null,"acceptanceChecked":null,"mergeable":null,"mergeStateStatus":null,"lastCommitDate":null,"commitCount":null,"reviewCommentIds":null}'
     fi
   fi
 

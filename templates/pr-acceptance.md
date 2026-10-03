@@ -24,15 +24,20 @@ Morgan runs / inspects each item, then :
 - Checks the box `- [x]` in the PR body (`gh pr edit <N> --body ...`) **only** after having seen
   the proof.
 - Cites that proof (command + output, or the artifact) in his review comment.
-- Only renders **LGTM once every box is checked.** A single remaining `- [ ]`, or a box that
+- Only renders **LGTM once every box is checked** (with ids: once every box is proven in `boxes`, the
+  workflow doing the checking). A single remaining `- [ ]` (with ids: a box not proven), or a box that
   contradicts the diff, is **REQUIRED_CHANGES** — never LGTM.
 - An absent or empty acceptance block (no `acceptance:start`/`acceptance:end` marker pair, or no
   `- [ ]`/`- [x]` line between them) is **REQUIRED_CHANGES**, never LGTM; Morgan's `items` carries the
   literal line `Acceptance block absent or empty`.
-- If the tick is refused by session permissions while the proof passes: do not check it, never post
-  "Ready to merge", cite the proof and classify the box as `proven-untickable`. The workflow renders
-  `verified-untickable` (no Nick round) ; the Lead re-verifies the proof and checks it by hand. A
-  `[human-gate]` box is never checked through this path.
+- With ids (an `<!-- ac:N -->` comment after each checkbox) Morgan does not edit the body: she returns
+  `boxes` (`{id, proven, proof}` for EACH box, one that already reads `[x]` included: she proves every box
+  again at every round, and a box with no proven entry this round is not proven whatever the body shows) and
+  the workflow ticks the proven ids through the write probe. A `[human-gate]` box is never ticked by the
+  workflow and is settled only by the body showing it checked by a person (her `proven` means nothing for it).
+  If the write is refused the workflow parks the run itself (`verified-untickable`, no Nick round,
+  `untickableItems[]` = `{id, item, proof}`); the Lead re-verifies the proofs and checks the boxes by hand. A run without ids keeps the manual tick: Morgan checks the box
+  after the proof, and a refused tick is left open with a one-line `tick pending (permissions)` entry.
 
 ### Markers (mandatory)
 The acceptance block lives between two HTML markers in the body :

@@ -1,6 +1,6 @@
 {
-  "name": "107-checklist-only-blockers",
-  "note": "incident #41/#42 (PRs #102/#103): Morgan found the code correct and only flagged checklist items (structured itemOwner checklist-wording-defect, with proof); the engine dispatched a Nick fix round that pushed nothing and escalated nick-no-op. Expected: verified-untickable, zero Nick calls after the review (no `nick-pr-42` entry exists: the harness fails on any such call). An id run since #183: Sam returns the checklist as items, Morgan returns its boxes and quotes the box line with its id comment; the checklist blocker is matched by that id. Morgan output shape is synthetic-raw (the raw run data was not retained).",
+  "name": "183-stale-read-tick",
+  "note": "Synthetic shape built from issue 183 review (no raw run data). Morgan returns LGTM with its only box proven; the engine ticks by id through the pr-write probe and the probe answers failed/stale-read (the PR body changed between the read and the edit) on the first try and on the one retry. The run must retry once, then park as verified-untickable carrying the probe's reason, not a bare refusal. logsInclude are the logged probe results and the engine's own lines: the retry, and the reason of the refusal.",
   "args": {
     "pluginRoot": "/plugin",
     "issue": 123,
@@ -76,26 +76,17 @@
       "verify": "VERIFY ok line=PROBE name=pr-state exit=0 sha=3db97813d3f35e5488d7bd0a4df525f2043fbb38bec5e1283d69931d12b70ced cmd=a6068f1217b0ad386dd338d47c4801b97bb7ca8a67ef63eb999ea9f1b34d5c8d json={\"now\":\"2026-01-01T00:00:00Z\",\"headRefName\":\"features/issue-123\",\"headRefOid\":\"abc123def456\",\"bodyDigest\":\"0123456789ab\",\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-01-01T00:30:00Z\",\"commitCount\":1,\"reviewCommentIds\":[],\"openIssues\":null,\"openIssuesTruncated\":false}"
     },
     "morgan-pr-123-42-r0": {
-      "verdict": "REQUIRED_CHANGES",
-      "items": [
-        "- [ ] <!-- ac:1 --> `grep -c FOO file` prints exactly 1"
-      ],
+      "verdict": "LGTM",
+      "items": [],
       "boxes": [
         {
           "id": 1,
-          "proven": false,
-          "proof": ""
+          "proven": true,
+          "proof": "$ grep -c FOO file\n1"
         }
       ],
       "ciGreen": true,
-      "artifactProofs": [],
-      "itemOwners": [
-        {
-          "item": "- [ ] <!-- ac:1 --> `grep -c FOO file` prints exactly 1",
-          "itemOwner": "checklist-wording-defect",
-          "proof": "$ grep -c FOO file\n2"
-        }
-      ]
+      "artifactProofs": []
     },
     "probe-123-pr-state-window-end-r0": {
       "line": "PROBE name=pr-state exit=0 sha=a2ecf0cc9d123582b92813d2aaafa231fa1201ab8e083ba1ff8d690d08376805 cmd=731942dac290e94f31001933fe1e165779b8d4260dc3372bb918b7e1a6c65125 json={\"now\":\"2026-01-01T01:00:00Z\",\"headRefName\":\"features/issue-123\",\"headRefOid\":\"abc123def456\",\"bodyDigest\":\"0123456789ab\",\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-01-01T00:30:00Z\",\"commitCount\":1,\"reviewCommentIds\":[],\"openIssues\":[],\"openIssuesTruncated\":false}",
@@ -106,14 +97,21 @@
       "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=0774fad4714f3978deed785c2de6fd25ce5cf3d7d8c46b32d362616459f0cde0 cmd=f376e3fdb86b7d91e48693d506c2c881a7bb80543454bc86e5ab42208bf8a06a json={\"op\":\"body-splice\",\"result\":\"written\",\"reason\":null,\"bytes\":1234}"
     },
     "probe-123-pr-write-acceptance-tick-r0": {
-      "line": "PROBE name=pr-write exit=0 sha=0774fad4714f3978deed785c2de6fd25ce5cf3d7d8c46b32d362616459f0cde0 cmd=119923f2cfe0b789817483fa1b5a62aece0db60d42e94b0a31708e584d1e2059 json={\"op\":\"body-splice\",\"result\":\"written\",\"reason\":null,\"bytes\":1234}",
-      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=0774fad4714f3978deed785c2de6fd25ce5cf3d7d8c46b32d362616459f0cde0 cmd=119923f2cfe0b789817483fa1b5a62aece0db60d42e94b0a31708e584d1e2059 json={\"op\":\"body-splice\",\"result\":\"written\",\"reason\":null,\"bytes\":1234}"
+      "line": "PROBE name=pr-write exit=0 sha=d272e034505a9eea2bb36b11779eeb1fd77847a079c71cd583a11197d3a3eb42 cmd=c391b0cf41bd24abe1bbb11d7d10ff5ded618fdb7cee4b4b768a8fac71291c85 json={\"op\":\"body-splice\",\"result\":\"failed\",\"reason\":\"stale-read\",\"bytes\":null}",
+      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=d272e034505a9eea2bb36b11779eeb1fd77847a079c71cd583a11197d3a3eb42 cmd=c391b0cf41bd24abe1bbb11d7d10ff5ded618fdb7cee4b4b768a8fac71291c85 json={\"op\":\"body-splice\",\"result\":\"failed\",\"reason\":\"stale-read\",\"bytes\":null}"
+    },
+    "probe-123-pr-write-acceptance-tick-retry-r0": {
+      "line": "PROBE name=pr-write exit=0 sha=d272e034505a9eea2bb36b11779eeb1fd77847a079c71cd583a11197d3a3eb42 cmd=c391b0cf41bd24abe1bbb11d7d10ff5ded618fdb7cee4b4b768a8fac71291c85 json={\"op\":\"body-splice\",\"result\":\"failed\",\"reason\":\"stale-read\",\"bytes\":null}",
+      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=d272e034505a9eea2bb36b11779eeb1fd77847a079c71cd583a11197d3a3eb42 cmd=c391b0cf41bd24abe1bbb11d7d10ff5ded618fdb7cee4b4b768a8fac71291c85 json={\"op\":\"body-splice\",\"result\":\"failed\",\"reason\":\"stale-read\",\"bytes\":null}"
     }
   },
   "expect": {
     "status": "verified-untickable",
     "logsInclude": [
-      "no Nick round"
+      "pr-write body-splice (acceptance-tick, round 0): failed — stale-read",
+      "stale-read) — retrying once",
+      "pr-write body-splice (acceptance-tick-retry, round 0): failed — stale-read",
+      "was refused (stale-read)"
     ]
   }
 }

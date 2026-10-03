@@ -11,6 +11,13 @@
 //   node pr-body-splice.cjs splice <decision-log|acceptance> <preFile> <textFile> <outFile>
 //       exit 0 = spliced and written to outFile; 3 = acceptance markers absent / empty checklist
 //       (NEVER appends); any other non-zero = failure. One trailing "\n" of the text file is stripped.
+//   node pr-body-splice.cjs tick <preFile> <textFile> <outFile> <tickCsv> <keepCsv>
+//       the acceptance block of preFile replaced by the rendered checklist in textFile with each box set by its
+//       `<!-- ac:N -->` id (#183): ids of tickCsv `[x]`, ids of keepCsv keep the state preFile has, the others open.
+//       Same exits as `splice acceptance` (3 = markers absent / empty checklist).
+//   node pr-body-splice.cjs checked <bodyFile|->
+//       prints the ids of the boxes ticked in the acceptance block (comma-separated, ascending; empty when none or no
+//       block); `-` reads the body from stdin. Exit 0.
 //   node pr-body-splice.cjs guard <preLen> <postFile>
 //       exit 0 = bodyWriteGuardOk (>= 90 % of the pre length and both acceptance markers), 1 = not ok.
 // No network, no regex outside the block.
@@ -66,30 +73,127 @@ function upsertDecisionLog(body, entries) {
 // MUST already exist (he copies it verbatim from Sam's checklist at PR-open time per
 // pr-acceptance.md) — a missing pair means something upstream is already broken, and silently
 // appending a second acceptance block would corrupt the gate block-merge-unchecked.sh reads.
-// Selects the LAST marker pair for the SAME reason the decision-log regexes do: a plan artifact
-// (this very file's own doc comments included) can contain an earlier, illustrative/fenced copy
-// of the marker pair.
+// Selects the LAST marker pair OUTSIDE a fenced code block (#183): a plan artifact or a PR body (this very file's own
+// doc comments included) can hold an illustrative copy of the marker pair, before or after the real block, and such a
+// copy is always fenced.
 const ACCEPTANCE_START = '<!-- acceptance:start -->'
 const ACCEPTANCE_END = '<!-- acceptance:end -->'
-const ACCEPTANCE_START_RE = /^<!-- acceptance:start -->[ \t]*$/gm
-const ACCEPTANCE_END_RE = /^<!-- acceptance:end -->[ \t]*$/gm
-// Pure. Replaces the acceptance-block CONTENTS (between the LAST marker pair) with `checklist`
-// (the verbatim `- [ ] ...` lines Sam returns for an amendment round). Returns null — NEVER
-// appends — when `checklist` is empty/blank or either marker is missing from `body`.
+// Pure. Replaces the acceptance-block CONTENTS (between the LAST unfenced marker pair) with `checklist`
+// (the verbatim `- [ ] ...` lines Sam returns for an amendment round), joined with the line break the body uses.
+// Returns null — NEVER appends — when `checklist` is empty/blank or either marker is missing from `body`.
 function spliceAcceptanceBlock(body, checklist) {
   const list = String(checklist ?? '').trim()
   if (!list) return null
   const src = String(body ?? '')
+  const span = acceptanceSpan(src)
+  if (span === null) return null
+  return src.slice(0, span.from) + span.eol + list.split('\r\n').join('\n').split('\n').join(span.eol) + span.eol + src.slice(span.to)
+}
+// The fence a line leaves open after `fence` (the fence open before it, '' for none): a line opening with 3+ backticks or
+// tildes (up to 3 spaces of indent, no backtick in the info string of a backtick fence) opens one, a line closing it
+// with the same character, at least as long, closes it. String operations only.
+function fenceAfter(line, fence) {
+  const t = line.trimStart()
+  const c = t[0]
+  let run = 0
+  if ((c === '`' || c === '~') && line.length - t.length <= 3) while (t[run] === c) run += 1
+  if (fence !== '') return run >= fence.length && c === fence[0] && t.slice(run).trim() === '' ? '' : fence
+  return run >= 3 && !(c === '`' && t.slice(run).includes('`')) ? c.repeat(run) : ''
+}
+// The contents of the acceptance block of `src`, as { from, to, eol } (`from`: just after the start marker line, before its
+// line break; `to`: the start of the end marker line; `eol`: the line break the body puts after the start marker, "\r\n"
+// or "\n"): the LAST marker pair outside a fenced code block (see fenceAfter), null when a marker is missing or the end
+// does not follow the start. String operations only.
+function acceptanceSpan(src) {
   let s = -1
-  let sLen = ACCEPTANCE_START.length
-  ACCEPTANCE_START_RE.lastIndex = 0
-  let m
-  while ((m = ACCEPTANCE_START_RE.exec(src))) { s = m.index; sLen = m[0].length }
+  let sEnd = -1
   let e = -1
-  ACCEPTANCE_END_RE.lastIndex = 0
-  while ((m = ACCEPTANCE_END_RE.exec(src))) e = m.index
+  let fence = ''
+  let pos = 0
+  for (const raw of src.split('\n')) {
+    const line = raw.endsWith('\r') ? raw.slice(0, -1) : raw
+    const next = fenceAfter(line, fence)
+    if (fence === '' && next === '') {
+      let end = line.length
+      while (end > 0 && (line[end - 1] === ' ' || line[end - 1] === '\t')) end -= 1
+      const marker = line.slice(0, end)
+      if (marker === ACCEPTANCE_START) { s = pos; sEnd = pos + line.length } else if (marker === ACCEPTANCE_END) e = pos
+    }
+    fence = next
+    pos += raw.length + 1
+  }
   if (s === -1 || e === -1 || e <= s) return null
-  return src.slice(0, s + sLen) + '\n' + list + '\n' + src.slice(e)
+  return { from: sEnd, to: e, eol: src.startsWith('\r\n', sEnd) ? '\r\n' : '\n' }
+}
+// The lines of the acceptance block text `text` (what acceptanceSpan delimits: it opens and closes with a line break):
+// { checkedById: Map id -> ticked, for each `- [ ]` / `- [x]` line carrying a well-formed `<!-- ac:N -->` comment (an id
+// box, the one kind of line the engine renders), foreign: every other line of the block, verbatim and in order (a box
+// without an id, an `exception:` line, prose, a blank line, a fenced example and what it holds) }. String operations only.
+function acceptanceBoxes(text) {
+  const checkedById = new Map()
+  const foreign = []
+  const all = String(text).split('\n')
+  if (all.length > 0 && all[0].replace('\r', '') === '') all.shift()
+  if (all.length > 0 && all[all.length - 1] === '') all.pop()
+  let fence = ''
+  for (const raw of all) {
+    const l = raw.endsWith('\r') ? raw.slice(0, -1) : raw
+    const next = fenceAfter(l, fence)
+    const fenced = fence !== '' || next !== ''
+    fence = next
+    const t = l.trimStart()
+    const head = t.slice(0, 5)
+    const ticked = head === '- [x]' || head === '- [X]'
+    if (!fenced && (ticked || head === '- [ ]') && (t.length === 5 || t[5] === ' ' || t[5] === '\t')) {
+      const rest = t.slice(5).trimStart()
+      if (rest.startsWith('<!-- ac:')) {
+        const end = rest.indexOf('-->')
+        const digits = end > 0 ? rest.slice(8, end).trim() : ''
+        if (digits !== '' && [...digits].every((d) => d >= '0' && d <= '9')) { checkedById.set(Number(digits), ticked); continue }
+      }
+    }
+    foreign.push(l)
+  }
+  return { checkedById, foreign }
+}
+// The ids of the boxes of the acceptance block of `body` that are ticked, ascending (the LAST unfenced marker pair);
+// [] when there is no block. Pure.
+function checkedAcceptanceIds(body) {
+  const src = String(body ?? '')
+  const span = acceptanceSpan(src)
+  if (span === null) return []
+  const { checkedById } = acceptanceBoxes(src.slice(span.from, span.to))
+  return [...checkedById].filter(([, ticked]) => ticked).map(([id]) => id).sort((a, b) => a - b)
+}
+// Ticks the acceptance block by id (#183). Pure. `rendered` is the canonical block (every box open, `<!-- ac:N -->` ids);
+// the id boxes of the block of `body` (the LAST unfenced marker pair) are replaced by it with each box set by its id: `[x]`
+// for an id of `tickIds`; an id of `keepIds` (a human gate, or a box nobody returned that a person ticked) keeps the state
+// the body has, so a person's tick survives and the engine never writes a gate `[x]`; any other id is open, so a stale `[x]`
+// is reopened. Every other line of the block (see acceptanceBoxes: the line a project's rule has Nick add, an `exception:`
+// line, prose, a blank line) is kept as it stands, in its order, after the rendered lines, and never ticked. The line breaks
+// are the body's. null, like spliceAcceptanceBlock, when `rendered` is blank or a marker is missing. String operations only.
+function tickAcceptanceBlock(body, rendered, tickIds, keepIds) {
+  const list = String(rendered ?? '').trim()
+  const src = String(body ?? '')
+  const span = acceptanceSpan(src)
+  if (!list || span === null) return null
+  const idOf = (rest) => {
+    if (!rest.startsWith('<!-- ac:')) return null
+    const end = rest.indexOf('-->')
+    const digits = end > 0 ? rest.slice(8, end).trim() : ''
+    return digits !== '' && [...digits].every((c) => c >= '0' && c <= '9') ? Number(digits) : null
+  }
+  const { checkedById, foreign } = acceptanceBoxes(src.slice(span.from, span.to))
+  const tick = Array.isArray(tickIds) ? tickIds : []
+  const keep = Array.isArray(keepIds) ? keepIds : []
+  const lines = list.split('\r\n').join('\n').split('\n').map((line) => {
+    if (!line.startsWith('- [ ] ')) return line
+    const id = idOf(line.slice(6))
+    if (id === null) return line
+    const checked = keep.includes(id) ? checkedById.get(id) === true : tick.includes(id)
+    return checked ? '- [x] ' + line.slice(6) : line
+  })
+  return src.slice(0, span.from) + span.eol + [...lines, ...foreign].join(span.eol) + span.eol + src.slice(span.to)
 }
 
 // Post-write byte/marker guard (issue #87) — protects a PR body read-modify-write against a
@@ -129,6 +233,20 @@ function cli(argv) {
     }
     return 2
   }
+  if (mode === 'tick') {
+    const pre = fs.readFileSync(argv[1], 'utf8')
+    const text = stripOneTrailingNewline(fs.readFileSync(argv[2], 'utf8'))
+    const ids = (csv) => (csv ? String(csv).split(',').map(Number) : [])
+    const out = tickAcceptanceBlock(pre, text, ids(argv[4]), ids(argv[5]))
+    if (out === null) return 3
+    fs.writeFileSync(argv[3], out)
+    return 0
+  }
+  if (mode === 'checked') {
+    const body = fs.readFileSync(argv[1] === '-' ? 0 : argv[1], 'utf8')
+    process.stdout.write(checkedAcceptanceIds(body).join(',') + '\n')
+    return 0
+  }
   if (mode === 'guard') {
     const preLen = Number(argv[1])
     const post = fs.readFileSync(argv[2], 'utf8')
@@ -143,4 +261,4 @@ if (require.main === module) {
   process.exit(rc)
 }
 
-module.exports = { spliceDecisionLogBlock, spliceAcceptanceBlock, bodyWriteGuardOk, composeDecisionLogBlock, upsertDecisionLog }
+module.exports = { spliceDecisionLogBlock, spliceAcceptanceBlock, tickAcceptanceBlock, checkedAcceptanceIds, bodyWriteGuardOk, composeDecisionLogBlock, upsertDecisionLog }
