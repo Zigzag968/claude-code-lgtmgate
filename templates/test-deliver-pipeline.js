@@ -2056,6 +2056,109 @@ await testCase('T273 probe(): persona fallback wired, no-attestation and probe-r
   return checks.find(c => c) || { ok: true }
 })
 
+// T195 (#195) — a pluginRoot of another plugin version than the engine's build fails fast. The decision is
+// pluginVersionVerdict(), a pure function extracted from its source markers (no simulate seam: the probe that
+// reads the manifest has none, T273); the real command, the real probe-run.cjs and real manifests run in
+// templates/test-probe-run.sh, the replayed incident in fixtures/incidents/195-stale-plugin-root.json.
+const pluginVersionPieces = () => {
+  const src = SUITE_ARGS.fpSource
+  if (!src) return null
+  const block = extractBetween(src, '// --- pluginVersion:start ---', '// --- pluginVersion:end ---')
+  const m = /const BUILD = \{[^}]*\bversion: '([^']+)'/.exec(src)
+  if (!block || !m) return { missing: true, src }
+  // eslint-disable-next-line no-new-func
+  const fns = new Function(block + '\nreturn { pluginVersionCmd, pluginVersionVerdict }')()
+  return { ...fns, src, V: m[1] }
+}
+await testCase('T195a pluginRoot of the engine\'s own version passes unchanged (#195)', async () => {
+  const pv = pluginVersionPieces()
+  if (!pv) {
+    log('SKIP — T195a: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  if (pv.missing) return { ok: false, msg: 'pluginVersion:start/:end markers or the BUILD version not found in pipeline source' }
+  const { V, pluginVersionVerdict } = pv
+  const same = pluginVersionVerdict({ engineVersion: V, pluginRoot: '/plug', exit: 0, lines: ['PLUGIN-VERSION:' + V] })
+  const sim = await run({ mode: 'auto', pluginRoot: '/plug', simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] } })
+  const checks = [
+    eq('same version -> no verdict', same, null),
+    eq('a simulate run with a pluginRoot reaches ready as before', sim.status, 'ready'),
+    eq('and its trace is unchanged', sim.trace, ['Plan', 'Dev', 'Review', 'PR Ready']),
+  ]
+  return checks.find(c => c) || { ok: true }
+})
+await testCase('T195b a different plugin version escalates, the reason names both versions and the remedy (#195)', async () => {
+  const pv = pluginVersionPieces()
+  if (!pv) {
+    log('SKIP — T195b: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  if (pv.missing) return { ok: false, msg: 'pluginVersion markers or the BUILD version not found in pipeline source' }
+  const { V, pluginVersionVerdict } = pv
+  const older = pluginVersionVerdict({ engineVersion: V, pluginRoot: '/old/root', exit: 0, lines: ['PLUGIN-VERSION:0.0.1-old'] })
+  const newer = pluginVersionVerdict({ engineVersion: V, pluginRoot: '/new/root', exit: 0, lines: ['PLUGIN-VERSION:99.0.0'] })
+  const checks = [
+    eq('code', older && older.code, 'plugin-version-skew'),
+    includes('names the root version', older.reason, '0.0.1-old'),
+    includes('names the engine version', older.reason, V),
+    includes('names the root', older.reason, '/old/root'),
+    includes('names the remedy', older.reason, 'pass the current plugin root and relaunch'),
+    eq('a newer root is a skew too', newer && newer.code, 'plugin-version-skew'),
+    eq('the reason is never provision-failed', older.reason.startsWith('provision-failed'), false),
+  ]
+  return checks.find(c => c) || { ok: true }
+})
+await testCase('T195c a missing or unreadable manifest, or no usable probe answer, fails closed with a readable reason (#195)', async () => {
+  const pv = pluginVersionPieces()
+  if (!pv) {
+    log('SKIP — T195c: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  if (pv.missing) return { ok: false, msg: 'pluginVersion markers or the BUILD version not found in pipeline source' }
+  const { V, pluginVersionVerdict } = pv
+  const v = (o) => pluginVersionVerdict({ engineVersion: V, pluginRoot: '/r', exit: 0, lines: [], ...o })
+  const cases = [
+    ['manifest missing', v({ lines: ['PLUGIN-VERSION-ERROR:missing'] }), '(missing)'],
+    ['manifest unreadable', v({ lines: ['PLUGIN-VERSION-ERROR:unreadable'] }), '(unreadable)'],
+    ['manifest without a version', v({ lines: ['PLUGIN-VERSION-ERROR:no-version'] }), '(no-version)'],
+    ['empty version', v({ lines: ['PLUGIN-VERSION:'] }), '(no usable answer)'],
+    ['no line', v({ lines: [] }), '(no usable answer)'],
+    ['two lines', v({ lines: ['PLUGIN-VERSION:' + V, 'extra'] }), '(no usable answer)'],
+    ['command exit != 0', v({ exit: 127, lines: ['PLUGIN-VERSION:' + V] }), '(no usable answer)'],
+    ['probe failed', v({ probeFailed: 'unparseable-line', lines: undefined }), '(probe unparseable-line)'],
+  ]
+  for (const [name, got, cause] of cases) {
+    const bad = eq(name + ': code', got && got.code, 'plugin-version-unreadable')
+      || includes(name + ': cause', got.reason, cause)
+      || includes(name + ': names the manifest', got.reason, '/r/.claude-plugin/plugin.json')
+      || includes(name + ': names the engine version', got.reason, V)
+      || includes(name + ': names the remedy', got.reason, 'pass the current plugin root and relaunch')
+    if (bad) return bad
+  }
+  return { ok: true }
+})
+await testCase('T195d the check runs first, only when the templates come from pluginRoot, and writes no label (#195)', async () => {
+  const pv = pluginVersionPieces()
+  if (!pv) {
+    log('SKIP — T195d: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const src = pv.src
+  const gate = "if (!simulate && pluginRoot && !config.probeRunPath) {"
+  const iGate = src.indexOf(gate)
+  const iProvision = src.indexOf("await probe('provision',")
+  if (iGate < 0) return { ok: false, msg: 'plugin-version gate not found in pipeline source' }
+  const body = src.slice(iGate, src.indexOf('\n}\n', iGate))
+  const checks = [
+    eq('gate precedes the provision probe', iGate < iProvision, true),
+    eq('gate reads the manifest through probe(lines) with noReuse', body.includes("probe('lines', pluginVersionCmd(pluginRoot), { label: 'plugin-version', noReuse: true"), true),
+    eq('gate escalates on the existing status', body.includes("finish(STATUS['escalate'], { reason: skew.reason"), true),
+    eq('gate writes no label (no updateStatus, no prWrite)', body.includes('updateStatus') || body.includes('prWrite'), false),
+    eq('lines is registered in PROBES', src.includes("  'lines': 'lines',"), true),
+  ]
+  return checks.find(c => c) || { ok: true }
+})
+
 await testCase('T214d callAgent( only invoked by callAgentSafe + morgan; callAgentSafe( widely wired', async () => {
   const src = SUITE_ARGS.fpSource
   if (!src) {
