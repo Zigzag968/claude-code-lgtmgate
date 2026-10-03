@@ -32,7 +32,7 @@ export const meta = {
 // | `prNumber` | existing PR number; required when entryStage='review' |
 // | `mode` | 'auto' \| 'semi' (default) \| 'manual' |
 // | `entryStage` | 'plan' (default) \| 'dev' \| 'review' (skip completed phases on crash-resume) |
-// | `proceedThrough` | last stage the Lead authorized to RUN on resume ('plan'\|'dev'\|'review'\|null). The pipeline PAUSES before any stage beyond it. proceedThrough='plan' stops at plan-ready. |
+// | `proceedThrough` | last stage the Lead authorized to RUN on resume ('plan'\|'dev'\|'review'\|null). The pipeline PAUSES before any stage beyond it, in every mode (mode 'auto' without it runs through; #187). proceedThrough='plan' stops at plan-ready. |
 // | `planText` | Sam's plan text, supplied on resume (entryStage='dev'\|'review') so the hand-off survives a crash without re-reading GitHub. If absent on resume, the plan is re-materialized from the artifact file (see planPath below). |
 // | `resumeReason` | optional, null by default. Set by the Lead on an entryStage:'dev' relaunch that follows a status:'escalate', reason:'mergeable-conflicting' result (#170), to thread WHY the resume happens into Nick's prompt (#183) — otherwise Nick reasons only from branch/plan content. Allow-list deliberately narrow (one value today): a branch-mismatch or plan-stale escalate doesn't resolve by relaunching Nick with this same message. |
 // | `dryRun` | if true, validate args and return immediately (no agents spawned) |
@@ -131,7 +131,7 @@ export const meta = {
 // `version`, checked against plugin.json by templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '1.0.0-beta.11', cutFrom: '38ce8ef' }
+const BUILD = { plugin: 'lgtmgate', version: '1.0.0-beta.12', cutFrom: 'edf546b' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -505,8 +505,11 @@ const after = (stage, entry) => stageIdx(stage) >= stageIdx(entry)
 // gate() — PURE: depends only on mode / proceedThrough / stage / verdict.
 // Returns true when the workflow should pause (early return) at this checkpoint.
 // Never reads simulate.
+// An explicit proceedThrough is honoured in every mode (#187): mode 'auto' skips every checkpoint only when the
+// Lead set no proceedThrough; with one, 'auto' stops where 'semi' stops. The design-step relaunch contract
+// (proceedThrough:'plan' -> plan-ready) rests on this.
 const gate = (stage, verdict = null) => {
-  if (mode === 'auto') return false
+  if (mode === 'auto' && !proceedThrough) return false
   // proceedThrough = last stage the Lead AUTHORIZED to run. Suppress this checkpoint
   // only when authorized work remains past it. plan/dev checkpoints guard ENTRY into the
   // *next* stage → need authorization strictly beyond the completed stage (`>`). The review

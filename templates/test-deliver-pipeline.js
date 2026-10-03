@@ -333,6 +333,80 @@ await testCase('manual / proceedThrough:dev → dev-done', async () => {
   return e ? e : { ok: true }
 })
 
+// T187 (#187) — an explicit proceedThrough is honoured in every mode. gate() used to return "no pause" for
+// mode:'auto' before it read proceedThrough, so a design-step relaunch (proceedThrough:'plan', the contract of
+// the design-step-required runbook row) ran past the plan checkpoint into Dev with no sign-off.
+await testCase('T187a auto / proceedThrough:plan → plan-ready, no Dev/Review chained', async () => {
+  const r = await run({
+    mode: 'auto',
+    proceedThrough: 'plan',
+    simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] },
+  })
+  const e1 = eq('status', r.status, 'plan-ready')
+  const e2 = r.trace.includes('Dev') ? { ok: false, msg: `trace must not include Dev, got ${JSON.stringify(r.trace)}` } : null
+  const e3 = r.trace.includes('Review') ? { ok: false, msg: `trace must not include Review, got ${JSON.stringify(r.trace)}` } : null
+  return (e1 || e2 || e3) ? (e1 || e2 || e3) : { ok: true }
+})
+
+await testCase('T187b auto / design-step trigger + proceedThrough:plan → plan-ready, never Dev', async () => {
+  const r = await run({
+    mode: 'auto',
+    proceedThrough: 'plan',
+    simulate: {
+      theo: {
+        confirmed: true, evidence: 'e', actualCause: '',
+        persistentStateSignal: true, authSecurityBoundarySignal: true, deployConfigSignal: false,
+        immatureVendorApiSignal: false, designStepSignalEvidence: 'e',
+      },
+      sam: 'GO',
+      morgan: [{ verdict: 'LGTM' }],
+    },
+  })
+  const e1 = eq('status', r.status, 'plan-ready')
+  const e2 = r.trace.includes('Dev') ? { ok: false, msg: `trace must not include Dev, got ${JSON.stringify(r.trace)}` } : null
+  return (e1 || e2) ? (e1 || e2) : { ok: true }
+})
+
+await testCase('T187c auto / no proceedThrough → ready, runs through with no new pause', async () => {
+  const r = await run({ mode: 'auto', simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] } })
+  const e1 = eq('status', r.status, 'ready')
+  const e2 = eq('trace', r.trace, ['Plan', 'Dev', 'Review', 'PR Ready'])
+  return (e1 || e2) ? (e1 || e2) : { ok: true }
+})
+
+await testCase('T187d semi / proceedThrough:plan → plan-ready (unchanged by #187)', async () => {
+  const r = await run({
+    mode: 'semi',
+    proceedThrough: 'plan',
+    simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] },
+  })
+  const e1 = eq('status', r.status, 'plan-ready')
+  const e2 = eq('trace', r.trace, ['Plan'])
+  return (e1 || e2) ? (e1 || e2) : { ok: true }
+})
+
+await testCase('T187e auto / proceedThrough:dev / REQUIRED_CHANGES → needs-revision round:0 (same as semi)', async () => {
+  const r = await run({
+    mode: 'auto',
+    proceedThrough: 'dev',
+    simulate: { sam: 'GO', morgan: [{ verdict: 'REQUIRED_CHANGES', items: ['x'] }, { verdict: 'LGTM' }] },
+  })
+  const e1 = eq('status', r.status, 'needs-revision')
+  const e2 = eq('round', r.round, 0)
+  return (e1 || e2) ? (e1 || e2) : { ok: true }
+})
+
+await testCase('T187f auto / proceedThrough:review / REQUIRED_CHANGES loop → ready rounds:1', async () => {
+  const r = await run({
+    mode: 'auto',
+    proceedThrough: 'review',
+    simulate: { sam: 'GO', morgan: [{ verdict: 'REQUIRED_CHANGES', items: ['x'] }, { verdict: 'LGTM' }] },
+  })
+  const e1 = eq('status', r.status, 'ready')
+  const e2 = eq('rounds', r.rounds, 1)
+  return (e1 || e2) ? (e1 || e2) : { ok: true }
+})
+
 // 11. entryStage:'review', no prNumber → throws with correct message
 await testCase('entryStage:review without prNumber → throws', async () => {
   try {
