@@ -9,7 +9,7 @@
 #
 # Cases: `ok: relaunch ...` (final pass identified by agentId, captured entries replayed),
 # `ok: fail-closed ...` (each refusal names its cause and writes nothing), `ok: retried call ...` (a call the engine
-# retried: folded under its engine label, or refused), `ok: usage ...`, `ok: buildStamp ...` (the run's own stamp decides which version-probe answer is tokenized).
+# retried: folded under its engine label, or refused), `ok: completed run with a dead call ...` (#214: a started call with no result row, no failed row and no answer in its transcript is recorded as the dead-agent entry, or refused), `ok: usage ...`, `ok: buildStamp ...` (the run's own stamp decides which version-probe answer is tokenized).
 # bash 3.2 compatible. Trailer: [test-capture-incident] status=<ok|fail> passed=<n> failed=<n>
 set -u
 cd "$(dirname "$0")/.."
@@ -98,15 +98,49 @@ const final = Object.keys(smoke.calls).map((label, i) => ({ label, agentId: 'ag-
 // label is another call's. retrydeadlabel: a died attempt of the key has another label. retrylegit: a plain call whose engine
 // label ends with '(retry 1)'. retrylegitfold: such a call, retried. retrytwin / retrytwinfirst: two calls of one engine
 // label with their own keys, the second / the first retried. retrytwinshared: the same, the two calls share one key.
+// A dead agent (#214): the worktree-behind probe has a started row and no result row. dead: one attempt. deadretried: two
+// started rows under one key, record label '<label> (retry 1)'. deadfailed: a failed row too. deadkilled: as dead, the run
+// record's status is killed. deadcached: as dead, the record entry is cached. Env DEADTRANS = the transcript of every attempt
+// (the file agent-<agentId>.jsonl in the run dir): absent (default, no file) | unanswered | answered (a StructuredOutput
+// tool_use then its tool_result) | text (an assistant end_turn text reply) | torn (unanswered rows, then a truncated last line)
+// | badjson (an invalid NON-final line). Every content item of a transcript carries the planted sentinel below, so a test can
+// prove nothing of it is copied or printed. unfinished and retryalldied also write an answered transcript (a result row lost
+// while the transcript holds the answer is never guessed).
 const extra = []
 const SCOUT_LABEL = 'scout-issue-123-1'
+const BEHIND_LABEL = 'probe-123-git-rev-list-count-worktree-behind-42-r0'
+const SENT = 'ZQTRANSCRIPTSENTINEL'
+const mark = (a, cnt, suffix) => {
+  a.dead = Array.from({ length: cnt }, (_, i) => ({ agentId: 'ag-dead-' + a.agentId + '-' + i, key: a.key, label: a.label }))
+  a.recLabel = a.label + suffix
+}
+const tline = (type, content, more) => JSON.stringify({ type, message: Object.assign({ role: type, content }, more || {}) })
+const userRow = () => tline('user', [{ type: 'text', text: SENT }])
+const toolResultRow = () => tline('user', [{ type: 'tool_result', content: SENT }])
+const toolUseRow = (name) => tline('assistant', [{ type: 'thinking', thinking: SENT }, { type: 'tool_use', name, input: { x: SENT } }], { stop_reason: 'tool_use' })
+const writeTrans = (agentIds, kind) => {
+  if (kind === 'absent') return
+  const unanswered = [userRow(), toolUseRow('Bash'), toolResultRow()]
+  const body = {
+    unanswered: unanswered.join('\n') + '\n',
+    answered: [userRow(), toolUseRow('StructuredOutput'), toolResultRow()].join('\n') + '\n',
+    text: [userRow(), tline('assistant', [{ type: 'text', text: SENT }], { stop_reason: 'end_turn' })].join('\n') + '\n',
+    torn: unanswered.join('\n') + '\n{"type":"assist',
+    badjson: '{"broken":\n' + unanswered.join('\n') + '\n',
+  }[kind]
+  if (body === undefined) throw new Error('unknown DEADTRANS ' + kind)
+  for (const id of agentIds) fs.writeFileSync(path.join(runDir, 'agent-' + id + '.jsonl'), body)
+}
+let deadTarget = null
+if (mut.startsWith('dead')) {
+  deadTarget = final.find((a) => a.label === BEHIND_LABEL)
+  if (mut === 'deadretried') mark(deadTarget, 1, ' (retry 1)')
+  if (mut === 'deadfailed') deadTarget.failedOnly = true
+  else deadTarget.noResult = true
+}
 if (mut.startsWith('retry')) {
   const nDead = Number(process.env.RDEAD || 1)
   const sfx = process.env.RSFX !== undefined ? process.env.RSFX : ' (retry ' + nDead + ')'
-  const mark = (a, cnt, suffix) => {
-    a.dead = Array.from({ length: cnt }, (_, i) => ({ agentId: 'ag-dead-' + a.agentId + '-' + i, key: a.key, label: a.label }))
-    a.recLabel = a.label + suffix
-  }
   const scout = final.find((a) => a.label === SCOUT_LABEL)
   if (!/^retry(legit|twin)/.test(mut)) mark(scout, nDead, sfx) // the legit and twin cases retry their own call only
   if (mut === 'retrymulti') mark(final.find((a) => a.label === 'diagnose-issue-123'), 2, ' (retry 2)')
@@ -158,6 +192,11 @@ const rec = {
   }))),
 }
 if (mut === 'cachedtrue') rec.workflowProgress[1].cached = true
+if (mut === 'deadcached') rec.workflowProgress.find((e) => e.agentId === deadTarget.agentId).cached = true
+if (mut === 'deadkilled') rec.status = 'killed'
+if (deadTarget) writeTrans([deadTarget.agentId].concat((deadTarget.dead || []).map((d) => d.agentId)), process.env.DEADTRANS || 'absent')
+if (mut === 'unfinished') writeTrans(['ag-' + (final.length - 1)], 'answered')
+if (mut === 'retryalldied') { const sc = final.find((a) => a.label === SCOUT_LABEL); writeTrans([sc.agentId].concat(sc.dead.map((d) => d.agentId)), 'answered') }
 if (STAMPS[mut]) rec.result.buildStamp = STAMPS[mut]
 
 const lastResult = () => rows.map((r, i) => (r.type === 'result' && r.agentId === 'ag-' + (final.length - 1)) ? i : -1).filter((i) => i >= 0)[0]
@@ -373,7 +412,7 @@ refusal "journal missing" nojournal "journal.jsonl: missing file"
 refusal "record missing" norecord "$RUN.json: missing file"
 refusal "unlabeled started" unlabeled "missing label"
 refusal "orphan result" orphan "orphan result for key v2:zzz"
-refusal "unfinished started" unfinished "died call"
+refusal "unfinished started, its transcript holds an answer" unfinished "died call"
 refusal "failed without result" failedonly "died call"
 refusal "key prefix not v2" badkey "does not start with v2:"
 refusal "record without args" noargs "missing args"
@@ -609,7 +648,7 @@ KIND="retried call"
 refusal "two calls of one label sharing a key, one retried (ambiguous)" retrytwinshared "ambiguous retried call"
 refusal "journal label of the answer is another call's" retrydiff 'journal "scout-issue-123-2", record "scout-issue-123-1 (retry 1)"'
 refusal "a died attempt of the key has another label" retrydeadlabel "label mismatch on key $SCOUT_KEY"
-refusal "no attempt answers" retryalldied "died call scout-issue-123-1 key $SCOUT_KEY"
+refusal "no attempt answers, the transcripts hold an answer" retryalldied "died call scout-issue-123-1 key $SCOUT_KEY"
 refusal "the key's last event is failed" retryfailedlast "failed call scout-issue-123-1 key $SCOUT_KEY"
 refusal "result rows name other attempts only" retryotherid "no result row of agentId"
 # N is checked against the died attempts of the key, never guessed
@@ -643,6 +682,43 @@ sfx_refusal ' (retry 99999999999999999999)'
 # the other retry suffixes of the engine are not folded (out of #209): they refuse as a label mismatch
 sfx_refusal ' (throttle-retry)'
 sfx_refusal ' (after usage limit)'
+KIND=
+
+# ---- #214: a dead agent is recorded, not refused ----------------------------------------------------------
+# A call with a started row, no result row, no failed row and no answer in any attempt's transcript, in a run the record says
+# completed, is the dead-agent entry { "agentDeath": true }; the capture's own replay must reproduce the observed status.
+BEHIND=probe-123-git-rev-list-count-worktree-behind-42-r0
+dead_ok() { # name mutation transcript expected-status-line-suffix
+  DEADTRANS="$3" newrun "$2"
+  cap "$RUN" 181 t --out "$OUTD"
+  if expect_ok "completed run with a dead call $1"; then
+    last=$(printf '%s\n' "$OUT" | /usr/bin/grep 'status=ok out=')
+    if [ "$(jsq "f.calls[\"$BEHIND\"]")" = '{"agentDeath":true}' ] && [ "$(jsq 'f.expect.status')" = '"ready"' ] \
+       && [ "$(jsq 'Object.keys(f.calls).length')" = "$SMOKE_N" ] \
+       && case "$last" in *"$4") true;; *) false;; esac \
+       && case "$OUT" in *"note:"*"recorded dead agent $BEHIND key "*"[offline] status=ok"*) true;; *) false;; esac \
+       && case "$OUT$(cat "$CAP")" in *ZQTRANSCRIPTSENTINEL*) false;; *) true;; esac; then
+      ok "completed run with a dead call $1: recorded as the dead-agent entry, replays to the observed status, no transcript content copied or printed"
+    else
+      bad "completed run with a dead call $1: entry=$(jsq "f.calls[\"$BEHIND\"]") last='$last' out=$OUT"
+    fi
+  fi
+}
+dead_ok "(no transcript)" dead absent " retries=0 dead=1"
+dead_ok "(unanswered transcript)" dead unanswered " retries=0 dead=1"
+dead_ok "(torn last line tolerated)" dead torn " retries=0 dead=1"
+dead_ok "(retried, both attempts unanswered)" deadretried unanswered " retries=1 dead=1"
+DEADTRANS=absent newrun base
+cap "$RUN" 181 t --out "$OUTD"
+case "$(printf '%s\n' "$OUT" | /usr/bin/grep 'status=ok out=')" in *" dead="*) bad "completed run with a dead call: the status line of a run with none carries dead=";; *) ok "completed run with a dead call: no dead= field on the status line when no call died";; esac
+KIND="completed run with a dead call"
+refusal "(a failed row)" deadfailed "died call"
+DEADTRANS=answered refusal "(transcript holds a StructuredOutput answer)" dead "died call"
+DEADTRANS=text refusal "(transcript ends on a text reply)" dead "died call"
+DEADTRANS=answered refusal "(one of two attempts answered)" deadretried "died call"
+DEADTRANS=badjson refusal "(transcript with an invalid line)" dead "invalid JSON"
+refusal "(cached call)" deadcached "died call"
+refusal "(the run did not complete)" deadkilled "status is killed"
 KIND=
 
 # unexpected file-system errors end as a status line, never a stack trace
