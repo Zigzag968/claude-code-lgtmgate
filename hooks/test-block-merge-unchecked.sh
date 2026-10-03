@@ -64,6 +64,15 @@ mkb amb-unicode-ok.md   'Résumé: ✅ le correctif est livré 🚀' "$AS" '- [x
 mkb amb-fenced-lookalike-ok.md '```' '<!--acceptance:start-->' '<!--  acceptance:end -->' '```' "$AS" '- [x] a' "$AE"
 mkb amb-empty-block.md  "$AS" "$AE"
 mkb amb-fenced-box-in-block.md "$AS" '- [x] a' '```' '- [ ] an example box' '```' "$AE"
+# F1: a start marker only indented or preceded by text still opens a pair (the reading before #202); F3: ordinary lines that mention the markers
+EMD=$'\xe2\x80\x94'; ARW=$'\xe2\x86\x92'
+mkb amb-f1-indented.md "$AS" '- [x] a' "$AE" " $AS" '- [ ] open' "$AE" "$AS" '- [x] a' "$AE"
+mkb amb-f1-text.md     "x $AS" '- [ ] open' "$AE" "$AS" '- [x] a' "$AE"
+mkb amb-f1-empty-after.md " $AS" '- [ ] open' "$AE" "$AS" "$AE"
+mkb amb-f1-ticked.md   " $AS" '- [x] a' "$AE" "$AS" '- [x] a' "$AE"
+mkb amb-f3-prose.md    "$AS and $AE delimit it" "$AS" '- [x] a' "$AE"
+mkb amb-f3-dash.md     "- the gate reads \`acceptance:start\` $EMD as the engine" "$AS" '- [x] <!-- ac:1 --> `grep -c "acceptance:" f` '"$ARW"' 3' "$AE"
+mkb amb-f3-accent-fence.md "$AS" '- [x] a' "$AE" $'```swift \xc3\xa9' "$AS" '- [ ] example' "$AE" '```'
 PASS=0; FAIL=0
 t() { # name expected-rc body cmd [comments-file (default: a review on the head)] [head-file] [expected-output-substring...]
   local out rc name="$1" want="$2" body="$3" cmd="$4" comments="${5:-c-fresh.json}" headf="${6:-head}" sub
@@ -117,5 +126,12 @@ t "fenced-example: accents and emoji in an ordinary body -> allow"            0 
 t "fenced-example: fenced look-alikes before a ticked real block -> allow"    0 amb-fenced-lookalike-ok.md "gh pr merge 5 --merge"
 t "fenced-example: empty block is accepted (behaviour of the base, I1)"       0 amb-empty-block.md "gh pr merge 5 --merge"
 t "fenced-example: an unticked box inside a fence inside the block -> block (I4)" 2 amb-fenced-box-in-block.md "gh pr merge 5 --merge"
+t "F1: an indented start marker holds an open box, a later pair is ticked -> block"      2 amb-f1-indented.md "gh pr merge 5 --merge"
+t "F1: a start marker preceded by text holds an open box, a later pair is ticked -> block" 2 amb-f1-text.md "gh pr merge 5 --merge"
+t "F1: an indented start marker holds an open box, a later pair is empty -> block"       2 amb-f1-empty-after.md "gh pr merge 5 --merge"
+t "F1: an indented start marker, everything ticked -> allow"                              0 amb-f1-ticked.md "gh pr merge 5 --merge"
+t "F3: a prose line mentioning both markers -> allow"                                     0 amb-f3-prose.md "gh pr merge 5 --merge"
+t "F3: an em dash and an arrow next to acceptance: in and outside the block -> allow"    0 amb-f3-dash.md "gh pr merge 5 --merge"
+t "F3: a fence whose info string carries an accent hides the open pair after it -> allow" 0 amb-f3-accent-fence.md "gh pr merge 5 --merge"
 echo "[block-merge-unchecked test] passed=$PASS failed=$FAIL"
 [ "$FAIL" -eq 0 ]
