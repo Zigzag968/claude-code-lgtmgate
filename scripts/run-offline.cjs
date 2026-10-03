@@ -81,6 +81,35 @@ function withEngineVersion(fixture, version) {
   return JSON.parse(raw.split(ENGINE_VERSION_TOKEN).join(version))
 }
 
+// The answer of the plugin version probe (#195) is journaled with the LITERAL engine version, which lead-merge bumps at
+// every merge. A capture or a published fixture therefore stores the token instead, wherever the answer names the engine
+// of the run: `versions` lists the strings that are the run's engine version. Quote-delimited, so `1.0.0-beta.90` is not
+// `1.0.0-beta.9`. Rewrites `line` and `verify` of every `probe-<issue>-lines-plugin-version-r<round>` entry in place;
+// returns the number of strings rewritten. The PROBE `cmd=` hash is the hash of the command, which holds the root path and
+// no version, so it stays valid.
+const VERSION_PROBE_LABEL = /^probe-\d+-lines-plugin-version-r\d+$/
+function tokenizeVersionProbes(calls, versions) {
+  let n = 0
+  for (const label of Object.keys(calls || {})) {
+    if (!VERSION_PROBE_LABEL.test(label)) continue
+    const entries = Array.isArray(calls[label]) ? calls[label] : [calls[label]]
+    for (const e of entries) {
+      if (e === null || typeof e !== 'object') continue
+      for (const k of ['line', 'verify']) {
+        if (typeof e[k] !== 'string') continue
+        for (const v of versions) {
+          if (!v) continue
+          const from = `"PLUGIN-VERSION:${v}"`
+          if (!e[k].includes(from)) continue
+          e[k] = e[k].split(from).join(`"PLUGIN-VERSION:${ENGINE_VERSION_TOKEN}"`)
+          n++
+        }
+      }
+    }
+  }
+  return n
+}
+
 function listJson(dir) {
   const out = []
   for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -305,7 +334,7 @@ async function main() {
 }
 
 // Required by scripts/publish-fixture.cjs; run as a CLI otherwise (spawned or direct use is unchanged).
-module.exports = { stripExports, buildPipelineRunner, replayFixture }
+module.exports = { stripExports, buildPipelineRunner, replayFixture, engineVersionOf, tokenizeVersionProbes, ENGINE_VERSION_TOKEN }
 
 if (require.main === module) {
   main().catch((err) => {

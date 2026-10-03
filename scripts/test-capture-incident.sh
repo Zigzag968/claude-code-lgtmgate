@@ -40,6 +40,31 @@ const recFile = path.join(projectsDir, '-proj', session, 'workflows', runId + '.
 fs.mkdirSync(runDir, { recursive: true })
 fs.mkdirSync(path.dirname(recFile), { recursive: true })
 
+// A real run journals the literal engine version in the plugin version probe answer (#195); the public smoke fixture
+// quotes the token instead. liveversion: the run's engine is the repo's engine. oldrun: a run of an OLDER engine
+// (root and answer 1.0.0-beta.3, cmd hash recomputed for that root). skewrun: a captured plugin-version-skew incident
+// (the answer is the stale root's, the run ended on the skew).
+const VPROBE = 'probe-123-lines-plugin-version-r0'
+const engineSrc = fs.readFileSync(path.join(process.env.ROOT, 'workflows/deliver-pipeline.js'), 'utf8')
+const ENGINE = /const BUILD = \{[^}]*\bversion: '([^']+)'/.exec(engineSrc)[1]
+const sha = (x) => require('crypto').createHash('sha256').update(x).digest('hex')
+const cmdFor = (root) => {
+  const blk = engineSrc.slice(engineSrc.indexOf('// --- pluginVersion:start ---'), engineSrc.indexOf('// --- pluginVersion:end ---'))
+  return new Function(blk + '\nreturn pluginVersionCmd')()(root)
+}
+const live = { liveversion: [ENGINE, null], oldrun: ['1.0.0-beta.3', '/cache/lgtmgate/1.0.0-beta.3'], skewrun: ['1.0.0-beta.3', '/cache/lgtmgate/1.0.0-beta.3'] }[mut]
+if (live) {
+  const [ver, root] = live
+  const e = JSON.parse(JSON.stringify(smoke.calls[VPROBE]))
+  for (const k of ['line', 'verify']) {
+    e[k] = e[k].split('@@ENGINE_VERSION@@').join(ver)
+    if (root) e[k] = e[k].replace(/cmd=[0-9a-f]{64}/, 'cmd=' + sha(cmdFor(root)))
+  }
+  smoke.calls[VPROBE] = e
+  if (root) smoke.args.pluginRoot = root
+}
+if (mut === 'skewrun') for (const l of Object.keys(smoke.calls)) if (l !== VPROBE) delete smoke.calls[l]
+
 const rows = [{ type: 'launched' }]
 const started = (agentId, key, label) => ({ type: 'started', agentId, key, label, phase: 'p' })
 const result = (agentId, key, value) => ({ type: 'result', agentId, key, result: value })
@@ -57,7 +82,7 @@ if (mut === 'ordering') {
   extra.push({ label: 'decoy-repeat', agentId: 'ag-r2', key: 'v2:r2', value: 'second' })
 }
 if (mut === 'arrayvalue') extra.push({ label: 'decoy-array', agentId: 'ag-a1', key: 'v2:a1', value: ['a', 'b'] })
-const SCOUT = final.find((a) => a.label === 'scout-issue-123-1').agentId // by label: the smoke fixture's call order is not a contract
+const SCOUT = (final.find((a) => a.label === 'scout-issue-123-1') || {}).agentId // by label: the smoke fixture's call order is not a contract
 const progress = final.concat(extra)
 const journalOrder = mut === 'ordering' ? final.concat(extra.slice().reverse()) : progress
 for (const a of journalOrder) {
@@ -67,7 +92,7 @@ for (const a of journalOrder) {
 
 const rec = {
   runId, status: 'completed', args: Object.assign({}, smoke.args, { simulate: { x: 1 } }),
-  result: { status: 'ready' }, agentCount: progress.length,
+  result: mut === 'skewrun' ? { status: 'escalate', reason: 'plugin-version-skew: the plugin root holds lgtmgate 1.0.0-beta.3 but this engine is ' + ENGINE + '; pass the current plugin root and relaunch' } : { status: 'ready' }, agentCount: progress.length,
   workflowProgress: [{ type: 'workflow_phase', title: 'p' }].concat(progress.map((a, i) => ({
     type: 'workflow_agent', index: i, label: a.label, agentId: a.agentId, state: 'done',
   }))),
@@ -148,6 +173,42 @@ if expect_ok "relaunch base"; then
   NCALLS=$(node -e 'process.stdout.write(String(Object.keys(require(process.env.ROOT+"/fixtures/smoke/auto-lgtm.json").calls).length))')
   case "$OUT" in *"calls=$NCALLS cached=0"*) ok "relaunch cached absent is false (cached=0, calls=$NCALLS)";; *) bad "cached count: $OUT";; esac
   case "$(cat "$CAP")" in *cached*) bad "relaunch capture carries a cached key";; *) ok "relaunch capture carries no run metadata";; esac
+fi
+
+# ---- #195: the plugin version probe answer follows the engine version, never the version of the day ----
+# A real run with a pluginRoot and no probeRunPath journals the LITERAL engine version in that answer; lead-merge bumps the
+# version at every merge, so a literal kept in a fixture goes red at the next bump. The capture writes the token instead
+# when the answer is the run's engine (the repo's BUILD, or the version the run's pluginRoot names).
+bumped_engine() { # <out file>: the engine with another BUILD version
+  node -e 'const fs=require("fs");const s=fs.readFileSync(process.env.ROOT+"/workflows/deliver-pipeline.js","utf8");fs.writeFileSync(process.argv[1],s.replace(/(const BUILD = \{[^}]*\bversion: \x27)[^\x27]+/,"$19.9.9-bumped"))' "$1"
+}
+BUMPED="$TMP/engine-bumped.js"
+bumped_engine "$BUMPED"
+vprobe() { # <js over the version probe entry e>: evaluates against the captured file
+  node -e 'const f=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));const e=f.calls["probe-123-lines-plugin-version-r0"];process.stdout.write(JSON.stringify(eval(process.argv[2])))' "$CAP" "$1"
+}
+newrun liveversion
+cap "$RUN" 181 t --out "$OUTD"
+if expect_ok "live version"; then
+  [ "$(vprobe 'e.line.includes("PLUGIN-VERSION:@@ENGINE_VERSION@@") && e.verify.includes("PLUGIN-VERSION:@@ENGINE_VERSION@@")')" = "true" ] && ok "live version: the version probe answer (line and verify) is the token in the capture" || bad "live version: token missing: $(vprobe 'e')"
+  ENGV=$(node -e 'process.stdout.write(/const BUILD = \{[^}]*\bversion: \x27([^\x27]+)/.exec(require("fs").readFileSync(process.env.ROOT+"/workflows/deliver-pipeline.js","utf8"))[1])')
+  case "$(cat "$CAP")" in *"PLUGIN-VERSION:$ENGV"*) bad "live version: the literal $ENGV is still in the capture";; *) ok "live version: no literal engine version left in the capture";; esac
+  out=$(node scripts/run-offline.cjs "$CAP" --fp "$BUMPED" 2>&1 | tail -n 1)
+  case "$out" in *"status=ok passed=1"*) ok "live version: the capture replays green against an engine whose version was bumped";; *) bad "live version: bumped replay: $out";; esac
+  out=$(node scripts/run-offline.cjs "$CAP" 2>&1 | tail -n 1)
+  case "$out" in *"status=ok passed=1"*) ok "live version: and against the engine of the repo";; *) bad "live version: replay: $out";; esac
+fi
+
+newrun oldrun
+cap "$RUN" 181 t --out "$OUTD"
+if expect_ok "older run"; then
+  [ "$(vprobe 'e.line.includes("PLUGIN-VERSION:@@ENGINE_VERSION@@")')" = "true" ] && ok "older run: the answer naming the run's pluginRoot version is the token (replays against today's engine)" || bad "older run: $(vprobe 'e')"
+fi
+
+newrun skewrun
+cap "$RUN" 181 t --out "$OUTD"
+if expect_ok "skew incident"; then
+  [ "$(vprobe 'e.line.includes("PLUGIN-VERSION:1.0.0-beta.3") && !e.line.includes("@@")')" = "true" ] && ok "skew incident: the stale root's version stays literal (the incident is the difference)" || bad "skew incident: $(vprobe 'e')"
 fi
 
 newrun ordering
