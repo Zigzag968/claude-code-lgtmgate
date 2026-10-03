@@ -2139,27 +2139,35 @@ function pluginVersionCmd(pluginRoot) {
 // null when either is not of that form. Used ONLY to word the remedy: whether the root is the engine's version is
 // always the strict equality of the two strings.
 function pluginVersionOrder(a, b) {
-  const P = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z.-]+)?$/
-  const x = P.exec(a)
-  const y = P.exec(b)
+  // no regex (the R1 ratchet counts them): digits and identifier characters are checked by membership
+  const DIGITS = '0123456789'
+  const IDENT = DIGITS + 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ-'
+  const all = (t, set) => t !== '' && [...t].every((c) => set.includes(c))
+  const parse = (v) => {
+    const plus = String(v).split('+')
+    if (plus.length > 2 || (plus.length === 2 && !plus[1].split('.').every((t) => all(t, IDENT)))) return null
+    const dash = plus[0].indexOf('-')
+    const nums = (dash < 0 ? plus[0] : plus[0].slice(0, dash)).split('.')
+    const pre = dash < 0 ? null : plus[0].slice(dash + 1).split('.')
+    if (nums.length !== 3 || !nums.every((t) => all(t, DIGITS))) return null
+    if (pre && !pre.every((t) => all(t, IDENT))) return null
+    return { nums: nums.map(Number), pre }
+  }
+  const x = parse(a)
+  const y = parse(b)
   if (!x || !y) return null
-  for (let i = 1; i <= 3; i++) {
-    const d = Number(x[i]) - Number(y[i])
-    if (d) return d < 0 ? -1 : 1
-  }
-  if (!x[4] && !y[4]) return 0
-  if (!x[4]) return 1
-  if (!y[4]) return -1
-  const p = x[4].split('.')
-  const q = y[4].split('.')
-  for (let i = 0; i < Math.min(p.length, q.length); i++) {
-    const n = /^\d+$/.test(p[i])
-    const m = /^\d+$/.test(q[i])
-    if (n && m) { const d = Number(p[i]) - Number(q[i]); if (d) return d < 0 ? -1 : 1 }
+  for (let i = 0; i < 3; i++) if (x.nums[i] !== y.nums[i]) return x.nums[i] < y.nums[i] ? -1 : 1
+  if (!x.pre && !y.pre) return 0
+  if (!x.pre) return 1
+  if (!y.pre) return -1
+  for (let i = 0; i < Math.min(x.pre.length, y.pre.length); i++) {
+    const n = all(x.pre[i], DIGITS)
+    const m = all(y.pre[i], DIGITS)
+    if (n && m) { if (Number(x.pre[i]) !== Number(y.pre[i])) return Number(x.pre[i]) < Number(y.pre[i]) ? -1 : 1 }
     else if (n !== m) return n ? -1 : 1
-    else if (p[i] !== q[i]) return p[i] < q[i] ? -1 : 1
+    else if (x.pre[i] !== y.pre[i]) return x.pre[i] < y.pre[i] ? -1 : 1
   }
-  return p.length === q.length ? 0 : p.length < q.length ? -1 : 1
+  return x.pre.length === y.pre.length ? 0 : x.pre.length < y.pre.length ? -1 : 1
 }
 // -> null when the root holds the engine's version, else { code, reason }; fails closed on anything else.
 // A failure of the PROBE itself (no attestation, an agent type not resolved, a copy that altered the command)
