@@ -880,6 +880,81 @@ else
   bad "folded retry capture: rc=$RRC retries-suffix=$RRET out=$ROUT"
 fi
 
+# ---- #214: a capture that holds a dead agent publishes, the dead entry kept as the dead-agent form ----------
+# A SYNTHETIC completed run (never the real projects directory) where the worktree-behind probe died: two `started` rows
+# under one key (the record names the call '<label> (retry 1)'), no result row, no failed row, one attempt without a transcript
+# and the other with an unanswered one. The capture records the dead-agent entry (retries=1 dead=1), the publication keeps it
+# as exactly { "agentDeath": true } with one entry per engine label, and the replay reproduces the recorded status.
+DPROJ="$TMP/dead-projects"
+DREPO="$TMP/dead-repo"
+rm -rf "$DPROJ" "$DREPO"
+git init -q "$DREPO"
+printf 'captures/\n' > "$DREPO/.gitignore"
+DEAD_LABEL=probe-123-git-rev-list-count-worktree-behind-42-r0
+DEAD_LABEL="$DEAD_LABEL" node -e '
+const fs = require("fs"), path = require("path")
+const [proj, runId] = process.argv.slice(1)
+const smoke = JSON.parse(fs.readFileSync(path.join(process.env.ROOT, "fixtures/smoke/auto-lgtm.json"), "utf8"))
+const runDir = path.join(proj, "-proj", "sess1", "subagents", "workflows", runId)
+const recFile = path.join(proj, "-proj", "sess1", "workflows", runId + ".json")
+fs.mkdirSync(runDir, { recursive: true }); fs.mkdirSync(path.dirname(recFile), { recursive: true })
+const calls = Object.keys(smoke.calls).map((label, i) => ({ label, dead: label === process.env.DEAD_LABEL, agentId: "ag-" + i, key: "v2:" + (1000 + i).toString(16), value: smoke.calls[label] }))
+const rows = [{ type: "launched" }]
+for (const c of calls) {
+  if (c.dead) rows.push({ type: "started", agentId: "ag-dead-" + c.agentId + "-0", key: c.key, label: c.label, phase: "p" })
+  rows.push({ type: "started", agentId: c.agentId, key: c.key, label: c.label, phase: "p" })
+  if (!c.dead) rows.push({ type: "result", agentId: c.agentId, key: c.key, result: c.value })
+}
+fs.writeFileSync(path.join(runDir, "journal.jsonl"), rows.map((r) => JSON.stringify(r)).join("\n") + "\n")
+const d = calls.find((c) => c.dead)
+fs.writeFileSync(path.join(runDir, "agent-" + d.agentId + ".jsonl"), JSON.stringify({ type: "user", message: { role: "user", content: [{ type: "text", text: "x" }] } }) + "\n")
+fs.writeFileSync(recFile, JSON.stringify({
+  runId, status: "completed", args: smoke.args, result: { status: smoke.expect.status }, agentCount: calls.length,
+  workflowProgress: calls.map((c, i) => ({ type: "workflow_agent", index: i, label: c.dead ? c.label + " (retry 1)" : c.label, agentId: c.agentId, state: "done" })),
+}))
+' "$DPROJ" wf_r214
+DOUT=$(cd "$DREPO" && CLAUDE_PROJECTS_DIR="$DPROJ" bash "$ROOT/scripts/capture-incident.sh" wf_r214 214 dead --out "$DREPO/captures" 2>&1); DRC=$?
+DCAP="$DREPO/captures/214-dead.json"
+DLAST=$(printf '%s\n' "$DOUT" | grep 'status=ok out=' || true)
+case "$DLAST" in
+  *" retries=1 dead=1") DRET=yes;;
+  *) DRET=no;;
+esac
+if [ "$DRC" -eq 0 ] && [ "$DRET" = yes ] && [ -f "$DCAP" ]; then
+  DDP="$(newdir out-dead)"
+  pub "$DCAP" --out-dir "$DDP"
+  DPUB="$DDP/214-dead.json"
+  SMOKE_ST=$(node -e 'process.stdout.write(JSON.stringify(require(process.env.ROOT+"/fixtures/smoke/auto-lgtm.json").expect.status))')
+  SMOKE_N=$(node -e 'process.stdout.write(String(Object.keys(require(process.env.ROOT+"/fixtures/smoke/auto-lgtm.json").calls).length))')
+  if [ "$RC" -eq 0 ] && [ -f "$DPUB" ]; then
+    rout=$(OFFLINE_STRICT=1 node scripts/run-offline.cjs "$DPUB" 2>&1 | tail -n 1)
+    if [ "$(jsf "$DPUB" "JSON.stringify(f.calls[\"$DEAD_LABEL\"])")" = '"{\"agentDeath\":true}"' ] \
+       && [ "$(jsf "$DPUB" 'f.expect.status')" = "$SMOKE_ST" ] && [ "$(jsf "$DPUB" 'Object.keys(f.calls).length')" = "$SMOKE_N" ] \
+       && ! grep -q '(retry' "$DPUB" && [ "$rout" = "[offline] status=ok passed=1 failed=0" ]; then
+      ok "a capture that holds a dead agent publishes: kept as the dead-agent form, one entry per engine label, replays to its recorded status"
+    else
+      bad "dead agent publication: entry=$(jsf "$DPUB" "f.calls[\"$DEAD_LABEL\"]") status=$(jsf "$DPUB" 'f.expect.status') entries=$(jsf "$DPUB" 'Object.keys(f.calls).length')/$SMOKE_N replay='$rout'"
+    fi
+  else
+    bad "dead agent publication: rc=$RC out=$OUT err=$ERR"
+  fi
+  # a malformed dead-agent entry in the raw capture is refused, nothing written, no label printed
+  node -e 'const fs=require("fs");const f=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));f.calls[process.argv[3]]={agentDeath:false};fs.writeFileSync(process.argv[2],JSON.stringify(f))' "$DCAP" "$TMP/dead-malformed.json" "$DEAD_LABEL"
+  DBD="$(newdir out-dead-bad)"
+  pub "$TMP/dead-malformed.json" 214-dead --out-dir "$DBD"
+  case "$ERR" in
+    *"malformed dead-agent entry"*)
+      if [ "$RC" -eq 1 ] && [ "$(last_line)" = "[publish-fixture] status=refused" ] && [ -z "$(ls -A "$DBD")" ] && ! printf '%s' "$ERR" | grep -q "$DEAD_LABEL"; then
+        ok "a raw capture with a malformed dead-agent entry is refused: nothing written, no label printed"
+      else
+        bad "malformed dead-agent entry: rc=$RC left=$(ls -A "$DBD") err=$ERR"
+      fi;;
+    *) bad "malformed dead-agent entry not refused: rc=$RC err=$ERR";;
+  esac
+else
+  bad "dead agent capture: rc=$DRC retries-dead-suffix=$DRET out=$DOUT"
+fi
+
 # ---- usage errors (exit 2, before any filesystem access) ----------------------------------------------
 
 pub
