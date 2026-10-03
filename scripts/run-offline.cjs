@@ -42,6 +42,11 @@
 // The token `@@ENGINE_VERSION@@` anywhere in a fixture resolves to the engine's BUILD version (refused if it has none).
 // A label absent from `calls` (or an exhausted array) throws with the label and the
 // first 200 chars of the prompt, so the missing entry is obvious. Nothing is defaulted.
+// Dead agent (#214): the entry `{ "agentDeath": true }` stands for an agent that died without answering. The harness serves
+// it as an EMPTY agent result (null), the same thing the engine sees when an agent throws or returns nothing, so the
+// engine's own death routing runs. As an array element it is consumed in call order; as a scalar the agent dies on every
+// call of the label, retries included. `agentDeath` is the only reserved word: `null`, and any object that carries the key
+// but is not exactly `{ "agentDeath": true }`, are refused. Whether the engine survives the death is the engine's call.
 //
 // Coupling to deliver-pipeline.js (same contract as run-flow-suite.cjs):
 //   - export-strip regex `/^export\s+/mg`; injected globals `args`, `agent`, `log`, `phase`.
@@ -139,6 +144,40 @@ function listJson(dir) {
   return out.sort()
 }
 
+// The dead-agent entry of a fixture's `calls` (#214): exactly `{ "agentDeath": true }`.
+const DEAD_AGENT_KEY = 'agentDeath'
+function isDeadAgentEntry(v) {
+  if (v === null || typeof v !== 'object' || Array.isArray(v)) return false
+  const keys = Object.keys(v)
+  return keys.length === 1 && keys[0] === DEAD_AGENT_KEY && v[DEAD_AGENT_KEY] === true
+}
+function deadAgentEntry() {
+  return { [DEAD_AGENT_KEY]: true }
+}
+// Malformed dead-agent entries of a `calls` object: `null` (an accidental death, indistinguishable from a dropped answer)
+// and any object that holds the key without being exactly the form. Names the label and the position, never a value.
+function deadAgentProblems(calls) {
+  const problems = []
+  if (calls === null || typeof calls !== 'object') return problems
+  for (const label of Object.keys(calls)) {
+    const value = calls[label]
+    const scalar = !Array.isArray(value)
+    const entries = scalar ? [value] : value
+    entries.forEach((e, i) => {
+      const where = `calls[${JSON.stringify(label)}]` + (scalar ? '' : `[${i}]`)
+      if (e === null) problems.push(`${where} is null: a dead agent is written {"${DEAD_AGENT_KEY}": true}, never null`)
+      else if (typeof e === 'object' && !Array.isArray(e) && Object.prototype.hasOwnProperty.call(e, DEAD_AGENT_KEY) && !isDeadAgentEntry(e)) {
+        problems.push(`${where} is a malformed dead-agent entry: it must be exactly {"${DEAD_AGENT_KEY}": true}`)
+      }
+    })
+  }
+  return problems
+}
+// What the engine's agent() hands back for an entry: null for the dead-agent form, a copy of the value otherwise.
+function serve(v) {
+  return isDeadAgentEntry(v) ? null : clone(v)
+}
+
 // agent() served by label. Arrays are consumed in call order; a scalar is reusable.
 // A missing entry throws AND is recorded in `missing`: the engine catches most agent()
 // errors on purpose (fail-open probes, agent-death routing), so the harness must fail the
@@ -166,9 +205,9 @@ function buildFixtureAgent(fixture, calls, missing, cursors, withPrompts = false
         throw new Error(`[offline] fixture entry "${label}" exhausted after ${value.length} call(s) (fixture "${fixture.name}")`)
       }
       cursors.set(label, i + 1)
-      return clone(value[i])
+      return serve(value[i])
     }
-    return clone(value)
+    return serve(value)
   }
 }
 
@@ -362,6 +401,8 @@ async function runSingle(fixture, fpSrcStripped) {
   if (!fixture.calls || typeof fixture.calls !== 'object') {
     throw new Error(`[offline] fixture "${fixture.name}" has no "calls" object`)
   }
+  const badDead = deadAgentProblems(fixture.calls)
+  if (badDead.length) throw new Error(`[offline] fixture "${fixture.name}": ${badDead.join('; ')}`)
   if (fixture.args && fixture.args.simulate) {
     throw new Error(`[offline] fixture "${fixture.name}" sets args.simulate — this harness runs the REAL parsers, never simulate mode`)
   }
@@ -423,7 +464,7 @@ async function main() {
 }
 
 // Required by scripts/publish-fixture.cjs; run as a CLI otherwise (spawned or direct use is unchanged).
-module.exports = { stripExports, buildPipelineRunner, replayFixture, engineVersionOf, engineVersionOfStamp, ENGINE_VERSION_RE, tokenizeVersionProbes, ENGINE_VERSION_TOKEN }
+module.exports = { stripExports, buildPipelineRunner, replayFixture, engineVersionOf, engineVersionOfStamp, ENGINE_VERSION_RE, tokenizeVersionProbes, ENGINE_VERSION_TOKEN, DEAD_AGENT_KEY, isDeadAgentEntry, deadAgentEntry, deadAgentProblems }
 
 if (require.main === module) {
   main().catch((err) => {

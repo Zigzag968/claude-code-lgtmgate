@@ -46,6 +46,8 @@
 //      protected fields with a path, PROBE / VERIFY lines whose `json=` payload holds a space or a path separator, and
 //      the published expect.reason), then the number of key names and non-string scalars kept as they are (never
 //      neutralized) and the number of entries pruned. The report counts what it flags; it does not judge it.
+// A dead-agent entry (`{ "agentDeath": true }`, #214) of the capture is kept as is: it holds no string, so the minimizer and the
+// redactor leave it alone, and the oracle (labels, sites, log count) covers the death path the engine takes. A malformed one refuses.
 // The published `expect` is built from the baseline: status, reason (if any), trace with traceExact, callLabels.
 // Nothing here calls a model, the network or the Claude Code projects directory.
 
@@ -54,7 +56,7 @@ const os = require('os')
 const path = require('path')
 const crypto = require('crypto')
 const { spawnSync } = require('child_process')
-const { stripExports, buildPipelineRunner, replayFixture, tokenizeVersionProbes, ENGINE_VERSION_TOKEN } = require('./run-offline.cjs')
+const { stripExports, buildPipelineRunner, replayFixture, tokenizeVersionProbes, ENGINE_VERSION_TOKEN, deadAgentProblems } = require('./run-offline.cjs')
 
 const REPO = path.resolve(__dirname, '..')
 const NAME_RE = /^[0-9]+-[a-z0-9][a-z0-9-]*(\.json)?$/
@@ -132,6 +134,7 @@ function loadCapture(file) {
   if (!isObj(c.args)) refuse('the raw capture has no args object')
   if (Object.prototype.hasOwnProperty.call(c.args, 'simulate')) refuse('the raw capture sets args.simulate')
   if (!isObj(c.calls)) refuse('the raw capture has no calls object')
+  if (deadAgentProblems(c.calls).length) refuse('the raw capture has a malformed dead-agent entry')
   if (!isObj(c.expect) || typeof c.expect.status !== 'string' || !c.expect.status) refuse('the raw capture has no expect.status')
   if (Object.prototype.hasOwnProperty.call(c.expect, 'throws')) refuse('the raw capture sets expect.throws (an arg-validation refusal has nothing to minimize)')
   return c

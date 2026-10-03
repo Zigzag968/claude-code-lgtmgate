@@ -15,7 +15,7 @@
 //     --out    default <cwd>/.pipeline/captures   (must be git-ignored, inside a work tree)
 //     --from   projects directory; default $CLAUDE_PROJECTS_DIR, else ~/.claude/projects
 // Last stdout line (always): `[capture-incident] status=<ok|refused|error|usage-error>`
-// (ok adds `out=<path> calls=<n> cached=<n> version-source=<stamp|checkout|pluginRoot|none> retries=<n>`). Detail goes to stderr. Exit 0 ok, 1 refused or error
+// (ok adds `out=<path> calls=<n> cached=<n> version-source=<stamp|checkout|pluginRoot|none> retries=<n>`, plus ` dead=<n>` only when n > 0). Detail goes to stderr. Exit 0 ok, 1 refused or error
 // (error = an unexpected file-system failure, one `error: <code>: <message>` stderr line, stack only
 // with CAPTURE_INCIDENT_DEBUG=1, nothing left written), 2 usage.
 //
@@ -40,12 +40,25 @@
 // equal the died attempts of the key ("retry count mismatch" otherwise), the key must not be shared by another entry, and a
 // call with no result refuses. The suffix is exactly ` (retry N)` (N 1-999, case-sensitive, nothing after); the other engine
 // suffixes `(throttle-retry)` and `(after usage limit)` are not folded and refuse as a label mismatch.
+//
+// A dead agent (#214): a call whose key has started rows and NO result row and NO failed row, in a run the record says
+// `completed`, is recorded as the dead-agent entry `{ "agentDeath": true }` (see run-offline.cjs) when EVERY attempt of the
+// key has an agent transcript that is absent or holds no answer, and the call is not cached. The transcript is
+//   <runDir>/agent-<agentId>.jsonl   one JSON object per line: type user|assistant|attachment, message.role,
+//                                    message.content[] items { type: text|thinking|tool_use|tool_result, name? }, message.stop_reason
+// An ANSWER is an assistant row holding a tool_use named StructuredOutput (a schema agent), or a last user/assistant row that is
+// an assistant row with stop_reason end_turn and a non-empty text item (a schema-less agent). "Ends on a tool_result" is NOT a
+// death sign: every schema agent that answered ends so. Only those keys are read; no transcript content is ever copied or
+// printed. A torn last line (a write cut short) is ignored, an invalid earlier line refuses `layout:`. A failed row, a
+// transcript that holds an answer (a result row lost, never guessed), a cached call or an unattributable key still refuses as
+// a died call. The capture's own replay decides whether the engine survives the death: it refuses when the replay does not
+// reproduce the observed status (a dead nick ends `dev-died` on this engine).
 
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
 const { spawnSync } = require('child_process')
-const { engineVersionOf, engineVersionOfStamp, ENGINE_VERSION_RE, tokenizeVersionProbes } = require('./run-offline.cjs')
+const { engineVersionOf, engineVersionOfStamp, ENGINE_VERSION_RE, tokenizeVersionProbes, deadAgentEntry } = require('./run-offline.cjs')
 
 class Refusal extends Error {}
 class Usage extends Error {}
@@ -216,7 +229,35 @@ function readRecord(file) {
 // Case-sensitive on purpose; `(throttle-retry)` and `(after usage limit)` are other engine suffixes and are NOT folded.
 const RETRY_SUFFIX = /^(.*) \(retry ([1-9][0-9]{0,2})\)$/
 
-function finalPass(journalFile, rows, agents) {
+// 'absent' (no transcript file) | 'answered' | 'answerless' for the transcript of one agent of the run directory.
+function transcriptState(runDir, agentId) {
+  const file = path.join(runDir, `agent-${agentId}.jsonl`)
+  let text
+  try { text = fs.readFileSync(file, 'utf8') } catch (e) {
+    if (e && e.code === 'ENOENT') return 'absent'
+    throw e
+  }
+  const lines = text.split('\n').map((raw, idx) => ({ raw, line: idx + 1 })).filter((l) => l.raw.trim())
+  const rows = []
+  lines.forEach((l, i) => {
+    let row
+    try { row = JSON.parse(l.raw) } catch (e) {
+      if (i === lines.length - 1) return // a write cut short
+      refuse(`layout: ${file}: invalid JSON [line ${l.line}]`)
+    }
+    if (row !== null && typeof row === 'object') rows.push(row)
+  })
+  const items = (row) => (row.message && Array.isArray(row.message.content) ? row.message.content : [])
+  const structured = rows.some((r) => r.type === 'assistant' && items(r).some((it) => it && it.type === 'tool_use' && it.name === 'StructuredOutput'))
+  if (structured) return 'answered'
+  const turns = rows.filter((r) => r.type === 'user' || r.type === 'assistant')
+  const last = turns[turns.length - 1]
+  if (last && last.type === 'assistant' && last.message && last.message.stop_reason === 'end_turn' &&
+      items(last).some((it) => it && it.type === 'text' && typeof it.text === 'string' && it.text.trim())) return 'answered'
+  return 'answerless'
+}
+
+function finalPass(journalFile, rows, agents, runDir) {
   const startsByKey = new Map() // key -> [{ row, line }] in journal order
   const startedByAgent = new Map()
   for (const { line, row } of rows) {
@@ -228,9 +269,11 @@ function finalPass(journalFile, rows, agents) {
   const resultRowsByKey = new Map() // key -> [{ row, line }]
   const resultByKey = new Map()
   const lastEventByKey = new Map() // key -> { type: 'result'|'failed', line } of its LAST such row
+  const failedKeys = new Set() // keys with ANY failed row
   for (const { line, row } of rows) {
     if (row.type !== 'result' && row.type !== 'failed') continue
     lastEventByKey.set(row.key, { type: row.type, line })
+    if (row.type === 'failed') failedKeys.add(row.key)
     if (row.type !== 'result') continue
     if (!startsByKey.has(row.key)) refuse(`${journalFile}: orphan result for key ${row.key} [line ${line}]`)
     if (!resultRowsByKey.has(row.key)) resultRowsByKey.set(row.key, [])
@@ -247,6 +290,7 @@ function finalPass(journalFile, rows, agents) {
   const failedLast = []
   const finalIds = new Set(agents.map((a) => a.agentId))
   let retries = 0
+  let dead = 0
   const notes = []
   // One call per workflowProgress entry, in record order. The engine keeps ONE entry per call: a retried call is the entry
   // `<label> (retry N)` carrying the agentId of its LAST attempt, while the journal holds `<label>` on every attempt, all
@@ -278,7 +322,27 @@ function finalPass(journalFile, rows, agents) {
       }
     }
     if (results.length === 0) { // no attempt of the key answered
-      died.push(starts.map((t) => `${label} key ${key} [line ${t.line}]`).join(', '))
+      // A dead agent is recorded only for a run the record says completed (readRecord refuses any other status before this
+      // pass runs), when nothing proves the call answered: no failed row, no answer in any attempt's transcript, not cached.
+      const where = starts.map((t) => `${label} key ${key} [line ${t.line}]`).join(', ')
+      let why = ''
+      if (failedKeys.has(key)) why = 'a failed row'
+      else if (a.cached) why = 'cached'
+      else if (n > 0 && starts.length !== n + 1) {
+        refuse(`layout: ${journalFile}: retry count mismatch for agentId ${a.agentId} (record "${a.label}" says ${n}, the journal holds ${starts.length - 1} died attempt${starts.length - 1 === 1 ? '' : 's'} for key ${key}) [line ${s.line}]`)
+      } else if (n === 0 && starts.length !== 1) why = 'the died attempts cannot be attributed'
+      else {
+        const states = starts.map((t) => transcriptState(runDir, t.row.agentId))
+        if (states.includes('answered')) why = 'an answered transcript'
+        else {
+          dead += 1
+          retries += n
+          calls.push({ label, value: deadAgentEntry(), cached: a.cached })
+          notes.push(`note: ${journalFile}: recorded dead agent ${label} key ${key} [line ${s.line}]: started, no result row, no failed row, transcript ${states.every((x) => x === 'absent') ? 'absent' : 'without an answer'}; replays as an agent death`)
+          continue
+        }
+      }
+      died.push(`${where} (not recorded as dead: ${why})`)
       continue
     }
     let answer = resultByKey.get(key)
@@ -315,7 +379,7 @@ function finalPass(journalFile, rows, agents) {
       notes.push(`note: ${journalFile}: died call ${row.label} key ${row.key} [line ${line}] belongs to an earlier pass, not captured`)
     }
   }
-  return { calls, notes, retries }
+  return { calls, notes, retries, dead }
 }
 
 // The plugin version probe answer (#195) names the engine version of the run, which lead-merge bumps at every merge: it is
@@ -423,7 +487,7 @@ function main() {
   const journalFile = path.join(runDir, 'journal.jsonl')
   const rows = readJournal(journalFile)
   const record = readRecord(recordPathFor(runDir))
-  const { calls, notes, retries } = finalPass(journalFile, rows, record.agents)
+  const { calls, notes, retries, dead } = finalPass(journalFile, rows, record.agents, runDir)
   for (const n of notes) process.stderr.write(`${n}\n`)
   const { fixture, versionSources } = buildFixture(issue, label, record, calls)
   fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 })
@@ -431,7 +495,7 @@ function main() {
   replay(file)
   process.stdout.write(`next: scripts/publish-fixture.sh ${file}\n`)
   const cached = calls.filter((c) => c.cached).length
-  process.stdout.write(`[capture-incident] status=ok out=${file} calls=${calls.length} cached=${cached} version-source=${versionSources.join(',') || 'none'} retries=${retries}\n`)
+  process.stdout.write(`[capture-incident] status=ok out=${file} calls=${calls.length} cached=${cached} version-source=${versionSources.join(',') || 'none'} retries=${retries}${dead > 0 ? ` dead=${dead}` : ''}\n`)
 }
 
 try {

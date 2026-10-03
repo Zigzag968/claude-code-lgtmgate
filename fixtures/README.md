@@ -54,6 +54,11 @@ prefixes no `agent()` call may start with; an empty list or a non-array is refus
   the PROBE line (bound to the call's label and round), and the probe agent may not stop without the pair (#83). The persona fallback (agent type not found) has no fixture (the harness
   cannot throw); the flow suite pins its wiring (T273).
 - A scout `plan` must contain its `acceptanceChecklist` lines, or the lines of its `acceptanceItems` (`- [ ] <!-- ac:N --> text`, the id comment optional): the engine refuses a pointer/summary plan before plan-check (see `153-plan-pointer-return`).
+- A dead agent is written `{ "agentDeath": true }` (#214): the harness serves the engine an empty agent result, the same
+  thing it sees when an agent throws or returns nothing, so the engine's own death routing runs. As an array element it is
+  consumed in call order; as a scalar the agent dies on every call of the label, retries included. `null` and any other
+  object that carries the key `agentDeath` are refused (the fixture fails, naming `calls["<label>"]`); a label with no
+  entry still throws. Whether the engine survives the death is the engine's call.
 - A label missing from `calls` throws with the label and the prompt head, **and fails the fixture even
   when the engine swallows the error** (fail-open probes, agent-death routing). Nothing is defaulted:
   the harness only proves what the fixture actually feeds.
@@ -70,7 +75,15 @@ bash scripts/capture-incident.sh <runId> <issue> <label> [--out DIR]
 - One `calls[<label>]` entry per `agent()` call of the run's final pass, exactly as the agent
   returned it (the final pass of a relaunched run is identified by the record's `agentId` values,
   never by journal order). It fails closed, naming the key, on any layout it does not recognise
-  and on a call that died; it then replays the capture and prints the next step.
+  and on a call that died (see the dead-agent bullet below); it then replays the capture and prints the next step.
+- A dead agent is recorded, not refused, when ALL hold: the run record is `completed`; the call has a `started` row, no
+  `result` row and no `failed` row; the call is not cached; and every attempt's `agent-<agentId>.jsonl` (beside the journal)
+  is absent or holds no answer (no `StructuredOutput` tool call, and it does not end on a text reply). The call becomes
+  `{ "agentDeath": true }`, a stderr note names the label and says it was recorded as dead (never any transcript content),
+  and the status line gains ` dead=<n>` (only when n > 0). A failed row, an answered transcript (a lost result row is
+  never guessed), a cached call or a run that did not complete still refuses. The replay then decides whether the engine
+  survives the death: it must reproduce the observed status or the capture refuses, and on this engine a dead nick ends
+  `dev-died`.
 - A call the engine retried has this shape (measured on a real run): the run record holds ONE
   `workflow_agent` entry for the call, named `<label> (retry N)` and carrying the `agentId` of the LAST
   attempt (the died attempts' ids are not in the record); the journal holds N+1 `started` rows
@@ -123,6 +136,8 @@ refuses with its cause and writes nothing.
   `probeOnly.name`; a path protects its whole subtree) are never neutralized.
 - The `cmd=` hash of a PROBE answer coupled to the args is recomputed after every change.
 - `scripts/redact-fixture.cjs` runs next (it refuses on residue), then its `--check`, then a strict replay.
+- A dead-agent entry is kept as the dead-agent form, one entry per engine label; the minimizer and the redactor leave it alone
+  (it holds no string) and a malformed one refuses.
 - Entries of `calls` the final replay never consumed (a label never asked, the tail of an array) are dropped.
 - The published `expect` is rebuilt from the replay: `status`, `reason`, `trace` with `traceExact`, `callLabels`.
 - It prints what remains as field names and character counts, never values: every kept string by JSON path, the kept
