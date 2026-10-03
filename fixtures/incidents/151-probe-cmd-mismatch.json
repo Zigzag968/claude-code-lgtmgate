@@ -10,6 +10,10 @@
     "mode": "auto"
   },
   "calls": {
+    "probe-151-lines-plugin-version-r0": {
+      "line": "PROBE name=lines exit=0 sha=4b0b2f33b20b777393f4cb55ea1d47c45786b52ad36822582a5ed67647e54ed5 cmd=2af1fd58e4141ac8977c54e48900baf5a81f43c1be46d2a1c6f38830f7582ec8 json={\"lines\":[\"PLUGIN-VERSION:@@ENGINE_VERSION@@\"]}",
+      "verify": "VERIFY ok line=PROBE name=lines exit=0 sha=4b0b2f33b20b777393f4cb55ea1d47c45786b52ad36822582a5ed67647e54ed5 cmd=2af1fd58e4141ac8977c54e48900baf5a81f43c1be46d2a1c6f38830f7582ec8 json={\"lines\":[\"PLUGIN-VERSION:@@ENGINE_VERSION@@\"]}"
+    },
     "probe-151-provision-provision-r0": {
       "line": "PROBE name=provision exit=0 sha=43906f9f12fdfc3e46bd7f72f0c9b44369719e90aa9b5f8bb4d06822efed0860 cmd=2363faec9c08ce39c22e3794e93ad5a311b18e20263dd214088668b438964c7d json={\"version\":1,\"linked\":[\".env\"],\"missing\":[],\"skipped\":false}",
       "verify": "VERIFY ok line=PROBE name=provision exit=0 sha=43906f9f12fdfc3e46bd7f72f0c9b44369719e90aa9b5f8bb4d06822efed0860 cmd=2363faec9c08ce39c22e3794e93ad5a311b18e20263dd214088668b438964c7d json={\"version\":1,\"linked\":[\".env\"],\"missing\":[],\"skipped\":false}"

@@ -37,7 +37,7 @@ export const meta = {
 // | `resumeReason` | optional, null by default. Set by the Lead on an entryStage:'dev' relaunch that follows a status:'escalate', reason:'mergeable-conflicting' result (#170), to thread WHY the resume happens into Nick's prompt (#183) — otherwise Nick reasons only from branch/plan content. Allow-list deliberately narrow (one value today): a branch-mismatch or plan-stale escalate doesn't resolve by relaunching Nick with this same message. |
 // | `dryRun` | if true, validate args and return immediately (no agents spawned) |
 // | `probeOnly` | optional { name, cmd, label, round }: run ONE probe() (probe-run gate, #80) and return status 'dry-run-ok' reason 'probe-only'. Lets a run-offline fixture reach probe() while no engine call site is migrated yet. Not a simulate key. |
-// | `pluginRoot` | optional absolute path of the plugin root (#82). The Lead passes ${CLAUDE_PLUGIN_ROOT} for the plugin component and omits it for a local copy; the probe layer resolves templates/probe-run.cjs from it (the workflow has no filesystem or env). config.probeRunPath wins; fallback <wtPath>/templates/probe-run.cjs. |
+// | `pluginRoot` | optional absolute path of the plugin root (#82). The Lead passes ${CLAUDE_PLUGIN_ROOT} for the plugin component and omits it for a local copy; the probe layer resolves templates/probe-run.cjs from it (the workflow has no filesystem or env). config.probeRunPath wins; fallback <wtPath>/templates/probe-run.cjs. When the templates come from pluginRoot (no config.probeRunPath), the manifest version of the root must equal this engine's BUILD.version, else the run escalates before provisioning (`plugin-version-skew` / `plugin-version-unreadable`, #195). |
 // | `models` | optional per-role model override: { scout?, planAudit?, morgan? }. Resolution order per role is `models.<role> ?? config.models?.<role> ?? 'sonnet'` (same `??` idiom as planAudit above — arg wins per-run over the project default). Default is 'sonnet' for all three roles (lgtmgate#161: the plan-phase loop could spawn up to 4 opus scout attempts per issue with planAudit on, the dominant cost driver); pass e.g. `models: { scout: 'opus' }` per-run when an issue is dense/dangerous enough to warrant it — opus stays fully reachable, just no longer the default. Not a general cost-control knob: Theo and Nick are NOT overridable by this key, always 'sonnet' (out of scope per the issue — their calls are unconditional literals). |
 // | `maxPlanAttempts` | bound on the plan-verification gate loop between Sam and Nick (default 2; mirrors advisory.js's `maxAttempts = 2`). On the maxPlanAttempts-th NOT_CONFORMING verdict, escalate instead of looping again. |
 // | `planAudit` | optional, DEFAULT OFF: once Sam's plan clears the planCheck gate, run an independent, adversarial plan-soundness audit (persona-in-prompt, no agentType — independence holds by construction) before Dev ever starts. Resolved `planAudit ?? config.planAudit ?? false` — arg wins per-run over the project default, an explicit `false` beats a `true` config. Placement: Plan phase only — never re-runs on entryStage='dev'\|'review' (resume). Spawn-cost bound (~70k session tokens/spawn): OFF unchanged; ON typical +1 opus audit (SOUND) or +1 audit +1 scout +1 planCheck (one amendment); ON worst case per Plan phase = maxAuditRounds × maxPlanAttempts = 4 opus scout spawns + 4 haiku planChecks + 2 opus audits (defaults). |
@@ -1995,6 +1995,7 @@ const PROBES = {
   'provision-freshness': 'provision-freshness',
   'pr-state': 'pr-state',
   'git-rev-list-count': 'git-rev-list-count',
+  'lines': 'lines',
 }
 
 // Condensed inline of agents/probe.md — used ONLY as the probe call's persona-in-prompt fallback when
@@ -2121,6 +2122,33 @@ function probeCommands({ wtPath, issue, pluginRoot, probeRunPath, name, cmd, lab
 }
 // --- probeCommands:end ---
 
+// --- pluginVersion:start --- (pure & self-contained — keep extractable by the flow suite)
+// #195: read the plugin manifest of args.pluginRoot with a script of its own (node -e, never a template of
+// the possibly stale root) and judge the answer without a model. The probe parser is the long-standing
+// `lines`: the command prints exactly one line, PLUGIN-VERSION:<version> or PLUGIN-VERSION-ERROR:<cause>.
+function pluginVersionCmd(pluginRoot) {
+  const q = (x) => `'${String(x).split("'").join("'\\''")}'`
+  const js = 'try{const v=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).version;' +
+    'console.log(typeof v==="string"&&v?"PLUGIN-VERSION:"+v:"PLUGIN-VERSION-ERROR:no-version")}' +
+    'catch(e){console.log("PLUGIN-VERSION-ERROR:"+(e&&e.code==="ENOENT"?"missing":"unreadable"))}'
+  return `node -e ${q(js)} ${q(pluginRoot + '/.claude-plugin/plugin.json')}`
+}
+// -> null when the root holds the engine's version, else { code, reason }; fails closed on anything else.
+function pluginVersionVerdict({ engineVersion, pluginRoot, probeFailed, exit, lines }) {
+  const remedy = 'pass the current plugin root and relaunch'
+  const V = 'PLUGIN-VERSION:'
+  const E = 'PLUGIN-VERSION-ERROR:'
+  const one = !probeFailed && exit === 0 && Array.isArray(lines) && lines.length === 1 && typeof lines[0] === 'string' ? lines[0] : ''
+  if (one.startsWith(V) && one.length > V.length) {
+    const found = one.slice(V.length)
+    if (found === engineVersion) return null
+    return { code: 'plugin-version-skew', reason: `plugin-version-skew: pluginRoot ${pluginRoot} holds lgtmgate ${found} but this engine is ${engineVersion}; ${remedy}` }
+  }
+  const cause = probeFailed ? 'probe ' + probeFailed : one.startsWith(E) ? one.slice(E.length) : 'no usable answer'
+  return { code: 'plugin-version-unreadable', reason: `plugin-version-unreadable: cannot read the version in ${pluginRoot}/.claude-plugin/plugin.json (${cause}); engine is ${engineVersion}; ${remedy}` }
+}
+// --- pluginVersion:end ---
+
 async function probe(name, cmd, { label, round = 0, onFail, noReuse = false } = {}) {
   if (!isSafeProbeToken(name) || !isSafeProbeToken(label)) {
     throw new Error(`probe: unsafe name/label (${JSON.stringify(name)} / ${JSON.stringify(label)})`)
@@ -2212,6 +2240,21 @@ async function prWrite(op, label, round, argv) {
 if (probeOnly) {
   const r = await probe(probeOnly.name, probeOnly.cmd, { ...probeOnly })
   return finish(STATUS['dry-run-ok'], { reason: 'probe-only', issue, probesVersion: PROBES_VERSION, probe: r, trace })
+}
+
+// #195: a pluginRoot of another plugin version than this engine fails fast, before provisioning (the
+// first pipeline probe) and before any label write (the stale root's pr-write.sh may be absent).
+// Only when the templates really come from pluginRoot (config.probeRunPath unset, as probeCommands and
+// probeScriptPath resolve them). A reason string on the existing escalate: no new status, agent or seam.
+if (!simulate && pluginRoot && !config.probeRunPath) {
+  const pv = await probe('lines', pluginVersionCmd(pluginRoot), { label: 'plugin-version', noReuse: true, onFail: (reason) => ({ probeFailed: reason }) })
+  if (pv.probeFailed === 'agent-death') return finish(STATUS['provision-died'], { issue, trace })
+  const skew = pluginVersionVerdict({ engineVersion: BUILD.version, pluginRoot, probeFailed: pv.probeFailed, exit: pv.exit, lines: pv.json && pv.json.lines })
+  if (skew) {
+    log(`Plugin version check failed — ${skew.reason}`)
+    return finish(STATUS['escalate'], { reason: skew.reason, issue, ...(pv.probeFailed ? { probeReason: pv.probeFailed, probeHint: PROBE_REASON_HINTS[pv.probeFailed] || null } : {}), trace })
+  }
+  log(`Plugin version: pluginRoot holds ${BUILD.version}, same as the engine`)
 }
 
 // ---------------------------------------------------------------------------
