@@ -115,6 +115,23 @@ JS
 out=$(node "$TMP/rinfo.cjs" fixtures/incidents/195-stale-plugin-root.json 2>&1)
 if [ "$out" = '{"root":"/old/cache/lgtmgate/1.0.0-beta.4","reasonHasRoot":false}' ]; then ok "the plugin version escalate carries pluginRoot in its own field and no path in the reason"; else bad "pluginRoot field: $out"; fi
 
+# #195: the death of the plugin version probe agent (the fixture answers nothing for its label, so every attempt throws) is the
+# resumable provision-died of the stage that follows, after the one retry a side-effect-free probe gets; never an escalate.
+cat > "$TMP/death.cjs" <<'JS'
+const fs = require('fs')
+const path = require('path')
+const { stripExports, buildPipelineRunner, replayFixture } = require(path.resolve('scripts/run-offline.cjs'))
+const run = buildPipelineRunner(stripExports(fs.readFileSync(path.resolve('workflows/deliver-pipeline.js'), 'utf8')))
+const fx = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'))
+fx.calls = {}
+replayFixture(fx, run).then((r) => {
+  const t = r.result.trace || []
+  process.stdout.write(JSON.stringify({ status: r.result.status, resumable: r.result.resumable, reason: r.result.reason === undefined, attempts: r.missing.length, trace: t.filter((x) => x.startsWith('agent-died')) }))
+})
+JS
+out=$(node "$TMP/death.cjs" fixtures/incidents/195-stale-plugin-root.json 2>&1)
+if [ "$out" = '{"status":"provision-died","resumable":true,"reason":true,"attempts":2,"trace":["agent-died:probe:1","agent-died:probe:2"]}' ]; then ok "the death of the plugin version probe agent is the resumable provision-died after one retry"; else bad "version probe agent death: $out"; fi
+
 rm -rf "$TMP"
 STATUS=ok; [ "$FAIL" -gt 0 ] && STATUS=fail
 echo "[test-run-offline] status=$STATUS passed=$PASS failed=$FAIL"
