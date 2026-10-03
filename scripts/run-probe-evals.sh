@@ -12,6 +12,8 @@
 #   - bash scripts/run-probe-evals-docker.sh   (image: .devcontainer/, runs this script inside)
 #
 # Usage: run-probe-evals.sh [case...]   (default: probe-provision probe-pr-state probe-pr-write)
+# Not in the default set: pr-write-b64 (#212), the copy fidelity of the real tick format (a long --text-b64 token under
+# --expect-cmd, parser pr-write); run it by name: run-probe-evals.sh pr-write-b64
 #
 # The gate (#81): at least 29 of the 30 runs (3 cases x 10) FULLY passed, i.e. score 1 on all 4 graders.
 # scripts/probe-eval-gate.sh counts the runs from each case's aggregate-result.json and decides the exit

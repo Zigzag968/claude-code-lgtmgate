@@ -2108,6 +2108,21 @@ await testCase('T272 probeCommands() extracted from source markers (#82)', async
     eq('noReuse run carries --no-reuse before --cmd (#83)', /--no-reuse --cmd /.test(pc({ ...base, pluginRoot: '/plug', noReuse: true }).run), true),
     eq('noReuse never reaches the verify command', pc({ ...base, pluginRoot: '/plug', noReuse: true }).verify.includes('--no-reuse'), false),
     eq('preflightProbe passes noReuse: true to probe() (live state, #83)', /async function preflightProbe[\s\S]*?probe\('preflight', cmd, \{[\s\S]*?noReuse: true/.test(src), true),
+    // #212: the digest the engine composed travels to the script, which refuses a copy that does not hash to it
+    ...(() => {
+      const digest = 'a'.repeat(63) + 'b'
+      const gated = pc({ ...base, pluginRoot: '/plug', noReuse: true, expectCmd: digest })
+      return [
+        eq('expectCmd run carries --expect-cmd <digest> BEFORE --cmd (cmdOfPrompt still finds the command)', gated.run.includes(` --expect-cmd ${digest} --cmd `), true),
+        eq('expectCmd never reaches the verify command', gated.verify.includes('--expect-cmd'), false),
+        eq('the default run has no --expect-cmd', withRoot.run.includes('--expect-cmd'), false),
+        eq('prWrite gates the command (gateCmd: true)', /async function prWrite[\s\S]*?probe\('pr-write', cmd, \{[\s\S]*?gateCmd: true/.test(src), true),
+        eq('the tick sends the block as --text-b64 base64Utf8(rendered)', src.includes("'--text-b64', base64Utf8(rendered)"), true),
+        eq('the tick no longer sends the block as --text', src.includes("'--mode', 'tick', '--text', rendered"), false),
+        eq('the plugin-version probe does not gate its command (a stale root must still answer)', src.split('\n').filter((l) => l.includes("probe('lines', pluginVersionCmd(pluginRoot)")).every((l) => !l.includes('gateCmd')), true),
+        eq('preflightProbe does not gate its command', src.slice(src.indexOf('async function preflightProbe'), src.indexOf('async function prWrite')).includes('gateCmd'), false),
+      ]
+    })(),
   ]
   return checks.find(c => c) || { ok: true }
 })
@@ -5303,6 +5318,25 @@ await testCase('T183s a refused tick carries the probe reason (tickReason) and a
   const y = await t183Review({ prBody: t183Body(T183_L3), acceptanceSync: 'guard-failed-restored', morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, false, true) }] })
   const e15 = eq('needs-revision: tickReason', y.tickReason, 'guard-failed-restored')
   return e1 || e2 || e3 || e4 || e5 || e6 || e7 || e8 || e9 || e10 || e11 || e12 || e13 || e14 || e15 || { ok: true }
+})
+
+await testCase('T212a a tick retried after a digest mismatch lands: ready, one retry, ticked', async () => {
+  // The script refused the copied tick command before writing (#212): the retry reads the body afresh and ticks it.
+  const r = await run({ mode: 'auto', simulate: { sam: { 1: t182Sam(T183_PLAIN) }, acceptanceSync: ['cmd-mismatch', true], morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, true, true) }] } })
+  const e1 = eq('status', r.status, 'ready')
+  const e2 = eq('no tickReason', r.tickReason, undefined)
+  const e3 = eq('exactly one retry', (r.trace || []).filter((t) => String(t).startsWith('acceptance-tick-retry')), ['acceptance-tick-retry:0'])
+  const e4 = includes('ticked', r.trace || [], 'acceptance-ticked:0')
+  return e1 || e2 || e3 || e4 || { ok: true }
+})
+
+await testCase('T212b a tick retried after a digest mismatch that repeats parks: verified-untickable, tickReason cmd-mismatch, one retry', async () => {
+  const r = await run({ mode: 'auto', simulate: { sam: { 1: t182Sam(T183_PLAIN) }, acceptanceSync: ['cmd-mismatch', 'cmd-mismatch'], morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, true, true) }] } })
+  const e1 = eq('status', r.status, 'verified-untickable')
+  const e2 = eq('tickReason', r.tickReason, 'cmd-mismatch')
+  const e3 = eq('exactly one retry', (r.trace || []).filter((t) => String(t).startsWith('acceptance-tick-retry')), ['acceptance-tick-retry:0'])
+  const e4 = includes('refused trace', r.trace || [], 'acceptance-tick-reason:cmd-mismatch')
+  return e1 || e2 || e3 || e4 || { ok: true }
 })
 
 await testCase('T183t a rejected artifact proof that names no box ticks nothing this round; one that names a box un-proves only that box', async () => {

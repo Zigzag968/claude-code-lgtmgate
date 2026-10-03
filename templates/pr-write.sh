@@ -23,13 +23,15 @@
 #       read the issue's project item and its current single-select option; not on the project ->
 #       skipped/not-on-project (never an edit with an empty id); option already set -> skipped/already-set;
 #       else gh project item-edit.
-#   body-splice --pr N --mode decision-log|acceptance|tick --text T [--ids CSV --keep CSV] [--expect-digest D]
+#   body-splice --pr N --mode decision-log|acceptance|tick --text T|--text-b64 B [--ids CSV --keep CSV] [--expect-digest D]
 #       read the body, splice (templates/pr-body-splice.cjs), unchanged -> skipped/unchanged; acceptance
 #       markers absent -> failed/no-markers (never appends); write; re-read; guard (>= 90 % of the pre
 #       length and both acceptance markers) else restore the pre body -> failed/guard-failed-restored.
 #       --mode tick (#183): --text is the rendered checklist (every box open, `<!-- ac:N -->` ids); the acceptance
 #       block is re-spliced from it with the ids of --ids ticked `[x]`, the ids of --keep (human gates) keeping the
 #       state the body has and every other id open. --ids/--keep are comma-separated digits (may be empty).
+#       --text-b64 B (#212): the same text as ONE base64 token (UTF-8 bytes, decoded with node), so a long multi-line
+#       block travels on a command line without a newline, quote or backtick for a copier to reflow. Wins over --text.
 #       --expect-digest D (optional): the body digest (12 hex, as pr-state.sh) the caller last saw; a different
 #       first read -> failed/stale-read. The body is also re-read right before the edit: changed since the
 #       first read -> failed/stale-read, no edit (#151).
@@ -40,7 +42,7 @@
 OP="${1:-}"
 [ $# -ge 1 ] && shift
 
-WT=""; REPO=""; PR=""; NUMBER=""; MARKER=""; BODY=""; ID=""; ISSUE=""; PNUM=""; PID=""; FID=""; OID=""; MODE=""; TEXT=""; EXPECT=""; IDS=""; KEEP=""
+WT=""; REPO=""; PR=""; NUMBER=""; MARKER=""; BODY=""; ID=""; ISSUE=""; PNUM=""; PID=""; FID=""; OID=""; MODE=""; TEXT=""; TEXT_B64=""; EXPECT=""; IDS=""; KEEP=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --wt) WT="${2:-}" ;;
@@ -57,6 +59,7 @@ while [ $# -gt 0 ]; do
     --option-id) OID="${2:-}" ;;
     --mode) MODE="${2:-}" ;;
     --text) TEXT="${2:-}" ;;
+    --text-b64) TEXT_B64="${2:-}" ;;
     --ids) IDS="${2:-}" ;;
     --keep) KEEP="${2:-}" ;;
     --expect-digest) EXPECT="${2:-}" ;;
@@ -66,6 +69,11 @@ while [ $# -gt 0 ]; do
 done
 
 SD="$(cd "$(dirname "$0")" 2>/dev/null && pwd)"
+
+# --text-b64 (#212): the UTF-8 decode of the token replaces --text (a token that decodes to nothing leaves TEXT empty: bad-args).
+if [ -n "$TEXT_B64" ]; then
+  TEXT="$(node -e 'process.stdout.write(Buffer.from(process.argv[1], "base64").toString("utf8"))' "$TEXT_B64" 2>/dev/null)" || TEXT=""
+fi
 
 emit() {
   jq -nc --arg op "$OP" --arg r "$1" --arg why "${2:-}" --arg b "${3:-}" \

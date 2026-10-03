@@ -671,6 +671,118 @@ EOF
     && [ "$(grep -c "$(printf '\r$')" "$PWD_/body.md")" = "$(wc -l < "$PWD_/body.md" | tr -d ' ')" ] && ok=1
   check "[183] pr-write.sh tick over a CRLF body writes CRLF line breaks only" "$ok"
 
+  # [212] the tick command is gated by its digest BEFORE it runs (--expect-cmd), and the block travels as ONE token (--text-b64)
+  td_sha() { node -e 'process.stdout.write(require("crypto").createHash("sha256").update(process.argv[1]).digest("hex"))' "$1"; }
+  td_field() { printf '%s\n' "$1" | awk -v k="$2" '{ for (i = 1; i <= NF; i++) if (index($i, k "=") == 1) { print substr($i, length(k) + 2); exit } }'; }
+  td_pr() { PATH="$PWD_/bin:$PATH" GHLOG="$GHLOG" GH_BODY_FILE="$PWD_/body.md" node "$PR" "$@"; }
+  TD_OUT="$WORK/td"
+  TD_M1="$WORK/td-marker-wrong"; TD_M2="$WORK/td-marker-right"
+  TD_CMD1="touch '$TD_M1'"; TD_CMD2="touch '$TD_M2'"
+  TD_LINE="$(node "$PR" --label tdw --round 0 --out "$TD_OUT" --parser lines --no-reuse --expect-cmd "$(td_sha 'some other command')" --cmd "$TD_CMD1")"
+  ok=0
+  [ ! -e "$TD_M1" ] && [ "$(td_field "$TD_LINE" exit)" = "-1" ] && [ "$(td_field "$TD_LINE" cmd)" = "$(td_sha "refused:$TD_CMD1")" ] \
+    && [ "$(printf '%s\n' "$TD_LINE" | wc -l | tr -d ' ')" = 1 ] && ok=1
+  check "[tick-digest] a wrong --expect-cmd runs nothing: exit=-1 and cmd= is the digest of the refused: marker plus the typed command" "$ok"
+  TD_LINE="$(node "$PR" --label tdr --round 0 --out "$TD_OUT" --parser lines --no-reuse --expect-cmd "$(td_sha "$TD_CMD2")" --cmd "$TD_CMD2")"
+  ok=0
+  [ -e "$TD_M2" ] && [ "$(td_field "$TD_LINE" exit)" = "0" ] && [ "$(td_field "$TD_LINE" cmd)" = "$(td_sha "$TD_CMD2")" ] && ok=1
+  check "[tick-digest] the right --expect-cmd runs the command: exit=0 and cmd= equals the expected digest" "$ok"
+  # the refusal never lets a stored failure answer a later call (exit != 0 is never reused)
+  TD_LINE="$(node "$PR" --label tdw --round 0 --out "$TD_OUT" --parser lines --expect-cmd "$(td_sha "$TD_CMD1")" --cmd "$TD_CMD1")"
+  ok=0
+  [ -e "$TD_M1" ] && [ "$(td_field "$TD_LINE" exit)" = "0" ] && ok=1
+  check "[tick-digest] a refused record is never reused: the same call with the right digest then runs" "$ok"
+  # A refusal must always read as a digest mismatch to the engine: the PROBE line's cmd= never equals the digest it wanted,
+  # whatever the token (wrong, truncated, empty, non-hex) and even when the copied --cmd is intact; the typed text stays visible.
+  TD_CMD3="touch '$WORK/td-marker-3'"
+  TD_WANT3="$(td_sha "$TD_CMD3")"
+  td_refuse_case() { # <label> <token> <name>
+    rm -f "$WORK/td-marker-3"
+    TD_LINE="$(node "$PR" --label "$1" --round 0 --out "$TD_OUT" --parser pr-write --no-reuse --expect-cmd "$2" --cmd "$TD_CMD3")"
+    TD_RC=$?
+    ok=0
+    [ "$TD_RC" -eq 0 ] && [ ! -e "$WORK/td-marker-3" ] && [ "$(printf '%s\n' "$TD_LINE" | wc -l | tr -d ' ')" = 1 ] \
+      && [ "$(td_field "$TD_LINE" exit)" = "-1" ] && [ -n "$(td_field "$TD_LINE" cmd)" ] && [ "$(td_field "$TD_LINE" cmd)" != "$TD_WANT3" ] \
+      && [ "$(node -e 'const r=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(r.stderr+"|"+r.cmd.includes(process.argv[2])+"|"+r.cmd.startsWith("refused:"))' "$TD_OUT/$1-r0.json" "$TD_CMD3")" = "expect-cmd-mismatch|true|true" ] && ok=1
+    check "[tick-digest] $3: nothing runs, exit 0 with a PROBE line of exit=-1 whose cmd= is not the wanted digest (record keeps the typed text)" "$ok"
+  }
+  td_refuse_case tdx1 "$(td_sha 'some other command')" "a wrong digest with an INTACT --cmd"
+  td_refuse_case tdx2 "$(printf '%s' "$TD_WANT3" | cut -c1-40)" "a truncated digest with an intact --cmd"
+  td_refuse_case tdx3 "" "an empty digest with an intact --cmd"
+  td_refuse_case tdx4 "not-a-digest" "a non-hex digest with an intact --cmd"
+  td_refuse_case tdx5 "$(printf '%s' "$TD_WANT3" | cut -c1-63)g" "a 64-character digest with a non-hex character with an intact --cmd"
+  rm -f "$WORK/td-marker-3"
+  TD_LINE="$(node "$PR" --label tdu --round 0 --out "$TD_OUT" --parser pr-write --no-reuse --expect-cmd "$(printf '%s' "$TD_WANT3" | tr 'a-f' 'A-F')" --cmd "$TD_CMD3")"
+  ok=0
+  [ -e "$WORK/td-marker-3" ] && [ "$(td_field "$TD_LINE" exit)" = "0" ] && [ "$(td_field "$TD_LINE" cmd)" = "$TD_WANT3" ] && ok=1
+  check "[tick-digest] an UPPERCASE digest that matches the intact --cmd is normalised: the command runs and cmd= equals the digest" "$ok"
+  # a write parser without --expect-cmd is refused too (a model that drops the flag must not get an unchecked write)
+  rm -f "$WORK/td-marker-3"
+  TD_LINE="$(node "$PR" --label tdn --round 0 --out "$TD_OUT" --parser pr-write --no-reuse --cmd "$TD_CMD3")"
+  ok=0
+  [ ! -e "$WORK/td-marker-3" ] && [ "$(td_field "$TD_LINE" exit)" = "-1" ] && [ "$(td_field "$TD_LINE" cmd)" != "$TD_WANT3" ] && ok=1
+  check "[tick-digest] the pr-write parser without --expect-cmd is refused: nothing runs, cmd= is not the digest of the command" "$ok"
+  TD_LINE="$(node "$PR" --label tdn2 --round 0 --out "$TD_OUT" --parser lines --no-reuse --cmd "$TD_CMD3")"
+  ok=0
+  [ -e "$WORK/td-marker-3" ] && [ "$(td_field "$TD_LINE" exit)" = "0" ] && [ "$(td_field "$TD_LINE" cmd)" = "$TD_WANT3" ] && ok=1
+  check "[tick-digest] a read parser (lines) without --expect-cmd still runs the command" "$ok"
+  # end to end: the composed command carries the whole block; a copy that re-flows it (boxes 2..N indented under box 1) is refused
+  TD_TXT="$TK_TXT"
+  TD_FLOW="$(printf '%s\n' "$TD_TXT" | awk 'NR == 1 { print; next } { print "  " $0 }')"
+  tk_body '- [ ] <!-- ac:1 --> first
+- [ ] <!-- ac:2 --> [human-gate] second
+- [ ] <!-- ac:3 --> third, stale wording'
+  cp "$PWD_/body.md" "$PWD_/body.before"
+  TD_COMPOSED="bash '$PW' body-splice --pr 9 --mode tick --text '$TD_TXT' --ids 1,3 --keep 2 --wt '$PWD_/wt' --repo o/r"
+  TD_TYPED="bash '$PW' body-splice --pr 9 --mode tick --text '$TD_FLOW' --ids 1,3 --keep 2 --wt '$PWD_/wt' --repo o/r"
+  : > "$GHLOG"
+  TD_LINE="$(td_pr --label tdf --round 0 --out "$TD_OUT" --parser pr-write --no-reuse --expect-cmd "$(td_sha "$TD_COMPOSED")" --cmd "$TD_TYPED")"
+  ok=0
+  [ "$TD_TYPED" != "$TD_COMPOSED" ] && cmp -s "$PWD_/body.md" "$PWD_/body.before" && [ "$(no_call 'pr edit')" = 1 ] && [ "$(no_call 'pr view')" = 1 ] \
+    && [ "$(td_field "$TD_LINE" exit)" = "-1" ] && [ "$(td_field "$TD_LINE" cmd)" = "$(td_sha "refused:$TD_TYPED")" ] \
+    && [ "$(td_field "$TD_LINE" cmd)" != "$(td_sha "$TD_COMPOSED")" ] && ok=1
+  check "[tick-digest] a re-flowed copy of the tick command leaves the body byte-identical, no gh call, and its cmd= differs from the composed one" "$ok"
+  # --text-b64: a long multi-line block (backticks, both quote kinds, id comments, non-ASCII) lands exactly as --text does
+  TD_BLK="$(cat <<'BLKEOF'
+- [ ] <!-- ac:1 --> run `node a.cjs | grep -c "x"` and expect '0'
+- [ ] <!-- ac:2 --> [human-gate] café ok: $HOME and \n stay literal
+- [ ] <!-- ac:3 --> third, with a "double" and a 'single' quote, then 100% done
+- [ ] <!-- ac:4 --> fourth
+BLKEOF
+)"
+  TD_B64="$(printf '%s' "$TD_BLK" | node -e 'process.stdout.write(require("fs").readFileSync(0).toString("base64"))')"
+  tk_body '- [ ] <!-- ac:1 --> stale one
+- [ ] <!-- ac:2 --> [human-gate] stale two
+- [ ] <!-- ac:3 --> stale three
+- [ ] <!-- ac:4 --> stale four'
+  cp "$PWD_/body.md" "$PWD_/body.before"
+  OUT_T="$(run_pw body-splice --pr 9 --mode tick --text "$TD_BLK" --ids 1,3 --keep 2)"
+  cp "$PWD_/body.md" "$PWD_/body.via-text"
+  cp "$PWD_/body.before" "$PWD_/body.md"
+  OUT_B="$(run_pw body-splice --pr 9 --mode tick --text-b64 "$TD_B64" --ids 1,3 --keep 2)"
+  ok=0
+  [ "$(res "$OUT_T")" = "written/-" ] && [ "$(res "$OUT_B")" = "written/-" ] && cmp -s "$PWD_/body.via-text" "$PWD_/body.md" \
+    && grep -qF -- 'café ok: $HOME and \n stay literal' "$PWD_/body.md" && grep -qxF -- "- [x] <!-- ac:3 --> third, with a \"double\" and a 'single' quote, then 100% done" "$PWD_/body.md" \
+    && [ "$(printf '%s' "$TD_B64" | wc -l | tr -d ' ')" = 0 ] && ok=1
+  check "[tick-digest] --text-b64 of a long multi-line block (backticks, quotes, id comments, non-ASCII) gives the same body as --text, in one token" "$ok"
+  # end to end through probe-run with the RIGHT digest and --text-b64
+  tk_body '- [ ] <!-- ac:1 --> stale one
+- [ ] <!-- ac:2 --> [human-gate] stale two
+- [ ] <!-- ac:3 --> stale three
+- [ ] <!-- ac:4 --> stale four'
+  TD_REAL="bash '$PW' body-splice --pr 9 --mode tick --text-b64 '$TD_B64' --ids 1,3 --keep 2 --wt '$PWD_/wt' --repo o/r"
+  TD_LINE="$(td_pr --label tdb --round 0 --out "$TD_OUT" --parser pr-write --no-reuse --expect-cmd "$(td_sha "$TD_REAL")" --cmd "$TD_REAL")"
+  TD_PARSED="$(printf '%s\n' "$TD_LINE" | node -e '
+    const { PARSERS } = require(process.argv[1])
+    const json = require("fs").readFileSync(0, "utf8").split(" json=")[1]
+    const v = PARSERS["pr-write"](json, "", 0)
+    process.stdout.write(v.error ? "ERR" : v.op + ":" + v.result)
+  ' "$PR")"
+  ok=0
+  [ "$TD_PARSED" = "body-splice:written" ] && [ "$(td_field "$TD_LINE" cmd)" = "$(td_sha "$TD_REAL")" ] \
+    && grep -qxF -- "- [x] <!-- ac:1 --> run \`node a.cjs | grep -c \"x\"\` and expect '0'" "$PWD_/body.md" && grep -qxF -- "- [x] <!-- ac:3 --> third, with a \"double\" and a 'single' quote, then 100% done" "$PWD_/body.md" && ok=1
+  check "[tick-digest] the right digest with --text-b64 through probe-run: written, ids ticked, the PROBE line parses as written" "$ok"
+
   # parser round trip and the engine/helper block parity
   OUT="$(GH_MINIMIZED=true run_pw minimize --id IC_1)"
   out_rt="$(printf '%s\n' "$OUT" | node -e '
@@ -698,6 +810,41 @@ ok=0
   }
 ' "$SHA_BLK" 2>/dev/null && ok=1
 check "[151] engine sha256Hex equals crypto sha256 (empty, ASCII, 200 bytes, non-ASCII)" "$ok"
+B64_BLK="$(sed -n '/^\/\/ --- base64Utf8:start ---/,/^\/\/ --- base64Utf8:end ---/p' "$ROOT/workflows/deliver-pipeline.js")"
+ok=0
+[ -n "$B64_BLK" ] && node -e '
+  const assert = require("assert")
+  const b64 = new Function(process.argv[1] + "\nreturn base64Utf8")()
+  const cases = ["", "a", "ab", "abc", "abcd", "abcde", "line one\nline two\n", "`tick` \"d\" \x27s\x27 $HOME", "café € 😀 日本", "x".repeat(1000), "- [ ] <!-- ac:1 --> a\n- [ ] <!-- ac:2 --> b"]
+  for (const s of cases) {
+    const got = b64(s)
+    assert.strictEqual(got, Buffer.from(s, "utf8").toString("base64"))
+    assert.ok(!got.includes("\n"))
+  }
+' "$B64_BLK" 2>/dev/null && ok=1
+check "[tick-digest] engine base64Utf8 equals Buffer base64 of the UTF-8 bytes (lengths mod 3 = 0/1/2, newline, backtick, quotes, non-ASCII), one line" "$ok"
+# parity of both hand-written encoders with Node over lone surrogates (U+D800..U+DFFF encode as U+FFFD, EF BF BD), astral characters, CRLF, empty
+cat > "$WORK/parity.cjs" <<'JS'
+const assert = require("assert"), crypto = require("crypto")
+const [shaBlk, b64Blk] = process.argv.slice(2)
+const sha = new Function(shaBlk + "\nreturn sha256Hex")()
+const b64 = new Function(b64Blk + "\nreturn base64Utf8")()
+const corpus = ["", "\ud800", "\udfff", "a\ud800b", "\udc00\ud800", "x\ud83dy", "\ud83d\ude00", "\ud83d\ude00\ud83d", "\ud83d", "\u{10ffff}\u{10000}",
+  "caf\u00e9 \u20ac \u65e5\u672c", "line one\r\nline two\r\n", "\r\n", "a\r\nb\nc\rd", "- [ ] <!-- ac:1 --> a\r\n- [ ] <!-- ac:2 --> b\ud800\r\n", "x".repeat(1000) + "\udc00"]
+for (const s of corpus) {
+  assert.strictEqual(b64(s), Buffer.from(s).toString("base64"), "base64 " + JSON.stringify(s))
+  assert.strictEqual(sha(s), crypto.createHash("sha256").update(Buffer.from(s)).digest("hex"), "sha256 " + JSON.stringify(s))
+}
+JS
+ok=0
+[ -n "$SHA_BLK" ] && [ -n "$B64_BLK" ] && node "$WORK/parity.cjs" "$SHA_BLK" "$B64_BLK" 2>"$WORK/parity.err" && ok=1
+check "[tick-digest] engine sha256Hex and base64Utf8 equal Node over lone surrogates, astral characters, CRLF and the empty string" "$ok"
+node "$PR" --verify --label x --round 0 --out "$WORK/tdv" --parser lines --attest "$WORK/tdv.jsonl" --expect-cmd "$(printf '%064d' 0)" >/dev/null 2>&1
+[ "$?" -eq 2 ] && ok=1 || ok=0
+check "[tick-digest] --expect-cmd together with --verify exits 2 (usage)" "$ok"
+node "$PR" --label x --round 0 --out "$WORK/tdv" --parser lines --expect-cmd not-a-digest --cmd 'true' >/dev/null 2>&1
+[ "$?" -eq 0 ] && ok=1 || ok=0
+check "[tick-digest] an --expect-cmd that is not 64 hex characters is a refusal (exit 0 and a PROBE line), not a usage error" "$ok"
 SAN_LINE="$(grep -m1 '^const sanitizeProbeToken' "$ROOT/workflows/deliver-pipeline.js")"
 ok=0
 [ -n "$SAN_LINE" ] && [ "$(node -e 'const f = new Function(process.argv[1] + "; return sanitizeProbeToken")(); process.stdout.write(f("PR Ready/Merged:x"))' "$SAN_LINE" 2>/dev/null)" = "PR-Ready-Merged-x" ] && ok=1

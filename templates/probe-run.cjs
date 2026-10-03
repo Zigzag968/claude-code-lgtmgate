@@ -19,6 +19,14 @@
 // state (preflight reads: git-dir writable, plan-stale list, open sub-issues, branchPrefix; pr-state reads
 // (#84): head sha, body digest, mergeability, commit count, review comments, open issues) where a
 // stored exit-0 record from an earlier launch would be a stale read. Default behaviour is unchanged.
+// --expect-cmd <sha256 hex> (#212): the digest of the command the caller composed. The command is copied by a
+// model, so before it runs the script hashes the --cmd it was typed; a different digest means the copy is not the
+// composed command and NOTHING is executed: the record gets exit -1 and stderr `expect-cmd-mismatch`, and the PROBE
+// line is printed as usual. Its cmd= is the digest of `refused:` + the typed text, which can never equal the digest the
+// caller wanted, so the engine always names a refusal `cmd-mismatch` and can retry (the typed text stays in the record).
+// The digest is compared in lowercase; a malformed one (not 64 hex characters) is a REFUSAL, not a usage error. A write
+// parser (WRITE_PARSERS) with no --expect-cmd at all is refused the same way: a dropped flag never gives an unchecked write.
+// Exec mode only (with --verify: usage).
 // Output (exactly one line, exit 0 whenever it is printed):
 //   PROBE name=<parser> exit=<cmd exit> sha=<sha256 of record.stdout> cmd=<sha256 of the executed --cmd> json=<compact JSON>
 // Exit 2 + usage on stderr for an invalid invocation. No network, nothing read outside --out.
@@ -48,7 +56,7 @@ const { spawnSync } = require('child_process')
 const MAX_BYTES = 65536
 const TOKEN = /^[A-Za-z0-9._-]+$/
 const USAGE =
-  "usage: node probe-run.cjs --label L --round N --out /abs/dir --parser NAME [--model M] [--no-reuse] --cmd '<shell cmd>'\n" +
+  "usage: node probe-run.cjs --label L --round N --out /abs/dir --parser NAME [--model M] [--no-reuse] [--expect-cmd SHA256 (required by write parsers)] --cmd '<shell cmd>'\n" +
   '       node probe-run.cjs --verify --label L --round N --out /abs/dir --parser NAME --attest /abs/file.jsonl\n'
 
 // ---- pure PARSERS: (stdout, stderr, exit) -> JSON-able value ----------------------------------
@@ -235,11 +243,30 @@ function parseArgs(argv) {
     const k = argv[i]
     if (k === '--verify') out.verify = true
     else if (k === '--no-reuse') out.noReuse = true
-    else if (['--label', '--round', '--out', '--parser', '--model', '--cmd', '--attest'].includes(k) && i + 1 < argv.length) {
+    else if (['--label', '--round', '--out', '--parser', '--model', '--cmd', '--attest', '--expect-cmd'].includes(k) && i + 1 < argv.length) {
       out[k.slice(2)] = argv[++i]
     } else return null
   }
   return out
+}
+
+// Pure: a sha256 as printed by hex digests: 64 lowercase hex characters (no regex).
+const isSha256Hex = (s) => typeof s === 'string' && s.length === 64 && [...s].every((c) => '0123456789abcdef'.includes(c))
+
+// Parsers of probes that WRITE: their command must carry --expect-cmd or it is refused (a small named set).
+const WRITE_PARSERS = new Set(['pr-write'])
+
+// Pure: must this exec invocation be refused (nothing run)? expect = the --expect-cmd value or undefined.
+function mustRefuse(parser, cmd, expect) {
+  if (expect === undefined) return WRITE_PARSERS.has(parser)
+  const want = String(expect).toLowerCase()
+  return !isSha256Hex(want) || sha256(cmd) !== want
+}
+
+// Pure: the record of a command that was NOT run (its copy misses the expected digest, or the digest is missing or
+// malformed). cmd keeps the received text visible but never hashes to the digest that was wanted.
+function refusedRecord({ label, cmd, model }) {
+  return { label, cmd: `refused:${cmd}`, exit: -1, stdout: '', stderr: 'expect-cmd-mismatch', ts: new Date().toISOString(), model: model || null, truncated: false }
 }
 
 function readRecord(file) {
@@ -256,7 +283,9 @@ function main() {
   const a = parseArgs(process.argv.slice(2))
   const common = a && a.label && a.parser && a.out && a.round !== undefined &&
     TOKEN.test(a.label) && TOKEN.test(a.parser) && /^\d+$/.test(a.round) && path.isAbsolute(a.out)
-  const bad = !common || (a.verify ? (!a.attest || !path.isAbsolute(a.attest) || a.cmd !== undefined || a.noReuse) : a.cmd === undefined)
+  const bad = !common || (a.verify
+    ? (!a.attest || !path.isAbsolute(a.attest) || a.cmd !== undefined || a.noReuse || a['expect-cmd'] !== undefined)
+    : a.cmd === undefined)
   if (bad) {
     process.stderr.write(USAGE)
     process.exit(2)
@@ -268,8 +297,9 @@ function main() {
     process.exit(0)
   }
   let record = readRecord(file)
-  if (a.noReuse || !canReuse(record, a.cmd)) {
-    record = buildRecord({ label: a.label, cmd: a.cmd, model: a.model })
+  const refuse = mustRefuse(a.parser, a.cmd, a['expect-cmd'])
+  if (refuse || a.noReuse || !canReuse(record, a.cmd)) {
+    record = refuse ? refusedRecord({ label: a.label, cmd: a.cmd, model: a.model }) : buildRecord({ label: a.label, cmd: a.cmd, model: a.model })
     fs.mkdirSync(a.out, { recursive: true })
     const tmp = `${file}.${process.pid}.tmp`
     fs.writeFileSync(tmp, JSON.stringify(record))
@@ -281,4 +311,4 @@ function main() {
 
 if (require.main === module) main()
 
-module.exports = { PARSERS, canReuse, buildRecord, probeLine, verifyRecord }
+module.exports = { PARSERS, canReuse, buildRecord, probeLine, verifyRecord, mustRefuse, refusedRecord }
