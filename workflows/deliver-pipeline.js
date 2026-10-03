@@ -2108,18 +2108,41 @@ function sha256Hex(str) {
 }
 // --- sha256Hex:end ---
 
+// --- base64Utf8:start --- (pure & self-contained: standard padded base64 of the UTF-8 bytes, one line; the runtime has no Buffer)
+// #212: a long multi-line block travels on a command line as ONE token a copier cannot reflow; pr-write.sh decodes it
+// (--text-b64). Same UTF-8 byte loop as sha256Hex; no regex.
+function base64Utf8(str) {
+  const bytes = []
+  for (const ch of String(str)) {
+    const c = ch.codePointAt(0)
+    if (c < 0x80) bytes.push(c)
+    else if (c < 0x800) bytes.push(0xc0 | (c >> 6), 0x80 | (c & 63))
+    else if (c < 0x10000) bytes.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63))
+    else bytes.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63))
+  }
+  const A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+  let out = ''
+  for (let i = 0; i < bytes.length; i += 3) {
+    const n = (bytes[i] << 16) | ((bytes[i + 1] || 0) << 8) | (bytes[i + 2] || 0)
+    out += A[(n >> 18) & 63] + A[(n >> 12) & 63] + (i + 1 < bytes.length ? A[(n >> 6) & 63] : '=') + (i + 2 < bytes.length ? A[n & 63] : '=')
+  }
+  return out
+}
+// --- base64Utf8:end ---
+
 // --- probeCommands:start --- (pure & self-contained — keep extractable by the consuming project's tests)
 // The two commands the probe agent runs, in order (#82). Both start with `cd '<wtPath>' && node '<script>'`
 // (the attest hook accepts that prefix). The script is config.probeRunPath, else the plugin root's
 // templates/probe-run.cjs (arg pluginRoot), else the worktree's own copy.
-function probeCommands({ wtPath, issue, pluginRoot, probeRunPath, name, cmd, label, round, noReuse }) {
+function probeCommands({ wtPath, issue, pluginRoot, probeRunPath, name, cmd, label, round, noReuse, expectCmd }) {
   const q = (x) => `'${String(x).split("'").join("'\\''")}'`
   const script = probeRunPath ?? (pluginRoot ? pluginRoot + '/templates/probe-run.cjs' : wtPath + '/templates/probe-run.cjs')
   const outDir = `${wtPath}/.pipeline/probes/issue-${issue}`
   const head = `cd ${q(wtPath)} && node ${q(script)} `
   const common = `--label ${label} --round ${round} --out ${q(outDir)} --parser ${name}`
   return {
-    run: `${head}${common} --model haiku${noReuse ? ' --no-reuse' : ''} --cmd ${q(cmd)}`,
+    // #212: --expect-cmd (the sha256 of `cmd`) BEFORE --cmd: the script refuses to run a copy that does not hash to it
+    run: `${head}${common} --model haiku${noReuse ? ' --no-reuse' : ''}${expectCmd ? ` --expect-cmd ${expectCmd}` : ''} --cmd ${q(cmd)}`,
     verify: `${head}--verify ${common} --attest ${q(wtPath + '/.pipeline/probe-attest.jsonl')}`,
   }
 }
@@ -2197,7 +2220,7 @@ function pluginVersionVerdict({ engineVersion, probeFailed, exit, lines }) {
 }
 // --- pluginVersion:end ---
 
-async function probe(name, cmd, { label, round = 0, onFail, noReuse = false } = {}) {
+async function probe(name, cmd, { label, round = 0, onFail, noReuse = false, gateCmd = false } = {}) {
   if (!isSafeProbeToken(name) || !isSafeProbeToken(label)) {
     throw new Error(`probe: unsafe name/label (${JSON.stringify(name)} / ${JSON.stringify(label)})`)
   }
@@ -2206,7 +2229,9 @@ async function probe(name, cmd, { label, round = 0, onFail, noReuse = false } = 
     throw new Error(`probe ${name}/${label}: ${reason}`)
   }
   if (!config.probeRunPath && !pluginRoot) return fail('probe-run-not-found')
-  const cmds = probeCommands({ wtPath, issue, pluginRoot, probeRunPath: config.probeRunPath, name, cmd, label, round, noReuse })
+  const want = sha256Hex(cmd)
+  // gateCmd (#212, writes): the script refuses to run a copy of the command that does not hash to `want`
+  const cmds = probeCommands({ wtPath, issue, pluginRoot, probeRunPath: config.probeRunPath, name, cmd, label, round, noReuse, expectCmd: gateCmd ? want : undefined })
   const prompt =
     `Run EXACTLY these two commands once each, in this order, from the worktree "${wtPath}", without editing or re-quoting them:\n\n` +
     `1. ${cmds.run}\n2. ${cmds.verify}\n\n` +
@@ -2220,7 +2245,6 @@ async function probe(name, cmd, { label, round = 0, onFail, noReuse = false } = 
   const parsed = parseProbeLine(res && res.line)
   if (!parsed) return fail('unparseable-line')
   if (parsed.name !== name) return fail('name-mismatch')
-  const want = sha256Hex(cmd)
   if (parsed.cmd !== want) return fail('cmd-mismatch')
   const verified = parseVerifyLine(res && res.verify)
   if (!verified) return fail('unparseable-verify')
@@ -2272,6 +2296,7 @@ async function prWrite(op, label, round, argv) {
       label,
       round,
       noReuse: true,   // a write is never replayed from a stored record (#85)
+      gateCmd: true,   // a write runs only if the copied command hashes to the composed one (#212)
       onFail: (reason) => { prWriteFailure = reason; log(`pr-write ${op} (${label}, round ${round}): probe failed (${reason}) — fail-open`); return null },
     })
     if (r && r.json && !r.json.error) out = r.json
@@ -3393,7 +3418,9 @@ if (after('review', entryStage)) {
   // non-gate boxes `[x]` by id (a human-gate id keeps the state the body has: the engine never writes a gate `[x]`; a
   // non-gate box Morgan returned nothing proven for is open, a stale `[x]` of the body reopened). The tick has landed when the probe answered written or
   // skipped; anything else is "not ticked" and names its reason (`tickReason`: the probe's own, 'probe-unavailable'-like
-  // when it gave no answer); a `stale-read` is retried once, the body being read afresh by the script.
+  // when it gave no answer); a `stale-read` is retried once, the body being read afresh by the script. #212: the block
+  // travels as one base64 token (`--text-b64`) and the script refuses a copy that does not hash to the composed command
+  // before it writes anything, so a `cmd-mismatch` (the copy was altered) is retried once too.
   // The boxes not proven are judged FIRST: a LGTM with one is REQUIRED_CHANGES carrying its canonical line, whatever
   // the tick does. Then, not ticked while a non-gate box is proven: a LGTM becomes REQUIRED_CHANGES carrying those boxes'
   // canonical lines and `untickable` [{ id, item, proof }] (reviewParkedTerminal parks the run from them, only when
@@ -3423,14 +3450,14 @@ if (after('review', entryStage)) {
         prBodyPreview = out
         return null
       }
-      const res = await prWrite('body-splice', label, round, ['--pr', pr, '--mode', 'tick', '--text', rendered, '--ids', tickIds.join(','), '--keep', keepIds.join(',')])
+      const res = await prWrite('body-splice', label, round, ['--pr', pr, '--mode', 'tick', '--text-b64', base64Utf8(rendered), '--ids', tickIds.join(','), '--keep', keepIds.join(',')])
       if (res && (res.result === 'written' || res.result === 'skipped')) return null
       return res ? (res.reason || 'write-failed') : (prWriteFailure || 'probe-unavailable')
     }
     let reason = await tryTick('acceptance-tick')
-    if (reason === 'stale-read') {
+    if (reason === 'stale-read' || reason === 'cmd-mismatch') {
       trace.push(`acceptance-tick-retry:${round}`)
-      log(`tickAcceptanceBoxes round ${round}: the body changed under the tick (stale-read) — retrying once`)
+      log(`tickAcceptanceBoxes round ${round}: the tick was not applied (${reason}) — retrying once`)
       reason = await tryTick('acceptance-tick-retry')
     }
     let verdict = v.verdict
