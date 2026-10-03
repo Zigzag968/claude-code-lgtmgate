@@ -244,6 +244,60 @@ console.log(out.join(" "))
 ' 2>&1)
 case "$tv" in "prefix-ok reverse-ok exact-ok fields-ok idem-ok") ok "tokenizeVersionProbes is quote-delimited, rewrites only line and verify of the version probe, and is idempotent";; *) bad "tokenizeVersionProbes unit: $tv";; esac
 
+# ---- #214: the dead-agent entry { "agentDeath": true } ----
+# dk.cjs writes variants of the smoke fixture; the survivable role is the worktree-behind probe (a dead nick is terminal).
+cat > "$TMP/dk.cjs" <<'JS'
+const fs = require('fs')
+const path = require('path')
+const root = process.cwd()
+const smoke = () => JSON.parse(fs.readFileSync(path.join(root, 'fixtures/smoke/auto-lgtm.json'), 'utf8'))
+const w = (name, f) => fs.writeFileSync(path.join(process.argv[2], name), JSON.stringify(f))
+const BEHIND = 'probe-123-git-rev-list-count-worktree-behind-42-r0'
+let f = smoke()
+f.calls['nick-issue-123'] = { agentDeath: true }
+f.expect = { status: 'dev-died', logsInclude: ['callAgentSafe: nick died on attempt 1 (null-result)'] }
+w('dead-nick.json', f)
+f = smoke()
+f.calls[BEHIND] = [{ agentDeath: true }, f.calls[BEHIND]]
+f.expect = { status: 'ready', logsInclude: ['probe died on attempt 1 (null-result)'] }
+w('dead-array.json', f)
+f = smoke()
+f.calls[BEHIND] = { agentDeath: true }
+f.expect = { status: 'ready', logsInclude: ['probe died on attempt 1 (null-result)'] }
+w('dead-scalar.json', f)
+delete f.calls['probe-123-pr-state-merge-r0']
+w('dead-and-unanswered.json', f)
+const bad = { 'bad-null': null, 'bad-false': { agentDeath: false }, 'bad-string': { agentDeath: 'yes' }, 'bad-extra': { agentDeath: true, extra: 1 }, 'bad-element': [{ agentDeath: 1 }] }
+for (const [name, v] of Object.entries(bad)) { f = smoke(); f.calls['nick-issue-123'] = v; w(`${name}.json`, f) }
+JS
+node "$TMP/dk.cjs" "$TMP"
+
+out=$(node scripts/run-offline.cjs "$TMP/dead-nick.json" 2>&1)
+case "$out" in
+  *"unanswered"*) bad "dead agent: a dead nick entry was reported unanswered: $out";;
+  *"status=ok passed=1 failed=0"*) ok "dead agent: a { agentDeath: true } nick is served as an agent death (dev-died, no unanswered call)";;
+  *) bad "dead agent nick: $out";;
+esac
+
+out=$(node scripts/run-offline.cjs "$TMP/dead-array.json" 2>&1)
+case "$out" in *"unanswered"*) bad "dead agent array: unanswered: $out";; *"status=ok passed=1 failed=0"*) ok "dead agent: array entries are consumed in call order (the engine's retry gets the next entry, run ready)";; *) bad "dead agent array: $out";; esac
+
+out=$(node scripts/run-offline.cjs "$TMP/dead-scalar.json" 2>&1)
+case "$out" in *"unanswered"*) bad "dead agent scalar: unanswered: $out";; *"status=ok passed=1 failed=0"*) ok "dead agent: a scalar dead entry dies on every call of the label, retries included";; *) bad "dead agent scalar: $out";; esac
+
+n=0
+for k in bad-null bad-false bad-string bad-extra bad-element; do
+  out=$(node scripts/run-offline.cjs "$TMP/$k.json" 2>&1)
+  case "$out" in
+    *"FAIL:"*"calls[\"nick-issue-123\"]"*"failed=1"*)
+      case "$out" in *"status=ok"*) ;; *) n=$((n+1));; esac;;
+  esac
+done
+if [ "$n" = "5" ]; then ok "dead agent: null and every malformed form are refused naming calls[\"nick-issue-123\"], before any engine call"; else bad "dead agent malformed forms refused: $n of 5"; fi
+
+out=$(node scripts/run-offline.cjs "$TMP/dead-and-unanswered.json" 2>&1)
+case "$out" in *"unanswered call"*"probe-123-pr-state-merge-r0"*) ok "dead agent: an unanswered label still fails the fixture next to a dead entry";; *) bad "dead agent + unanswered label: $out";; esac
+
 rm -rf "$TMP"
 STATUS=ok; [ "$FAIL" -gt 0 ] && STATUS=fail
 echo "[test-run-offline] status=$STATUS passed=$PASS failed=$FAIL"
