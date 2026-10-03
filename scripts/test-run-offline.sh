@@ -164,6 +164,59 @@ if [ "$out" = '{"oneLine":true,"noBacktick":true,"b64":true,"noBlockText":true,"
 else bad "tick-command shape: $out"; fi
 case "$out" in *'"digest":true'*) ok "tick-command --expect-cmd equals the sha256 of the un-quoted command, placed before --cmd";; *) bad "tick-command digest: $out";; esac
 
+# #212: a bad --expect-cmd token (wrong, truncated, upper-cased wrong, flag dropped) next to an INTACT --cmd is refused by the REAL
+# probe-run.cjs (nothing runs), and the PROBE line it really printed (never a hand-written one) makes the engine retry the tick ONCE
+# and reach ready: the refusal always reads as cmd-mismatch. PROBE_RUN_UNDER_TEST overrides the script (to show the case red).
+cat > "$TMP/baddigest.cjs" <<'JS'
+const fs = require('fs')
+const path = require('path')
+const crypto = require('crypto')
+const { spawnSync } = require('child_process')
+const { stripExports, buildPipelineRunner, replayFixture } = require(path.resolve('scripts/run-offline.cjs'))
+const run = buildPipelineRunner(stripExports(fs.readFileSync(path.resolve('workflows/deliver-pipeline.js'), 'utf8')))
+const probeRun = path.resolve(process.env.PROBE_RUN_UNDER_TEST || 'templates/probe-run.cjs')
+const LABEL = 'probe-185-pr-write-acceptance-tick-r0'
+const sha = (t) => crypto.createHash('sha256').update(t).digest('hex')
+const load = () => JSON.parse(fs.readFileSync(process.argv[2], 'utf8'))
+const out = path.join(process.argv[3], 'baddigest')
+fs.mkdirSync(out, { recursive: true })
+replayFixture(load(), run, { prompts: true }).then(async (first) => {
+  const prompt = first.calls.find((x) => x.label === LABEL).prompt
+  const start = prompt.indexOf(' --cmd ')
+  const cmd = prompt.slice(start + 7, prompt.indexOf('\n2. cd ')).slice(1, -1).split("'\\''").join("'")
+  const want = sha(cmd)
+  const wrong = sha('another command')
+  const variants = { wrong, truncated: want.slice(0, 40), upperWrong: wrong.toUpperCase(), dropped: null }
+  const res = {}
+  let i = 0
+  for (const [name, token] of Object.entries(variants)) {
+    // the engine's own flags, the intact command, the bad token: the refusal runs nothing, so no gh is reached
+    const args = [probeRun, '--label', 'bd' + i++, '--round', '0', '--out', out, '--parser', 'pr-write', '--no-reuse']
+    if (token !== null) args.push('--expect-cmd', token)
+    args.push('--cmd', cmd)
+    const p = spawnSync('node', args, { encoding: 'utf8' })
+    const line = (p.stdout || '').trim()
+    const fx = load()
+    fx.calls = fx.calls || {}
+    fx.calls[LABEL] = { line, verify: '_' }
+    const r = await replayFixture(fx, run)
+    res[name] = {
+      exit: line.includes(' exit=-1 '),
+      notWanted: !line.includes(' cmd=' + want + ' '),
+      status: r.result.status,
+      retries: (r.result.trace || []).filter((t) => String(t).startsWith('acceptance-tick-retry')).length,
+      reason: r.result.tickReason === undefined,
+    }
+  }
+  process.stdout.write(JSON.stringify(res))
+})
+JS
+out=$(node "$TMP/baddigest.cjs" fixtures/incidents/212-tick-cmd-mismatch.json "$TMP" 2>&1)
+okv='{"exit":true,"notWanted":true,"status":"ready","retries":1,"reason":true}'
+if [ "$out" = "{\"wrong\":$okv,\"truncated\":$okv,\"upperWrong\":$okv,\"dropped\":$okv}" ]; then
+  ok "a bad --expect-cmd token (wrong, truncated, upper-cased, dropped) with an intact --cmd: really refused, ONE retry, then ready"
+else bad "bad digest token flow: $out"; fi
+
 # Two-run fixtures (#185): runs[] replays each run against its own calls; carry hands run N-1's result to run N; phases and
 # callLabelsAbsent are the relaunch assertions. mk2.cjs derives mutants of the committed relaunch fixture.
 cat > "$TMP/mk2.cjs" <<'JS'

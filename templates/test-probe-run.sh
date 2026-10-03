@@ -680,9 +680,9 @@ EOF
   TD_CMD1="touch '$TD_M1'"; TD_CMD2="touch '$TD_M2'"
   TD_LINE="$(node "$PR" --label tdw --round 0 --out "$TD_OUT" --parser lines --no-reuse --expect-cmd "$(td_sha 'some other command')" --cmd "$TD_CMD1")"
   ok=0
-  [ ! -e "$TD_M1" ] && [ "$(td_field "$TD_LINE" exit)" = "-1" ] && [ "$(td_field "$TD_LINE" cmd)" = "$(td_sha "$TD_CMD1")" ] \
+  [ ! -e "$TD_M1" ] && [ "$(td_field "$TD_LINE" exit)" = "-1" ] && [ "$(td_field "$TD_LINE" cmd)" = "$(td_sha "refused:$TD_CMD1")" ] \
     && [ "$(printf '%s\n' "$TD_LINE" | wc -l | tr -d ' ')" = 1 ] && ok=1
-  check "[tick-digest] a wrong --expect-cmd runs nothing: exit=-1 and cmd= is the digest of the TYPED command" "$ok"
+  check "[tick-digest] a wrong --expect-cmd runs nothing: exit=-1 and cmd= is the digest of the refused: marker plus the typed command" "$ok"
   TD_LINE="$(node "$PR" --label tdr --round 0 --out "$TD_OUT" --parser lines --no-reuse --expect-cmd "$(td_sha "$TD_CMD2")" --cmd "$TD_CMD2")"
   ok=0
   [ -e "$TD_M2" ] && [ "$(td_field "$TD_LINE" exit)" = "0" ] && [ "$(td_field "$TD_LINE" cmd)" = "$(td_sha "$TD_CMD2")" ] && ok=1
@@ -692,6 +692,40 @@ EOF
   ok=0
   [ -e "$TD_M1" ] && [ "$(td_field "$TD_LINE" exit)" = "0" ] && ok=1
   check "[tick-digest] a refused record is never reused: the same call with the right digest then runs" "$ok"
+  # A refusal must always read as a digest mismatch to the engine: the PROBE line's cmd= never equals the digest it wanted,
+  # whatever the token (wrong, truncated, empty, non-hex) and even when the copied --cmd is intact; the typed text stays visible.
+  TD_CMD3="touch '$WORK/td-marker-3'"
+  TD_WANT3="$(td_sha "$TD_CMD3")"
+  td_refuse_case() { # <label> <token> <name>
+    rm -f "$WORK/td-marker-3"
+    TD_LINE="$(node "$PR" --label "$1" --round 0 --out "$TD_OUT" --parser pr-write --no-reuse --expect-cmd "$2" --cmd "$TD_CMD3")"
+    TD_RC=$?
+    ok=0
+    [ "$TD_RC" -eq 0 ] && [ ! -e "$WORK/td-marker-3" ] && [ "$(printf '%s\n' "$TD_LINE" | wc -l | tr -d ' ')" = 1 ] \
+      && [ "$(td_field "$TD_LINE" exit)" = "-1" ] && [ -n "$(td_field "$TD_LINE" cmd)" ] && [ "$(td_field "$TD_LINE" cmd)" != "$TD_WANT3" ] \
+      && [ "$(node -e 'const r=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(r.stderr+"|"+r.cmd.includes(process.argv[2])+"|"+r.cmd.startsWith("refused:"))' "$TD_OUT/$1-r0.json" "$TD_CMD3")" = "expect-cmd-mismatch|true|true" ] && ok=1
+    check "[tick-digest] $3: nothing runs, exit 0 with a PROBE line of exit=-1 whose cmd= is not the wanted digest (record keeps the typed text)" "$ok"
+  }
+  td_refuse_case tdx1 "$(td_sha 'some other command')" "a wrong digest with an INTACT --cmd"
+  td_refuse_case tdx2 "$(printf '%s' "$TD_WANT3" | cut -c1-40)" "a truncated digest with an intact --cmd"
+  td_refuse_case tdx3 "" "an empty digest with an intact --cmd"
+  td_refuse_case tdx4 "not-a-digest" "a non-hex digest with an intact --cmd"
+  td_refuse_case tdx5 "$(printf '%s' "$TD_WANT3" | cut -c1-63)g" "a 64-character digest with a non-hex character with an intact --cmd"
+  rm -f "$WORK/td-marker-3"
+  TD_LINE="$(node "$PR" --label tdu --round 0 --out "$TD_OUT" --parser pr-write --no-reuse --expect-cmd "$(printf '%s' "$TD_WANT3" | tr 'a-f' 'A-F')" --cmd "$TD_CMD3")"
+  ok=0
+  [ -e "$WORK/td-marker-3" ] && [ "$(td_field "$TD_LINE" exit)" = "0" ] && [ "$(td_field "$TD_LINE" cmd)" = "$TD_WANT3" ] && ok=1
+  check "[tick-digest] an UPPERCASE digest that matches the intact --cmd is normalised: the command runs and cmd= equals the digest" "$ok"
+  # a write parser without --expect-cmd is refused too (a model that drops the flag must not get an unchecked write)
+  rm -f "$WORK/td-marker-3"
+  TD_LINE="$(node "$PR" --label tdn --round 0 --out "$TD_OUT" --parser pr-write --no-reuse --cmd "$TD_CMD3")"
+  ok=0
+  [ ! -e "$WORK/td-marker-3" ] && [ "$(td_field "$TD_LINE" exit)" = "-1" ] && [ "$(td_field "$TD_LINE" cmd)" != "$TD_WANT3" ] && ok=1
+  check "[tick-digest] the pr-write parser without --expect-cmd is refused: nothing runs, cmd= is not the digest of the command" "$ok"
+  TD_LINE="$(node "$PR" --label tdn2 --round 0 --out "$TD_OUT" --parser lines --no-reuse --cmd "$TD_CMD3")"
+  ok=0
+  [ -e "$WORK/td-marker-3" ] && [ "$(td_field "$TD_LINE" exit)" = "0" ] && [ "$(td_field "$TD_LINE" cmd)" = "$TD_WANT3" ] && ok=1
+  check "[tick-digest] a read parser (lines) without --expect-cmd still runs the command" "$ok"
   # end to end: the composed command carries the whole block; a copy that re-flows it (boxes 2..N indented under box 1) is refused
   TD_TXT="$TK_TXT"
   TD_FLOW="$(printf '%s\n' "$TD_TXT" | awk 'NR == 1 { print; next } { print "  " $0 }')"
@@ -705,7 +739,7 @@ EOF
   TD_LINE="$(td_pr --label tdf --round 0 --out "$TD_OUT" --parser pr-write --no-reuse --expect-cmd "$(td_sha "$TD_COMPOSED")" --cmd "$TD_TYPED")"
   ok=0
   [ "$TD_TYPED" != "$TD_COMPOSED" ] && cmp -s "$PWD_/body.md" "$PWD_/body.before" && [ "$(no_call 'pr edit')" = 1 ] && [ "$(no_call 'pr view')" = 1 ] \
-    && [ "$(td_field "$TD_LINE" exit)" = "-1" ] && [ "$(td_field "$TD_LINE" cmd)" = "$(td_sha "$TD_TYPED")" ] \
+    && [ "$(td_field "$TD_LINE" exit)" = "-1" ] && [ "$(td_field "$TD_LINE" cmd)" = "$(td_sha "refused:$TD_TYPED")" ] \
     && [ "$(td_field "$TD_LINE" cmd)" != "$(td_sha "$TD_COMPOSED")" ] && ok=1
   check "[tick-digest] a re-flowed copy of the tick command leaves the body byte-identical, no gh call, and its cmd= differs from the composed one" "$ok"
   # --text-b64: a long multi-line block (backticks, both quote kinds, id comments, non-ASCII) lands exactly as --text does
@@ -793,8 +827,8 @@ node "$PR" --verify --label x --round 0 --out "$WORK/tdv" --parser lines --attes
 [ "$?" -eq 2 ] && ok=1 || ok=0
 check "[tick-digest] --expect-cmd together with --verify exits 2 (usage)" "$ok"
 node "$PR" --label x --round 0 --out "$WORK/tdv" --parser lines --expect-cmd not-a-digest --cmd 'true' >/dev/null 2>&1
-[ "$?" -eq 2 ] && ok=1 || ok=0
-check "[tick-digest] an --expect-cmd that is not 64 lowercase hex characters exits 2 (usage)" "$ok"
+[ "$?" -eq 0 ] && ok=1 || ok=0
+check "[tick-digest] an --expect-cmd that is not 64 hex characters is a refusal (exit 0 and a PROBE line), not a usage error" "$ok"
 SAN_LINE="$(grep -m1 '^const sanitizeProbeToken' "$ROOT/workflows/deliver-pipeline.js")"
 ok=0
 [ -n "$SAN_LINE" ] && [ "$(node -e 'const f = new Function(process.argv[1] + "; return sanitizeProbeToken")(); process.stdout.write(f("PR Ready/Merged:x"))' "$SAN_LINE" 2>/dev/null)" = "PR-Ready-Merged-x" ] && ok=1

@@ -70,7 +70,13 @@ done
 [ "$n_cases" -eq 3 ] && ok=1 || ok=0
 check "exactly 3 evals/probe-*/ cases (found $n_cases)" "$ok"
 
-for d in "$ROOT"/evals/probe-*/; do
+# The three gate cases plus the copy-fidelity case of the real tick format (#212, outside the gate's three).
+B64CASE="$ROOT/evals/pr-write-b64"
+ok=0
+[ -f "$B64CASE/prompt.md" ] && grep -q -- '--parser pr-write ' "$B64CASE/prompt.md" && grep -q -- '--no-reuse --expect-cmd ' "$B64CASE/prompt.md" && grep -q -- '--text-b64 ' "$B64CASE/prompt.md" \
+  && [ "$(sed -n 's/.*--expect-cmd .* --text-b64 \([A-Za-z0-9+\/=]*\) .*/\1/p' "$B64CASE/prompt.md" | head -n 1 | tr -d '\n' | wc -c | tr -d ' ')" -ge 3000 ] && ok=1
+check "pr-write-b64: the case runs the pr-write parser with --expect-cmd and a --text-b64 token of at least 3000 characters" "$ok"
+for d in "$ROOT"/evals/probe-*/ "$B64CASE/"; do
   [ -d "$d" ] || continue
   name="$(basename "$d")"
   ok=0
