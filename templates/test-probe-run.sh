@@ -823,6 +823,22 @@ ok=0
   }
 ' "$B64_BLK" 2>/dev/null && ok=1
 check "[tick-digest] engine base64Utf8 equals Buffer base64 of the UTF-8 bytes (lengths mod 3 = 0/1/2, newline, backtick, quotes, non-ASCII), one line" "$ok"
+# parity of both hand-written encoders with Node over lone surrogates (U+D800..U+DFFF encode as U+FFFD, EF BF BD), astral characters, CRLF, empty
+cat > "$WORK/parity.cjs" <<'JS'
+const assert = require("assert"), crypto = require("crypto")
+const [shaBlk, b64Blk] = process.argv.slice(2)
+const sha = new Function(shaBlk + "\nreturn sha256Hex")()
+const b64 = new Function(b64Blk + "\nreturn base64Utf8")()
+const corpus = ["", "\ud800", "\udfff", "a\ud800b", "\udc00\ud800", "x\ud83dy", "\ud83d\ude00", "\ud83d\ude00\ud83d", "\ud83d", "\u{10ffff}\u{10000}",
+  "caf\u00e9 \u20ac \u65e5\u672c", "line one\r\nline two\r\n", "\r\n", "a\r\nb\nc\rd", "- [ ] <!-- ac:1 --> a\r\n- [ ] <!-- ac:2 --> b\ud800\r\n", "x".repeat(1000) + "\udc00"]
+for (const s of corpus) {
+  assert.strictEqual(b64(s), Buffer.from(s).toString("base64"), "base64 " + JSON.stringify(s))
+  assert.strictEqual(sha(s), crypto.createHash("sha256").update(Buffer.from(s)).digest("hex"), "sha256 " + JSON.stringify(s))
+}
+JS
+ok=0
+[ -n "$SHA_BLK" ] && [ -n "$B64_BLK" ] && node "$WORK/parity.cjs" "$SHA_BLK" "$B64_BLK" 2>"$WORK/parity.err" && ok=1
+check "[tick-digest] engine sha256Hex and base64Utf8 equal Node over lone surrogates, astral characters, CRLF and the empty string" "$ok"
 node "$PR" --verify --label x --round 0 --out "$WORK/tdv" --parser lines --attest "$WORK/tdv.jsonl" --expect-cmd "$(printf '%064d' 0)" >/dev/null 2>&1
 [ "$?" -eq 2 ] && ok=1 || ok=0
 check "[tick-digest] --expect-cmd together with --verify exits 2 (usage)" "$ok"

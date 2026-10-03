@@ -2061,7 +2061,8 @@ const shellSingleQuote = (s) => `'${String(s).split("'").join("'\\''")}'`
 function sha256Hex(str) {
   const bytes = []
   for (const ch of String(str)) {
-    const c = ch.codePointAt(0)
+    const cp = ch.codePointAt(0)
+    const c = cp >= 0xd800 && cp <= 0xdfff ? 0xfffd : cp   // a lone surrogate encodes as U+FFFD (EF BF BD), like Buffer.from
     if (c < 0x80) bytes.push(c)
     else if (c < 0x800) bytes.push(0xc0 | (c >> 6), 0x80 | (c & 63))
     else if (c < 0x10000) bytes.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63))
@@ -2114,7 +2115,8 @@ function sha256Hex(str) {
 function base64Utf8(str) {
   const bytes = []
   for (const ch of String(str)) {
-    const c = ch.codePointAt(0)
+    const cp = ch.codePointAt(0)
+    const c = cp >= 0xd800 && cp <= 0xdfff ? 0xfffd : cp   // a lone surrogate encodes as U+FFFD (EF BF BD), like Buffer.from
     if (c < 0x80) bytes.push(c)
     else if (c < 0x800) bytes.push(0xc0 | (c >> 6), 0x80 | (c & 63))
     else if (c < 0x10000) bytes.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63))
