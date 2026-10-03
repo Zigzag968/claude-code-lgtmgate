@@ -732,15 +732,17 @@ check "[195] a root holding the engine's version ($PV_ENGINE) passes (real comma
 PV_OUT="$(pv_verdict "$PV_ROOTS/old")"
 ok=0
 case "$PV_OUT" in
-  "plugin-version-skew|"*"$PV_ROOTS/old"*"0.0.1-old"*"$PV_ENGINE"*"pass the current plugin root and relaunch") ok=1 ;;
+  *"pv roots"*) ok=0 ;;
+  "plugin-version-skew|"*"0.0.1-old"*"$PV_ENGINE"*"pass the current plugin root and relaunch") ok=1 ;;
 esac
-check "[195] a root holding another version is a plugin-version-skew naming root, both versions and the remedy" "$ok"
+check "[195] a root holding another version is a plugin-version-skew naming both versions and the remedy, never the root path" "$ok"
 PV_OUT="$(pv_verdict "$PV_ROOTS/none")"
 ok=0
 case "$PV_OUT" in
-  "plugin-version-unreadable|"*"$PV_ROOTS/none/.claude-plugin/plugin.json (missing)"*"pass the current plugin root and relaunch") ok=1 ;;
+  *"pv roots"*) ok=0 ;;
+  "plugin-version-unreadable|"*".claude-plugin/plugin.json (missing)"*"pass the current plugin root and relaunch") ok=1 ;;
 esac
-check "[195] a root without a manifest fails closed as plugin-version-unreadable (missing)" "$ok"
+check "[195] a root without a manifest fails closed as plugin-version-unreadable (missing), never naming the root path" "$ok"
 PV_OUT="$(pv_verdict "$PV_ROOTS/bad")"
 ok=0
 case "$PV_OUT" in

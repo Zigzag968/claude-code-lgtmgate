@@ -2101,7 +2101,7 @@ await testCase('T195b a different plugin version escalates, the reason names bot
     eq('code', older && older.code, 'plugin-version-skew'),
     includes('names the root version', older.reason, '0.0.1-old'),
     includes('names the engine version', older.reason, V),
-    includes('names the root', older.reason, '/old/root'),
+    eq('the reason carries no local path (a path in a GitHub paste is refused by the scrub hook)', older.reason.includes('/old/root'), false),
     includes('names the remedy', older.reason, 'pass the current plugin root and relaunch'),
     eq('a newer root is a skew too', newer && newer.code, 'plugin-version-skew'),
     eq('the reason is never provision-failed', older.reason.startsWith('provision-failed'), false),
@@ -2129,7 +2129,8 @@ await testCase('T195c a missing or unreadable manifest, or no usable probe answe
   for (const [name, got, cause] of cases) {
     const bad = eq(name + ': code', got && got.code, 'plugin-version-unreadable')
       || includes(name + ': cause', got.reason, cause)
-      || includes(name + ': names the manifest', got.reason, '/r/.claude-plugin/plugin.json')
+      || includes(name + ': names the manifest file', got.reason, '.claude-plugin/plugin.json')
+      || eq(name + ': the reason carries no local path', got.reason.includes('/r/'), false)
       || includes(name + ': names the engine version', got.reason, V)
       || includes(name + ': names the remedy', got.reason, 'pass the current plugin root and relaunch')
     if (bad) return bad
@@ -2172,6 +2173,7 @@ await testCase('T195d the check runs first, only when the templates come from pl
     eq('gate precedes the provision probe', iGate < iProvision, true),
     eq('gate reads the manifest through probe(lines) with noReuse', body.includes("probe('lines', pluginVersionCmd(pluginRoot), { label: 'plugin-version', noReuse: true"), true),
     eq('gate escalates on the existing status', body.includes("finish(STATUS['escalate'], { reason: skew.reason"), true),
+    eq('the root path travels in its own result field, not in the reason', body.includes("{ reason: skew.reason, issue, pluginRoot, trace }"), true),
     eq('a failure of the probe itself keeps the provision-failed signature', body.includes("reason: 'provision-failed', issue, missing: [], exitCode: null, probeReason: pv.probeFailed, probeHint: PROBE_REASON_HINTS[pv.probeFailed]"), true),
     eq('gate writes no label (no updateStatus, no prWrite)', body.includes('updateStatus') || body.includes('prWrite'), false),
     eq('lines is registered in PROBES', src.includes("  'lines': 'lines',"), true),

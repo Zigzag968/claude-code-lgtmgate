@@ -2126,6 +2126,8 @@ function probeCommands({ wtPath, issue, pluginRoot, probeRunPath, name, cmd, lab
 // #195: read the plugin manifest of args.pluginRoot with a script of its own (node -e, never a template of
 // the possibly stale root) and judge the answer without a model. The probe parser is the long-standing
 // `lines`: the command prints exactly one line, PLUGIN-VERSION:<version> or PLUGIN-VERSION-ERROR:<cause>.
+// The reason never holds the root path (a local path pasted into GitHub is refused by the scrub hook): the
+// path travels in the result's own `pluginRoot` field.
 function pluginVersionCmd(pluginRoot) {
   const q = (x) => `'${String(x).split("'").join("'\\''")}'`
   const js = 'try{const v=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).version;' +
@@ -2136,7 +2138,7 @@ function pluginVersionCmd(pluginRoot) {
 // -> null when the root holds the engine's version, else { code, reason }; fails closed on anything else.
 // A failure of the PROBE itself (no attestation, an agent type not resolved, a copy that altered the command)
 // says nothing about the manifest: it is the documented `provision-failed` of every probe (code 'provision-failed').
-function pluginVersionVerdict({ engineVersion, pluginRoot, probeFailed, exit, lines }) {
+function pluginVersionVerdict({ engineVersion, probeFailed, exit, lines }) {
   const remedy = 'pass the current plugin root and relaunch'
   const V = 'PLUGIN-VERSION:'
   const E = 'PLUGIN-VERSION-ERROR:'
@@ -2145,10 +2147,10 @@ function pluginVersionVerdict({ engineVersion, pluginRoot, probeFailed, exit, li
   if (one.startsWith(V) && one.length > V.length) {
     const found = one.slice(V.length)
     if (found === engineVersion) return null
-    return { code: 'plugin-version-skew', reason: `plugin-version-skew: pluginRoot ${pluginRoot} holds lgtmgate ${found} but this engine is ${engineVersion}; ${remedy}` }
+    return { code: 'plugin-version-skew', reason: `plugin-version-skew: the plugin root holds lgtmgate ${found} but this engine is ${engineVersion}; ${remedy}` }
   }
   const cause = one.startsWith(E) ? one.slice(E.length) : 'no usable answer'
-  return { code: 'plugin-version-unreadable', reason: `plugin-version-unreadable: cannot read the version in ${pluginRoot}/.claude-plugin/plugin.json (${cause}); engine is ${engineVersion}; ${remedy}` }
+  return { code: 'plugin-version-unreadable', reason: `plugin-version-unreadable: cannot read the version in the plugin root's .claude-plugin/plugin.json (${cause}); engine is ${engineVersion}; ${remedy}` }
 }
 // --- pluginVersion:end ---
 
@@ -2252,7 +2254,7 @@ if (probeOnly) {
 if (!simulate && pluginRoot && !config.probeRunPath) {
   const pv = await probe('lines', pluginVersionCmd(pluginRoot), { label: 'plugin-version', noReuse: true, onFail: (reason) => ({ probeFailed: reason }) })
   if (pv.probeFailed === 'agent-death') return finish(STATUS['provision-died'], { issue, trace })
-  const skew = pluginVersionVerdict({ engineVersion: BUILD.version, pluginRoot, probeFailed: pv.probeFailed, exit: pv.exit, lines: pv.json && pv.json.lines })
+  const skew = pluginVersionVerdict({ engineVersion: BUILD.version, probeFailed: pv.probeFailed, exit: pv.exit, lines: pv.json && pv.json.lines })
   if (skew && pv.probeFailed) {
     // the probe itself failed (first probe of the run): the signature every probe failure has had since #82
     log(`Plugin version probe failed (${pv.probeFailed}) — failing closed` + (PROBE_REASON_HINTS[pv.probeFailed] ? `: ${PROBE_REASON_HINTS[pv.probeFailed]}` : ''))
@@ -2260,7 +2262,7 @@ if (!simulate && pluginRoot && !config.probeRunPath) {
   }
   if (skew) {
     log(`Plugin version check failed — ${skew.reason}`)
-    return finish(STATUS['escalate'], { reason: skew.reason, issue, trace })
+    return finish(STATUS['escalate'], { reason: skew.reason, issue, pluginRoot, trace })
   }
   log(`Plugin version: pluginRoot holds ${BUILD.version}, same as the engine`)
 }

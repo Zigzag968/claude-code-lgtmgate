@@ -103,6 +103,18 @@ out=$(node scripts/run-offline.cjs fixtures/incidents/195-stale-plugin-root.json
 case "$out" in *"FAIL:"*"uses @@ENGINE_VERSION@@ but the engine under test has no BUILD version"*) tok2=1;; *) tok2=0;; esac
 if [ "$tok1$tok2" = "11" ]; then ok "@@ENGINE_VERSION@@ resolves to the engine's BUILD version, and is refused against an engine without one"; else bad "engine version token: resolves=$tok1 refused=$tok2"; fi
 
+# #195: the plugin root travels in its own result field, the reason carries no local path.
+cat > "$TMP/rinfo.cjs" <<'JS'
+const fs = require('fs')
+const path = require('path')
+const { stripExports, buildPipelineRunner, replayFixture } = require(path.resolve('scripts/run-offline.cjs'))
+const run = buildPipelineRunner(stripExports(fs.readFileSync(path.resolve('workflows/deliver-pipeline.js'), 'utf8')))
+const fx = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'))
+replayFixture(fx, run).then((r) => { process.stdout.write(JSON.stringify({ root: r.result.pluginRoot, reasonHasRoot: String(r.result.reason).includes(fx.args.pluginRoot) })) })
+JS
+out=$(node "$TMP/rinfo.cjs" fixtures/incidents/195-stale-plugin-root.json 2>&1)
+if [ "$out" = '{"root":"/old/cache/lgtmgate/1.0.0-beta.4","reasonHasRoot":false}' ]; then ok "the plugin version escalate carries pluginRoot in its own field and no path in the reason"; else bad "pluginRoot field: $out"; fi
+
 rm -rf "$TMP"
 STATUS=ok; [ "$FAIL" -gt 0 ] && STATUS=fail
 echo "[test-run-offline] status=$STATUS passed=$PASS failed=$FAIL"

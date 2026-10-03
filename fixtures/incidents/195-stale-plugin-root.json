@@ -21,7 +21,7 @@
   },
   "expect": {
     "status": "escalate",
-    "reason": "plugin-version-skew: pluginRoot /old/cache/lgtmgate/1.0.0-beta.4 holds lgtmgate 1.0.0-beta.4 but this engine is @@ENGINE_VERSION@@; pass the current plugin root and relaunch",
+    "reason": "plugin-version-skew: the plugin root holds lgtmgate 1.0.0-beta.4 but this engine is @@ENGINE_VERSION@@; pass the current plugin root and relaunch",
     "trace": [
       "branch-prefix-fallback-default",
       "probe:lines:haiku"
