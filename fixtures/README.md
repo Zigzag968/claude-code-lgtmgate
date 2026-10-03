@@ -63,7 +63,10 @@ bash scripts/capture-incident.sh <runId> <issue> <label> [--out DIR]
 - One `calls[<label>]` entry per `agent()` call of the run's final pass, exactly as the agent
   returned it (the final pass of a relaunched run is identified by the record's `agentId` values,
   never by journal order). It fails closed, naming the key, on any layout it does not recognise
-  and on a call that died; it then replays the capture and prints the next step.
+  and on a call that died; it then replays the capture and prints the next step. A call the engine
+  retried (record label `<label> (retry N)`, journal label `<label>`) is captured once under `<label>`
+  with the answer of the last attempt that did not die, and the status line reports `retries=<n>`; a call
+  whose every attempt died, and any other label difference, still refuse.
 - `expect.status` is the OBSERVED status, and publishing requires the replay to reproduce it: leave it
   as captured. For a bug fix the correct outcome is set on the published fixture (see below).
 - `node scripts/run-offline.cjs <file> --report-unused` also lists the fixture entries a replay
