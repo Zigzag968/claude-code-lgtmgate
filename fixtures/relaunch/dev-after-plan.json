@@ -1,0 +1,137 @@
+{
+  "name": "relaunch-dev-after-plan",
+  "note": "harness case, not an incident: run 1 stops at plan-ready (manual mode); run 2 is the Lead relaunch at entryStage dev with the plan carried over, and must run neither Theo nor Sam",
+  "runs": [
+    {
+      "args": {
+        "pluginRoot": "/plugin",
+        "issue": 123,
+        "brief": "fix slugify accents",
+        "wtPath": "/wt/root/issue-123",
+        "config": {},
+        "mode": "manual"
+      },
+      "calls": {
+        "probe-123-lines-plugin-version-r0": {
+          "line": "PROBE name=lines exit=0 sha=4b0b2f33b20b777393f4cb55ea1d47c45786b52ad36822582a5ed67647e54ed5 cmd=2af1fd58e4141ac8977c54e48900baf5a81f43c1be46d2a1c6f38830f7582ec8 json={\"lines\":[\"PLUGIN-VERSION:@@ENGINE_VERSION@@\"]}",
+          "verify": "VERIFY ok line=PROBE name=lines exit=0 sha=4b0b2f33b20b777393f4cb55ea1d47c45786b52ad36822582a5ed67647e54ed5 cmd=2af1fd58e4141ac8977c54e48900baf5a81f43c1be46d2a1c6f38830f7582ec8 json={\"lines\":[\"PLUGIN-VERSION:@@ENGINE_VERSION@@\"]}"
+        },
+        "probe-123-provision-provision-r0": {
+          "line": "PROBE name=provision exit=0 sha=30ad404e7bf922808eeb13427c66400303e810a9392f80082fb0abe2fc6fc271 cmd=cb49d972cd5e77c121dac04294f3d1fa6a3363d2451bd60461ad1c814588897a json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}",
+          "verify": "VERIFY ok line=PROBE name=provision exit=0 sha=30ad404e7bf922808eeb13427c66400303e810a9392f80082fb0abe2fc6fc271 cmd=cb49d972cd5e77c121dac04294f3d1fa6a3363d2451bd60461ad1c814588897a json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}"
+        },
+        "probe-123-provision-freshness-provision-freshness-r0": {
+          "line": "PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b cmd=f7148584e77c9da7779115228bbfa0f4223ff89ed5d3031f3e51605249a7eaa7 json={\"state\":\"fresh\",\"behind\":0,\"own\":0}",
+          "verify": "VERIFY ok line=PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b cmd=f7148584e77c9da7779115228bbfa0f4223ff89ed5d3031f3e51605249a7eaa7 json={\"state\":\"fresh\",\"behind\":0,\"own\":0}"
+        },
+        "diagnose-issue-123": {
+          "confirmed": true,
+          "evidence": "reproduced: `node -e` prints the wrong slug",
+          "actualCause": "accent stripping",
+          "laneOk": true,
+          "persistentStateSignal": false,
+          "authSecurityBoundarySignal": false,
+          "deployConfigSignal": false,
+          "immatureVendorApiSignal": false
+        },
+        "scout-issue-123-1": {
+          "decision": "GO",
+          "plan": "## Plan\n1. src/slugify.js: transliterate before stripping\n\n## Acceptance checklist\n- [ ] `npm test` passes",
+          "rationale": "",
+          "targetFiles": [
+            "src/slugify.js"
+          ],
+          "absorbedIssues": [],
+          "acceptanceChecklist": "- [ ] `npm test` passes"
+        },
+        "plan-check-123-1": {
+          "verdict": "CONFORMING",
+          "issues": []
+        }
+      },
+      "expect": {
+        "status": "plan-ready",
+        "trace": [
+          "branch-prefix-fallback-default",
+          "probe:lines:haiku",
+          "probe:provision:haiku",
+          "probe:provision-freshness:haiku"
+        ],
+        "phases": [
+          "Setup",
+          "Diagnose",
+          "Plan"
+        ]
+      }
+    },
+    {
+      "args": {
+        "pluginRoot": "/plugin",
+        "issue": 123,
+        "brief": "fix slugify accents",
+        "wtPath": "/wt/root/issue-123",
+        "config": {},
+        "mode": "manual",
+        "entryStage": "dev",
+        "proceedThrough": "dev"
+      },
+      "carry": {
+        "planText": "plan"
+      },
+      "calls": {
+        "probe-123-lines-plugin-version-r0": {
+          "line": "PROBE name=lines exit=0 sha=4b0b2f33b20b777393f4cb55ea1d47c45786b52ad36822582a5ed67647e54ed5 cmd=2af1fd58e4141ac8977c54e48900baf5a81f43c1be46d2a1c6f38830f7582ec8 json={\"lines\":[\"PLUGIN-VERSION:@@ENGINE_VERSION@@\"]}",
+          "verify": "VERIFY ok line=PROBE name=lines exit=0 sha=4b0b2f33b20b777393f4cb55ea1d47c45786b52ad36822582a5ed67647e54ed5 cmd=2af1fd58e4141ac8977c54e48900baf5a81f43c1be46d2a1c6f38830f7582ec8 json={\"lines\":[\"PLUGIN-VERSION:@@ENGINE_VERSION@@\"]}"
+        },
+        "probe-123-provision-provision-r0": {
+          "line": "PROBE name=provision exit=0 sha=30ad404e7bf922808eeb13427c66400303e810a9392f80082fb0abe2fc6fc271 cmd=cb49d972cd5e77c121dac04294f3d1fa6a3363d2451bd60461ad1c814588897a json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}",
+          "verify": "VERIFY ok line=PROBE name=provision exit=0 sha=30ad404e7bf922808eeb13427c66400303e810a9392f80082fb0abe2fc6fc271 cmd=cb49d972cd5e77c121dac04294f3d1fa6a3363d2451bd60461ad1c814588897a json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}"
+        },
+        "probe-123-preflight-dev-r0": {
+          "line": "PROBE name=preflight exit=0 sha=0acd6243a89b98b4bb2d70cb70c8f020921b3ba8feae419783c1e32c54be75dd cmd=931c6bad0a77e4f370494610f153ca3fee1e6b037f18be09444590c9aab16240 json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/wt/root/.git/worktrees/issue-123\",\"writable\":true}",
+          "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=0acd6243a89b98b4bb2d70cb70c8f020921b3ba8feae419783c1e32c54be75dd cmd=931c6bad0a77e4f370494610f153ca3fee1e6b037f18be09444590c9aab16240 json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/wt/root/.git/worktrees/issue-123\",\"writable\":true}"
+        },
+        "nick-issue-123": {
+          "prNumber": 42,
+          "branch": "features/issue-123",
+          "testsPass": true,
+          "summary": "opened PR #42"
+        },
+        "probe-123-preflight-branch-r0": {
+          "line": "PROBE name=preflight exit=0 sha=5fbfdf840750936170ea0caa2986e56765751306cca75f230cff37f141b42cdc cmd=874136047142387c5b6bcbcfedfb7409c9281ae2d4ac8c60d8821a85d66f30be json={\"mode\":\"branch\",\"headRef\":\"features/issue-123\",\"branchPrefix\":\"\"}",
+          "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=5fbfdf840750936170ea0caa2986e56765751306cca75f230cff37f141b42cdc cmd=874136047142387c5b6bcbcfedfb7409c9281ae2d4ac8c60d8821a85d66f30be json={\"mode\":\"branch\",\"headRef\":\"features/issue-123\",\"branchPrefix\":\"\"}"
+        },
+        "config-project-recheck-123": "{\"baseBranch\":\"develop\",\"conventionsRule\":\".claude/rules/conventions.md\"}",
+        "already-done-check-123": {
+          "isAlreadyDone": false,
+          "isIssueClosed": false,
+          "issueState": "OPEN",
+          "issueCreatedAt": "2026-01-01T00:00:00Z",
+          "isMerged": false,
+          "mergedAt": "",
+          "mergedPrClosesIssue": false,
+          "checkFailed": false
+        }
+      },
+      "expect": {
+        "status": "dev-done",
+        "trace": [
+          "branch-prefix-fallback-default",
+          "probe:lines:haiku",
+          "probe:provision:haiku",
+          "probe:preflight:haiku"
+        ],
+        "phases": [
+          "Setup",
+          "Dev"
+        ],
+        "callLabelsAbsent": [
+          "diagnose-",
+          "scout-",
+          "plan-check-",
+          "plan-audit-"
+        ]
+      }
+    }
+  ]
+}

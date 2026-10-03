@@ -27,9 +27,17 @@
 //       "traceExact": true,                // optional (needs "trace" as an array): result.trace must have exactly
 //                                          // as many entries as "trace" (the prefix match stays, nothing more may follow)
 //       "callLabels": ["probe-1-...", "..."], // optional: the ordered labels of the agent() calls, EXACT equality
-//       "logsInclude": ["..."]             // optional, each substring must appear in a log line
+//       "logsInclude": ["..."],            // optional, each substring must appear in a log line
+//       "phases": ["Setup", "Dev"],        // optional: the ordered phase() titles of the run, EXACT equality
+//       "callLabelsAbsent": ["diagnose-"]  // optional: no agent() call label may start with any of these (non-empty strings)
 //     }
 //   }
+// Multi-run format (#185), e.g. a relaunch: `runs` replaces the top-level args/calls/expect (mixing them is refused), at
+// least 2 entries, each run replayed against its OWN calls and expect:
+//   { "name": "...", "runs": [ { "args": {...}, "calls": {...}, "expect": {...} },
+//                              { "args": {...}, "calls": {...}, "expect": {...}, "carry": { "planText": "plan" } } ] }
+// `carry` = { "<arg>": "<field>" }: arg of run N is set to that top-level field of run N-1's result (the way the Lead hands
+// `plan` back as `planText`); a field the previous run did not return fails the fixture. Nothing else is shared between runs.
 // The token `@@ENGINE_VERSION@@` anywhere in a fixture resolves to the engine's BUILD version (refused if it has none).
 // A label absent from `calls` (or an exhausted array) throws with the label and the
 // first 200 chars of the prompt, so the missing entry is obvious. Nothing is defaulted.
@@ -180,7 +188,7 @@ function findUnused(fixture, calls, cursors) {
   return unused
 }
 
-function check(fixture, result, logs, calls = []) {
+function check(fixture, result, logs, calls = [], phases = []) {
   const exp = fixture.expect || {}
   const problems = []
   if (typeof exp.status !== 'string') {
@@ -218,6 +226,22 @@ function check(fixture, result, logs, calls = []) {
       }
     }
   }
+  if (exp.phases !== undefined) {
+    if (!Array.isArray(exp.phases)) problems.push('phases: must be an array')
+    else if (phases.length !== exp.phases.length || phases.some((p, i) => p !== exp.phases[i])) {
+      problems.push(`phases: expected ${JSON.stringify(exp.phases)}, got ${JSON.stringify(phases)}`)
+    }
+  }
+  if (exp.callLabelsAbsent !== undefined) {
+    if (!Array.isArray(exp.callLabelsAbsent) || exp.callLabelsAbsent.some((p) => typeof p !== 'string' || p === '')) {
+      problems.push('callLabelsAbsent: must be an array of non-empty label prefixes')
+    } else {
+      for (const c of calls) {
+        const hit = exp.callLabelsAbsent.find((p) => String(c.label).startsWith(p))
+        if (hit !== undefined) problems.push(`callLabelsAbsent: call "${c.label}" starts with "${hit}"`)
+      }
+    }
+  }
   if (Array.isArray(exp.logsInclude)) {
     for (const needle of exp.logsInclude) {
       if (!logs.some((l) => l.includes(needle))) problems.push(`logs: missing "${needle}"`)
@@ -250,8 +274,9 @@ async function replayFixture(fixture, run, { sites = false, prompts = false } = 
   const missing = []
   const cursors = new Map()
   const siteList = []
+  const phases = []
   let log = (m) => { logs.push(String(m)) }
-  let phase = () => {}
+  let phase = (title) => { phases.push(String(title)) }
   let agent = buildFixtureAgent(fixture, calls, missing, cursors, prompts)
   if (sites) {
     const logInner = log
@@ -264,12 +289,61 @@ async function replayFixture(fixture, run, { sites = false, prompts = false } = 
   let result
   let error = null
   try { result = await run(clone(fixture.args || {}), agent, log, phase) } catch (e) { error = e }
-  return { result, error, logs, calls, missing, cursors, sites: siteList }
+  return { result, error, logs, calls, missing, cursors, sites: siteList, phases }
 }
 
 async function runOne(fixturePath, fpSrcStripped) {
-  let fixture = JSON.parse(fs.readFileSync(fixturePath, 'utf-8'))
+  const fixture = JSON.parse(fs.readFileSync(fixturePath, 'utf-8'))
   if (!fixture.name) fixture.name = path.basename(fixturePath, '.json')
+  if (fixture.runs !== undefined) return runChain(fixture, fpSrcStripped)
+  return runSingle(fixture, fpSrcStripped)
+}
+
+// A multi-run fixture replays its runs in order, each against its own calls and expect, through runSingle. What a later run
+// sees of the earlier one is only what its `carry` names: { "<arg>": "<field>" } sets that arg of run N to that top-level
+// field of run N-1's result (the way the Lead hands `plan` back as `planText` on a relaunch). A failing run ends the chain.
+async function runChain(fixture, fpSrcStripped) {
+  const problems = []
+  const logs = []
+  const unused = []
+  const allCalls = []
+  let prev = null
+  let result = { status: 'none' }
+  if (fixture.args !== undefined || fixture.calls !== undefined || fixture.expect !== undefined) {
+    throw new Error(`[offline] fixture "${fixture.name}" sets "runs" and also a top-level args/calls/expect — a multi-run fixture keeps them inside each run`)
+  }
+  if (!Array.isArray(fixture.runs) || fixture.runs.length < 2) {
+    throw new Error(`[offline] fixture "${fixture.name}": "runs" must be an array of at least 2 runs`)
+  }
+  for (let i = 0; i < fixture.runs.length; i++) {
+    const spec = fixture.runs[i]
+    const tag = `run ${i + 1}`
+    if (spec === null || typeof spec !== 'object') throw new Error(`[offline] fixture "${fixture.name}": ${tag} is not an object`)
+    const args = JSON.parse(JSON.stringify(spec.args || {}))
+    if (spec.carry !== undefined) {
+      if (i === 0 || spec.carry === null || typeof spec.carry !== 'object') {
+        throw new Error(`[offline] fixture "${fixture.name}": ${tag} "carry" must be an object and needs an earlier run`)
+      }
+      for (const [argName, field] of Object.entries(spec.carry)) {
+        if (prev.result[field] === undefined) {
+          problems.push(`${tag}: carry "${argName}" <- result.${field}, but run ${i} returned no "${field}" (status ${prev.result.status})`)
+        } else args[argName] = clone(prev.result[field])
+      }
+      if (problems.length) break
+    }
+    const r = await runSingle({ name: `${fixture.name}#${i + 1}`, args, calls: spec.calls, expect: spec.expect }, fpSrcStripped)
+    for (const p of r.problems) problems.push(`${tag}: ${p}`)
+    for (const u of r.unused) unused.push(`${tag}: ${u}`)
+    logs.push(...r.logs)
+    allCalls.push(...r.calls)
+    result = r.result
+    prev = r
+    if (r.problems.length) break
+  }
+  return { fixture, result, logs, calls: allCalls, problems, unused }
+}
+
+async function runSingle(fixture, fpSrcStripped) {
   if (!fixture.calls || typeof fixture.calls !== 'object') {
     throw new Error(`[offline] fixture "${fixture.name}" has no "calls" object`)
   }
@@ -291,7 +365,7 @@ async function runOne(fixturePath, fpSrcStripped) {
   }
   if (r.error) throw r.error
   const result = r.result
-  const problems = check(fixture, result, logs, calls)
+  const problems = check(fixture, result, logs, calls, r.phases)
   for (const m of missing) problems.push(`unanswered call (engine swallowed the error): ${m}`)
   return { fixture, result, logs, calls, problems, unused: findUnused(fixture, calls, cursors) }
 }
