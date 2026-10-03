@@ -83,6 +83,16 @@ function engineVersionOf(src) {
   const m = /const BUILD = \{[^}]*\bversion: '([^']+)'/.exec(String(src))
   return m ? m[1] : null
 }
+// A version string as the engine writes it in BUILD (semver, optional pre-release).
+const ENGINE_VERSION_RE = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/
+// The engine's own declaration of its version: the run result's `buildStamp` (`BUILD_STAMP` in the workflow,
+// `[pipeline] <plugin>@<version> cutFrom=<sha> workflow=<name>`). Returns the version, or null when the stamp is not a
+// string or does not carry a well-formed version.
+function engineVersionOfStamp(stamp) {
+  if (typeof stamp !== 'string') return null
+  const m = /^\[pipeline\] [^@\s]+@(\S+)(?: |$)/.exec(stamp)
+  return m && ENGINE_VERSION_RE.test(m[1]) ? m[1] : null
+}
 function withEngineVersion(fixture, version) {
   const raw = JSON.stringify(fixture)
   if (!raw.includes(ENGINE_VERSION_TOKEN)) return fixture
@@ -413,7 +423,7 @@ async function main() {
 }
 
 // Required by scripts/publish-fixture.cjs; run as a CLI otherwise (spawned or direct use is unchanged).
-module.exports = { stripExports, buildPipelineRunner, replayFixture, engineVersionOf, tokenizeVersionProbes, ENGINE_VERSION_TOKEN }
+module.exports = { stripExports, buildPipelineRunner, replayFixture, engineVersionOf, engineVersionOfStamp, ENGINE_VERSION_RE, tokenizeVersionProbes, ENGINE_VERSION_TOKEN }
 
 if (require.main === module) {
   main().catch((err) => {

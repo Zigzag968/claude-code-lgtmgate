@@ -223,6 +223,27 @@ if [ "$f1$f2" = "11" ]; then ok "callLabelsAbsent refuses an empty list and a no
 out=$(node scripts/run-offline.cjs "$TMP/relaunch-carries.json" 2>&1)
 case "$out" in *"FAIL:"*"run 2 has unknown key \"carries\" (allowed: args, calls, expect, carry)"*) ok "a misspelled run key is refused with the allowed keys listed";; *) bad "unknown run key not refused: $out";; esac
 
+# ---- #213: the version tokenizer is quote-delimited and touches only the answer of the version probe ----
+tv=$(node -e '
+const { tokenizeVersionProbes, ENGINE_VERSION_TOKEN } = require("./scripts/run-offline.cjs")
+const mk = (v) => ({
+  "probe-1-lines-plugin-version-r0": { line: "PROBE name=lines json=[\"PLUGIN-VERSION:" + v + "\"]", verify: "VERIFY ok line=[\"PLUGIN-VERSION:" + v + "\"]", note: "see \"PLUGIN-VERSION:" + v + "\"" },
+  "probe-1-lines-other-r0": { line: "PLUGIN-VERSION:" + v, verify: "\"PLUGIN-VERSION:" + v + "\"" },
+  "scout-issue-1-1": { text: "\"PLUGIN-VERSION:" + v + "\"" },
+})
+const out = []
+const a = mk("1.0.0-beta.30"); const n1 = tokenizeVersionProbes(a, ["1.0.0-beta.3"])
+out.push(n1 === 0 && a["probe-1-lines-plugin-version-r0"].line.includes("beta.30\"") ? "prefix-ok" : "prefix-bad")
+const b = mk("1.0.0-beta.3"); const n2 = tokenizeVersionProbes(b, ["1.0.0-beta.30"])
+out.push(n2 === 0 ? "reverse-ok" : "reverse-bad")
+const c = mk("1.0.0-beta.3"); const n3 = tokenizeVersionProbes(c, ["1.0.0-beta.3"]); const e = c["probe-1-lines-plugin-version-r0"]
+out.push(n3 === 2 && e.line.includes("\"PLUGIN-VERSION:" + ENGINE_VERSION_TOKEN + "\"") && e.verify.includes("\"PLUGIN-VERSION:" + ENGINE_VERSION_TOKEN + "\"") ? "exact-ok" : "exact-bad:" + n3)
+out.push(e.note === "see \"PLUGIN-VERSION:1.0.0-beta.3\"" && c["probe-1-lines-other-r0"].line === "PLUGIN-VERSION:1.0.0-beta.3" && c["probe-1-lines-other-r0"].verify.includes("beta.3\"") && c["scout-issue-1-1"].text.includes("beta.3\"") ? "fields-ok" : "fields-bad")
+const n4 = tokenizeVersionProbes(c, ["1.0.0-beta.3"]); out.push(n4 === 0 ? "idem-ok" : "idem-bad")
+console.log(out.join(" "))
+' 2>&1)
+case "$tv" in "prefix-ok reverse-ok exact-ok fields-ok idem-ok") ok "tokenizeVersionProbes is quote-delimited, rewrites only line and verify of the version probe, and is idempotent";; *) bad "tokenizeVersionProbes unit: $tv";; esac
+
 rm -rf "$TMP"
 STATUS=ok; [ "$FAIL" -gt 0 ] && STATUS=fail
 echo "[test-run-offline] status=$STATUS passed=$PASS failed=$FAIL"

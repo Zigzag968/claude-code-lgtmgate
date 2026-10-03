@@ -84,6 +84,13 @@ bash scripts/capture-incident.sh <runId> <issue> <label> [--out DIR]
   refuse, naming the key. A label that is `<label> (retry 1)` in the journal AND the record is a plain
   label and is kept as is. The other suffixes the engine emits for a relaunch, `(throttle-retry)` and
   `(after usage limit)`, are NOT folded: they still refuse as `label mismatch`.
+- The plugin version probe answer names the engine version of the run, which the merge bumps: the capture stores it as
+  `@@ENGINE_VERSION@@`. It reads the run record's `result.buildStamp` (the engine's own declaration, `[pipeline]
+  <plugin>@<version> cutFrom=<sha> workflow=<name>`): an answer equal to the stamp's version is tokenized, so a capture
+  of an older engine's run replays against later engines; an answer that differs stays literal (a skew replays as a
+  skew). A record without a usable stamp keeps the rule of the checkout BUILD / the `pluginRoot` last segment. The status
+  line carries `version-source=<stamp|checkout|pluginRoot|none>`: the name of the source that tokenized an answer, never
+  an answer.
 - `expect.status` is the OBSERVED status, and publishing requires the replay to reproduce it: leave it
   as captured. For a bug fix the correct outcome is set on the published fixture (see below).
 - `node scripts/run-offline.cjs <file> --report-unused` also lists the fixture entries a replay

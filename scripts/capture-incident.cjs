@@ -15,20 +15,21 @@
 //     --out    default <cwd>/.pipeline/captures   (must be git-ignored, inside a work tree)
 //     --from   projects directory; default $CLAUDE_PROJECTS_DIR, else ~/.claude/projects
 // Last stdout line (always): `[capture-incident] status=<ok|refused|error|usage-error>`
-// (ok adds `out=<path> calls=<n> cached=<n> retries=<n>`). Detail goes to stderr. Exit 0 ok, 1 refused or error
+// (ok adds `out=<path> calls=<n> cached=<n> version-source=<stamp|checkout|pluginRoot|none> retries=<n>`). Detail goes to stderr. Exit 0 ok, 1 refused or error
 // (error = an unexpected file-system failure, one `error: <code>: <message>` stderr line, stack only
 // with CAPTURE_INCIDENT_DEBUG=1, nothing left written), 2 usage.
 //
 // The answer of the plugin version probe (#195) names the engine version, which lead-merge bumps at every merge: the
-// capture stores the token `@@ENGINE_VERSION@@` there when the answer is the run's engine (see engineVersionsOfRun).
+// capture stores the token `@@ENGINE_VERSION@@` there when the answer is the run's engine (see engineVersionsOfRun): the
+// version in the run record's own `result.buildStamp` when it has one, else this checkout's BUILD / the pluginRoot segment.
 //
 // Observed layout (Claude Code does not document it; measured on real files by other users):
 //   journal  <projects>/<project>/<session>/subagents/workflows/<runId>/journal.jsonl
 //     rows: started {agentId,key,label}, result {key,result}, failed {key}; key = "v2:<hash>"
 //   record   <projects>/<project>/<session>/workflows/<runId>.json
-//     keys: status, args, agentCount, result{status}, workflowProgress[{type:'workflow_agent',agentId,label,cached?}]
+//     keys: status, args, agentCount, result{status,buildStamp?}, workflowProgress[{type:'workflow_agent',agentId,label,cached?}]
 // Every key read is whitelisted and required: a missing one refuses with `layout: <file>: missing <key>`
-// instead of guessing, so a change of layout is loud. `cached` alone is optional (absent = false).
+// instead of guessing, so a change of layout is loud. `cached` and `result.buildStamp` are optional (absent = false / no stamp).
 //
 // The final pass of a relaunched run is the set of agentId values in the record's workflowProgress,
 // never journal order. A result is joined to its start by `key`. A key whose LAST result/failed row
@@ -44,7 +45,7 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 const { spawnSync } = require('child_process')
-const { engineVersionOf, tokenizeVersionProbes } = require('./run-offline.cjs')
+const { engineVersionOf, engineVersionOfStamp, ENGINE_VERSION_RE, tokenizeVersionProbes } = require('./run-offline.cjs')
 
 class Refusal extends Error {}
 class Usage extends Error {}
@@ -200,7 +201,13 @@ function readRecord(file) {
     if (seen.has(a.agentId)) refuse(`${file}: duplicate agentId ${a.agentId} in workflowProgress`)
     seen.add(a.agentId)
   }
-  return { args: rec.args, status: rec.result.status, reason: typeof rec.result.reason === 'string' ? rec.result.reason : '', agents }
+  return {
+    args: rec.args,
+    status: rec.result.status,
+    reason: typeof rec.result.reason === 'string' ? rec.result.reason : '',
+    buildStamp: typeof rec.result.buildStamp === 'string' ? rec.result.buildStamp : '',
+    agents,
+  }
 }
 
 // ---- final pass -----------------------------------------------------------------------------
@@ -312,18 +319,24 @@ function finalPass(journalFile, rows, agents) {
 }
 
 // The plugin version probe answer (#195) names the engine version of the run, which lead-merge bumps at every merge: it is
-// stored as the token `@@ENGINE_VERSION@@`, so the capture still replays after the next bump. The answer is the run's
-// engine when it equals the BUILD version of this checkout's engine, or the version the run's pluginRoot names (the last
-// segment of the plugin cache path) - a run that went past the version check proves the two were equal. Not for a run that
-// ended on a plugin-version-* reason: there the answer differs from the engine, and the difference is the incident.
+// stored as the token `@@ENGINE_VERSION@@`, so the capture still replays after the next bump. Returns the
+// `{ source, version }` pairs that are the run's engine:
+// - the run record's own `buildStamp` (#213) when it carries a version: the engine's declaration is the sole authority, an
+//   answer that differs from it (a real skew) stays literal and replays as a skew, no proxy is consulted;
+// - else (no stamp, or an unparseable one) the two proxies: the BUILD version of this checkout's engine, or the version the
+//   run's pluginRoot names (the last segment of the plugin cache path) - a run that went past the version check proves the
+//   two were equal. Not for a run that ended on a plugin-version-* reason: there the answer differs from the engine, and
+//   the difference is the incident.
 function engineVersionsOfRun(record) {
+  const stamped = engineVersionOfStamp(record.buildStamp)
+  if (stamped) return [{ source: 'stamp', version: stamped }]
   if (record.reason.startsWith('plugin-version-')) return []
   const out = []
-  try { out.push(engineVersionOf(fs.readFileSync(path.resolve(__dirname, '..', 'workflows', 'deliver-pipeline.js'), 'utf8'))) } catch (e) { /* no engine file: only the pluginRoot rule */ }
+  try { out.push({ source: 'checkout', version: engineVersionOf(fs.readFileSync(path.resolve(__dirname, '..', 'workflows', 'deliver-pipeline.js'), 'utf8')) }) } catch (e) { /* no engine file: only the pluginRoot rule */ }
   const root = typeof record.args.pluginRoot === 'string' ? record.args.pluginRoot.replace(/\/+$/, '') : ''
   const last = root.slice(root.lastIndexOf('/') + 1)
-  if (/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(last)) out.push(last)
-  return out.filter(Boolean)
+  if (ENGINE_VERSION_RE.test(last)) out.push({ source: 'pluginRoot', version: last })
+  return out.filter((o) => o.version)
 }
 
 function buildFixture(issue, label, record, calls) {
@@ -339,8 +352,11 @@ function buildFixture(issue, label, record, calls) {
   }
   const args = JSON.parse(JSON.stringify(record.args))
   delete args.simulate
-  tokenizeVersionProbes(out, engineVersionsOfRun(record))
-  return { name: `${issue}-${label}`, args, calls: out, expect: { status: record.status } }
+  const versionSources = [] // which source tokenized at least one answer (a name, never an answer)
+  for (const { source, version } of engineVersionsOfRun(record)) {
+    if (tokenizeVersionProbes(out, [version]) > 0) versionSources.push(source)
+  }
+  return { fixture: { name: `${issue}-${label}`, args, calls: out, expect: { status: record.status } }, versionSources }
 }
 
 // ---- private write --------------------------------------------------------------------------
@@ -409,13 +425,13 @@ function main() {
   const record = readRecord(recordPathFor(runDir))
   const { calls, notes, retries } = finalPass(journalFile, rows, record.agents)
   for (const n of notes) process.stderr.write(`${n}\n`)
-  const fixture = buildFixture(issue, label, record, calls)
+  const { fixture, versionSources } = buildFixture(issue, label, record, calls)
   fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 })
   writePrivate(file, `${JSON.stringify(fixture, null, 2)}\n`)
   replay(file)
   process.stdout.write(`next: scripts/publish-fixture.sh ${file}\n`)
   const cached = calls.filter((c) => c.cached).length
-  process.stdout.write(`[capture-incident] status=ok out=${file} calls=${calls.length} cached=${cached} retries=${retries}\n`)
+  process.stdout.write(`[capture-incident] status=ok out=${file} calls=${calls.length} cached=${cached} version-source=${versionSources.join(',') || 'none'} retries=${retries}\n`)
 }
 
 try {
