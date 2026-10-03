@@ -9,9 +9,18 @@
 #      A head holding only this script's own bump/merge commits after the reviewed sha (a re-run) is accepted.
 #   1b. declared exceptions (#122): each `exception: <what> — <why> — #N` line between the acceptance markers
 #      (optionally prefixed `- ` or `- [x] `; ` -- ` is accepted as separator too) must parse, name an OPEN issue
-#      #N labelled `tech-debt` (REST), and the PR diff (`git diff origin/main...HEAD`, added lines only) must hold a
-#      `DEBT(#N)` marker. Any failure prints one `FAIL: declared-exception: <reason>` line and exits before any
+#      #N labelled `tech-debt` (REST), and the PR diff (`git diff origin/main...<tip>`, added lines only) must hold a
+#      `DEBT(#N)` marker. The gates 1b and 1b2 judge the tip that WILL be merged: the remote head of the PR (fetched, checked
+#      against the head sha step 1a read) and, when the local branch has commits the remote lacks (step 2 pushes them), the local
+#      head: local ahead = the local head, local behind = the remote head, diverged = both, each must pass. Any failure prints one `FAIL: declared-exception: <reason>` line and exits before any
 #      fetch-merge, bump, push, checks or merge.
+#      The `git fetch origin main` of this step is unconditional (the next step needs it too).
+#   1b2. R2 waivers (#174): in an engine repo (`engineRepo: true` in .claude/pipeline.config.json on origin/main, never the
+#      PR's copy), a PR that names (closing keyword or Refs, `#N`, `<this repo>#N` or its URL, anywhere in the PR body or in a
+#      commit message of the PR) a `type:bug` issue and whose judged tip (1b) changes `workflows/` (renames not detected; the
+#      BUILD line the bump commit writes is not a change) must add or modify `fixtures/incidents/<N>-*.json` holding valid
+#      JSON, unless a valid `exception:` line (1b) declares the waiver. Every issue found is checked; a gh error reading one
+#      refuses. Otherwise one `FAIL: r2-waiver: <reason>` line and exit before any fetch-merge, bump, push, checks or merge.
 #   2. sync: refuse unless on the PR head branch with a clean tree; fetch the head branch and
 #      fast-forward when the remote is ahead (a previous partial run), refuse when diverged.
 #   3. bring the base in LOCALLY: fetch origin/main, `git merge --no-edit origin/main`. On conflict:
@@ -93,6 +102,38 @@ fi
 
 # --- 1. acceptance checklist -------------------------------------------------
 body="$(gh pr view "$PR" -R "$REPO" --json body -q .body)" || die "cannot read PR #$PR body"
+# issue_refs <keyword alternation> <header|all> [<owner/repo>]: the issue numbers named by `<keyword> <ref>`. Input on stdin:
+# text chunks separated by NUL (the PR body, then one chunk per commit message), each parsed on its own. Fenced code blocks
+# and inline `code` spans are stripped before matching, so proofs quoting `Closes #N` never count. Case-insensitive,
+# deduplicated. Scope `header` (#119): only the lines before the first `## ` line of a chunk (the PR body order puts
+# `Closes #N` first); `all`: the whole chunk. Without <owner/repo> only `#N` matches (owner/repo#N never does); with it
+# `#N`, `<owner/repo>#N` and `https://github.com/<owner/repo>/issues/N` match, a reference to another repo never does.
+issue_refs() {
+  KW="$1" SCOPE="$2" SAME_REPO="${3:-}" python3 -c '
+import os, re, sys
+ref = r"#(\d+)"
+if os.environ["SAME_REPO"]:
+    r = re.escape(os.environ["SAME_REPO"])
+    ref = r"(?:#|" + r + r"#|https://github\.com/" + r + r"/issues/)(\d+)"
+pat = re.compile(r"(?<![\w/])(?:" + os.environ["KW"] + r")\s*:?\s+" + ref + r"\b", re.I)
+seen = []
+for chunk in sys.stdin.read().split("\0"):
+    kept, fenced = [], False
+    for line in chunk.splitlines():
+        if os.environ["SCOPE"] == "header" and not fenced and line.startswith("## "):
+            break
+        if re.match(r"\s*(```|~~~)", line):
+            fenced = not fenced
+            continue
+        if not fenced:
+            kept.append(re.sub(r"`[^`]*`", " ", line))
+    for m in pat.finditer("\n".join(kept)):
+        if m.group(1) not in seen:
+            seen.append(m.group(1))
+print("\n".join(seen))'
+}
+# header_issue_refs <keyword alternation>: `#N` references in the body's header block (the issue closing, step 8)
+header_issue_refs() { printf '%s\n' "$body" | issue_refs "$1" header; }
 rc=0
 printf '%s\n' "$body" | acceptance_check_body || rc=$?
 if [ "$rc" -ne 0 ]; then
@@ -143,9 +184,41 @@ for line in sys.stdin.read().splitlines():
                 print("BAD\t" + line.strip())
     if re.search(r"<!--\s*acceptance:start\s*-->", line):
         inb = True')" || die "cannot parse declared exceptions"
+git fetch origin "+refs/heads/main:refs/remotes/origin/main" || die "git fetch origin main failed"
+# lm_sync_head: the gates below judge the tip(s) that WILL be merged, in $lm_tips: the PR head as the remote has it (fetched,
+# checked against the head sha the review check read) and, when the local branch holds commits the remote lacks, the local
+# head, since step 2 pushes those commits (#174). Local behind the remote (step 2 fast-forwards): the remote head. Local ahead
+# (it contains the remote head): the local head alone, it carries everything the remote head has. Diverged (step 2 refuses
+# it later): both heads, each must pass. A checkout on another branch than the PR head is judged on the remote head only
+# (step 2 refuses it).
+lm_tips=""
+lm_sync_head() {
+  [ -z "$lm_tips" ] || return 0
+  local hb got cur loc
+  hb="$(gh pr view "$PR" -R "$REPO" --json headRefName -q .headRefName)" || die "cannot read PR #$PR head branch"
+  [ -n "$hb" ] || die "empty head branch for PR #$PR"
+  git fetch origin "+refs/heads/$hb:refs/remotes/origin/$hb" || die "git fetch origin $hb failed"
+  got="$(git rev-parse "refs/remotes/origin/$hb")" || die "cannot resolve origin/$hb"
+  [ "$got" = "$pr_head" ] || die "FAIL: review-stale: the PR head moved to $got after the review check read $pr_head; re-run"
+  lm_tips="$got"
+  cur="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+  if [ "$cur" = "$hb" ]; then
+    loc="$(git rev-parse HEAD)" || die "cannot resolve the local head"
+    if [ "$loc" != "$got" ] && ! git merge-base --is-ancestor "$loc" "$got"; then
+      if git merge-base --is-ancestor "$got" "$loc"; then lm_tips="$loc"; else lm_tips="$got $loc"; fi
+    fi
+  fi
+}
+# exc_marker_in_every_tip <n>: a `DEBT(#n)` marker among the added lines of the diff against origin/main, on every tip judged
+exc_marker_in_every_tip() {
+  local t added
+  for t in $lm_tips; do
+    added="$(git diff "origin/main...$t" | grep -E '^\+' | grep -vE '^\+\+\+ ' || true)"
+    grep -qE "DEBT\(#$1\)" <<<"$added" || return 1
+  done
+}
 if [ -n "$exc_lines" ]; then
-  git fetch origin "+refs/heads/main:refs/remotes/origin/main" || die "git fetch origin main failed"
-  exc_diff="$(git diff origin/main...HEAD | grep -E '^\+' | grep -vE '^\+\+\+ ' || true)"
+  lm_sync_head
   while IFS="$(printf '\t')" read -r kind val; do
     [ -n "$kind" ] || continue
     [ "$kind" = OK ] || exc_fail "malformed line (want: exception: <what> — <why> — #N): $val"
@@ -153,10 +226,93 @@ if [ -n "$exc_lines" ]; then
       || exc_fail "cannot read follow-up issue #$val"
     case "${info%% *}" in open) ;; *) exc_fail "follow-up issue #$val is not open (${info%% *})" ;; esac
     case ",${info#* }," in *,tech-debt,*) ;; *) exc_fail "follow-up issue #$val lacks the tech-debt label" ;; esac
-    printf '%s\n' "$exc_diff" | grep -qE "DEBT\(#$val\)" || exc_fail "no DEBT(#$val) marker in the PR diff"
+    exc_marker_in_every_tip "$val" || exc_fail "no DEBT(#$val) marker in the PR diff"
   done <<EOX
 $exc_lines
 EOX
+fi
+
+# --- 1b2. R2 waivers must be declared (#174) -----------------------------------
+# R2 scope = engine repo (`engineRepo: true` in .claude/pipeline.config.json ON origin/main, never the PR's own copy, so a PR
+# cannot switch the rule off) + an issue named by a closing keyword or Refs (`#N`, `<this repo>#N` or its URL; anywhere in the
+# PR body or in a commit message of the PR) labelled `type:bug` + a PR head touching workflows/. Such a PR must add or modify
+# fixtures/incidents/<N>-*.json holding valid JSON at the PR head, or carry a valid declared exception (an `exception:` line
+# already validated by 1b above). The PR is each tip judged (lm_sync_head: the remote head, the local head when it holds
+# unpushed commits) against origin/main (three dots) and every tip that changes workflows/ needs its own fixture. Renames are
+# not detected (a file moved out of workflows/ is still a change there; a fixture moved in is still an addition). Only the
+# exact line the bump writes (`const BUILD = { plugin: 'lgtmgate', version: '<semver>', cutFrom: '<literal>' }`) is not a
+# workflows/ change (a re-run after a partial run carries that bump). Issue numbers are normalised (#030 = 30). Local tests first: no gh call
+# unless engine holds.
+r2_fail() { echo "FAIL: r2-waiver: $*" >&2; die "PR #$PR R2 waiver not declared; nothing bumped, nothing merged"; }
+# r2_fixtures_of <tip> <n>: the files fixtures/incidents/<n>-<name>.json (that exact path, no subfolder) the PR added or modified
+# between origin/main and <tip>, NUL-separated. `-z` keeps non-ASCII names unquoted; renames are split into their parts.
+r2_fixtures_of() {
+  git diff -z --no-renames --name-status "origin/main...$1" | N="$2" python3 -c '
+import os, re, sys
+parts = sys.stdin.buffer.read().split(b"\0")
+pat = re.compile(rb"fixtures/incidents/" + re.escape(os.environ["N"].encode()) + rb"-[^/]+\.json")
+for status, path in zip(parts[0::2], parts[1::2]):
+    if status in (b"A", b"M") and pat.fullmatch(path):
+        sys.stdout.buffer.write(path + b"\0")'
+}
+# r2_changes_workflows <tip>: prints 1 when the PR (origin/main...<tip>) really changes workflows/, 0 when it only rewrites the BUILD
+# line of the workflow (the bump). Renames are not detected: a file moved out of workflows/ is still a change there.
+r2_changes_workflows() {
+  git diff --no-renames -U0 "origin/main...$1" -- workflows/ | WORKFLOW="$WORKFLOW" python3 -c '
+import os, re, sys
+own = "diff --git a/%s b/%s" % (os.environ["WORKFLOW"], os.environ["WORKFLOW"])
+# the one line the bump writes (see step 4): known keys in order, quoted literals only (\x27 = the single quote), no code fits in it
+build = re.compile(r"[+-]const BUILD = \{\s*plugin:\s*\x27lgtmgate\x27\s*,\s*version:\s*\x27[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?\x27\s*,\s*cutFrom:\s*\x27[0-9A-Za-z._-]{1,40}\x27\s*\}\s*;?\s*")
+blocks = []   # [header, hunk seen, changed lines, extended header lines (mode change, new or deleted file, binary...)]
+for line in sys.stdin.read().split("\n"):
+    if line.startswith("diff --git "):
+        blocks.append([line, False, [], []])
+    elif blocks:
+        if line.startswith("@@"):
+            blocks[-1][1] = True
+        elif blocks[-1][1]:
+            if line and line[0] in "+-":
+                blocks[-1][2].append(line)
+        elif line and not line.startswith(("index ", "--- ", "+++ ")):
+            blocks[-1][3].append(line)
+# a file is a real change unless it is the workflow with hunks made only of BUILD lines (no mode change, not created or deleted)
+print(1 if any(h != own or not seen or not lines or ext or any(not build.fullmatch(l) for l in lines) for h, seen, lines, ext in blocks) else 0)'
+}
+if [ -z "$exc_lines" ]; then
+  r2_engine=0
+  if git show origin/main:.claude/pipeline.config.json > "$lm_tmp/base-config.json" 2>/dev/null \
+     && python3 -c 'import json,sys; sys.exit(0 if json.load(open(sys.argv[1])).get("engineRepo") is True else 1)' "$lm_tmp/base-config.json" 2>/dev/null; then
+    r2_engine=1
+  fi
+  if [ "$r2_engine" -eq 1 ]; then
+    lm_sync_head
+    r2_wf_tips=""
+    for t in $lm_tips; do
+      r2_wf="$(r2_changes_workflows "$t")" || die "cannot diff the PR against origin/main"
+      if [ "$r2_wf" = 1 ]; then r2_wf_tips="$r2_wf_tips $t"; fi
+    done
+    if [ -n "$r2_wf_tips" ]; then
+      r2_refs="$({ printf '%s\0' "$body"; git log -z --format=%B $lm_tips ^origin/main; } \
+        | issue_refs 'close[sd]?|fix(?:e[sd])?|resolve[sd]?|refs?' all "$REPO")" || die "cannot parse issue references"
+      r2_seen=" "
+      for n in $r2_refs; do
+        n="$(printf '%s' "$n" | sed -E 's/^0+([0-9])/\1/')"   # #030 is issue 30 for the API and for the fixture name
+        case "$r2_seen" in *" $n "*) continue ;; esac
+        r2_seen="$r2_seen$n "
+        info="$(gh api "repos/$REPO/issues/$n" --jq '.state + " " + ([.labels[].name] | join(","))')" || r2_fail "cannot read issue #$n"
+        case ",${info#* }," in *,type:bug,*) ;; *) continue ;; esac
+        for t in $r2_wf_tips; do   # every tip that changes workflows/ carries its own valid fixture
+          covered=0
+          r2_fixtures_of "$t" "$n" > "$lm_tmp/fixtures.list" || die "cannot diff the PR against origin/main"
+          while IFS= read -r -d '' fx; do
+            if git show "$t:$fx" 2>/dev/null | python3 -c 'import json,sys; json.load(sys.stdin)' >/dev/null 2>&1; then covered=1; break; fi
+          done < "$lm_tmp/fixtures.list"
+          if [ "$covered" -eq 1 ]; then continue; fi
+          r2_fail "issue #$n is type:bug and the PR changes workflows/ but adds or modifies no valid (non-empty JSON) fixtures/incidents/$n-*.json; add the fixture (replayed red on base, green on the branch) or declare the waiver with 'exception: <what> — <why> — #M' in the acceptance block (#M an open tech-debt issue, DEBT(#M) marker in the diff)"
+        done
+      done
+    fi
+  fi
 fi
 
 # --- 1c. --tick-from-review (#9) -----------------------------------------------
@@ -486,26 +642,8 @@ merged="$(gh api "repos/$REPO/pulls/$PR" --jq .merged)" || die "cannot read PR #
 merged_at="$(gh api "repos/$REPO/pulls/$PR" --jq .merged_at)" || die "cannot read PR #$PR merged_at; no issue closed"
 { [ "$merged" = "true" ] && [ -n "$merged_at" ] && [ "$merged_at" != "null" ]; } \
   || die "PR #$PR is not merged (merged=$merged merged_at=$merged_at); no issue closed"
-# Closing keywords in the header block ONLY (#119): the lines before the first `## ` line (the PR body order puts
-# `Closes #N` first); fenced code blocks and inline `code` spans are stripped before matching, so proofs quoting
-# `Closes #N` in the acceptance section never close anything. Same-repo #N only (owner/repo#N never matches),
-# case-insensitive, deduplicated; `Refs #N` never matches.
-closing_issues="$(printf '%s\n' "$body" | python3 -c '
-import re, sys
-head, fenced = [], False
-for line in sys.stdin.read().splitlines():
-    if not fenced and line.startswith("## "):
-        break
-    if re.match(r"\s*(```|~~~)", line):
-        fenced = not fenced
-        continue
-    if not fenced:
-        head.append(re.sub(r"`[^`]*`", " ", line))
-seen = []
-for m in re.finditer(r"(?<![\w/])(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s+#(\d+)\b", "\n".join(head), re.I):
-    if m.group(1) not in seen:
-        seen.append(m.group(1))
-print("\n".join(seen))')" || die "cannot parse closing references; PR #$PR is merged, close issues by hand"
+# Closing keywords in the header block ONLY (#119, see header_issue_refs); `Refs #N` never matches.
+closing_issues="$(header_issue_refs 'close[sd]?|fix(?:e[sd])?|resolve[sd]?')" || die "cannot parse closing references; PR #$PR is merged, close issues by hand"
 close_failed=0
 for issue in $closing_issues; do
   state="$(gh api "repos/$REPO/issues/$issue" --jq .state)" || { echo "lead-merge: cannot read issue #$issue state" >&2; close_failed=1; continue; }
