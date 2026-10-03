@@ -180,6 +180,61 @@ D="$(setup open-id)"; run "$D" "$BASE/open-id.md"; rc=$?
 D="$(setup happy-id)"; run "$D" "$BASE/good-id.md"; rc=$?
 [ "$rc" -eq 0 ] && grep -q 'pr merge 7 -R o/r --merge' "$D/log" && ! grep -q -e '--auto' -e '--squash' "$D/log" \
   && ok "id-format: an all-checked id body merges (rc=0, --merge)" || bad "id-format happy path rc=$rc: $(tail -3 "$D/out")"
+D_AFTER_3B="$D"
+
+# 3c. fenced examples (#202): a marker pair inside a fenced code block is not the acceptance block (the engine's rule,
+# templates/pr-body-splice.cjs), so the gate reads the same block the engine ticked
+fx='```\n<!-- acceptance:start -->\n- [ ] an example box\n<!-- acceptance:end -->\n```\n'
+fx4='````\n```\n<!-- acceptance:start -->\n- [ ] an example box\n<!-- acceptance:end -->\n```\n````\n'
+fxt='~~~\n<!-- acceptance:start -->\n- [ ] an example box\n<!-- acceptance:end -->\n~~~\n'
+fxu='```\nan example, never closed\n<!-- acceptance:start -->\n- [ ] an example box\n<!-- acceptance:end -->\n'
+real_ok='<!-- acceptance:start -->\n- [x] a\n<!-- acceptance:end -->\n'
+real_open='<!-- acceptance:start -->\n- [x] a\n- [ ] b\n<!-- acceptance:end -->\n'
+printf 'Closes #1\n%b%b' "$fx" "$real_ok" > "$BASE/fx-before-ok.md"
+printf 'Closes #1\n%b%b' "$real_ok" "$fx" > "$BASE/fx-after-ok.md"
+printf 'Closes #1\n%b%b' "$fx" "$real_open" > "$BASE/fx-before-open.md"
+printf 'Closes #1\n%b%b' "$real_open" "$fx" > "$BASE/fx-after-open.md"
+printf 'Closes #1\n%b%b%b' "$fx4" "$real_ok" "$fxt" > "$BASE/fx-long-tilde-ok.md"
+printf 'Closes #1\n%b%b' "$fxu" "$real_ok" > "$BASE/fx-unclosed-before.md"
+printf 'Closes #1\n%b%b' "$real_ok" "$fxu" > "$BASE/fx-unclosed-after.md"
+printf 'Closes #1\n%b' "$fx" > "$BASE/fx-only.md"
+for c in before after; do
+  D="$(setup "fx-$c-ok")"; run "$D" "$BASE/fx-$c-ok.md"; rc=$?
+  [ "$rc" -eq 0 ] && grep -q 'pr merge 7 -R o/r --merge' "$D/log" \
+    && ok "fenced-example $c a ticked real block: merges (rc=0, --merge)" || bad "fenced-example $c ticked (rc=$rc): $(tail -3 "$D/out")"
+  D="$(setup "fx-$c-open")"; run "$D" "$BASE/fx-$c-open.md"; rc=$?
+  [ "$rc" -ne 0 ] && grep -qF -- '- [ ] b' "$D/out" && ! grep -qF 'an example box' "$D/out" && ! grep -qE 'update-branch|pr merge|pr checks' "$D/log" \
+    && [ "$(git -C "$D/work" log --format=%s | head -1)" = feat ] \
+    && ok "fenced-example $c an open real block: refused naming only the real box, no bump/checks/merge" || bad "fenced-example $c open (rc=$rc): $(tail -3 "$D/out")"
+done
+D="$(setup fx-long-tilde)"; run "$D" "$BASE/fx-long-tilde-ok.md"; rc=$?
+[ "$rc" -eq 0 ] && grep -q 'pr merge 7 -R o/r --merge' "$D/log" \
+  && ok "fenced-example ~~~ and a 4-backtick fence around a 3-backtick one: merges" || bad "fenced-example long/tilde (rc=$rc): $(tail -3 "$D/out")"
+D="$(setup fx-unclosed-after)"; run "$D" "$BASE/fx-unclosed-after.md"; rc=$?
+[ "$rc" -eq 0 ] && grep -q 'pr merge 7 -R o/r --merge' "$D/log" \
+  && ok "fenced-example fence never closed after the real block: merges (the real pair comes first)" || bad "fenced-example unclosed after (rc=$rc): $(tail -3 "$D/out")"
+D="$(setup fx-unclosed-before)"; run "$D" "$BASE/fx-unclosed-before.md"; rc=$?
+[ "$rc" -ne 0 ] && grep -qF 'acceptance markers missing' "$D/out" && grep -qF 'fence' "$D/out" && ! grep -qE 'update-branch|pr merge|pr checks' "$D/log" \
+  && ok "fenced-example fence never closed before the real block: refused with the readable reason, nothing bumped" || bad "fenced-example unclosed before (rc=$rc): $(tail -3 "$D/out")"
+# engine parity: the block the lib finds is the one pr-body-splice.cjs replaces (the splice of a sentinel, put back as the lib's block, gives the body again)
+if command -v node >/dev/null 2>&1; then
+  . "$ROOT/scripts/lib/acceptance-check.sh"
+  printf 'SENT' > "$BASE/sent.txt"
+  for f in fx-before-ok fx-after-ok fx-before-open fx-after-open fx-long-tilde-ok fx-unclosed-before fx-unclosed-after fx-only good open; do
+    node "$ROOT/templates/pr-body-splice.cjs" splice acceptance "$BASE/$f.md" "$BASE/sent.txt" "$BASE/sent.out" >/dev/null 2>&1; erc=$?
+    acceptance_extract_block < "$BASE/$f.md" > "$BASE/blk.txt"; lrc=$?
+    if [ "$erc" -eq 3 ]; then
+      [ "$lrc" -eq 3 ] && ok "fenced-example parity $f: no block, as in the engine" || bad "fenced-example parity $f: engine finds no block, lib rc=$lrc"
+    else
+      awk -v blk="$BASE/blk.txt" '$0 == "SENT" { while ((getline l < blk) > 0) print l; next } { print }' "$BASE/sent.out" > "$BASE/rebuilt.md"
+      [ "$erc" -eq 0 ] && [ "$lrc" -eq 0 ] && cmp -s "$BASE/rebuilt.md" "$BASE/$f.md" \
+        && ok "fenced-example parity $f: same block as the engine" || bad "fenced-example parity $f: engine rc=$erc lib rc=$lrc"
+    fi
+  done
+else
+  bad "fenced-example parity: node missing"
+fi
+D="$D_AFTER_3B"
 
 # 4. idempotent re-run: no second bump
 : > "$D/log"

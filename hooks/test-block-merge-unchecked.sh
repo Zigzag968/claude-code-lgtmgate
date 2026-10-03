@@ -33,6 +33,21 @@ printf 'x\n<!-- acceptance:start -->\n- [x] <!-- ac:1 --> a\n- [ ] <!-- ac:2 -->
 printf 'x\n<!-- acceptance:start -->\n- [x] a\n- [ ] b\n<!-- acceptance:end -->\n' > "$T/open.md"
 printf 'x\n<!-- acceptance:start -->\n- [x] a\n' > "$T/noend.md"
 printf 'x\n- [ ] no acceptance section at all\n' > "$T/none.md"
+# fenced examples (#202): a marker pair inside a fenced code block is not the acceptance block (the engine's rule, templates/pr-body-splice.cjs)
+FX='```\n<!-- acceptance:start -->\n- [ ] an example box\n<!-- acceptance:end -->\n```\n'
+FX4='````\n```\n<!-- acceptance:start -->\n- [ ] an example box\n<!-- acceptance:end -->\n```\n````\n'
+FXT='~~~\n<!-- acceptance:start -->\n- [ ] an example box\n<!-- acceptance:end -->\n~~~\n'
+FXU='```\nan example, never closed\n<!-- acceptance:start -->\n- [ ] an example box\n<!-- acceptance:end -->\n'
+REAL_OK='<!-- acceptance:start -->\n- [x] a\n<!-- acceptance:end -->\n'
+REAL_OPEN='<!-- acceptance:start -->\n- [x] a\n- [ ] b\n<!-- acceptance:end -->\n'
+printf 'x\n%b%b' "$FX" "$REAL_OK" > "$T/fx-before-ok.md"
+printf 'x\n%b%b' "$REAL_OK" "$FX" > "$T/fx-after-ok.md"
+printf 'x\n%b%b' "$FX" "$REAL_OPEN" > "$T/fx-before-open.md"
+printf 'x\n%b%b' "$REAL_OPEN" "$FX" > "$T/fx-after-open.md"
+printf 'x\n%b%b%b' "$FX4" "$REAL_OK" "$FXT" > "$T/fx-long-tilde-ok.md"
+printf 'x\n%b%b' "$FXU" "$REAL_OK" > "$T/fx-unclosed-before.md"
+printf 'x\n%b%b' "$REAL_OK" "$FXU" > "$T/fx-unclosed-after.md"
+printf 'x\n%b' "$FX" > "$T/fx-only.md"
 PASS=0; FAIL=0
 t() { # name expected-rc body cmd [comments-file (default: a review on the head)] [head-file] [expected-output-substring...]
   local out rc name="$1" want="$2" body="$3" cmd="$4" comments="${5:-c-fresh.json}" headf="${6:-head}" sub
@@ -63,5 +78,15 @@ t "review-stale: gh pr merge, bare marker without a sha -> block"   2 ok.md "gh 
 t "review-stale: gh pr merge without a number resolves the PR -> block" 2 ok.md "gh pr merge --merge" c-old.json head "$H0" "$H1"
 t "review-stale: head unreadable -> fail-open (like the body)"      0 ok.md "gh pr merge 5 --merge" c-old.json nohead
 t "review-stale: lead-merge.sh is left to the script's own check -> allow" 0 ok.md "bash scripts/lead-merge.sh 5" c-old.json
+# fenced examples (#202): the hook and lead-merge.sh read the same block as the engine
+t "fenced-example: example before a ticked real block -> allow"       0 fx-before-ok.md    "gh pr merge 5 --merge"
+t "fenced-example: example after a ticked real block -> allow"        0 fx-after-ok.md     "gh pr merge 5 --merge"
+t "fenced-example: example before an open real block -> block"        2 fx-before-open.md  "gh pr merge 5 --merge"
+t "fenced-example: example after an open real block -> block"         2 fx-after-open.md   "gh pr merge 5 --merge"
+t "fenced-example: ~~~ and a 4-backtick fence around a 3-backtick one -> allow" 0 fx-long-tilde-ok.md "gh pr merge 5 --merge"
+t "fenced-example: fence never closed after the real block -> allow (the real pair comes first)" 0 fx-unclosed-after.md "gh pr merge 5 --merge"
+t "fenced-example: fence never closed before the real block -> block (it hides the block)" 2 fx-unclosed-before.md "gh pr merge 5 --merge" c-fresh.json head "BLOCKED by pr-acceptance gate"
+t "fenced-example: only a fenced pair, no real block -> block"        2 fx-only.md         "gh pr merge 5 --merge" c-fresh.json head "BLOCKED by pr-acceptance gate"
+t "fenced-example: lead-merge.sh, example before a ticked real block -> allow" 0 fx-before-ok.md "bash scripts/lead-merge.sh 5"
 echo "[block-merge-unchecked test] passed=$PASS failed=$FAIL"
 [ "$FAIL" -eq 0 ]
