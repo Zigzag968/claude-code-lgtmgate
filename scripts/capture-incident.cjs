@@ -33,9 +33,12 @@
 // The final pass of a relaunched run is the set of agentId values in the record's workflowProgress,
 // never journal order. A result is joined to its start by `key`. A key whose LAST result/failed row
 // is `failed` is refused (a `failed` followed by a later `result`, a retry, is accepted).
-// A call the engine retried is named `<label> (retry N)` in the record and `<label>` in the journal: it is captured once
-// under `<label>` with the answer of its last attempt that did not die (`retries=<n>` counts the folded attempts); a call
-// whose every attempt died, and any other difference between the two labels, still refuses.
+// A call the engine retried is ONE workflowProgress entry named `<label> (retry N)` that carries the agentId of its last
+// attempt, while the journal holds `<label>` on every attempt: N+1 `started` rows under one key, the N earlier ones (died)
+// without a result. It is captured once under `<label>` with the answer of that agentId (`retries=<n>` sums the N): N must
+// equal the died attempts of the key ("retry count mismatch" otherwise), the key must not be shared by another entry, and a
+// call with no result refuses. The suffix is exactly ` (retry N)` (N 1-999, case-sensitive, nothing after); the other engine
+// suffixes `(throttle-retry)` and `(after usage limit)` are not folded and refuse as a label mismatch.
 
 const fs = require('fs')
 const os = require('os')
@@ -202,69 +205,99 @@ function readRecord(file) {
 
 // ---- final pass -----------------------------------------------------------------------------
 
-const RETRY_SUFFIX = /^(.*) \(retry (\d+)\)$/
+// The one suffix the engine puts on the record label of a retried call: a space, `(retry N)`, N from 1 to 999, nothing after.
+// Case-sensitive on purpose; `(throttle-retry)` and `(after usage limit)` are other engine suffixes and are NOT folded.
+const RETRY_SUFFIX = /^(.*) \(retry ([1-9][0-9]{0,2})\)$/
 
 function finalPass(journalFile, rows, agents) {
-  const startedKeys = new Set()
-  const resultByKey = new Map()
+  const startsByKey = new Map() // key -> [{ row, line }] in journal order
   const startedByAgent = new Map()
   for (const { line, row } of rows) {
-    if (row.type === 'started') { startedKeys.add(row.key); startedByAgent.set(row.agentId, { row, line }) }
+    if (row.type !== 'started') continue
+    if (!startsByKey.has(row.key)) startsByKey.set(row.key, [])
+    startsByKey.get(row.key).push({ row, line })
+    startedByAgent.set(row.agentId, { row, line })
   }
+  const resultRowsByKey = new Map() // key -> [{ row, line }]
+  const resultByKey = new Map()
   const lastEventByKey = new Map() // key -> { type: 'result'|'failed', line } of its LAST such row
   for (const { line, row } of rows) {
     if (row.type !== 'result' && row.type !== 'failed') continue
     lastEventByKey.set(row.key, { type: row.type, line })
     if (row.type !== 'result') continue
-    if (!startedKeys.has(row.key)) refuse(`${journalFile}: orphan result for key ${row.key} [line ${line}]`)
+    if (!startsByKey.has(row.key)) refuse(`${journalFile}: orphan result for key ${row.key} [line ${line}]`)
+    if (!resultRowsByKey.has(row.key)) resultRowsByKey.set(row.key, [])
+    resultRowsByKey.get(row.key).push({ row, line })
     resultByKey.set(row.key, row) // last wins
+  }
+  const agentsByKey = new Map() // key -> number of workflowProgress entries that journal it
+  for (const a of agents) {
+    const s = startedByAgent.get(a.agentId)
+    if (s) agentsByKey.set(s.row.key, (agentsByKey.get(s.row.key) || 0) + 1)
   }
   const calls = []
   const died = []
   const failedLast = []
   const finalIds = new Set(agents.map((a) => a.agentId))
-  // Pass A: one group per engine call, in record order. The engine names a retried attempt `<label> (retry N)` in the
-  // record while the journal keeps `<label>`; that exact suffix is folded into the group of the call it retries, and any
-  // other difference between the two labels still refuses.
-  const groups = []
+  let retries = 0
+  const notes = []
+  // One call per workflowProgress entry, in record order. The engine keeps ONE entry per call: a retried call is the entry
+  // `<label> (retry N)` carrying the agentId of its LAST attempt, while the journal holds `<label>` on every attempt, all
+  // under one key, the N earlier ones without a result. The journal label wins: that exact suffix is folded, N is checked
+  // against the died attempts of the key, and any other difference between the two labels refuses.
   for (const a of agents) {
     const s = startedByAgent.get(a.agentId)
     if (!s) refuse(`layout: ${journalFile}: missing started for workflowProgress agentId ${a.agentId}`)
-    const m = RETRY_SUFFIX.exec(a.label)
-    const label = m ? m[1] : a.label
-    if (s.row.label !== label) {
-      refuse(`layout: ${journalFile}: label mismatch for agentId ${a.agentId} (journal "${s.row.label}", record "${a.label}") [line ${s.line}]`)
-    }
-    let group
-    if (m) {
-      for (let i = groups.length - 1; i >= 0 && !group; i--) if (groups[i].label === label) group = groups[i]
-      if (!group) {
-        refuse(`layout: ${journalFile}: retry attempt "${a.label}" (agentId ${a.agentId}) has no earlier attempt "${label}" in the run record [line ${s.line}]`)
+    const key = s.row.key
+    const label = s.row.label
+    let n = 0
+    if (a.label !== label) {
+      const m = RETRY_SUFFIX.exec(a.label)
+      if (!m || m[1] !== label) {
+        refuse(`layout: ${journalFile}: label mismatch for agentId ${a.agentId} (journal "${label}", record "${a.label}") [line ${s.line}]`)
       }
-    } else {
-      group = { label, attempts: [] }
-      groups.push(group)
+      n = Number(m[2])
     }
-    group.attempts.push({ a, s })
-  }
-  // Pass B: the answer of a call is the one of its last attempt that did not die.
-  let retries = 0
-  const notes = []
-  for (const { label, attempts } of groups) {
-    const answered = attempts.filter((t) => resultByKey.has(t.s.row.key))
-    const used = answered[answered.length - 1]
-    if (!used) {
-      died.push(attempts.map((t) => `${label} key ${t.s.row.key} [line ${t.s.line}]`).join(', '))
+    const starts = startsByKey.get(key)
+    const results = resultRowsByKey.get(key) || []
+    if (n > 0) {
+      for (const t of starts) {
+        if (t.row.label !== label) {
+          refuse(`layout: ${journalFile}: label mismatch on key ${key} (journal "${t.row.label}" [line ${t.line}], "${label}" [line ${s.line}])`)
+        }
+      }
+      if (agentsByKey.get(key) > 1) {
+        refuse(`layout: ${journalFile}: ambiguous retried call "${a.label}": key ${key} is journaled by ${agentsByKey.get(key)} workflowProgress entries, the died attempts cannot be attributed`)
+      }
+    }
+    if (results.length === 0) { // no attempt of the key answered
+      died.push(starts.map((t) => `${label} key ${key} [line ${t.line}]`).join(', '))
       continue
     }
-    const key = used.s.row.key
+    let answer = resultByKey.get(key)
+    if (n > 0) {
+      const dead = starts.length - results.length
+      if (dead !== n) {
+        refuse(`layout: ${journalFile}: retry count mismatch for agentId ${a.agentId} (record "${a.label}" says ${n}, the journal holds ${dead} died attempt${dead === 1 ? '' : 's'} for key ${key}) [line ${s.line}]`)
+      }
+      // The answer is the result of THIS agentId's attempt; a journal whose result rows name other agentIds only is not guessed.
+      if (results.some((r) => isStr(r.row.agentId))) {
+        const own = results.filter((r) => r.row.agentId === a.agentId)
+        if (own.length === 0) {
+          refuse(`layout: ${journalFile}: retried call "${a.label}": no result row of agentId ${a.agentId} for key ${key} (the result rows name other attempts) [line ${s.line}]`)
+        }
+        answer = own[own.length - 1].row
+      }
+    }
     const last = lastEventByKey.get(key)
     if (last.type === 'failed') { failedLast.push(`${label} key ${key} [line ${last.line}]`); continue }
-    if (attempts.length > 1) {
-      retries += attempts.length - 1
-      notes.push(`note: ${journalFile}: folded retried call ${label}: ${attempts.length} attempts, answer of agentId ${used.a.agentId} used`)
+    if (n > 0) {
+      retries += n
+      const answeredIds = new Set(results.map((r) => r.row.agentId).filter(isStr))
+      const deadIds = starts.filter((t) => t.row.agentId !== a.agentId && !answeredIds.has(t.row.agentId)).map((t) => `${t.row.agentId} [line ${t.line}]`)
+      notes.push(`note: ${journalFile}: folded retried call ${label}: ${n + 1} attempts, answer of agentId ${a.agentId} used, died attempt${n === 1 ? '' : 's'} ${deadIds.join(', ')}`)
     }
-    calls.push({ label, value: resultByKey.get(key).result, cached: used.a.cached })
+    calls.push({ label, value: answer.result, cached: a.cached })
   }
   const causes = []
   if (died.length) causes.push(`died call ${died.join('; died call ')}`)
