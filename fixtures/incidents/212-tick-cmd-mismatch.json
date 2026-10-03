@@ -1,0 +1,258 @@
+{
+  "name": "212-tick-cmd-mismatch",
+  "args": {
+    "issue": 185,
+    "brief": "_",
+    "wtPath": "_",
+    "mode": "auto",
+    "pmReview": false,
+    "config": {
+      "ghProject": {
+        "owner": "_",
+        "projectNumber": 1
+      },
+      "repo": "_",
+      "baseBranch": "_",
+      "branchPrefix": "feat/",
+      "worktreeRoot": "_",
+      "conventionsRule": "_",
+      "commands": {
+        "build": "_",
+        "test": "bash templates/test-canonical-guards.sh && node scripts/run-flow-suite.cjs",
+        "format": "_"
+      },
+      "ciChecks": [
+        "_",
+        "_"
+      ],
+      "oneWayDoorKinds": [
+        "status",
+        "agent",
+        "hook",
+        "seam"
+      ],
+      "engineRepo": true,
+      "oneWayDoorPaths": [
+        "hooks/**",
+        "!hooks/test-*",
+        "docs/critical-paths.md"
+      ],
+      "provision": {
+        "extraLinks": []
+      },
+      "preflight": {
+        "canonicalStringBan": [],
+        "envSymlink": "ignore"
+      },
+      "regressionGuard": {
+        "testGlob": "",
+        "testFnPattern": "",
+        "baselineCmd": ""
+      }
+    },
+    "configLocal": {
+      "worktreeRoot": "_"
+    },
+    "pluginRoot": "_"
+  },
+  "calls": {
+    "probe-185-lines-plugin-version-r0": {
+      "line": "PROBE name=lines exit=0 sha=0710ad5aeed8f41c78c28bb67822cc6d938912af28e0368e7a1b2bf6d670b99f cmd=faa7a8a1c26ebb071130b90d20d883cda8f6acb6cc149d06b15e3e1684c3ecfa json={\"lines\":[\"PLUGIN-VERSION:@@ENGINE_VERSION@@\"]}",
+      "verify": "VERIFY ok line=PROBE name=lines exit=0 sha=0710ad5aeed8f41c78c28bb67822cc6d938912af28e0368e7a1b2bf6d670b99f cmd=faa7a8a1c26ebb071130b90d20d883cda8f6acb6cc149d06b15e3e1684c3ecfa json={\"lines\":[\"PLUGIN-VERSION:@@ENGINE_VERSION@@\"]}"
+    },
+    "probe-185-provision-provision-r0": {
+      "line": "PROBE name=provision exit=0 sha=0a0001500e6f649a575d2515664fed6807d2e283f35ade49abafa5cfd5ddcda7 cmd=d34e45906d4eb0322470588a0096cdc73ddbc76d9af4e28d5166c17de634a97d json={\"version\":2,\"linked\":[],\"missing\":[],\"skipped\":false}",
+      "verify": "VERIFY ok line=PROBE name=provision exit=0 sha=0a0001500e6f649a575d2515664fed6807d2e283f35ade49abafa5cfd5ddcda7 cmd=d34e45906d4eb0322470588a0096cdc73ddbc76d9af4e28d5166c17de634a97d json={\"version\":2,\"linked\":[],\"missing\":[],\"skipped\":false}"
+    },
+    "probe-185-provision-freshness-provision-freshness-r0": {
+      "line": "PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b cmd=5430d2285cdf1982f619b08cf794226d4a3e082cac2ffdb9d7944e1ef1cbccc9 json={\"state\":\"fresh\",\"behind\":0,\"own\":0}",
+      "verify": "VERIFY ok line=PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b cmd=5430d2285cdf1982f619b08cf794226d4a3e082cac2ffdb9d7944e1ef1cbccc9 json={\"state\":\"fresh\",\"behind\":0,\"own\":0}"
+    },
+    "diagnose-issue-185": {
+      "confirmed": true,
+      "evidence": "_",
+      "actualCause": "",
+      "laneOk": true,
+      "requiredScout": "",
+      "persistentStateSignal": false,
+      "authSecurityBoundarySignal": false,
+      "deployConfigSignal": false,
+      "immatureVendorApiSignal": false,
+      "designStepSignalEvidence": "_",
+      "issueClassificationMismatch": false
+    },
+    "scout-issue-185-1": {
+      "decision": "_",
+      "planPath": "_",
+      "targetFiles": [
+        "_",
+        "_",
+        "_",
+        "_"
+      ],
+      "rationale": "_",
+      "acceptanceItems": [
+        {
+          "text": "`node scripts/run-offline.cjs fixtures/relaunch/dev-after-plan.json | tail -n 1` prints `[offline] status=ok passed=1 failed=0`; that fixture's second run (entryStage dev, plan carried from run 1) asserts phases exactly Setup,Dev, a trace with no provision-freshness probe, and no call label starting diagnose-, scout-, plan-check- or plan-audit-",
+          "humanGate": false,
+          "command": "_"
+        },
+        {
+          "text": "`bash scripts/test-run-offline.sh | grep -c '^ok: two-run'` prints `2` (the new two-run cases)",
+          "humanGate": false,
+          "command": "_"
+        },
+        {
+          "text": "`bash scripts/test-run-offline.sh > /dev/null; echo $?` prints `0` as its last line",
+          "humanGate": false,
+          "command": "_"
+        },
+        {
+          "text": "`OFFLINE_STRICT=1 node scripts/run-offline.cjs --all fixtures > /dev/null; echo $?` prints `0` as its last line",
+          "humanGate": false,
+          "command": "_"
+        },
+        {
+          "text": "`node scripts/guards.cjs; echo $?` prints `0` as its last line, so no R1 counter is above the base",
+          "humanGate": false,
+          "command": "_"
+        },
+        {
+          "text": "`git diff --name-only origin/main...HEAD -- workflows/deliver-pipeline.js | wc -l | tr -d ' '` prints `0` (the engine file is untouched)",
+          "humanGate": false,
+          "command": "_"
+        }
+      ],
+      "plan": "_\n\n_\n\n_\n\n_\n\n_\n_\n\n_\n\n_\n\n_\n_\n_\n\n_\n\n_\n_\n_\n_\n_\n_\n\n_\n\n_\n_\n_\n_\n_\n_\n_\n\n_\n\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n\n- [ ] <!-- ac:1 --> `node scripts/run-offline.cjs fixtures/relaunch/dev-after-plan.json | tail -n 1` prints `[offline] status=ok passed=1 failed=0`; that fixture's second run (entryStage dev, plan carried from run 1) asserts phases exactly Setup,Dev, a trace with no provision-freshness probe, and no call label starting diagnose-, scout-, plan-check- or plan-audit-\n- [ ] <!-- ac:2 --> `bash scripts/test-run-offline.sh | grep -c '^ok: two-run'` prints `2` (the new two-run cases)\n- [ ] <!-- ac:3 --> `bash scripts/test-run-offline.sh > /dev/null; echo $?` prints `0` as its last line\n- [ ] <!-- ac:4 --> `OFFLINE_STRICT=1 node scripts/run-offline.cjs --all fixtures > /dev/null; echo $?` prints `0` as its last line\n- [ ] <!-- ac:5 --> `node scripts/guards.cjs; echo $?` prints `0` as its last line, so no R1 counter is above the base\n- [ ] <!-- ac:6 --> `git diff --name-only origin/main...HEAD -- workflows/deliver-pipeline.js | wc -l | tr -d ' '` prints `0` (the engine file is untouched)\n\n_\n\n_\n\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n"
+    },
+    "plan-check-185-1": {
+      "verdict": "CONFORMING",
+      "issues": []
+    },
+    "probe-185-preflight-dev-r0": {
+      "line": "PROBE name=preflight exit=0 sha=5cb984bc5618fc5f042965705e1dac42914fd6aedfdac92d26681085dc782d45 cmd=9675d9ef114afdb7f56c978ee0ec32c198204ec50ff51e562f8d60599e4825c9 json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/Volumes/<disk>/Dev/Apps/claude-code-lgtmgate/.git/worktrees/issue-185\",\"writable\":true}",
+      "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=5cb984bc5618fc5f042965705e1dac42914fd6aedfdac92d26681085dc782d45 cmd=9675d9ef114afdb7f56c978ee0ec32c198204ec50ff51e562f8d60599e4825c9 json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/Volumes/<disk>/Dev/Apps/claude-code-lgtmgate/.git/worktrees/issue-185\",\"writable\":true}"
+    },
+    "nick-issue-185": {
+      "prNumber": 206,
+      "branch": "_",
+      "testsPass": true,
+      "summary": "_"
+    },
+    "probe-185-preflight-branch-r0": {
+      "line": "PROBE name=preflight exit=0 sha=dc2761f983d4c5e0ab724aa755bdae3d1f5d7e5455028105001fac0e9f3807af cmd=4576e0d85c4dedff3b6e1a3a44fa90be457627660549c4f3886d8d598faf1fa8 json={\"mode\":\"branch\",\"headRef\":\"feat/issue-185\",\"branchPrefix\":\"feat/\"}",
+      "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=dc2761f983d4c5e0ab724aa755bdae3d1f5d7e5455028105001fac0e9f3807af cmd=4576e0d85c4dedff3b6e1a3a44fa90be457627660549c4f3886d8d598faf1fa8 json={\"mode\":\"branch\",\"headRef\":\"feat/issue-185\",\"branchPrefix\":\"feat/\"}"
+    },
+    "probe-185-git-rev-list-count-worktree-behind-206-r0": {
+      "line": "_",
+      "verify": "_"
+    },
+    "preflight-185-206-0": {
+      "pass": false,
+      "testCommandRun": "cd \"/Volumes/<disk>/Dev/Worktrees/claude-code-lgtmgate/issue-185\" && bash templates/test-canonical-guards.sh && node scripts/run-flow-suite.cjs",
+      "issues": [
+        "_",
+        "_"
+      ],
+      "failedChecks": []
+    },
+    "nick-preflight-fix-185-206": "_",
+    "preflight-185-206-1": {
+      "pass": true,
+      "issues": [],
+      "testCommandRun": "cd \"/Volumes/<disk>/Dev/Worktrees/claude-code-lgtmgate/issue-185\" && bash templates/test-canonical-guards.sh && node scripts/run-flow-suite.cjs"
+    },
+    "probe-185-pr-state-window-start-r0": {
+      "line": "PROBE name=pr-state exit=0 sha=dfc813d3412edc375431103aaea9f96745d809a7005084fa310f824fbc6cc1b0 cmd=3acd9e3d494a7fbaca683f40c7e506bc80ced9a2fd0f53f9425733d199d985b9 json={\"now\":\"2026-10-03T17:39:56Z\",\"headRefName\":\"feat/issue-185\",\"headRefOid\":\"a996535df7d4c4b7b66f0ffa37c7a503c78b5990\",\"bodyDigest\":\"5a0fdef5ceaa\",\"acceptanceChecked\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-10-03T17:29:04Z\",\"commitCount\":2,\"reviewCommentIds\":[],\"openIssues\":null,\"openIssuesTruncated\":false}",
+      "verify": "VERIFY ok line=PROBE name=pr-state exit=0 sha=dfc813d3412edc375431103aaea9f96745d809a7005084fa310f824fbc6cc1b0 cmd=3acd9e3d494a7fbaca683f40c7e506bc80ced9a2fd0f53f9425733d199d985b9 json={\"now\":\"2026-10-03T17:39:56Z\",\"headRefName\":\"feat/issue-185\",\"headRefOid\":\"a996535df7d4c4b7b66f0ffa37c7a503c78b5990\",\"bodyDigest\":\"5a0fdef5ceaa\",\"acceptanceChecked\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-10-03T17:29:04Z\",\"commitCount\":2,\"reviewCommentIds\":[],\"openIssues\":null,\"openIssuesTruncated\":false}"
+    },
+    "morgan-pr-185-206-r0": {
+      "verdict": "LGTM",
+      "ciGreen": true,
+      "items": [],
+      "boxes": [
+        {
+          "id": 1,
+          "proven": true,
+          "proof": "_"
+        },
+        {
+          "id": 2,
+          "proven": true,
+          "proof": "_"
+        },
+        {
+          "id": 3,
+          "proven": true,
+          "proof": "_"
+        },
+        {
+          "id": 4,
+          "proven": true,
+          "proof": "_"
+        },
+        {
+          "id": 5,
+          "proven": true,
+          "proof": "_"
+        },
+        {
+          "id": 6,
+          "proven": true,
+          "proof": "_"
+        }
+      ]
+    },
+    "probe-185-pr-state-window-end-r0": {
+      "line": "PROBE name=pr-state exit=0 sha=8445b4855a72334ca65bb00bc2b1e234cfe956ca036eb980209221dbf9ab9efe cmd=d03155f2bcc4cc1198bed2e4cc8cde68562ea2d70fb8d245166684e29bb5cab5 json={\"now\":\"2026-10-03T17:42:40Z\",\"headRefName\":\"feat/issue-185\",\"headRefOid\":\"a996535df7d4c4b7b66f0ffa37c7a503c78b5990\",\"bodyDigest\":\"5a0fdef5ceaa\",\"acceptanceChecked\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-10-03T17:29:04Z\",\"commitCount\":2,\"reviewCommentIds\":[\"IC_kwDOUzMNuc8AAAABY_IDVQ\"],\"openIssues\":[],\"openIssuesTruncated\":false}",
+      "verify": "VERIFY ok line=PROBE name=pr-state exit=0 sha=8445b4855a72334ca65bb00bc2b1e234cfe956ca036eb980209221dbf9ab9efe cmd=d03155f2bcc4cc1198bed2e4cc8cde68562ea2d70fb8d245166684e29bb5cab5 json={\"now\":\"2026-10-03T17:42:40Z\",\"headRefName\":\"feat/issue-185\",\"headRefOid\":\"a996535df7d4c4b7b66f0ffa37c7a503c78b5990\",\"bodyDigest\":\"5a0fdef5ceaa\",\"acceptanceChecked\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-10-03T17:29:04Z\",\"commitCount\":2,\"reviewCommentIds\":[\"IC_kwDOUzMNuc8AAAABY_IDVQ\"],\"openIssues\":[],\"openIssuesTruncated\":false}"
+    },
+    "probe-185-pr-write-acceptance-tick-r0": {
+      "line": "PROBE name=pr-write exit=0 sha=db2f30184e8065f3d07db54de61195197fdc381c47b9ebb2b27e38b0c62b0499 cmd=2802f2e66e6820d276fa8b9e471b189c60a0a00507f49549c93069a2ce354d60 json={\"op\":\"body-splice\",\"result\":\"written\",\"reason\":null,\"bytes\":3728}",
+      "verify": "_"
+    },
+    "probe-185-pr-write-decision-log-r0": {
+      "line": "_",
+      "verify": "_"
+    }
+  },
+  "expect": {
+    "status": "verified-untickable",
+    "trace": [
+      "probe:lines:haiku",
+      "probe:provision:haiku",
+      "probe:provision-freshness:haiku",
+      "probe:preflight:haiku",
+      "probe:preflight:haiku",
+      "probe:git-rev-list-count:haiku",
+      "probe:pr-state:haiku",
+      "probe:pr-state:haiku",
+      "probe:pr-write:haiku",
+      "acceptance-tick-refused:0",
+      "acceptance-tick-reason:cmd-mismatch",
+      "probe:pr-write:haiku",
+      "verified-untickable:0"
+    ],
+    "traceExact": true,
+    "callLabels": [
+      "probe-185-lines-plugin-version-r0",
+      "probe-185-provision-provision-r0",
+      "probe-185-provision-freshness-provision-freshness-r0",
+      "diagnose-issue-185",
+      "scout-issue-185-1",
+      "plan-check-185-1",
+      "probe-185-preflight-dev-r0",
+      "nick-issue-185",
+      "probe-185-preflight-branch-r0",
+      "probe-185-git-rev-list-count-worktree-behind-206-r0",
+      "preflight-185-206-0",
+      "nick-preflight-fix-185-206",
+      "preflight-185-206-1",
+      "probe-185-pr-state-window-start-r0",
+      "morgan-pr-185-206-r0",
+      "probe-185-pr-state-window-end-r0",
+      "probe-185-pr-write-acceptance-tick-r0",
+      "probe-185-pr-write-decision-log-r0"
+    ]
+  }
+}
