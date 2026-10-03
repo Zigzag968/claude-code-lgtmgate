@@ -16,6 +16,166 @@ PASS=0; FAIL=0; RUN_FLAGS=""
 ok()  { echo "PASS: $1"; PASS=$((PASS + 1)); }
 bad() { echo "FAIL: $1"; FAIL=$((FAIL + 1)); }
 
+# --- 0. lib-level cases (#202), before any lead-merge run ---------------------------------------------------------
+# The gate reads fences and markers byte-wise (LC_ALL=C awk) while the engine (templates/pr-body-splice.cjs) trims Unicode
+# whitespace. It does not copy every Unicode subtlety: it REFUSES (rc 3, "ambiguous acceptance block", no body content quoted) any
+# body where a line of interest is ambiguous, and it is never more permissive than the engine. ACC_LIB_UNDER_TEST runs these
+# cases against another copy of the lib (mutation checks), ACC_LIB_ONLY=1 stops after this section.
+ACC_LIB="${ACC_LIB_UNDER_TEST:-$ROOT/scripts/lib/acceptance-check.sh}"
+# shellcheck source=lib/acceptance-check.sh
+. "$ACC_LIB"
+S0='<!-- acceptance:start -->'; E0='<!-- acceptance:end -->'
+NB=$'\xc2\xa0'; BOM=$'\xef\xbb\xbf'; U2003=$'\xe2\x80\x83'; U2028=$'\xe2\x80\xa8'; U3000=$'\xe3\x80\x80'; FF=$'\f'; VT=$'\v'
+AMB='ambiguous acceptance block'
+accb() { local IFS=$'\n'; printf '%s' "$*"; } # the arguments as lines
+acc() { # name want-rc stderr-substring (may be empty) body
+  local name="$1" want="$2" sub="$3" body="$4" err rc
+  err="$(printf '%s\n' "$body" | acceptance_check_body 2>&1 >/dev/null)"; rc=$?
+  if [ "$rc" = "$want" ] && { [ -z "$sub" ] || case "$err" in *"$sub"*) true ;; *) false ;; esac; }; then
+    ok "fenced-example lib: $name"
+  else
+    bad "fenced-example lib: $name (rc=$rc want $want, stderr: $err)"
+  fi
+}
+REAL_OK0="$(accb "$S0" '- [x] <!-- ac:1 --> a' "$E0")"
+REAL_OPEN0="$(accb "$S0" '- [x] <!-- ac:1 --> a' '- [ ] <!-- ac:2 --> open' "$E0")"
+# B1: a closing fence followed by a blank the engine trims (trim()) but the shell does not
+for w in "$FF" "$VT" "$NB" "$BOM" "$U2003" "$U2028" "$U3000"; do
+  case "$w" in "$FF") wn="form feed" ;; "$VT") wn="vertical tab" ;; "$NB") wn="U+00A0" ;; "$BOM") wn="U+FEFF" ;; "$U2003") wn="U+2003" ;; "$U2028") wn="U+2028" ;; *) wn="U+3000" ;; esac
+  acc "B1 closing backtick fence followed by $wn is refused, not read as unclosed" 3 "$AMB" "$(accb "$S0" '- [x] a' "$E0" '```' x '```'"$w" "$S0" '- [x] a' '- [ ] open' "$E0")"
+done
+acc "B1 closing tilde fence followed by U+00A0 is refused" 3 "$AMB" "$(accb "$S0" '- [x] a' "$E0" '~~~' x '~~~'"$NB" "$S0" '- [x] a' '- [ ] open' "$E0")"
+# B2: an opening fence indented by a blank the engine counts (trimStart()) but awk does not
+acc "B2 opening fence indented by U+00A0, empty fenced pair after an open block: refused" 3 "$AMB" "$(accb "$S0" '- [x] a' '- [ ] open' "$E0" "$NB"'```' "$S0" "$E0" '```')"
+acc "B2 opening fence indented by U+3000: refused" 3 "$AMB" "$(accb "$S0" '- [x] a' '- [ ] open' "$E0" "$U3000"'```' "$S0" "$E0" '```')"
+acc "B2 opening fence preceded by a BOM: refused" 3 "$AMB" "$(accb "$BOM"'```' "$S0" '- [x] a' "$E0" '```')"
+acc "a tab-indented fence is plain ASCII: it hides the open pair after the ticked one (allowed)" 0 "" "$(accb "$REAL_OK0" $'\t''```' "$S0" '- [ ] example' "$E0" '```')"
+# B3: marker look-alikes outside a fence
+acc "B3 <!--acceptance:start--> after an open block is refused" 3 "$AMB" "$(accb "$REAL_OPEN0" '<!--acceptance:start-->' "$E0")"
+acc "B3 two spaces inside the start marker is refused" 3 "$AMB" "$(accb "$REAL_OPEN0" '<!--  acceptance:start -->' "$E0")"
+acc "B3 end marker without the space before --> is refused" 3 "$AMB" "$(accb "$S0" '- [ ] open' '<!-- acceptance:end-->')"
+acc "B3 a tab inside the start marker is refused" 3 "$AMB" "$(accb "$REAL_OPEN0" '<!--'$'\t''acceptance:start -->' "$E0")"
+acc "B3 start marker followed by text is refused" 3 "$AMB" "$(accb "$REAL_OPEN0" "$S0 x" "$E0")"
+acc "B3 start marker followed by a form feed is refused" 3 "$AMB" "$(accb "$REAL_OPEN0" "$S0$FF" "$E0")"
+acc "B3 start marker followed by a vertical tab is refused" 3 "$AMB" "$(accb "$REAL_OPEN0" "$S0$VT" "$E0")"
+acc "B3 end marker followed by two carriage returns is refused" 3 "$AMB" "$(accb "$S0" '- [ ] open' "$E0"$'\r\r')"
+acc "B3 start marker with a no-break space inside is refused" 3 "$AMB" "$(accb "$REAL_OPEN0" '<!--'"$NB"'acceptance:start -->' "$E0")"
+acc "B3 the refusal quotes no body content" 3 "$AMB" "$(accb "$REAL_OPEN0" '<!--acceptance:start--> ZZTOKENZZ' "$E0")"
+err="$(printf '%s\n' "$(accb "$REAL_OPEN0" '<!--acceptance:start--> ZZTOKENZZ' "$E0")" | acceptance_check_body 2>&1 >/dev/null)"
+case "$err" in *ZZTOKENZZ*) bad "fenced-example lib: the refusal quotes body content: $err" ;; *) ok "fenced-example lib: the refusal message quotes no body content" ;; esac
+# what stays accepted
+acc "an indented marker is plain text, not a look-alike: the real block is read" 1 "unchecked" "$(accb "$REAL_OPEN0" '  <!-- acceptance:start -->')"
+acc "exact markers with trailing spaces and tabs are read (open box -> rc 1)" 1 "unchecked" "$(accb "$S0 "$'\t' '- [ ] open' "$E0"$'\t ')"
+acc "exact markers with CRLF line ends are read (ticked -> rc 0)" 0 "" "$(printf '%s\r\n' "$S0" '- [x] a' "$E0")"
+acc "CRLF body with an open box -> rc 1" 1 "unchecked" "$(printf '%s\r\n' "$S0" '- [ ] a' "$E0")"
+acc "accents and emoji in an ordinary body are not refused (ticked -> rc 0)" 0 "" "$(accb 'Résumé : le correctif est livré ✅ 🚀' "$S0" '- [x] <!-- ac:1 --> vérifié, ça marche — ✅' "$E0" 'fin, à demain')"
+acc "accents and emoji in an ordinary body, open box -> rc 1" 1 "unchecked" "$(accb 'Résumé ✅' "$S0" '- [ ] <!-- ac:1 --> vérifié 🚀' "$E0")"
+acc "look-alikes inside a fence are not refused" 0 "" "$(accb '```' '<!--acceptance:start-->' '<!--  acceptance:end -->' '```' "$REAL_OK0")"
+acc "an exact pair and a look-alike pair inside a fence, then a ticked block: allowed" 0 "" "$(accb '~~~' "$S0" '<!--acceptance:start-->' '- [ ] example' "$E0" '~~~' "$REAL_OK0")"
+# R6 / I2: several exact pairs outside fences: any open box in any of them refuses (union), fenced pairs are ignored
+acc "R6 two exact pairs, first open, last empty -> rc 1" 1 "unchecked" "$(accb "$S0" '- [ ] open' "$E0" "$S0" "$E0")"
+acc "R6 two exact pairs, first open, last ticked -> rc 1" 1 "unchecked" "$(accb "$S0" '- [ ] open' "$E0" "$REAL_OK0")"
+acc "three exact pairs, the middle one open -> rc 1" 1 "unchecked" "$(accb "$REAL_OK0" "$S0" '- [ ] open' "$E0" "$REAL_OK0")"
+acc "three exact pairs, the last one open -> rc 1" 1 "unchecked" "$(accb "$REAL_OK0" "$REAL_OK0" "$REAL_OPEN0")"
+acc "three exact pairs, all ticked -> rc 0" 0 "" "$(accb "$REAL_OK0" "$REAL_OK0" "$REAL_OK0")"
+acc "an open pair inside a fence is ignored next to two ticked pairs -> rc 0" 0 "" "$(accb "$REAL_OK0" '```' "$S0" '- [ ] example' "$E0" '```' "$REAL_OK0")"
+acc "two ends after one start: a box between the two ends is still read -> rc 1" 1 "unchecked" "$(accb "$S0" '- [x] a' "$E0" '- [ ] b' "$E0")"
+# I1 / I4: behaviour of the base, kept
+acc "I1 an empty block (no line between the markers) is accepted, as before #202" 0 "" "$(accb "$S0" "$E0")"
+acc "I4 an unticked box inside a fence inside the block still refuses (fail-closed)" 1 "unchecked" "$(accb "$S0" '- [x] a' '```' '- [ ] an example box' '```' "$E0")"
+# mutants of the fence rule (the cases below are the ones that kill them; see the mutation run in the PR notes)
+acc "m2 a 4-backtick line closes a 3-backtick fence (closing at least as long)" 0 "" "$(accb '```' "$S0" '- [ ] ex' "$E0" '````' "$REAL_OK0")"
+acc "m3 a tilde line does not close a backtick fence" 3 "" "$(accb '```' '~~~' "$REAL_OK0")"
+acc "m6 a fence indented by 4 spaces is not a fence" 1 "unchecked" "$(accb '    ```' "$S0" '- [ ] open' "$E0")"
+acc "m6 a fence indented by 3 spaces is a fence" 3 "" "$(accb '   ```' "$S0" '- [x] a' "$E0")"
+acc "m7 a backtick in the info string of a backtick fence: not a fence" 1 "unchecked" "$(accb '```a`b' "$S0" '- [ ] open' "$E0")"
+acc "m8 a closing fence followed by text does not close" 3 "" "$(accb '```' '``` trailing' "$REAL_OK0")"
+acc "m12 the last end marker counts, not the first (box after the first end)" 1 "unchecked" "$(accb "$S0" '- [x] a' "$E0" '- [ ] b' "$E0")"
+acc "m14 two backticks do not open a fence" 1 "unchecked" "$(accb '``' "$S0" '- [ ] open' "$E0")"
+acc "m15 a backtick in the info string of a tilde fence still opens it" 3 "" "$(accb '~~~a`b' "$REAL_OK0")"
+
+# generated parity (#202): a few hundred deterministic ASCII bodies (fixed seed; fences of varied length and indent, markers and look-alikes,
+# open and ticked boxes, CRLF) read by the shell and by the engine. The shell may refuse more than the engine, never less: it must not
+# return rc 0 when the engine finds no block or a block with an open box.
+if command -v node >/dev/null 2>&1; then
+  GEN="$BASE/gen"; mkdir -p "$GEN"
+  cat > "$BASE/gen.cjs" <<'JS'
+const fs = require("fs")
+const dir = process.argv[2]
+let a = 20261003
+const rnd = () => { a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296 }
+const pick = (xs) => xs[Math.floor(rnd() * xs.length)]
+const ws = () => pick(["", "", "", " ", "\t", "  "])
+const fenceLine = () => " ".repeat(Math.floor(rnd() * 6)) + pick(["`", "`", "~"]).repeat(1 + Math.floor(rnd() * 5)) + pick(["", "", "", "js", "a`b", " x", " ", "\t"])
+const marker = (s) => "<!-- acceptance:" + s + " -->" + ws()
+const box = () => pick(["- [x] <!-- ac:1 --> a", "- [x] <!-- ac:2 --> b", "- [ ] <!-- ac:3 --> c"])
+const filler = () => pick(["", "text", "## What this ships", "    ```", "\f```", "```\f", "``` x", "````", "~~~~", "<!--acceptance:start-->", "<!--  acceptance:end -->", "  <!-- acceptance:start -->", "<!-- acceptance:start --> x", "<!-- acceptance:end -->\f", "<!-- acceptance:start -->\v"])
+const pair = () => { const out = [marker("start")]; for (let k = Math.floor(rnd() * 3); k > 0; k--) out.push(rnd() < 0.5 ? "- [x] <!-- ac:" + k + " --> a" : box()); out.push(marker("end")); return out }
+const segment = () => {
+  const r = rnd()
+  if (r < 0.34) return pair()
+  if (r < 0.62) return [fenceLine(), ...(rnd() < 0.7 ? pair() : [box()]), ...(rnd() < 0.8 ? [fenceLine()] : [])]
+  if (r < 0.72) return [marker(pick(["start", "end"]))]
+  if (r < 0.82) return [box()]
+  return [filler(), ...(rnd() < 0.3 ? [fenceLine()] : [])]
+}
+for (let i = 0; i < 400; i++) {
+  const lines = []
+  for (let k = 1 + Math.floor(rnd() * 4); k > 0; k--) lines.push(...segment())
+  fs.writeFileSync(dir + "/" + String(i).padStart(3, "0") + ".md", lines.join(rnd() < 0.1 ? "\r\n" : "\n") + "\n")
+}
+JS
+  node "$BASE/gen.cjs" "$GEN"
+  : > "$BASE/gen.rcs"
+  for f in "$GEN"/*.md; do
+    acceptance_check_body < "$f" > /dev/null 2>&1; grc=$?
+    echo "$(basename "$f") $grc" >> "$BASE/gen.rcs"
+  done
+  cat > "$BASE/cmp.cjs" <<'JS'
+const fs = require("fs")
+const [root, dir, rcs] = process.argv.slice(2)
+const src = fs.readFileSync(root + "/templates/pr-body-splice.cjs", "utf8")
+const m = src.split("// --- prBodySplice:start ---")[1].split("\n").slice(1).join("\n").split("// --- prBodySplice:end ---")[0]
+const { acceptanceSpan } = new Function(m + ";return { acceptanceSpan }")()
+const openRe = /^[ \t\n\v\f\r]*-[ \t\n\v\f\r]*\[ \]/
+let permissive = 0, closedOk = 0, openRefused = 0, noBlockRefused = 0, refusedAmbiguous = 0, badRc = 0
+const first = []
+for (const l of fs.readFileSync(rcs, "utf8").trim().split("\n")) {
+  const [f, rcs0] = l.split(" ")
+  const rc = Number(rcs0)
+  const body = fs.readFileSync(dir + "/" + f, "utf8").replace(/\n+$/, "") + "\n"
+  const sp = acceptanceSpan(body)
+  let verdict = "none"
+  if (sp) { const t = body.slice(sp.from, sp.to).split("\n"); t.shift(); t.pop(); verdict = t.some((x) => openRe.test(x)) ? "open" : "closed" }
+  if (rc !== 0 && rc !== 1 && rc !== 3) badRc++
+  if (rc === 0 && verdict !== "closed") { permissive++; if (first.length < 3) first.push(f + " engine=" + verdict) }
+  else if (rc === 0) closedOk++
+  else if (verdict === "open" && rc === 1) openRefused++
+  else if (verdict === "none" && rc === 3) noBlockRefused++
+  else refusedAmbiguous++
+}
+console.log("permissive=" + permissive + " badrc=" + badRc + " closed_ok=" + closedOk + " open_refused=" + openRefused + " noblock_refused=" + noBlockRefused + " stricter=" + refusedAmbiguous + " " + first.join(","))
+JS
+  res="$(node "$BASE/cmp.cjs" "$ROOT" "$GEN" "$BASE/gen.rcs" 2>&1)"
+  n_gen="$(ls "$GEN" | wc -l | tr -d ' ')"
+  case "$res" in
+    *"permissive=0 badrc=0 "*)
+      co="${res#*closed_ok=}"; co="${co%% *}"; orf="${res#*open_refused=}"; orf="${orf%% *}"
+      if [ "$n_gen" -ge 300 ] && [ "$co" -ge 20 ] && [ "$orf" -ge 20 ]; then
+        ok "fenced-example generated parity: $n_gen bodies, the shell is never more permissive than the engine ($res)"
+      else
+        bad "fenced-example generated parity is vacuous: $n_gen bodies ($res)"
+      fi ;;
+    *) bad "fenced-example generated parity: the shell is more permissive than the engine ($res)" ;;
+  esac
+else
+  bad "fenced-example generated parity: node missing"
+fi
+if [ -n "${ACC_LIB_ONLY:-}" ]; then
+  echo "[lead-merge test] lib cases only: passed=$PASS failed=$FAIL"
+  [ "$FAIL" -eq 0 ]; exit
+fi
+
 mkdir -p "$BASE/bin"
 cat > "$BASE/bin/gh" <<'FAKE'
 #!/usr/bin/env bash
@@ -218,7 +378,7 @@ D="$(setup fx-unclosed-before)"; run "$D" "$BASE/fx-unclosed-before.md"; rc=$?
   && ok "fenced-example fence never closed before the real block: refused with the readable reason, nothing bumped" || bad "fenced-example unclosed before (rc=$rc): $(tail -3 "$D/out")"
 # engine parity: the block the lib finds is the one pr-body-splice.cjs replaces (the splice of a sentinel, put back as the lib's block, gives the body again)
 if command -v node >/dev/null 2>&1; then
-  . "$ROOT/scripts/lib/acceptance-check.sh"
+  . "$ACC_LIB"
   printf 'SENT' > "$BASE/sent.txt"
   for f in fx-before-ok fx-after-ok fx-before-open fx-after-open fx-long-tilde-ok fx-unclosed-before fx-unclosed-after fx-only good open; do
     node "$ROOT/templates/pr-body-splice.cjs" splice acceptance "$BASE/$f.md" "$BASE/sent.txt" "$BASE/sent.out" >/dev/null 2>&1; erc=$?
