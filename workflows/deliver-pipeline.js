@@ -32,7 +32,7 @@ export const meta = {
 // | `prNumber` | existing PR number; required when entryStage='review' |
 // | `mode` | 'auto' \| 'semi' (default) \| 'manual' |
 // | `entryStage` | 'plan' (default) \| 'dev' \| 'review' (skip completed phases on crash-resume) |
-// | `proceedThrough` | last stage the Lead authorized to RUN on resume ('plan'\|'dev'\|'review'\|null). The pipeline PAUSES before any stage beyond it, in every mode (mode 'auto' without it runs through; #187). proceedThrough='plan' stops at plan-ready. |
+// | `proceedThrough` | last stage the Lead authorized to RUN on resume ('plan'\|'dev'\|'review'\|null). The pipeline PAUSES before any stage beyond it, in every mode (mode 'auto' without it runs through; #187). proceedThrough='plan' stops at plan-ready. Validated up front (#208): any other value escalates `invalid-proceedThrough`, nothing runs; echoed by dryRun. 'plan' is what resolves a design-step stop at entryStage='plan' (both triggers); a later stage does not. |
 // | `planText` | Sam's plan text, supplied on resume (entryStage='dev'\|'review') so the hand-off survives a crash without re-reading GitHub. If absent on resume, the plan is re-materialized from the artifact file (see planPath below). |
 // | `resumeReason` | optional, null by default. Set by the Lead on an entryStage:'dev' relaunch that follows a status:'escalate', reason:'mergeable-conflicting' result (#170), to thread WHY the resume happens into Nick's prompt (#183) — otherwise Nick reasons only from branch/plan content. Allow-list deliberately narrow (one value today): a branch-mismatch or plan-stale escalate doesn't resolve by relaunching Nick with this same message. |
 // | `dryRun` | if true, validate args and return immediately (no agents spawned) |
@@ -44,7 +44,7 @@ export const meta = {
 // | `planFreshness` | optional, default 'advisory' (#103): before Dev, diff Sam's declared `targetFiles` against origin/<baseBranch> so a plan whose premise moved upstream since the worktree's frozen base is caught before Nick opens a PR. Resolution order: this arg, then config.planFreshness, then the 'advisory' fallback (arg wins per-run over the project default); a value outside 'advisory'\|'gate'\|'off' throws. 'advisory' warns Nick + traces `plan-stale:<n>`, no routing change. 'gate' escalates (reason:'plan-stale') before Nick is spawned. 'off' skips the probe. |
 // | `maxAuditRounds` | bound on the auditor <-> scout amendment loop (default 2, mirrors maxPlanAttempts). Must be a positive integer; a non-integer or < 1 throws. HARD CEILING: values above AUDIT_ROUNDS_CEILING (2) throw unless maxAuditRoundsOverrideReason is a non-empty string naming the risk class that justifies the extra round(s) — never config-reachable, arg-only, on every launch. The reason is echoed in the dryRun/escalate/plan-ready returns and pushed onto `trace` as `audit-budget-override:<n>`. |
 // | `maxAuditRoundsOverrideReason` | required non-empty string whenever maxAuditRounds > 2; ignored (trimmed to '') otherwise. See "HARD CEILING" above. |
-// | `architectureDecisionApproved` | asserts the design-step-trigger's architecture-only pass (see Theo's design-step signals below) already happened and was approved, so the design-step gate does not require proceedThrough:'plan' on this launch. |
+// | `architectureDecisionApproved` | asserts the design-step-trigger's architecture-only pass (see Theo's design-step signals below) already happened and was approved, so the design-step gate does not require proceedThrough:'plan' on this launch. Also required (#208) on an entryStage='dev'\|'review' launch whose `planText` announces a declared one-way-door kind: the entry answers design-step-required otherwise, and also when `planText` is blank on a repo that declares kinds or paths (the door cannot be read). |
 // | `maxPlanAmendRounds` | optional, DEFAULT 0 (issue #97): dark-launch kill-switch for routing a Morgan-classified PLAN defect (as opposed to a code defect) back to Sam for a plan amendment instead of forever re-dispatching Nick against a frozen, unfixable plan. 0 (the shipped default) is SHADOW MODE — Morgan's itemOwners classification is still computed and traced (`plan-route-shadow:<round>`), but every item is still routed to Nick as a code defect, so the off-path behaviour is byte-for-bit identical to before #97. Must be a non-negative integer; a non-integer or negative value throws. Flipped by the human only after observing shadow-mode `trace` evidence that the classification is trustworthy. |
 // | `simulate` | test fixture object; the only key the engine reads is `simulate.probes`, a map keyed by seam name (agent mocks sam/mia/nick/morgan/theo/audit/planCheck/preflight/alreadyDoneCheck, parsed-value probes such as headSha/prBody/mergeState/behindCount, agentTypeUnresolved, branchCheckRaw, ...). When set, no real agent is spawned and the trace is still recorded. The translation from the suite's flat keys to `probes` and every default live in run() of the flow suite (scripts/run-flow-suite.cjs runs it); the engine carries no `??` default on a seam. `simulate.probes[<role>] = 'DIE'` (the literal string) is the plain-death lever for a role, since `null` is nullish. An object value of `sam` is a per-attempt map of partial Sam returns (the plan-verification attempt, or the review round of a plan amendment), keyed like `planCheck`'s (#182). |
 // | `stamp` | optional epoch ms of the run (the harness bans an argless `new Date()`, which breaks resume): read by the already-done guard's future-merged check, the artifact-floor fallback and the preflight probes' `--stamp`; absent -> each degrades gracefully. |
@@ -131,7 +131,7 @@ export const meta = {
 // `version`, checked against plugin.json by templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '1.0.0-beta.18', cutFrom: 'a3fd105' }
+const BUILD = { plugin: 'lgtmgate', version: '1.0.0-beta.19', cutFrom: '83dd243' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -239,6 +239,14 @@ if (config === null || typeof config !== 'object' || Array.isArray(config)) {
 if (!['auto', 'semi', 'manual'].includes(mode)) throw new Error(`Invalid mode: ${mode}`)
 if (!['plan', 'dev', 'review'].includes(entryStage)) throw new Error(`Invalid entryStage: ${entryStage}`)
 if (entryStage === 'review' && !prNumber) throw new Error('entryStage=review requires prNumber argument')
+// #208 — proceedThrough is validated up front: a typo ("Plan") used to read as "no authorization" and the run
+// proceeded silently. A readable reason on the existing escalate status, nothing ran (no throw: the Lead routes a status).
+if (proceedThrough !== null && !['plan', 'dev', 'review'].includes(proceedThrough)) {
+  return finish(STATUS['escalate'], {
+    reason: `invalid-proceedThrough: ${JSON.stringify(proceedThrough)} is not a stage (must be "plan", "dev", "review" or absent); nothing ran, relaunch with a valid value`,
+    issue,
+  })
+}
 // Run identity (#130): first log line + Setup phase, before any agent call, so runs can be told apart.
 log(`deliver #${issue} — ${String(brief).slice(0, 80)}${entryStage === 'review' ? ` (PR #${prNumber})` : ''}`)
 phase('Setup')
@@ -299,7 +307,7 @@ const planAuditModel = models.planAudit ?? modelsCfg.planAudit ?? 'sonnet'
 const morganModel = models.morgan ?? modelsCfg.morgan ?? 'sonnet'
 // Probe-run gate (#80): version of the PROBES registry (the call-site names declared at `const PROBES`).
 const PROBES_VERSION = 2
-if (dryRun) return finish(STATUS['dry-run-ok'], { probesVersion: PROBES_VERSION, issue, mode, entryStage, planAudit: planAuditEnabled, planFreshness: planFreshnessMode, maxAuditRounds, maxAuditRoundsOverrideReason: auditBudgetOverrideReason || null, maxPlanAmendRounds, models: { scout: scoutModel, planAudit: planAuditModel, morgan: morganModel } })
+if (dryRun) return finish(STATUS['dry-run-ok'], { probesVersion: PROBES_VERSION, issue, mode, entryStage, proceedThrough, planAudit: planAuditEnabled, planFreshness: planFreshnessMode, maxAuditRounds, maxAuditRoundsOverrideReason: auditBudgetOverrideReason || null, maxPlanAmendRounds, models: { scout: scoutModel, planAudit: planAuditModel, morgan: morganModel } })
 
 const trace = []
 if (auditBudgetOverridden) {
@@ -2828,7 +2836,14 @@ if (after('plan', entryStage)) {
   // declared oneWayDoorKinds / oneWayDoorPaths (never an LLM-filled field). Same status and bypass as
   // the trigger above: no new status, agent or seam. `oneWayDoorHits` = what fired (a kind or `path`).
   const oneWayDoor = oneWayDoorSignals(sam.plan, sam.targetFiles, { issue, planPath, paths: config.oneWayDoorPaths, kinds: config.oneWayDoorKinds })
-  if (oneWayDoor.kinds.length > 0 && !architectureDecisionApproved) {
+  // #208 — proceedThrough:'plan' resolves this stop exactly as it resolves Theo's trigger: the run then stops at
+  // plan-ready below (gate('plan') holds in every mode) and the plan comes back whole for the Lead's validation.
+  // A later stage does not: with entryStage 'plan' it would authorize Dev through the door.
+  if (oneWayDoor.kinds.length > 0 && !architectureDecisionApproved && proceedThrough === 'plan') {
+    log(`R3 one-way-door: plan adds ${oneWayDoor.kinds.join(' + ')} — proceedThrough:'plan', stopping at plan-ready for the Lead's sign-off`)
+    trace.push(`one-way-door-plan-signoff:${oneWayDoor.kinds.join('+')}`)
+  }
+  if (oneWayDoor.kinds.length > 0 && !architectureDecisionApproved && proceedThrough !== 'plan') {
     log(`R3 one-way-door: plan adds ${oneWayDoor.kinds.join(' + ')} — design step required`)
     trace.push(`one-way-door:${oneWayDoor.kinds.join('+')}`)
     await updateStatus('Blocked')
@@ -2841,6 +2856,7 @@ if (after('plan', entryStage)) {
 
   if (gate('plan')) return finish(STATUS['plan-ready'], {
     plan: sam.plan, planPath, issue, trace,
+    ...(oneWayDoor.kinds.length > 0 ? { oneWayDoorHits: oneWayDoor.kinds } : {}),
     auditVerdict: auditResult?.verdict ?? null,
     auditFindings: auditResult?.findings ?? [],
     auditRounds: auditRound,
@@ -2940,6 +2956,39 @@ if (entryStage === 'dev' || entryStage === 'review') {
     if (guard?.isAlreadyDone === true || guard?.checkFailed === true) {
       log(`Already-done guard ERROR: unverified already-done claim rejected (${verdict.reason})${guard?.error ? ` — gh: ${guard.error}` : ''}. Proceeding with the run; the guard is a safety net, never a merge gate.`)
     }
+  }
+}
+
+// #208 — a launch entering at dev|review skips Theo and Sam, so the plan-phase design-step stops never ran in this
+// process: the one the entry can still see is the one-way door announced in `planText`, read by the same parser and
+// the same declared kinds as the plan phase. Without architectureDecisionApproved the run answers the same status
+// instead of running Dev through the door. Theo's signals and the `targetFiles` paths are not available here (#221):
+// the Lead carries that approval on a dev|review relaunch. A blank `planText` on a repo that declares kinds or paths
+// cannot be read (the plan is then re-read from the artifact by an agent, the workflow has no filesystem): the door
+// cannot be ruled out, so the entry answers the same status asking for `planText` or the approval. Placed after the
+// already-done guard: a closed issue or a merged PR answers already-done, with no Project write.
+if ((entryStage === 'dev' || entryStage === 'review') && !architectureDecisionApproved) {
+  const declares = (Array.isArray(config.oneWayDoorKinds) && config.oneWayDoorKinds.length > 0)
+    || (Array.isArray(config.oneWayDoorPaths) && config.oneWayDoorPaths.length > 0)
+  if (declares && !(planText && String(planText).trim())) {
+    log(`R3 one-way-door at entryStage='${entryStage}': no planText to read the door from — architecture decision not approved`)
+    trace.push('one-way-door-entry:no-plan-text')
+    await updateStatus('Blocked')
+    return finish(STATUS['design-step-required'], {
+      issue, trace, planPath,
+      reason: `this repo declares one-way-door kinds or paths and the launch at entryStage='${entryStage}' carries no planText, so the door cannot be read: relaunch with planText (the plan, read for its one-way-door line) or with architectureDecisionApproved:true`,
+    })
+  }
+  const entryDoor = oneWayDoorSignals(planText, [], { issue, planPath, paths: config.oneWayDoorPaths, kinds: config.oneWayDoorKinds })
+  if (entryDoor.kinds.length > 0) {
+    log(`R3 one-way-door at entryStage='${entryStage}': planText adds ${entryDoor.kinds.join(' + ')} — architecture decision not approved`)
+    trace.push(`one-way-door-entry:${entryDoor.kinds.join('+')}`)
+    await updateStatus('Blocked')
+    return finish(STATUS['design-step-required'], {
+      issue, trace, planPath,
+      oneWayDoorHits: entryDoor.kinds,
+      reason: entryDoor.summary.join('\n'),
+    })
   }
 }
 
