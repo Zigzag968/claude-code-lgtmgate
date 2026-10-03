@@ -2135,6 +2135,32 @@ function pluginVersionCmd(pluginRoot) {
     'catch(e){console.log("PLUGIN-VERSION-ERROR:"+(e&&e.code==="ENOENT"?"missing":"unreadable"))}'
   return `node -e ${q(js)} ${q(pluginRoot + '/.claude-plugin/plugin.json')}`
 }
+// Order of two x.y.z[-pre.N][+build] versions (semver precedence, numeric per field: beta.9 < beta.10); -1 | 0 | 1,
+// null when either is not of that form. Used ONLY to word the remedy: whether the root is the engine's version is
+// always the strict equality of the two strings.
+function pluginVersionOrder(a, b) {
+  const P = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z.-]+)?$/
+  const x = P.exec(a)
+  const y = P.exec(b)
+  if (!x || !y) return null
+  for (let i = 1; i <= 3; i++) {
+    const d = Number(x[i]) - Number(y[i])
+    if (d) return d < 0 ? -1 : 1
+  }
+  if (!x[4] && !y[4]) return 0
+  if (!x[4]) return 1
+  if (!y[4]) return -1
+  const p = x[4].split('.')
+  const q = y[4].split('.')
+  for (let i = 0; i < Math.min(p.length, q.length); i++) {
+    const n = /^\d+$/.test(p[i])
+    const m = /^\d+$/.test(q[i])
+    if (n && m) { const d = Number(p[i]) - Number(q[i]); if (d) return d < 0 ? -1 : 1 }
+    else if (n !== m) return n ? -1 : 1
+    else if (p[i] !== q[i]) return p[i] < q[i] ? -1 : 1
+  }
+  return p.length === q.length ? 0 : p.length < q.length ? -1 : 1
+}
 // -> null when the root holds the engine's version, else { code, reason }; fails closed on anything else.
 // A failure of the PROBE itself (no attestation, an agent type not resolved, a copy that altered the command)
 // says nothing about the manifest: it is the documented `provision-failed` of every probe (code 'provision-failed').
@@ -2147,7 +2173,13 @@ function pluginVersionVerdict({ engineVersion, probeFailed, exit, lines }) {
   if (one.startsWith(V) && one.length > V.length) {
     const found = one.slice(V.length)
     if (found === engineVersion) return null
-    return { code: 'plugin-version-skew', reason: `plugin-version-skew: the plugin root holds lgtmgate ${found} but this engine is ${engineVersion}; ${remedy}` }
+    // the remedy follows the direction: an older root is the stale one (pass the current root); a newer root means
+    // the ENGINE is the stale one (an old session registry or local copy); a doubtful order gets the neutral one
+    const dir = pluginVersionOrder(found, engineVersion)
+    const skewRemedy = dir === -1 ? remedy
+      : dir === 1 ? 'the engine is older than the plugin root: relaunch the workflow at the current version (reload the session, or refresh the local copy of the engine)'
+        : 'align the plugin root and the engine version, then relaunch'
+    return { code: 'plugin-version-skew', reason: `plugin-version-skew: the plugin root holds lgtmgate ${found} but this engine is ${engineVersion}; ${skewRemedy}` }
   }
   const cause = one.startsWith(E) ? one.slice(E.length) : 'no usable answer'
   return { code: 'plugin-version-unreadable', reason: `plugin-version-unreadable: cannot read the version in the plugin root's .claude-plugin/plugin.json (${cause}); engine is ${engineVersion}; ${remedy}` }

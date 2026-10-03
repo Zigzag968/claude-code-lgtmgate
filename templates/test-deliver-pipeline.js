@@ -2067,7 +2067,7 @@ const pluginVersionPieces = () => {
   const m = /const BUILD = \{[^}]*\bversion: '([^']+)'/.exec(src)
   if (!block || !m) return { missing: true, src }
   // eslint-disable-next-line no-new-func
-  const fns = new Function(block + '\nreturn { pluginVersionCmd, pluginVersionVerdict }')()
+  const fns = new Function(block + '\nreturn { pluginVersionCmd, pluginVersionVerdict, pluginVersionOrder }')()
   return { ...fns, src, V: m[1] }
 }
 await testCase('T195a pluginRoot of the engine\'s own version passes unchanged (#195)', async () => {
@@ -2104,7 +2104,61 @@ await testCase('T195b a different plugin version escalates, the reason names bot
     eq('the reason carries no local path (a path in a GitHub paste is refused by the scrub hook)', older.reason.includes('/old/root'), false),
     includes('names the remedy', older.reason, 'pass the current plugin root and relaunch'),
     eq('a newer root is a skew too', newer && newer.code, 'plugin-version-skew'),
+    includes('a newer root does not get the stale-root remedy', newer.reason, 'relaunch the workflow at the current version'),
+    eq('a newer root is not told to pass the current root', newer.reason.includes('pass the current plugin root'), false),
     eq('the reason is never provision-failed', older.reason.startsWith('provision-failed'), false),
+  ]
+  return checks.find(c => c) || { ok: true }
+})
+await testCase('T195f the remedy follows the direction of the skew, a doubtful order gets the neutral one (#195)', async () => {
+  const pv = pluginVersionPieces()
+  if (!pv) {
+    log('SKIP — T195f: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  if (pv.missing) return { ok: false, msg: 'pluginVersion markers or the BUILD version not found in pipeline source' }
+  const { pluginVersionVerdict } = pv
+  const OLDER = 'pass the current plugin root and relaunch'
+  const NEWER = 'the engine is older than the plugin root: relaunch the workflow at the current version'
+  const NEUTRAL = 'align the plugin root and the engine version, then relaunch'
+  // [engine, root, remedy]: the order is numeric per field (beta.9 < beta.10), a release is above its pre-releases
+  const cases = [
+    ['1.0.0-beta.10', '1.0.0-beta.9', OLDER],
+    ['1.0.0-beta.9', '1.0.0-beta.10', NEWER],
+    ['1.0.0-beta.9', '0.9.9', OLDER],
+    ['1.0.0-beta.9', '1.0.0', NEWER],
+    ['1.0.0', '1.0.0-rc.1', OLDER],
+    ['1.0.0-beta.9', '1.0.1-beta.1', NEWER],
+    ['1.0.0-beta.9', '1.0.0-alpha.12', OLDER],
+    ['1.0.0-beta.9', '1.0.0-beta.9+build.5', NEUTRAL],
+    ['1.0.0-beta.9', 'not-a-version', NEUTRAL],
+    ['1.0.0-beta.9', '1.0', NEUTRAL],
+  ]
+  for (const [engine, root, remedy] of cases) {
+    const got = pluginVersionVerdict({ engineVersion: engine, exit: 0, lines: ['PLUGIN-VERSION:' + root] })
+    const others = [OLDER, NEWER, NEUTRAL].filter((r) => r !== remedy)
+    const bad = eq(`${root} vs engine ${engine}: a skew`, got && got.code, 'plugin-version-skew')
+      || includes(`${root} vs engine ${engine}: remedy`, got.reason, remedy)
+      || (others.some((o) => got.reason.includes(o)) ? { ok: false, msg: `${root} vs engine ${engine}: a remedy of another direction in "${got.reason}"` } : null)
+    if (bad) return bad
+  }
+  return { ok: true }
+})
+await testCase('T195g the version is compared whole, never by prefix (#195)', async () => {
+  const pv = pluginVersionPieces()
+  if (!pv) {
+    log('SKIP — T195g: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  if (pv.missing) return { ok: false, msg: 'pluginVersion markers or the BUILD version not found in pipeline source' }
+  const { pluginVersionVerdict } = pv
+  const v = (root) => pluginVersionVerdict({ engineVersion: '1.0.0-beta.9', exit: 0, lines: ['PLUGIN-VERSION:' + root] })
+  const checks = [
+    eq('the same version passes', v('1.0.0-beta.9'), null),
+    eq('beta.90 is not beta.9', v('1.0.0-beta.90') && v('1.0.0-beta.90').code, 'plugin-version-skew'),
+    eq('beta.9+x is not beta.9', v('1.0.0-beta.9+x') && v('1.0.0-beta.9+x').code, 'plugin-version-skew'),
+    eq('beta.9 with a trailing space is not beta.9', v('1.0.0-beta.9 ') && v('1.0.0-beta.9 ').code, 'plugin-version-skew'),
+    eq('a different case is not the same', v('1.0.0-BETA.9') && v('1.0.0-BETA.9').code, 'plugin-version-skew'),
   ]
   return checks.find(c => c) || { ok: true }
 })
