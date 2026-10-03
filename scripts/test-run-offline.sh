@@ -145,7 +145,7 @@ f = base(); f.runs[1].carry = { planText: 'nope' }; w('relaunch-carry.json', f)
 f = base(); f.calls = {}; w('relaunch-mixed.json', f)
 f = base(); delete f.runs[1].carry; w('relaunch-nocarry.json', f)
 f = base(); f.runs[1].expect.phases = ['Setup', 'Dev', 'Review']; w('relaunch-phases-longer.json', f)
-f = base(); f.runs[0].expect.status = 'ready'; f.runs[1].expect.status = 'ready'; w('relaunch-both-fail.json', f)
+f = base(); f.runs[0].expect.status = 'ready'; f.runs[1].expect.status = 'ready'; delete f.runs[1].carry; w('relaunch-both-fail.json', f)
 f = base(); f.runs = [f.runs[0]]; w('relaunch-one-run.json', f)
 f = base(); f.runs[0].carry = {}; w('relaunch-carry-first.json', f)
 JS
@@ -163,6 +163,7 @@ if [ "$g1$g2$g3$g4" = "1111" ]; then ok "two-run relaunch: the committed fixture
 
 out=$(node scripts/run-offline.cjs "$TMP/relaunch-carry.json" 2>&1)
 case "$out" in *"FAIL:"*"run 2: carry \"planText\" <- result.nope"*) c1=1;; *) c1=0;; esac
+[ "$(printf '%s\n' "$out" | /usr/bin/grep -c 'run 2:')" = "1" ] || c1=0
 out=$(node scripts/run-offline.cjs "$TMP/relaunch-mixed.json" 2>&1)
 case "$out" in *"FAIL:"*"sets \"runs\" and also a top-level args/calls/expect"*) c2=1;; *) c2=0;; esac
 if [ "$c1$c2" = "11" ]; then ok "two-run carry: a field the previous run did not return fails the fixture, and runs mixed with top-level args/calls/expect is refused"; else bad "two-run carry: missing-field=$c1 mixed=$c2"; fi
