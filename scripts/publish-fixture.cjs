@@ -33,6 +33,10 @@
 //      drops behaviour (probes became placeholders and the engine took fail-open paths), hence the strict one.
 //      The sites and the ordered labels pin the engine's path: every agent() call resolves to one site (callAgent),
 //      so the labels carry the order of the agents, and the log and phase sites carry the path through the engine.
+//   3b. ENGINE VERSION (#195): the answer of the plugin version probe that names the engine under test (its BUILD version)
+//      is stored as the token `@@ENGINE_VERSION@@` before the baseline, and so is that version in a published
+//      `plugin-version-*` reason: lead-merge bumps the version at every merge, a literal would go red at the next one. The
+//      replay resolves the token to the same string, so the outcome is unchanged; the answer of a stale root stays literal.
 //   4. COUPLED PROBES: a `probe-*` answer whose `cmd=` hash is the SHA-256 of the command the engine composed is
 //      re-hashed after every change of args (the command is parsed from the prompt the engine already builds).
 //   5. scripts/redact-fixture.cjs (exit 3 refuses on residue), re-hash, `--check`, a strict replay (in process, then
@@ -50,7 +54,7 @@ const os = require('os')
 const path = require('path')
 const crypto = require('crypto')
 const { spawnSync } = require('child_process')
-const { stripExports, buildPipelineRunner, replayFixture } = require('./run-offline.cjs')
+const { stripExports, buildPipelineRunner, replayFixture, tokenizeVersionProbes, ENGINE_VERSION_TOKEN } = require('./run-offline.cjs')
 
 const REPO = path.resolve(__dirname, '..')
 const NAME_RE = /^[0-9]+-[a-z0-9][a-z0-9-]*(\.json)?$/
@@ -268,6 +272,7 @@ async function main() {
   }
 
   const cand = { name: outName, args: JSON.parse(JSON.stringify(raw.args)), calls: JSON.parse(JSON.stringify(raw.calls)), expect: { status: raw.expect.status } }
+  tokenizeVersionProbes(cand.calls, [run.engineVersion])
   const totalChars = (fx) => [...collectLeaves(fx.args, 'args'), ...collectLeaves(fx.calls, 'calls')]
     .reduce((n, l) => n + l.parent[l.key].length, 0)
   const charsBefore = totalChars(cand)
@@ -399,6 +404,9 @@ async function main() {
   if (oracleOf(fin) !== base) refuse('pruning the unconsumed entries changed the outcome (internal)')
   cand.expect = { status: fin.result.status }
   if (fin.result.reason !== undefined) cand.expect.reason = fin.result.reason
+  if (typeof cand.expect.reason === 'string' && cand.expect.reason.startsWith('plugin-version-') && run.engineVersion) {
+    cand.expect.reason = cand.expect.reason.split(`engine is ${run.engineVersion};`).join(`engine is ${ENGINE_VERSION_TOKEN};`)
+  }
   cand.expect.trace = Array.isArray(fin.result.trace) ? fin.result.trace : []
   cand.expect.traceExact = true
   cand.expect.callLabels = fin.calls.map((c) => c.label)

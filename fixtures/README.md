@@ -37,6 +37,11 @@ entries as `trace`) and `callLabels` (the ordered labels of the `agent()` calls,
   in call order (one entry per round).
 - Probe fixtures need `args.pluginRoot` (any absolute string, e.g. `/plugin`) or `config.probeRunPath`; without it
   the run fails closed before any agent call (`probeReason: probe-run-not-found`, see `82-provision-no-probe-run-path`).
+  A fixture with `args.pluginRoot` and no `config.probeRunPath` also answers `probe-<issue>-lines-plugin-version-r0`
+  (#195: the plugin-version check runs before provisioning; stdout `PLUGIN-VERSION:<version>`, command built by
+  `pluginVersionCmd(pluginRoot)`, see `195-stale-plugin-root`). The token `@@ENGINE_VERSION@@`, anywhere in a fixture,
+  resolves to the engine's `BUILD` version (refused against an engine with none): use it in that answer's `json=` and in
+  any `expect` naming the engine, so the fixture survives the version bump at merge.
   A `verify` answer of `VERIFY fail reason=no-attestation` reproduces a session whose attest hook is not enabled
   (`probeReason: no-attestation`, see `82-provision-no-attestation`). The VERIFY line is attested by the same hook as
   the PROBE line (bound to the call's label and round), and the probe agent may not stop without the pair (#83). The persona fallback (agent type not found) has no fixture (the harness

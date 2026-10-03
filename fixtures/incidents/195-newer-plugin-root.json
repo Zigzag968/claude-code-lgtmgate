@@ -1,0 +1,34 @@
+{
+  "name": "195-newer-plugin-root",
+  "note": "#195: args.pluginRoot holds a NEWER plugin version than the engine build (a stale engine: an old session registry or a local copy). The run stops before provisioning like an older root does, but the remedy is not to pass the current plugin root (that is the root already): relaunch the workflow at the current version.",
+  "args": {
+    "pluginRoot": "/new/cache/lgtmgate/99.0.0",
+    "issue": 195,
+    "brief": "a plugin root newer than the engine must not be told to pass the current root",
+    "wtPath": "/wt/root/issue-195",
+    "config": {},
+    "mode": "auto"
+  },
+  "calls": {
+    "probe-195-lines-plugin-version-r0": {
+      "line": "PROBE name=lines exit=0 sha=035bec239aa0711df068ab7f9e9204762be43385c786faa85c6afb3b1ed0e14c cmd=c919c16381a3ffda928538ff5e0d9c18f15015b15875e9bdef2ac26c39aab9d1 json={\"lines\":[\"PLUGIN-VERSION:99.0.0\"]}",
+      "verify": "VERIFY ok line=PROBE name=lines exit=0 sha=035bec239aa0711df068ab7f9e9204762be43385c786faa85c6afb3b1ed0e14c cmd=c919c16381a3ffda928538ff5e0d9c18f15015b15875e9bdef2ac26c39aab9d1 json={\"lines\":[\"PLUGIN-VERSION:99.0.0\"]}"
+    }
+  },
+  "expect": {
+    "status": "escalate",
+    "reason": "plugin-version-skew: the plugin root holds lgtmgate 99.0.0 but this engine is @@ENGINE_VERSION@@; the engine is older than the plugin root: relaunch the workflow at the current version (reload the session, or refresh the local copy of the engine)",
+    "trace": [
+      "branch-prefix-fallback-default",
+      "probe:lines:haiku"
+    ],
+    "traceExact": true,
+    "callLabels": [
+      "probe-195-lines-plugin-version-r0"
+    ],
+    "logsInclude": [
+      "99.0.0",
+      "relaunch the workflow at the current version"
+    ]
+  }
+}

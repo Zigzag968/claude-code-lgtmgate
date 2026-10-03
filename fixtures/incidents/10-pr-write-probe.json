@@ -21,6 +21,10 @@
     "mode": "auto"
   },
   "calls": {
+    "probe-123-lines-plugin-version-r0": {
+      "line": "PROBE name=lines exit=0 sha=4b0b2f33b20b777393f4cb55ea1d47c45786b52ad36822582a5ed67647e54ed5 cmd=2af1fd58e4141ac8977c54e48900baf5a81f43c1be46d2a1c6f38830f7582ec8 json={\"lines\":[\"PLUGIN-VERSION:@@ENGINE_VERSION@@\"]}",
+      "verify": "VERIFY ok line=PROBE name=lines exit=0 sha=4b0b2f33b20b777393f4cb55ea1d47c45786b52ad36822582a5ed67647e54ed5 cmd=2af1fd58e4141ac8977c54e48900baf5a81f43c1be46d2a1c6f38830f7582ec8 json={\"lines\":[\"PLUGIN-VERSION:@@ENGINE_VERSION@@\"]}"
+    },
     "probe-123-provision-provision-r0": {
       "line": "PROBE name=provision exit=0 sha=30ad404e7bf922808eeb13427c66400303e810a9392f80082fb0abe2fc6fc271 cmd=cb49d972cd5e77c121dac04294f3d1fa6a3363d2451bd60461ad1c814588897a json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}",
       "verify": "VERIFY ok line=PROBE name=provision exit=0 sha=30ad404e7bf922808eeb13427c66400303e810a9392f80082fb0abe2fc6fc271 cmd=cb49d972cd5e77c121dac04294f3d1fa6a3363d2451bd60461ad1c814588897a json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}"
