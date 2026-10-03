@@ -61,7 +61,7 @@ mkb amb-r5-ff-marker.md "$AS" '- [ ] <!-- ac:1 --> open' "$AE" "$AS$FF" "$AE"
 mkb amb-r6-two-pairs.md "$AS" '- [ ] <!-- ac:1 --> open' "$AE" "$AS" "$AE"
 mkb amb-three-pairs.md  "$AS" '- [ ] <!-- ac:1 --> open' "$AE" "$AS" '- [x] a' "$AE" "$AS" '- [x] b' "$AE"
 mkb amb-unicode-ok.md   'Résumé: ✅ le correctif est livré 🚀' "$AS" '- [x] <!-- ac:1 --> vérifié, ça marche — ✅' "$AE" 'fin'
-mkb amb-fenced-lookalike-ok.md '```' '<!--acceptance:start-->' '<!--  acceptance:end -->' '```'"$NB" '```' "$AS" '- [x] a' "$AE"
+mkb amb-fenced-lookalike-ok.md '```' '<!--acceptance:start-->' '<!--  acceptance:end -->' '```' "$AS" '- [x] a' "$AE"
 mkb amb-empty-block.md  "$AS" "$AE"
 mkb amb-fenced-box-in-block.md "$AS" '- [x] a' '```' '- [ ] an example box' '```' "$AE"
 PASS=0; FAIL=0
