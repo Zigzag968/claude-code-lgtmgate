@@ -71,6 +71,19 @@ bash scripts/capture-incident.sh <runId> <issue> <label> [--out DIR]
   returned it (the final pass of a relaunched run is identified by the record's `agentId` values,
   never by journal order). It fails closed, naming the key, on any layout it does not recognise
   and on a call that died; it then replays the capture and prints the next step.
+- A call the engine retried has this shape (measured on a real run): the run record holds ONE
+  `workflow_agent` entry for the call, named `<label> (retry N)` and carrying the `agentId` of the LAST
+  attempt (the died attempts' ids are not in the record); the journal holds N+1 `started` rows
+  labelled `<label>` under ONE key, the N earlier ones with no `result` row. It is captured once
+  under `<label>` with the answer of the record's `agentId`, and the status line reports
+  `retries=<sum of N>`. N must equal the died attempts of the key (`started` rows beyond the `result`
+  rows): otherwise it refuses with `retry count mismatch`, it never guesses. The suffix is exactly
+  ` (retry N)`: one space, N from 1 to 999 without a leading zero, lower case, nothing after it.
+  A call with no answering attempt, a died attempt of another label, a key shared by two record entries
+  (two identical calls, one retried: the attribution is ambiguous), and any other label difference
+  refuse, naming the key. A label that is `<label> (retry 1)` in the journal AND the record is a plain
+  label and is kept as is. The other suffixes the engine emits for a relaunch, `(throttle-retry)` and
+  `(after usage limit)`, are NOT folded: they still refuse as `label mismatch`.
 - `expect.status` is the OBSERVED status, and publishing requires the replay to reproduce it: leave it
   as captured. For a bug fix the correct outcome is set on the published fixture (see below).
 - `node scripts/run-offline.cjs <file> --report-unused` also lists the fixture entries a replay

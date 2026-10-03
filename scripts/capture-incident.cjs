@@ -15,7 +15,7 @@
 //     --out    default <cwd>/.pipeline/captures   (must be git-ignored, inside a work tree)
 //     --from   projects directory; default $CLAUDE_PROJECTS_DIR, else ~/.claude/projects
 // Last stdout line (always): `[capture-incident] status=<ok|refused|error|usage-error>`
-// (ok adds `out=<path> calls=<n> cached=<n>`). Detail goes to stderr. Exit 0 ok, 1 refused or error
+// (ok adds `out=<path> calls=<n> cached=<n> retries=<n>`). Detail goes to stderr. Exit 0 ok, 1 refused or error
 // (error = an unexpected file-system failure, one `error: <code>: <message>` stderr line, stack only
 // with CAPTURE_INCIDENT_DEBUG=1, nothing left written), 2 usage.
 //
@@ -33,6 +33,12 @@
 // The final pass of a relaunched run is the set of agentId values in the record's workflowProgress,
 // never journal order. A result is joined to its start by `key`. A key whose LAST result/failed row
 // is `failed` is refused (a `failed` followed by a later `result`, a retry, is accepted).
+// A call the engine retried is ONE workflowProgress entry named `<label> (retry N)` that carries the agentId of its last
+// attempt, while the journal holds `<label>` on every attempt: N+1 `started` rows under one key, the N earlier ones (died)
+// without a result. It is captured once under `<label>` with the answer of that agentId (`retries=<n>` sums the N): N must
+// equal the died attempts of the key ("retry count mismatch" otherwise), the key must not be shared by another entry, and a
+// call with no result refuses. The suffix is exactly ` (retry N)` (N 1-999, case-sensitive, nothing after); the other engine
+// suffixes `(throttle-retry)` and `(after usage limit)` are not folded and refuse as a label mismatch.
 
 const fs = require('fs')
 const os = require('os')
@@ -199,48 +205,110 @@ function readRecord(file) {
 
 // ---- final pass -----------------------------------------------------------------------------
 
+// The one suffix the engine puts on the record label of a retried call: a space, `(retry N)`, N from 1 to 999, nothing after.
+// Case-sensitive on purpose; `(throttle-retry)` and `(after usage limit)` are other engine suffixes and are NOT folded.
+const RETRY_SUFFIX = /^(.*) \(retry ([1-9][0-9]{0,2})\)$/
+
 function finalPass(journalFile, rows, agents) {
-  const startedKeys = new Set()
-  const resultByKey = new Map()
+  const startsByKey = new Map() // key -> [{ row, line }] in journal order
   const startedByAgent = new Map()
   for (const { line, row } of rows) {
-    if (row.type === 'started') { startedKeys.add(row.key); startedByAgent.set(row.agentId, { row, line }) }
+    if (row.type !== 'started') continue
+    if (!startsByKey.has(row.key)) startsByKey.set(row.key, [])
+    startsByKey.get(row.key).push({ row, line })
+    startedByAgent.set(row.agentId, { row, line })
   }
+  const resultRowsByKey = new Map() // key -> [{ row, line }]
+  const resultByKey = new Map()
   const lastEventByKey = new Map() // key -> { type: 'result'|'failed', line } of its LAST such row
   for (const { line, row } of rows) {
     if (row.type !== 'result' && row.type !== 'failed') continue
     lastEventByKey.set(row.key, { type: row.type, line })
     if (row.type !== 'result') continue
-    if (!startedKeys.has(row.key)) refuse(`${journalFile}: orphan result for key ${row.key} [line ${line}]`)
+    if (!startsByKey.has(row.key)) refuse(`${journalFile}: orphan result for key ${row.key} [line ${line}]`)
+    if (!resultRowsByKey.has(row.key)) resultRowsByKey.set(row.key, [])
+    resultRowsByKey.get(row.key).push({ row, line })
     resultByKey.set(row.key, row) // last wins
+  }
+  const agentsByKey = new Map() // key -> number of workflowProgress entries that journal it
+  for (const a of agents) {
+    const s = startedByAgent.get(a.agentId)
+    if (s) agentsByKey.set(s.row.key, (agentsByKey.get(s.row.key) || 0) + 1)
   }
   const calls = []
   const died = []
   const failedLast = []
   const finalIds = new Set(agents.map((a) => a.agentId))
+  let retries = 0
+  const notes = []
+  // One call per workflowProgress entry, in record order. The engine keeps ONE entry per call: a retried call is the entry
+  // `<label> (retry N)` carrying the agentId of its LAST attempt, while the journal holds `<label>` on every attempt, all
+  // under one key, the N earlier ones without a result. The journal label wins: that exact suffix is folded, N is checked
+  // against the died attempts of the key, and any other difference between the two labels refuses.
   for (const a of agents) {
     const s = startedByAgent.get(a.agentId)
     if (!s) refuse(`layout: ${journalFile}: missing started for workflowProgress agentId ${a.agentId}`)
-    if (s.row.label !== a.label) {
-      refuse(`layout: ${journalFile}: label mismatch for agentId ${a.agentId} (journal "${s.row.label}", record "${a.label}") [line ${s.line}]`)
+    const key = s.row.key
+    const label = s.row.label
+    let n = 0
+    if (a.label !== label) {
+      const m = RETRY_SUFFIX.exec(a.label)
+      if (!m || m[1] !== label) {
+        refuse(`layout: ${journalFile}: label mismatch for agentId ${a.agentId} (journal "${label}", record "${a.label}") [line ${s.line}]`)
+      }
+      n = Number(m[2])
     }
-    const res = resultByKey.get(s.row.key)
-    if (!res) { died.push(`${a.label} key ${s.row.key} [line ${s.line}]`); continue }
-    const last = lastEventByKey.get(s.row.key)
-    if (last.type === 'failed') { failedLast.push(`${a.label} key ${s.row.key} [line ${last.line}]`); continue }
-    calls.push({ label: a.label, value: res.result, cached: a.cached })
+    const starts = startsByKey.get(key)
+    const results = resultRowsByKey.get(key) || []
+    if (n > 0) {
+      for (const t of starts) {
+        if (t.row.label !== label) {
+          refuse(`layout: ${journalFile}: label mismatch on key ${key} (journal "${t.row.label}" [line ${t.line}], "${label}" [line ${s.line}])`)
+        }
+      }
+      if (agentsByKey.get(key) > 1) {
+        refuse(`layout: ${journalFile}: ambiguous retried call "${a.label}": key ${key} is journaled by ${agentsByKey.get(key)} workflowProgress entries, the died attempts cannot be attributed`)
+      }
+    }
+    if (results.length === 0) { // no attempt of the key answered
+      died.push(starts.map((t) => `${label} key ${key} [line ${t.line}]`).join(', '))
+      continue
+    }
+    let answer = resultByKey.get(key)
+    if (n > 0) {
+      const dead = starts.length - results.length
+      if (dead !== n) {
+        refuse(`layout: ${journalFile}: retry count mismatch for agentId ${a.agentId} (record "${a.label}" says ${n}, the journal holds ${dead} died attempt${dead === 1 ? '' : 's'} for key ${key}) [line ${s.line}]`)
+      }
+      // The answer is the result of THIS agentId's attempt; a journal whose result rows name other agentIds only is not guessed.
+      if (results.some((r) => isStr(r.row.agentId))) {
+        const own = results.filter((r) => r.row.agentId === a.agentId)
+        if (own.length === 0) {
+          refuse(`layout: ${journalFile}: retried call "${a.label}": no result row of agentId ${a.agentId} for key ${key} (the result rows name other attempts) [line ${s.line}]`)
+        }
+        answer = own[own.length - 1].row
+      }
+    }
+    const last = lastEventByKey.get(key)
+    if (last.type === 'failed') { failedLast.push(`${label} key ${key} [line ${last.line}]`); continue }
+    if (n > 0) {
+      retries += n
+      const answeredIds = new Set(results.map((r) => r.row.agentId).filter(isStr))
+      const deadIds = starts.filter((t) => t.row.agentId !== a.agentId && !answeredIds.has(t.row.agentId)).map((t) => `${t.row.agentId} [line ${t.line}]`)
+      notes.push(`note: ${journalFile}: folded retried call ${label}: ${n + 1} attempts, answer of agentId ${a.agentId} used, died attempt${n === 1 ? '' : 's'} ${deadIds.join(', ')}`)
+    }
+    calls.push({ label, value: answer.result, cached: a.cached })
   }
   const causes = []
   if (died.length) causes.push(`died call ${died.join('; died call ')}`)
   if (failedLast.length) causes.push(`failed call ${failedLast.join('; failed call ')} (the key's last event is failed, an earlier result is not used)`)
   if (causes.length) refuse(`${journalFile}: ${causes.join('; ')}`)
-  const notes = []
   for (const [agentId, { row, line }] of startedByAgent) {
     if (!finalIds.has(agentId) && !resultByKey.has(row.key)) {
       notes.push(`note: ${journalFile}: died call ${row.label} key ${row.key} [line ${line}] belongs to an earlier pass, not captured`)
     }
   }
-  return { calls, notes }
+  return { calls, notes, retries }
 }
 
 // The plugin version probe answer (#195) names the engine version of the run, which lead-merge bumps at every merge: it is
@@ -339,7 +407,7 @@ function main() {
   const journalFile = path.join(runDir, 'journal.jsonl')
   const rows = readJournal(journalFile)
   const record = readRecord(recordPathFor(runDir))
-  const { calls, notes } = finalPass(journalFile, rows, record.agents)
+  const { calls, notes, retries } = finalPass(journalFile, rows, record.agents)
   for (const n of notes) process.stderr.write(`${n}\n`)
   const fixture = buildFixture(issue, label, record, calls)
   fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 })
@@ -347,7 +415,7 @@ function main() {
   replay(file)
   process.stdout.write(`next: scripts/publish-fixture.sh ${file}\n`)
   const cached = calls.filter((c) => c.cached).length
-  process.stdout.write(`[capture-incident] status=ok out=${file} calls=${calls.length} cached=${cached}\n`)
+  process.stdout.write(`[capture-incident] status=ok out=${file} calls=${calls.length} cached=${cached} retries=${retries}\n`)
 }
 
 try {
