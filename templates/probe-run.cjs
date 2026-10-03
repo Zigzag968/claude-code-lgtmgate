@@ -126,6 +126,7 @@ const PARSERS = {
     if (v === null || typeof v !== 'object' || Array.isArray(v)) return { error: 'bad-json' }
     const str = (x) => (typeof x === 'string' && x.length > 0 ? x : null)
     const strArr = (x) => (Array.isArray(x) && x.every((i) => typeof i === 'string') ? x : null)
+    const idArr = (x) => (Array.isArray(x) && x.every((i) => Number.isInteger(i) && i >= 1) ? x : null)
     const issues = (x) => {
       if (!Array.isArray(x)) return null
       const out = []
@@ -140,6 +141,7 @@ const PARSERS = {
       headRefName: str(v.headRefName),
       headRefOid: str(v.headRefOid),
       bodyDigest: str(v.bodyDigest),
+      acceptanceChecked: idArr(v.acceptanceChecked),
       mergeable: str(v.mergeable),
       mergeStateStatus: str(v.mergeStateStatus),
       lastCommitDate: str(v.lastCommitDate),

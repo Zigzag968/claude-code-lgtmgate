@@ -50,7 +50,8 @@
 #   - Comment pick (REST `issues/<pr>/comments --paginate`): the LAST comment whose first line is exactly
 #     `<!-- pipeline-review-round pr=<N> -->` (with or without ` sha=<40hex>`) AND that has at least 2 non-empty lines
 #     after the marker (Nick's push-note reuses the marker but is one line, so it is skipped). None found: refused.
-#   - Matching rule (exact, structured; Morgan's template line for a proven-untickable box):
+#   - Matching rule (exact, structured; Morgan's template line for a box proven but not tickable, which only a run WITHOUT
+#     ids still produces: with ids the workflow parks the run itself, `verified-untickable`, no producer of this line is left — #196):
 #       `- [ ] **<box text verbatim>** — verified, tick pending (permissions): <proof with a `command` and its output>`
 #     A box is ticked iff some line of that comment, after stripping the list prefix (`- `, `- [ ] `), `**` and backticks
 #     and collapsing whitespace, equals the box text normalised the same way followed by an optional separator

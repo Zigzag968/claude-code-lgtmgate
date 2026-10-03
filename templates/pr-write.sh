@@ -23,10 +23,13 @@
 #       read the issue's project item and its current single-select option; not on the project ->
 #       skipped/not-on-project (never an edit with an empty id); option already set -> skipped/already-set;
 #       else gh project item-edit.
-#   body-splice --pr N --mode decision-log|acceptance --text T [--expect-digest D]
+#   body-splice --pr N --mode decision-log|acceptance|tick --text T [--ids CSV --keep CSV] [--expect-digest D]
 #       read the body, splice (templates/pr-body-splice.cjs), unchanged -> skipped/unchanged; acceptance
 #       markers absent -> failed/no-markers (never appends); write; re-read; guard (>= 90 % of the pre
 #       length and both acceptance markers) else restore the pre body -> failed/guard-failed-restored.
+#       --mode tick (#183): --text is the rendered checklist (every box open, `<!-- ac:N -->` ids); the acceptance
+#       block is re-spliced from it with the ids of --ids ticked `[x]`, the ids of --keep (human gates) keeping the
+#       state the body has and every other id open. --ids/--keep are comma-separated digits (may be empty).
 #       --expect-digest D (optional): the body digest (12 hex, as pr-state.sh) the caller last saw; a different
 #       first read -> failed/stale-read. The body is also re-read right before the edit: changed since the
 #       first read -> failed/stale-read, no edit (#151).
@@ -37,7 +40,7 @@
 OP="${1:-}"
 [ $# -ge 1 ] && shift
 
-WT=""; REPO=""; PR=""; NUMBER=""; MARKER=""; BODY=""; ID=""; ISSUE=""; PNUM=""; PID=""; FID=""; OID=""; MODE=""; TEXT=""; EXPECT=""
+WT=""; REPO=""; PR=""; NUMBER=""; MARKER=""; BODY=""; ID=""; ISSUE=""; PNUM=""; PID=""; FID=""; OID=""; MODE=""; TEXT=""; EXPECT=""; IDS=""; KEEP=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --wt) WT="${2:-}" ;;
@@ -54,6 +57,8 @@ while [ $# -gt 0 ]; do
     --option-id) OID="${2:-}" ;;
     --mode) MODE="${2:-}" ;;
     --text) TEXT="${2:-}" ;;
+    --ids) IDS="${2:-}" ;;
+    --keep) KEEP="${2:-}" ;;
     --expect-digest) EXPECT="${2:-}" ;;
     *) ;;
   esac
@@ -137,13 +142,18 @@ body_digest() { printf '%s\n' "$(cat "$1")" | { shasum -a 256 2>/dev/null || sha
 body_splice_op() {
   local pre_len post_len rc
   if ! is_num "$PR" || [ -z "$TEXT" ]; then emit failed bad-args; return; fi
-  case "$MODE" in decision-log|acceptance) ;; *) emit failed bad-args; return ;; esac
+  case "$MODE" in decision-log|acceptance|tick) ;; *) emit failed bad-args; return ;; esac
+  case "$IDS$KEEP" in *[!0-9,]*) emit failed bad-args; return ;; esac
   mkdir -p .pipeline
   gh pr view "$PR" ${REPO:+-R "$REPO"} --json body -q .body > ".pipeline/pr-body-$PR.pre.md" 2>/dev/null || { emit failed read-failed; return; }
   if [ -n "$EXPECT" ] && [ "$(body_digest ".pipeline/pr-body-$PR.pre.md")" != "$EXPECT" ]; then emit failed stale-read; return; fi
   pre_len="$(wc -c < ".pipeline/pr-body-$PR.pre.md" | tr -d ' ')"
   printf '%s\n' "$TEXT" > ".pipeline/pr-body-$PR.text.md" || { emit failed splice-failed; return; }
-  node "$SD/pr-body-splice.cjs" splice "$MODE" ".pipeline/pr-body-$PR.pre.md" ".pipeline/pr-body-$PR.text.md" ".pipeline/pr-body-$PR.md" >/dev/null 2>&1
+  if [ "$MODE" = "tick" ]; then
+    node "$SD/pr-body-splice.cjs" tick ".pipeline/pr-body-$PR.pre.md" ".pipeline/pr-body-$PR.text.md" ".pipeline/pr-body-$PR.md" "$IDS" "$KEEP" >/dev/null 2>&1
+  else
+    node "$SD/pr-body-splice.cjs" splice "$MODE" ".pipeline/pr-body-$PR.pre.md" ".pipeline/pr-body-$PR.text.md" ".pipeline/pr-body-$PR.md" >/dev/null 2>&1
+  fi
   rc=$?
   if [ "$rc" -eq 3 ]; then emit failed no-markers; return; fi
   if [ "$rc" -ne 0 ]; then emit failed splice-failed; return; fi
