@@ -4681,6 +4681,24 @@ await testCase('T9036 ACCEPTANCE_PROOF_RULE defined once, interpolated once; ACC
   return (e1 || e2 || e3) ? (e1 || e2 || e3) : { ok: true }
 })
 
+// T9028 (#28) — when a Sam acceptance item may be tagged human-gate. Source-level: the shared rule constant
+// is defined once and interpolated once, inside samScoutPrompt, and its text asks "act" versus "only confirm".
+await testCase('T9028 HUMAN_GATE_TAG_RULE defined once, interpolated once in samScoutPrompt (#28)', async () => {
+  const src = SUITE_ARGS.fpSource
+  if (!src) {
+    log('SKIP — T9028: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const e1 = eq('HUMAN_GATE_TAG_RULE occurrences (definition + interpolation)', src.split('HUMAN_GATE_TAG_RULE').length - 1, 2)
+  const e2 = eq('interpolations', src.split('${HUMAN_GATE_TAG_RULE}').length - 1, 1)
+  const from = src.indexOf('const samScoutPrompt =')
+  const to = from < 0 ? -1 : src.indexOf('// Plan phase', from)
+  const scout = from < 0 || to < 0 ? '' : src.slice(from, to)
+  const e3 = includes('interpolated inside samScoutPrompt', scout, '${HUMAN_GATE_TAG_RULE}')
+  const e4 = includes('rule text asks act versus confirm', src, 'only to confirm that an action already happened')
+  return (e1 || e2 || e3 || e4) ? (e1 || e2 || e3 || e4) : { ok: true }
+})
+
 // T130 (#130) — run identity: the first log() is `deliver #<issue> — <brief>`, `Setup` is the first
 // declared phase and is entered before any agent call, and every agent label carries the issue number.
 // Source-anchored: the suite-scope log() cannot intercept the pipeline's own log (run-flow-suite.cjs).
