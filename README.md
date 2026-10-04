@@ -166,7 +166,7 @@ Nothing stack-specific lives in the plugin. Everything project-dependent is read
 | `conventionsRule` | the project's code-convention rule Sam/Nick/Morgan align on |
 | `baseBranch`, `branchPrefix` | branching for the shared worktree + PR target |
 | `worktreeRoot` | where the Lead creates the shared worktree (logical/versioned default); precedence `$LGTMGATE_WORKTREE_ROOT` > `.claude/pipeline.config.local.json` (gitignored) > this value > wtPath's parent dir for the Dev-phase prompt context. `/deliver` itself still needs this key set to CREATE the worktree |
-| `ciChecks` | checks Morgan must see green before LGTM; also what `scripts/lead-merge.sh` waits on at merge time when the base branch has no required status checks (unset or empty: every reported check) |
+| `ciChecks` | check-run names (as `gh pr checks` prints them, matrix suffix included) Morgan must see green before LGTM; a name GitHub does not report keeps the run from `ready`; also what `scripts/lead-merge.sh` waits on at merge time when the base branch has no required status checks (unset or empty: every reported check) |
 | `regressionGuard.{testGlob,testFnPattern,baselineCmd}` | Morgan's regression guard: no-checkout test scoping plus the exact baseline-capture command run for the SET-DIFF |
 | `ghProject` | optional GH Project "Pipeline Status" updates |
 | `planAudit` | adversarial plan-soundness audit before Dev, default `false`; worst case is `maxAuditRounds × maxPlanAttempts` extra spawns |

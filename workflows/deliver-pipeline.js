@@ -926,27 +926,40 @@ function reviewProgress(prev, cur) {
 }
 // ciScope(overall, checks, names): the CI state the ready gate judges. `overall` is the pr-state probe's state over EVERY check
 // on the head, `checks` its per-check map ({ '<name>': 'green'|'failing'|'pending' }), `names` the repo's config.ciChecks (the
-// checks Morgan waits for). With a non-empty `names` and a map, only the named checks count: any failing -> 'failing'; else
-// any pending, or a named check absent from the map (not reported yet) -> 'pending'; else 'green'. An optional check (a code
-// scanner, say) then neither holds the gate nor costs a Nick round that has nothing to fix. Otherwise `overall` stands.
+// checks Morgan waits for). With a non-empty `names` and a map, only the named checks count, by precedence: any failing ->
+// 'failing'; else any pending -> 'pending'; else a named check the map does not hold (GitHub never reported it: a matrix job
+// reported as 'build (os)', a reusable workflow's 'caller / callee', a workflow filtered out by paths) -> 'absent', which is
+// NOT pending; else 'green'. An optional check (a code scanner, say) then neither holds the gate nor costs a Nick round that
+// has nothing to fix. Otherwise `overall` stands.
 function ciScope(overall, checks, names) {
   if (!Array.isArray(names) || names.length === 0 || checks === null || typeof checks !== 'object' || Array.isArray(checks)) return overall
-  let unsettled = false
+  let pending = false
+  let absent = false
   for (const name of names) {
     const state = Object.prototype.hasOwnProperty.call(checks, name) ? checks[name] : undefined
     if (state === 'failing') return 'failing'
-    if (state !== 'green') unsettled = true
+    if (state === undefined) absent = true
+    else if (state !== 'green') pending = true
   }
-  return unsettled ? 'pending' : 'green'
+  return pending ? 'pending' : absent ? 'absent' : 'green'
 }
-// ciBlocker(ciState, morganCiGreen): the CI half of the ready gate. null when CI is green, else ONE canonical blocker line
-// (a fixed sentence per source, so a persistent red CI reads identically across rounds). `ciState` is the live pr-state read
-// of the round ('green'|'failing'|'pending'|'none'|null, ciScope's result) and wins over Morgan's report. 'none' means the
-// probe answered: the head has no check, Morgan's word decides (a blocker only when she reported ciGreen false). null or absent
-// means the probe gave no evidence (it failed, or is an older script): CI is unproven, a blocker unless Morgan reported ciGreen true.
-function ciBlocker(ciState, morganCiGreen) {
+// ciAbsent(checks, names): the names of `names` (config.ciChecks) the per-check map does not hold, in the config order; [] when
+// there is no usable map or no names.
+function ciAbsent(checks, names) {
+  if (!Array.isArray(names) || checks === null || typeof checks !== 'object' || Array.isArray(checks)) return []
+  return names.filter((name) => !Object.prototype.hasOwnProperty.call(checks, name))
+}
+// ciBlocker(ciState, morganCiGreen, absentNames): the CI half of the ready gate. null when CI is green, else ONE canonical blocker
+// line (a fixed sentence per source, so a persistent red CI reads identically across rounds). `ciState` is the live pr-state
+// read of the round ('green'|'failing'|'pending'|'absent'|'none'|null, ciScope's result) and wins over Morgan's report.
+// 'absent' (ciAbsent's names are `absentNames`) is its own line naming the configured checks GitHub does not report. 'none' means
+// the probe answered: the head has no check, Morgan's word decides (a blocker only when she reported ciGreen false). null or
+// absent means the probe gave no evidence (it failed, or is an older script): CI is unproven, a blocker unless Morgan reported
+// ciGreen true.
+function ciBlocker(ciState, morganCiGreen, absentNames) {
   if (ciState === 'green') return null
   if (ciState === 'failing' || ciState === 'pending') return `CI is not green on the PR head (live pr-state read: ${ciState})`
+  if (ciState === 'absent') return `config.ciChecks names check(s) not reported on the PR head: ${(Array.isArray(absentNames) ? absentNames : []).join(', ')}`
   const unproven = ciState === 'none' ? morganCiGreen === false : morganCiGreen !== true
   return unproven ? 'CI is not green on the PR head (reported by the review)' : null
 }
@@ -3557,7 +3570,7 @@ if (after('review', entryStage)) {
     const settle = async (x) => {
       const settled = await tickAcceptanceBoxes(x, round)
       if (settled.verdict !== 'LGTM') return settled
-      const line = ciBlocker(endState ? ciScope(endState.ciState, endState.ciChecks, config.ciChecks) : null, settled.ciGreen)
+      const line = ciBlocker(endState ? ciScope(endState.ciState, endState.ciChecks, config.ciChecks) : null, settled.ciGreen, endState ? ciAbsent(endState.ciChecks, config.ciChecks) : [])
       if (line === null) return settled
       trace.push(`ci-not-green:${round}`)
       log(`callMorganGuarded round ${round}: LGTM with CI not green — REQUIRED_CHANGES (${line})`)

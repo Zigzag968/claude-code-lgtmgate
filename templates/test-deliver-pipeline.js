@@ -680,7 +680,7 @@ const t182Block = () => {
   const block = extractBetween(src, '// --- acceptanceItems:start ---', '// --- acceptanceItems:end ---')
   if (!block) throw new Error('acceptanceItems:start/:end markers not found in the pipeline source')
   // eslint-disable-next-line no-new-func
-  return new Function(block + '\nreturn { numberItems, renderLine, renderChecklist, parseChecklist, itemsFromPlan, validateAcceptanceItems, planLacksItems, mapBoxes, nickBlockNote, morganBoxesNote, boxLineId, lineKey, humanGateLine, onlyHumanGateLines, parkUntickable, morganItemsRule, reviewProgress, ciScope, ciBlocker, verdictProblem }')()
+  return new Function(block + '\nreturn { numberItems, renderLine, renderChecklist, parseChecklist, itemsFromPlan, validateAcceptanceItems, planLacksItems, mapBoxes, nickBlockNote, morganBoxesNote, boxLineId, lineKey, humanGateLine, onlyHumanGateLines, parkUntickable, morganItemsRule, reviewProgress, ciScope, ciAbsent, ciBlocker, verdictProblem }')()
 }
 const T182_ITEMS = [
   { text: '`node scripts/guards.cjs; echo $?` prints `0` as its last line', humanGate: false },
@@ -6081,7 +6081,12 @@ await testCase('T184g the CI half of the ready gate: a red CI at LGTM is REQUIRE
   const e12c = eq('none + undefined -> null', cb('none', undefined), null) || eq('none + true -> null', cb('none', true), null)
   const e12d = eq('the no-evidence line is the same sentence as the one of the Morgan report', cb(null, undefined), cb('none', false))
   const e13 = eq('the line is stable across calls', cb('failing', true), cb('failing', true))
-  return e1 || e2 || e3 || e4 || e5 || e6 || e7 || e8 || e9 || e10 || e11 || e12 || e12b || e12c || e12d || e13 || { ok: true }
+  // 'absent' (a configured check GitHub never reports) is its own STABLE line naming the names, never the 'pending' sentence
+  const abs = cb('absent', true, ['build', 'deploy'])
+  const e14 = eq('absent line', abs, 'config.ciChecks names check(s) not reported on the PR head: build, deploy')
+  const e15 = eq('absent wins over a Morgan true and is stable', cb('absent', true, ['build', 'deploy']), cb('absent', false, ['build', 'deploy']))
+  const e16 = eq('absent is not the pending sentence', abs === cb('pending', true, ['build']) ? 'same' : 'distinct', 'distinct')
+  return e1 || e2 || e3 || e4 || e5 || e6 || e7 || e8 || e9 || e10 || e11 || e12 || e12b || e12c || e12d || e13 || e14 || e15 || e16 || { ok: true }
 })
 
 await testCase('T184h ciScope: the CI state is judged over config.ciChecks only, else the overall state', async () => {
@@ -6093,19 +6098,27 @@ await testCase('T184h ciScope: the CI state is judged over config.ciChecks only,
   const e1 = eq('filtered-out failing + pending optional checks -> green', cs('failing', map, req), 'green')
   const e2 = eq('a configured check failing -> failing', cs('green', { ...map, guards: 'failing' }, req), 'failing')
   const e3 = eq('a configured check pending -> pending', cs('green', { ...map, 'smoke-install': 'pending' }, req), 'pending')
-  const e4 = eq('a configured name absent from the map -> pending', cs('green', { guards: 'green' }, req), 'pending')
+  const e4 = eq('a configured name absent from the map -> absent (not pending: nothing is pending)', cs('green', { guards: 'green' }, req), 'absent')
   const e5 = eq('failing wins over an absent name', cs('green', { guards: 'failing' }, req), 'failing')
   const e6 = eq('failing wins over a pending one', cs('green', { guards: 'pending', 'smoke-install': 'failing' }, req), 'failing')
   const e7 = eq('no config.ciChecks (undefined) -> overall', cs('failing', map, undefined), 'failing')
   const e8 = eq('empty config.ciChecks -> overall', cs('pending', map, []), 'pending')
   const e9 = eq('no map (null) -> overall', cs('green', null, req), 'green')
   const e10 = eq('no map (undefined) -> overall, null stays null', cs(null, undefined, req), null)
-  const e11 = eq('an empty map with configured names -> pending', cs('none', {}, req), 'pending')
-  const e12 = eq('an inherited property name is not a check', cs('green', {}, ['constructor']), 'pending')
-  const e13 = eq('__proto__ is not a check either', cs('green', {}, ['__proto__']), 'pending')
+  const e11 = eq('an empty map with configured names -> absent', cs('none', {}, req), 'absent')
+  const e12 = eq('an inherited property name is not a check', cs('green', {}, ['constructor']), 'absent')
+  const e13 = eq('__proto__ is not a check either', cs('green', {}, ['__proto__']), 'absent')
   const e14 = eq('a non-array config.ciChecks -> overall', cs('failing', map, 'guards'), 'failing')
   const e15 = eq('a map of the wrong type -> overall', cs('failing', ['guards'], req), 'failing')
-  return e1 || e2 || e3 || e4 || e5 || e6 || e7 || e8 || e9 || e10 || e11 || e12 || e13 || e14 || e15 || { ok: true }
+  // precedence failing > pending > absent > green; the matrix names GitHub reports ('build (ubuntu-latest)') never match a bare 'build'
+  const e16 = eq('pending wins over an absent name', cs('green', { guards: 'pending' }, req), 'pending')
+  const e17 = eq('failing wins over absent', cs('green', { guards: 'green', 'smoke-install': 'failing' }, ['guards', 'smoke-install', 'build']), 'failing')
+  const matrix = { 'build (ubuntu-latest)': 'green', 'build (macos-latest)': 'green', guards: 'green' }
+  const e18 = eq('matrix job names do not satisfy the bare configured name -> absent', cs('green', matrix, ['guards', 'build']), 'absent')
+  const e19 = eq('ciAbsent lists the unreported configured names in the config order', fns.ciAbsent(matrix, ['deploy', 'guards', 'build']), ['deploy', 'build'])
+  const e20 = eq('ciAbsent: nothing absent -> []', fns.ciAbsent({ guards: 'green' }, ['guards']), [])
+  const e21 = eq('ciAbsent: no usable map or names -> []', JSON.stringify([fns.ciAbsent(null, ['a']), fns.ciAbsent({}, []), fns.ciAbsent({}, undefined), fns.ciAbsent(['a'], ['a'])]), '[[],[],[],[]]')
+  return e1 || e2 || e3 || e4 || e5 || e6 || e7 || e8 || e9 || e10 || e11 || e12 || e13 || e14 || e15 || e16 || e17 || e18 || e19 || e20 || e21 || { ok: true }
 })
 
 await testCase('T184i a malformed verdict escalates with no stale boxes from the previous round', async () => {
