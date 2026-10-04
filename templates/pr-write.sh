@@ -5,8 +5,12 @@
 # record): the script EXECUTES the read and the write, an LLM only copies the PROBE line, a hook attests
 # it. Every op READS FIRST and writes nothing when the read failed (no blind write, no duplicate write).
 # Always exits 0 and prints exactly ONE compact JSON line on stdout (nothing else on stdout, stderr
-# silenced):
-#   {"op":"<op>","result":"written|skipped|failed","reason":<string|null>,"bytes":<int|null>}
+# never printed):
+#   {"op":"<op>","result":"written|skipped|failed","reason":<string|null>,"bytes":<int|null>[,"detail":"<class>"]}
+# `detail` (#239) only rides a `failed/read-failed` whose `gh` stderr was readable: the CAUSE as one word of a closed set
+# (tls|auth|rate-limit|not-found|other, templates/gh-read-class.sh). The stderr of every READ goes to a file under
+# .pipeline/, is classified, and only the class leaves the script, never the text (it can hold URLs and tokens). A silent
+# failure (empty stderr) and every other line keep the shape above, with no `detail` key.
 # The PR body never transits a model reply: it moves through files under .pipeline/ only (#87).
 #
 # Usage:
@@ -37,7 +41,7 @@
 #       first read -> failed/stale-read, no edit (#151).
 #   comment ops: on a thread of >= 100 comments the marker lookup re-reads ALL comments through REST.
 # reasons on failed: bad-args, read-failed, write-failed, splice-failed, no-markers, stale-read, guard-failed-restored.
-# Requires jq, gh and node (body-splice). bash 3.2 compatible. Never uses rm.
+# Requires jq, gh and node (body-splice). bash 3.2 compatible. Never uses rm (the stderr file is overwritten each call).
 
 OP="${1:-}"
 [ $# -ge 1 ] && shift
@@ -70,15 +74,22 @@ done
 
 SD="$(cd "$(dirname "$0")" 2>/dev/null && pwd)"
 
+# The cause classifier (#239). A missing sibling means "no class", never a broken probe.
+if [ -f "$SD/gh-read-class.sh" ]; then . "$SD/gh-read-class.sh"; else gh_read_class() { return 0; }; fi
+ERRF=".pipeline/pr-write.err"
+
 # --text-b64 (#212): the UTF-8 decode of the token replaces --text (a token that decodes to nothing leaves TEXT empty: bad-args).
 if [ -n "$TEXT_B64" ]; then
   TEXT="$(node -e 'process.stdout.write(Buffer.from(process.argv[1], "base64").toString("utf8"))' "$TEXT_B64" 2>/dev/null)" || TEXT=""
 fi
 
 emit() {
-  jq -nc --arg op "$OP" --arg r "$1" --arg why "${2:-}" --arg b "${3:-}" \
-    '{op:$op, result:$r, reason:(if $why == "" then null else $why end), bytes:(if $b == "" then null else ($b | tonumber) end)}'
+  jq -nc --arg op "$OP" --arg r "$1" --arg why "${2:-}" --arg b "${3:-}" --arg d "${4:-}" \
+    '{op:$op, result:$r, reason:(if $why == "" then null else $why end), bytes:(if $b == "" then null else ($b | tonumber) end)} + (if $d == "" then {} else {detail:$d} end)'
 }
+
+# read_failed: a `gh` READ failed; its stderr (in $ERRF) is classified, only the class is emitted (#239).
+read_failed() { emit failed read-failed "" "$(gh_read_class "$(head -c 4000 "$ERRF" 2>/dev/null)")"; }
 
 is_num() { case "$1" in ''|*[!0-9]*) return 1 ;; *) return 0 ;; esac; }
 
@@ -86,13 +97,13 @@ is_num() { case "$1" in ''|*[!0-9]*) return 1 ;; *) return 0 ;; esac; }
 comment_op() {
   local kind="$1" num="$2" view n file total path all
   if ! is_num "$num" || [ -z "$MARKER" ] || [ -z "$BODY" ]; then emit failed bad-args; return; fi
-  view="$(gh "$kind" view "$num" ${REPO:+-R "$REPO"} --json comments 2>/dev/null)" || { emit failed read-failed; return; }
+  view="$(gh "$kind" view "$num" ${REPO:+-R "$REPO"} --json comments 2>"$ERRF")" || { read_failed; return; }
   n="$(printf '%s' "$view" | jq -e --arg m "$MARKER" '.comments | map(select((.body // "") | startswith($m))) | length' 2>/dev/null)" || { emit failed read-failed; return; }
   total="$(printf '%s' "$view" | jq -e '.comments | length' 2>/dev/null)" || { emit failed read-failed; return; }
   if [ "$total" -ge 100 ]; then
     path="repos/{owner}/{repo}/issues/$num/comments"
     [ -n "$REPO" ] && path="repos/$REPO/issues/$num/comments"
-    all="$(gh api "$path" --paginate --jq '.[] | {body: (.body // "")}' 2>/dev/null)" || { emit failed read-failed; return; }
+    all="$(gh api "$path" --paginate --jq '.[] | {body: (.body // "")}' 2>"$ERRF")" || { read_failed; return; }
     n="$(printf '%s\n' "$all" | jq -s --arg m "$MARKER" 'map(select(.body | startswith($m))) | length' 2>/dev/null)" || { emit failed read-failed; return; }
   fi
   if [ "$n" -gt 0 ]; then emit skipped marker-present; return; fi
@@ -109,7 +120,7 @@ comment_op() {
 minimize_op() {
   local cur
   if [ -z "$ID" ]; then emit failed bad-args; return; fi
-  cur="$(gh api graphql -f query='query($id:ID!){node(id:$id){... on Minimizable{isMinimized}}}' -f id="$ID" --jq '.data.node.isMinimized' 2>/dev/null)" || { emit failed read-failed; return; }
+  cur="$(gh api graphql -f query='query($id:ID!){node(id:$id){... on Minimizable{isMinimized}}}' -f id="$ID" --jq '.data.node.isMinimized' 2>"$ERRF")" || { read_failed; return; }
   case "$cur" in
     true) emit skipped already-minimized; return ;;
     false) ;;
@@ -128,12 +139,12 @@ status_op() {
   if [ -n "$REPO" ]; then
     owner="${REPO%%/*}"; name="${REPO#*/}"
   else
-    owner="$(gh repo view --json owner -q .owner.login 2>/dev/null)" || { emit failed read-failed; return; }
-    name="$(gh repo view --json name -q .name 2>/dev/null)" || { emit failed read-failed; return; }
+    owner="$(gh repo view --json owner -q .owner.login 2>"$ERRF")" || { read_failed; return; }
+    name="$(gh repo view --json name -q .name 2>"$ERRF")" || { read_failed; return; }
   fi
   # The ISSUE's own project items, never a board scan (a scan of the board stops at its first 30 items).
   res="$(gh api graphql -f query='query($owner:String!,$repo:String!,$number:Int!){repository(owner:$owner,name:$repo){issue(number:$number){projectItems(first:20){nodes{id project{number} fieldValues(first:20){nodes{... on ProjectV2ItemFieldSingleSelectValue{optionId field{... on ProjectV2FieldCommon{id}}}}}}}}}}' \
-    -f owner="$owner" -f repo="$name" -F number="$ISSUE" 2>/dev/null)" || { emit failed read-failed; return; }
+    -f owner="$owner" -f repo="$name" -F number="$ISSUE" 2>"$ERRF")" || { read_failed; return; }
   item="$(printf '%s' "$res" | jq -r --argjson p "$PNUM" '[.data.repository.issue.projectItems.nodes[]? | select(.project.number==$p)] | first | .id // ""' 2>/dev/null)" || { emit failed read-failed; return; }
   if [ -z "$item" ]; then emit skipped not-on-project; return; fi
   cur="$(printf '%s' "$res" | jq -r --argjson p "$PNUM" --arg f "$FID" '[.data.repository.issue.projectItems.nodes[]? | select(.project.number==$p) | .fieldValues.nodes[]? | select((.field.id // "") == $f) | .optionId] | first // ""' 2>/dev/null)"
@@ -153,7 +164,7 @@ body_splice_op() {
   case "$MODE" in decision-log|acceptance|tick) ;; *) emit failed bad-args; return ;; esac
   case "$IDS$KEEP" in *[!0-9,]*) emit failed bad-args; return ;; esac
   mkdir -p .pipeline
-  gh pr view "$PR" ${REPO:+-R "$REPO"} --json body -q .body > ".pipeline/pr-body-$PR.pre.md" 2>/dev/null || { emit failed read-failed; return; }
+  gh pr view "$PR" ${REPO:+-R "$REPO"} --json body -q .body > ".pipeline/pr-body-$PR.pre.md" 2>"$ERRF" || { read_failed; return; }
   if [ -n "$EXPECT" ] && [ "$(body_digest ".pipeline/pr-body-$PR.pre.md")" != "$EXPECT" ]; then emit failed stale-read; return; fi
   pre_len="$(wc -c < ".pipeline/pr-body-$PR.pre.md" | tr -d ' ')"
   printf '%s\n' "$TEXT" > ".pipeline/pr-body-$PR.text.md" || { emit failed splice-failed; return; }
@@ -166,10 +177,10 @@ body_splice_op() {
   if [ "$rc" -eq 3 ]; then emit failed no-markers; return; fi
   if [ "$rc" -ne 0 ]; then emit failed splice-failed; return; fi
   if cmp -s ".pipeline/pr-body-$PR.pre.md" ".pipeline/pr-body-$PR.md"; then emit skipped unchanged; return; fi
-  gh pr view "$PR" ${REPO:+-R "$REPO"} --json body -q .body > ".pipeline/pr-body-$PR.recheck.md" 2>/dev/null || { emit failed read-failed; return; }
+  gh pr view "$PR" ${REPO:+-R "$REPO"} --json body -q .body > ".pipeline/pr-body-$PR.recheck.md" 2>"$ERRF" || { read_failed; return; }
   if [ "$(body_digest ".pipeline/pr-body-$PR.recheck.md")" != "$(body_digest ".pipeline/pr-body-$PR.pre.md")" ]; then emit failed stale-read; return; fi
   gh pr edit "$PR" ${REPO:+-R "$REPO"} --body-file ".pipeline/pr-body-$PR.md" >/dev/null 2>&1 || { emit failed write-failed; return; }
-  gh pr view "$PR" ${REPO:+-R "$REPO"} --json body -q .body > ".pipeline/pr-body-$PR.post.md" 2>/dev/null
+  gh pr view "$PR" ${REPO:+-R "$REPO"} --json body -q .body > ".pipeline/pr-body-$PR.post.md" 2>"$ERRF"
   post_len="$(wc -c < ".pipeline/pr-body-$PR.post.md" | tr -d ' ')"
   if node "$SD/pr-body-splice.cjs" guard "$pre_len" ".pipeline/pr-body-$PR.post.md" >/dev/null 2>&1; then
     emit written "" "$post_len"
@@ -181,6 +192,7 @@ body_splice_op() {
 
 main() {
   [ -n "$WT" ] && cd "$WT"
+  mkdir -p .pipeline 2>/dev/null || ERRF=/dev/null
   case "$OP" in
     issue-comment) comment_op issue "$NUMBER" ;;
     pr-comment) comment_op pr "$PR" ;;

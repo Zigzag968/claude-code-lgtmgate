@@ -11,7 +11,11 @@
 # --stamp is ignored: it only makes the command text differ per launch (probe-run record reuse).
 #
 # dev    -> {"mode":"dev","planStale":[..]|null,"openSubIssues":["12",..]|null,"gitDir":"<abs>"|null,"writable":true|false|null}
-# branch -> {"mode":"branch","headRef":"<name>"|null,"branchPrefix":"<string>"|null}
+# branch -> {"mode":"branch","headRef":"<name>"|null,"branchPrefix":"<string>"|null[,"readFailed":"<class>"]}
+#   readFailed (#239): the PR head-ref read failed AND its `gh` stderr was readable; the CAUSE as one word of a closed
+#   set (tls|auth|rate-limit|not-found|other, templates/gh-read-class.sh). The stderr goes to a file under
+#   <wt>/.pipeline/ and is classified; only the class leaves the script, never the text. A silent failure keeps
+#   today's exact line (no key).
 # Requires jq and git (gh for the sub-issue / head-ref reads). bash 3.2 compatible. Never uses rm.
 
 MODE="${1:-}"
@@ -30,6 +34,10 @@ while [ $# -gt 0 ]; do
   esac
   [ $# -ge 2 ] && shift 2 || shift
 done
+
+SD="$(cd "$(dirname "$0")" 2>/dev/null && pwd)"
+# The cause classifier (#239). A missing sibling means "no class", never a broken probe.
+if [ -f "$SD/gh-read-class.sh" ]; then . "$SD/gh-read-class.sh"; else gh_read_class() { return 0; }; fi
 
 # Compact JSON array of strings from stdin lines (empty input -> []).
 lines_json() { jq -Rsc 'split("\n") | map(select(length > 0))'; }
@@ -75,14 +83,17 @@ dev() {
 }
 
 branch() {
-  local head="null" prefix="null" ref cfg
+  local head="null" prefix="null" ref cfg errf="/dev/null" cls=""
+
+  # The stderr of the head-ref read, kept in a file so a failure can be NAMED (never printed).
+  if [ -n "$WT" ] && [ -d "$WT" ] && mkdir -p "$WT/.pipeline" 2>/dev/null; then errf="$WT/.pipeline/preflight-branch.err"; fi
 
   # headRef: the PR head branch, straight from gh.
   if [ -n "$PR" ]; then
     if [ -n "$REPO" ]; then
-      ref="$(gh pr view "$PR" -R "$REPO" --json headRefName --jq .headRefName 2>/dev/null)"
+      ref="$(gh pr view "$PR" -R "$REPO" --json headRefName --jq .headRefName 2>"$errf")" || cls="$(gh_read_class "$(head -c 4000 "$errf" 2>/dev/null)")"
     else
-      ref="$(gh pr view "$PR" --json headRefName --jq .headRefName 2>/dev/null)"
+      ref="$(gh pr view "$PR" --json headRefName --jq .headRefName 2>"$errf")" || cls="$(gh_read_class "$(head -c 4000 "$errf" 2>/dev/null)")"
     fi
     [ -n "$ref" ] && head="$(jq -nc --arg r "$ref" '$r')"
   fi
@@ -93,7 +104,8 @@ branch() {
     prefix="$(jq -nc --arg p "$ref" '$p')"
   fi
 
-  jq -nc --argjson h "$head" --argjson p "$prefix" '{mode:"branch", headRef:$h, branchPrefix:$p}'
+  jq -nc --argjson h "$head" --argjson p "$prefix" --arg rf "$cls" \
+    '{mode:"branch", headRef:$h, branchPrefix:$p} + (if $rf == "" then {} else {readFailed:$rf} end)'
 }
 
 case "$MODE" in
