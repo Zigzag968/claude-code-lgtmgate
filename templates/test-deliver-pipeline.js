@@ -680,7 +680,7 @@ const t182Block = () => {
   const block = extractBetween(src, '// --- acceptanceItems:start ---', '// --- acceptanceItems:end ---')
   if (!block) throw new Error('acceptanceItems:start/:end markers not found in the pipeline source')
   // eslint-disable-next-line no-new-func
-  return new Function(block + '\nreturn { numberItems, renderLine, renderChecklist, parseChecklist, itemsFromPlan, validateAcceptanceItems, planLacksItems, mapBoxes, nickBlockNote, morganBoxesNote, boxLineId, lineKey, humanGateLine, onlyHumanGateLines, parkUntickable, morganItemsRule, reviewProgress, ciBlocker, verdictProblem }')()
+  return new Function(block + '\nreturn { numberItems, renderLine, renderChecklist, parseChecklist, itemsFromPlan, validateAcceptanceItems, planLacksItems, mapBoxes, nickBlockNote, morganBoxesNote, boxLineId, lineKey, humanGateLine, onlyHumanGateLines, parkUntickable, morganItemsRule, reviewProgress, ciScope, ciBlocker, verdictProblem }')()
 }
 const T182_ITEMS = [
   { text: '`node scripts/guards.cjs; echo $?` prints `0` as its last line', humanGate: false },
@@ -6070,12 +6070,108 @@ await testCase('T184g the CI half of the ready gate: a red CI at LGTM is REQUIRE
   const e6 = eq('green wins over a Morgan false', cb('green', false), null)
   const e7 = typeof cb('failing', true) === 'string' ? null : { ok: false, msg: 'failing + true must give a blocker line' }
   const e8 = typeof cb('pending', true) === 'string' ? null : { ok: false, msg: 'pending + true must give a blocker line' }
-  const e9 = typeof cb(null, false) === 'string' ? null : { ok: false, msg: 'null + false must give a blocker line' }
-  const e10 = typeof cb('none', false) === 'string' ? null : { ok: false, msg: 'none + false must give a blocker line' }
+  // The probe ANSWERED 'none' (no check on the head): Morgan's word decides. No evidence at all (null, absent: the probe
+  // failed or is an older script): a blocker unless Morgan reported ciGreen true.
+  const isLine = (label, x) => (typeof x === 'string' && x !== '' ? null : { ok: false, msg: `${label} must give a blocker line, got ${JSON.stringify(x)}` })
+  const e9 = isLine('null + false', cb(null, false))
+  const e10 = isLine('none + false', cb('none', false))
   const e11 = eq('null + true -> null', cb(null, true), null)
-  const e12 = eq('undefined + undefined -> null', cb(undefined, undefined), null)
+  const e12 = isLine('undefined + undefined', cb(undefined, undefined)) || isLine('null + undefined', cb(null, undefined))
+  const e12b = eq('undefined + true -> null', cb(undefined, true), null)
+  const e12c = eq('none + undefined -> null', cb('none', undefined), null) || eq('none + true -> null', cb('none', true), null)
+  const e12d = eq('the no-evidence line is the same sentence as the one of the Morgan report', cb(null, undefined), cb('none', false))
   const e13 = eq('the line is stable across calls', cb('failing', true), cb('failing', true))
-  return e1 || e2 || e3 || e4 || e5 || e6 || e7 || e8 || e9 || e10 || e11 || e12 || e13 || { ok: true }
+  return e1 || e2 || e3 || e4 || e5 || e6 || e7 || e8 || e9 || e10 || e11 || e12 || e12b || e12c || e12d || e13 || { ok: true }
+})
+
+await testCase('T184h ciScope: the CI state is judged over config.ciChecks only, else the overall state', async () => {
+  const fns = t182Block()
+  if (!fns) return t182Skip('T184h')
+  const cs = fns.ciScope
+  const map = { guards: 'green', 'smoke-install': 'green', CodeQL: 'pending', 'Analyze (python)': 'failing' }
+  const req = ['guards', 'smoke-install']
+  const e1 = eq('filtered-out failing + pending optional checks -> green', cs('failing', map, req), 'green')
+  const e2 = eq('a configured check failing -> failing', cs('green', { ...map, guards: 'failing' }, req), 'failing')
+  const e3 = eq('a configured check pending -> pending', cs('green', { ...map, 'smoke-install': 'pending' }, req), 'pending')
+  const e4 = eq('a configured name absent from the map -> pending', cs('green', { guards: 'green' }, req), 'pending')
+  const e5 = eq('failing wins over an absent name', cs('green', { guards: 'failing' }, req), 'failing')
+  const e6 = eq('failing wins over a pending one', cs('green', { guards: 'pending', 'smoke-install': 'failing' }, req), 'failing')
+  const e7 = eq('no config.ciChecks (undefined) -> overall', cs('failing', map, undefined), 'failing')
+  const e8 = eq('empty config.ciChecks -> overall', cs('pending', map, []), 'pending')
+  const e9 = eq('no map (null) -> overall', cs('green', null, req), 'green')
+  const e10 = eq('no map (undefined) -> overall, null stays null', cs(null, undefined, req), null)
+  const e11 = eq('an empty map with configured names -> pending', cs('none', {}, req), 'pending')
+  const e12 = eq('an inherited property name is not a check', cs('green', {}, ['constructor']), 'pending')
+  const e13 = eq('__proto__ is not a check either', cs('green', {}, ['__proto__']), 'pending')
+  const e14 = eq('a non-array config.ciChecks -> overall', cs('failing', map, 'guards'), 'failing')
+  const e15 = eq('a map of the wrong type -> overall', cs('failing', ['guards'], req), 'failing')
+  return e1 || e2 || e3 || e4 || e5 || e6 || e7 || e8 || e9 || e10 || e11 || e12 || e13 || e14 || e15 || { ok: true }
+})
+
+await testCase('T184i a malformed verdict escalates with no stale boxes from the previous round', async () => {
+  const r = await run({
+    mode: 'auto',
+    simulate: {
+      sam: { 1: t182Sam(T183_PLAIN) },
+      morgan: [
+        { verdict: 'REQUIRED_CHANGES', items: ['a'], boxes: t183Boxes(true, false, true) },
+        { verdict: 'MAYBE' },
+      ],
+    },
+  })
+  const e1 = eq('status', r.status, 'escalate')
+  const e2 = eq('reason', r.reason, 'verdict-malformed')
+  const e3 = eq('round', r.round, 1)
+  const e4 = eq('no boxes carried over from round 0', r.boxes, undefined)
+  // Control: the same run with a valid second verdict does carry that round's boxes.
+  const c = await run({
+    mode: 'auto',
+    simulate: {
+      sam: { 1: t182Sam(T183_PLAIN) },
+      morgan: [
+        { verdict: 'REQUIRED_CHANGES', items: ['a'], boxes: t183Boxes(true, false, true) },
+        { verdict: 'LGTM', boxes: t183Boxes(true, true, true) },
+      ],
+    },
+  })
+  const e5 = eq('control: status', c.status, 'ready')
+  const e6 = Array.isArray(c.boxes) ? null : { ok: false, msg: 'control: an id run that settles must carry its boxes' }
+  return e1 || e2 || e3 || e4 || e5 || e6 || { ok: true }
+})
+
+await testCase('T184j a regressed round (previous blockers plus a new one) escalates no-progress at once', async () => {
+  const r = await run({
+    mode: 'auto',
+    simulate: {
+      sam: 'GO',
+      morgan: [
+        { verdict: 'REQUIRED_CHANGES', items: ['a'] },
+        { verdict: 'REQUIRED_CHANGES', items: ['a', 'b'] },
+        { verdict: 'LGTM' },
+      ],
+    },
+  })
+  const e1 = eq('status', r.status, 'escalate')
+  const e2 = eq('reason', r.reason, 'no-progress')
+  const e3 = eq('progress', r.progress, 'regressed')
+  const e4 = eq('round', r.round, 1)
+  const e5 = includes('trace', r.trace || [], 'review-regressed:1')
+  return e1 || e2 || e3 || e4 || e5 || { ok: true }
+})
+
+await testCase('T184k the hard cap: distinct blockers every round end at rounds 3 with the generic escalate', async () => {
+  const r = await run({
+    mode: 'auto',
+    simulate: {
+      sam: 'GO',
+      morgan: ['a', 'b', 'c', 'd', 'e'].map((x) => ({ verdict: 'REQUIRED_CHANGES', items: [x] })),
+    },
+  })
+  const e1 = eq('status', r.status, 'escalate')
+  const e2 = eq('rounds', r.rounds, 3)
+  const e3 = eq('no named reason: the generic escalate', r.reason, undefined)
+  const e4 = eq('finalVerdict', r.finalVerdict, 'REQUIRED_CHANGES')
+  return e1 || e2 || e3 || e4 || { ok: true }
 })
 
 // T123 (#42) — every test ID is unique across the suite. Must stay the LAST case so `results`

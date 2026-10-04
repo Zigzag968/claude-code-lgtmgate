@@ -924,14 +924,31 @@ function reviewProgress(prev, cur) {
   for (const key of after) if (!before.has(key)) return 'regressed'
   return 'flat'
 }
+// ciScope(overall, checks, names): the CI state the ready gate judges. `overall` is the pr-state probe's state over EVERY check
+// on the head, `checks` its per-check map ({ '<name>': 'green'|'failing'|'pending' }), `names` the repo's config.ciChecks (the
+// checks Morgan waits for). With a non-empty `names` and a map, only the named checks count: any failing -> 'failing'; else
+// any pending, or a named check absent from the map (not reported yet) -> 'pending'; else 'green'. An optional check (a code
+// scanner, say) then neither holds the gate nor costs a Nick round that has nothing to fix. Otherwise `overall` stands.
+function ciScope(overall, checks, names) {
+  if (!Array.isArray(names) || names.length === 0 || checks === null || typeof checks !== 'object' || Array.isArray(checks)) return overall
+  let unsettled = false
+  for (const name of names) {
+    const state = Object.prototype.hasOwnProperty.call(checks, name) ? checks[name] : undefined
+    if (state === 'failing') return 'failing'
+    if (state !== 'green') unsettled = true
+  }
+  return unsettled ? 'pending' : 'green'
+}
 // ciBlocker(ciState, morganCiGreen): the CI half of the ready gate. null when CI is green, else ONE canonical blocker line
 // (a fixed sentence per source, so a persistent red CI reads identically across rounds). `ciState` is the live pr-state read
-// of the round ('green'|'failing'|'pending'|'none'|null) and wins over Morgan's report; with no evidence from the probe
-// ('none', null, absent) Morgan's own `ciGreen: false` blocks, anything else does not.
+// of the round ('green'|'failing'|'pending'|'none'|null, ciScope's result) and wins over Morgan's report. 'none' means the
+// probe answered: the head has no check, Morgan's word decides (a blocker only when she reported ciGreen false). null or absent
+// means the probe gave no evidence (it failed, or is an older script): CI is unproven, a blocker unless Morgan reported ciGreen true.
 function ciBlocker(ciState, morganCiGreen) {
   if (ciState === 'green') return null
   if (ciState === 'failing' || ciState === 'pending') return `CI is not green on the PR head (live pr-state read: ${ciState})`
-  return morganCiGreen === false ? 'CI is not green on the PR head (reported by the review)' : null
+  const unproven = ciState === 'none' ? morganCiGreen === false : morganCiGreen !== true
+  return unproven ? 'CI is not green on the PR head (reported by the review)' : null
 }
 // verdictProblem(v, schema): null when the verdict has the shape `schema` declares, else the name of the offending field:
 // 'not-an-object' (not a plain object), 'verdict' (outside schema.properties.verdict.enum), or a property declared
@@ -3528,6 +3545,9 @@ if (after('review', entryStage)) {
     // malformed verdict never writes the PR body). A schema-valid verdict can never carry the verdict 'MALFORMED'.
     const problem = verdictProblem(v, MORGAN)
     if (problem !== null) {
+      // The boxes of an earlier round are not this verdict's: the escalate must not carry them.
+      boxesMapped = null
+      boxesGates = []
       trace.push(`verdict-malformed:${round}`)
       log(`callMorganGuarded round ${round}: the verdict fails the structure check (${problem}) — escalating`)
       return { verdict: 'MALFORMED', malformed: problem }
@@ -3537,7 +3557,7 @@ if (after('review', entryStage)) {
     const settle = async (x) => {
       const settled = await tickAcceptanceBoxes(x, round)
       if (settled.verdict !== 'LGTM') return settled
-      const line = ciBlocker(endState ? endState.ciState : null, settled.ciGreen)
+      const line = ciBlocker(endState ? ciScope(endState.ciState, endState.ciChecks, config.ciChecks) : null, settled.ciGreen)
       if (line === null) return settled
       trace.push(`ci-not-green:${round}`)
       log(`callMorganGuarded round ${round}: LGTM with CI not green — REQUIRED_CHANGES (${line})`)
