@@ -202,8 +202,10 @@ GT="$(node -e "const s=require('fs').readFileSync('scripts/guards.cjs','utf8');c
 EX="$(node -e "const s=require('fs').readFileSync('scripts/guards.cjs','utf8');console.log(/const EXEMPTION_KEY = '(.*)'\n/.exec(s)[1])")"
 OLD="$(node -e "const s=require('fs').readFileSync('scripts/guards.cjs','utf8');console.log(/const OLD_GATE_DEF = '(.*)'\n/.exec(s)[1])")"
 HGR="$(node -e "const s=require('fs').readFileSync('agents/sam.md','utf8');console.log(/efore tagging an item[^\n']*/.exec(s)[0])")"
-printf '%s\nlist patch-avoided: x\n%s\n%s\nB%s\n' "$PR" "$GT" "$EX" "$HGR" > "$T/sam-ok.md"
-printf '%s\n%s\nlist patch-avoided: x\n%s\n%s\nb%s\n' "$PR" "$LR" "$GT" "$EX" "$HGR" > "$T/sam-js-ok.md"
+# Follow-up issue rule (#29): FUR = the rule sentence, taken from the real persona like HGR
+FUR="$(node -e "const s=require('fs').readFileSync('agents/sam.md','utf8');console.log(/FOLLOW-UP ISSUE RULE:[^\n]*/.exec(s)[0])")"
+printf '%s\nlist patch-avoided: x\n%s\n%s\nB%s\n%s\n' "$PR" "$GT" "$EX" "$HGR" "$FUR" > "$T/sam-ok.md"
+printf '%s\n%s\nlist patch-avoided: x\n%s\n%s\nb%s\n%s\n' "$PR" "$LR" "$GT" "$EX" "$HGR" "$FUR" > "$T/sam-js-ok.md"
 run_parity() { OUT="$(GUARDS_ONLY=parity GUARDS_SAM_FILE="$1" GUARDS_SAM_JS_FILE="$2" node scripts/guards.cjs 2>&1)"; RC=$?; }
 run_parity "$T/sam-ok.md" "$T/sam-js-ok.md"
 if [ "$RC" -eq 0 ] && echo "$OUT" | grep -q '^PASS: sam-parity'; then ok "sam-parity: persona carries PLAN RULE + token, workflow adds the LAYER RULE -> PASS"; else ko "sam-parity positive (rc=$RC) $OUT"; fi
@@ -233,6 +235,33 @@ if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: sam-parity:.*agents/sam.md l
 printf '%s\nand also %s\n' "$(cat "$T/sam-ok.md")" "$OLD" > "$T/sam-old.md"
 run_parity "$T/sam-old.md" "$T/sam-js-ok.md"
 if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: sam-parity:.*agents/sam.md still carries the retired human-gate definition'; then ok "sam-parity: retired human-gate definition in the persona -> FAIL"; else ko "sam-parity retired def (rc=$RC) $OUT"; fi
+# follow-up issue rule (#29): missing on either side, a different sentence, no sub_issues, a repeated marker key
+grep -v -F "$FUR" "$T/sam-ok.md" > "$T/sam-nofur.md"
+run_parity "$T/sam-nofur.md" "$T/sam-js-ok.md"
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: sam-parity:.*agents/sam.md lacks the follow-up issue rule'; then ok "sam-parity: follow-up issue rule missing in the persona -> FAIL"; else ko "sam-parity follow-up persona (rc=$RC) $OUT"; fi
+grep -v -F "$FUR" "$T/sam-js-ok.md" > "$T/sam-js-nofur.md"
+run_parity "$T/sam-ok.md" "$T/sam-js-nofur.md"
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: sam-parity:.*workflows/deliver-pipeline.js lacks the follow-up issue rule'; then ok "sam-parity: follow-up issue rule missing in the workflow -> FAIL"; else ko "sam-parity follow-up workflow (rc=$RC) $OUT"; fi
+grep -v -F "$FUR" "$T/sam-js-ok.md" > "$T/sam-js-fur2.md"
+printf 'FOLLOW-UP ISSUE RULE: file at will via sub_issues, marker pipeline-followup:issue-<N>.\n' >> "$T/sam-js-fur2.md"
+run_parity "$T/sam-ok.md" "$T/sam-js-fur2.md"
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: sam-parity:.*follow-up issue rule differs from agents/sam.md'; then ok "sam-parity: another follow-up issue rule sentence in the workflow -> FAIL"; else ko "sam-parity follow-up differs (rc=$RC) $OUT"; fi
+sed 's/sub_issues/children/g' "$T/sam-ok.md" > "$T/sam-nosub.md"
+run_parity "$T/sam-nosub.md" "$T/sam-js-ok.md"
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: sam-parity:.*agents/sam.md follow-up issue rule lacks sub_issues'; then ok "sam-parity: follow-up issue rule without sub_issues in the persona -> FAIL"; else ko "sam-parity follow-up sub_issues (rc=$RC) $OUT"; fi
+printf '%s\nextra pipeline-followup:issue-<N> line\n' "$(cat "$T/sam-ok.md")" > "$T/sam-mark2.md"
+run_parity "$T/sam-mark2.md" "$T/sam-js-ok.md"
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: sam-parity:.*agents/sam.md carries the follow-up marker [0-9]* times'; then ok "sam-parity: follow-up marker repeated in the persona -> FAIL"; else ko "sam-parity follow-up marker (rc=$RC) $OUT"; fi
+# the rule holds apostrophes (the jq filters): the whole sentence is compared, and the engine form (escaped quotes, closing quote) matches the persona
+FUR_JS="$(printf '%s' "$FUR" | sed "s/'/\\\\'/g")"
+grep -v -F "$FUR" "$T/sam-js-ok.md" > "$T/sam-js-esc.md"
+printf "const FOLLOWUP_ISSUE_RULE = '%s';\n" "$FUR_JS" >> "$T/sam-js-esc.md"
+run_parity "$T/sam-ok.md" "$T/sam-js-esc.md"
+if [ "$RC" -eq 0 ] && echo "$OUT" | grep -q '^PASS: sam-parity'; then ok "sam-parity: follow-up issue rule in its engine string form (escaped quotes) -> PASS"; else ko "sam-parity follow-up engine form (rc=$RC) $OUT"; fi
+grep -v -F "$FUR" "$T/sam-js-ok.md" > "$T/sam-js-tail.md"
+printf '%s\n' "$FUR" | sed 's/\.$/ Extra clause after the quotes./' >> "$T/sam-js-tail.md"
+run_parity "$T/sam-ok.md" "$T/sam-js-tail.md"
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: sam-parity:.*follow-up issue rule differs from agents/sam.md'; then ok "sam-parity: follow-up issue rule differing after an apostrophe -> FAIL"; else ko "sam-parity follow-up tail (rc=$RC) $OUT"; fi
 printf '%s\nB%s\n' "$GT" "$HGR" > "$T/pracc-ok.md"
 printf 'x\n%s\n%s\nB%s\n' "an external system out" "of reach" "$HGR" > "$T/pracc-wrapped.md"
 run_pracc() { OUT="$(GUARDS_ONLY=parity GUARDS_SAM_FILE="$T/sam-ok.md" GUARDS_SAM_JS_FILE="$T/sam-js-ok.md" GUARDS_PRACC_FILE="$1" GUARDS_PRACC_COPY="$2" node scripts/guards.cjs 2>&1)"; RC=$?; }

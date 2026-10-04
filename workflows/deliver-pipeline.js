@@ -131,7 +131,7 @@ export const meta = {
 // `version`, checked against plugin.json by templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '1.0.0-beta.26', cutFrom: '54da5cf' }
+const BUILD = { plugin: 'lgtmgate', version: '1.0.0-beta.27', cutFrom: '45934b9' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -2705,6 +2705,8 @@ if (after('plan', entryStage)) {
 const SAM_LAYER_RULE = samLayerRule(config)
 // #28 — when a Sam acceptance item may be tagged human-gate; the same text sits in agents/sam.md and pr-acceptance.md. Pinned by flow test T9028.
 const HUMAN_GATE_TAG_RULE = 'HUMAN-GATE TAG RULE: before tagging an item `[human-gate]`, ask whether the box asks someone to decide, authorize or perform an action (tag it), or only to confirm that an action already happened (do not tag it). A confirmation has a read-only command (a run-status query, a policy read, a log read): write that command as a normal Morgan-verifiable box and cite the earlier human decision inline in the item text. Default to a normal box whenever a read-only command exists; tag only a genuine judgment call or an action no read-only command can confirm.'
+// #29 — Sam reuses an existing follow-up issue of the parent before filing a new one; same text in agents/sam.md. Pinned by flow test T9029 and the sam-parity guard.
+const FOLLOWUP_ISSUE_RULE = 'FOLLOW-UP ISSUE RULE: every issue you file for parent issue #N (a tech-debt or split follow-up) starts its body with the hidden marker line `<!-- pipeline-followup:issue-<N>:<short-scope-slug> -->` (N = the parent number), never inside an acceptance-block line. Before every filing, list the children of the parent with `gh api repos/{owner}/{repo}/issues/<N>/sub_issues --jq \'.[]|select((.pull_request|not) and ((.body // "")|contains("pipeline-followup:issue-<N>:")))|[.number,.title,.state]\'` and the open issues with `gh api "repos/{owner}/{repo}/issues?state=open&per_page=100" --jq` plus the same filter (the issues listing also returns pull requests, the filter drops them): match on that prefix up to its colon, never on the slug, which you re-invent at every run. If a listing command fails, file nothing and name the failure in your GO. If a match is an open issue whose scope covers the debt you were about to file, reuse it (a closed one is never reused): cite its number in your GO and file nothing. Otherwise file through REST: write the body to `.pipeline/issue-<N>-followup.md` with the marker as its first line (Bash: absolute path, 1 command per call), run `gh api -X POST repos/{owner}/{repo}/issues -f title="tech-debt: <summary>" -F body=@.pipeline/issue-<N>-followup.md`, then attach the new issue to the parent with `gh api -X POST repos/{owner}/{repo}/issues/<N>/sub_issues -F sub_issue_id=<id>` (the `id` field of the creation response, not its number).'
 // #77 — product direction, Sam + Morgan prompts only, tool-neutral: agents receive each repo's own
 // instructions natively (Claude Code loads the project's CLAUDE.md and its imports), so the engine names no
 // file and imposes no doc on a consumer; a repo that states no direction gets the same run.
@@ -2752,6 +2754,7 @@ const samScoutPrompt = ({ fixBlock = '', auditFixBlock = '', reviewFixBlock = ''
     `Author the acceptance checklist against ${conventionsRule} — in particular its Format-status and Test-status acceptance-item sections: never assert a whole-repo clean state the base branch cannot satisfy. ` +
     `${ACCEPTANCE_PROOF_RULE} ` +
     `${HUMAN_GATE_TAG_RULE} ` +
+    `${FOLLOWUP_ISSUE_RULE} ` +
     `Then post an INDEX comment on issue #${issue} — never the full plan, whatever its size. The index comment is exactly: ${planMarker} alone on its first line, a condensed summary (~15 lines max), the acceptance checklist VERBATIM, and a pointer to the canonical artifact "${planPath}" in the shared worktree. ` +
     `HARD CAP: keep that comment under ${planCommentMaxChars} characters (GitHub rejects an issue-comment body over 65536 chars); it is an index, so the bound holds by construction — if you approach it, cut summary prose, never the checklist. ` +
     `POST IDEMPOTENTLY: write the index body to ".pipeline/issue-${issue}-comment.md", then look for an existing marked comment with ` +
