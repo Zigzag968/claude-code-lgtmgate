@@ -276,6 +276,9 @@ case "$*" in
         pending) ROLL='[{"__typename":"CheckRun","conclusion":"SUCCESS","name":"a","status":"COMPLETED"},{"__typename":"CheckRun","conclusion":"","name":"b","status":"IN_PROGRESS"}]' ;;
         context-failing) ROLL='[{"__typename":"StatusContext","context":"ci","state":"FAILURE"}]' ;;
         context-pending) ROLL='[{"__typename":"StatusContext","context":"ci","state":"PENDING"}]' ;;
+        cancelled) ROLL='[{"__typename":"CheckRun","conclusion":"CANCELLED","name":"a","status":"COMPLETED"}]' ;;
+        timed-out) ROLL='[{"__typename":"CheckRun","conclusion":"TIMED_OUT","name":"a","status":"COMPLETED"}]' ;;
+        mixed) ROLL='[{"__typename":"CheckRun","conclusion":"SUCCESS","name":"guards","status":"COMPLETED"},{"__typename":"CheckRun","conclusion":"NEUTRAL","name":"neutral","status":"COMPLETED"},{"__typename":"CheckRun","conclusion":"","name":"CodeQL","status":"IN_PROGRESS"},{"__typename":"StatusContext","context":"legacy/ci","state":"FAILURE"},{"__typename":"StatusContext","context":"legacy/wait","state":"PENDING"},{"__typename":"CheckRun","conclusion":"FAILURE","name":"dup","status":"COMPLETED"},{"__typename":"CheckRun","conclusion":"SUCCESS","name":"dup","status":"COMPLETED"}]' ;;
         none) ROLL='[]' ;;
         *) ROLL='' ;;
       esac
@@ -382,6 +385,7 @@ GHEOF
   [ "$(printf '%s' "$OUT" | jq -r '.ciState')" = 'green' ] \
     && [ "$(ci_of failing)" = 'failing' ] && [ "$(ci_of pending)" = 'pending' ] && [ "$(ci_of none)" = 'none' ] \
     && [ "$(ci_of context-failing)" = 'failing' ] && [ "$(ci_of context-pending)" = 'pending' ] \
+    && [ "$(ci_of cancelled)" = 'failing' ] && [ "$(ci_of timed-out)" = 'failing' ] \
     && [ "$(ci_of absent)" = 'null' ] && [ "$(printf '%s' "$OUT4" | jq -r '.ciState')" = 'null' ] && ok=1
   check "[184] pr-state.sh: ciState is green|failing|pending|none for the rollups (CheckRun and StatusContext entries) and null when gh fails or the field is absent" "$ok"
   ok=0
@@ -394,6 +398,28 @@ GHEOF
   done)"
   [ "$cip" = '"green";"failing";"pending";"none";null;null;null;' ] && ok=1
   check "[184] pr-state parser keeps ciState from {green,failing,pending,none}, else null" "$ok"
+  # [184] ciChecks: the per-check map {name: green|failing|pending} from the SAME per-entry classification (CheckRun .name,
+  # StatusContext .context; SKIPPED/NEUTRAL green; two entries of one name: the worst wins); null when the rollup is absent
+  cc_of() { PATH="$PSD/bin:$PATH" GH_CI="$1" bash "$PS" --pr 7 --wt "$PSD/wt" --repo o/r | jq -cS '.ciChecks'; }
+  ok=0
+  [ "$(printf '%s' "$OUT" | jq -cS '.ciChecks')" = '{"extra":"green","guards":"green"}' ] \
+    && [ "$(cc_of mixed)" = '{"CodeQL":"pending","dup":"failing","guards":"green","legacy/ci":"failing","legacy/wait":"pending","neutral":"green"}' ] \
+    && [ "$(cc_of failing)" = '{"a":"green","b":"failing"}' ] && [ "$(cc_of pending)" = '{"a":"green","b":"pending"}' ] \
+    && [ "$(cc_of cancelled)" = '{"a":"failing"}' ] && [ "$(cc_of none)" = '{}' ] \
+    && [ "$(cc_of absent)" = 'null' ] && [ "$(printf '%s' "$OUT4" | jq -c '.ciChecks')" = 'null' ] && ok=1
+  check "[184] pr-state.sh: ciChecks maps each check name to green|failing|pending (CheckRun name, StatusContext context), {} for an empty rollup, null when gh fails or the field is absent" "$ok"
+  ok=0
+  ccp="$(for j in '{"ciChecks":{"guards":"green","CodeQL":"pending","x":"failing"}}' '{"ciChecks":{}}' '{"ciChecks":{"a":"green","b":"weird"}}' '{"ciChecks":{"a":1}}' '{"ciChecks":{"a":null}}' '{"ciChecks":["a"]}' '{"ciChecks":"green"}' '{"ciChecks":null}' '{}' '{"ciChecks":{"__proto__":"green","constructor":"green","ok":"green"}}'; do
+    printf '%s\n' "$j" | node -e '
+      const { PARSERS } = require(process.argv[1])
+      const v = PARSERS["pr-state"](require("fs").readFileSync(0, "utf8"), "", 0)
+      const c = v.ciChecks
+      const plain = c !== null && typeof c === "object" && Object.getPrototypeOf(c) === Object.prototype
+      process.stdout.write(v.error ? "ERR;" : JSON.stringify(c === null ? null : Object.keys(c).sort().map((k) => [k, c[k]])) + (c === null || plain ? "" : "!") + ";")
+    ' "$PR"
+  done)"
+  [ "$ccp" = '[["CodeQL","pending"],["guards","green"],["x","failing"]];[];[["a","green"]];[];[];null;null;null;null;[["ok","green"]];' ] && ok=1
+  check "[184] pr-state parser keeps ciChecks only as a plain object of green|failing|pending entries, else null (a bogus value drops its entry; a non-object gives null; __proto__ and constructor keys are dropped)" "$ok"
 
   # [164] decisionLog: the round lines of the real decision-log block (trimmed, heading dropped), [] without a block, null when gh fails
   DL_BODY='Closes #164
