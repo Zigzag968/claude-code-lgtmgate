@@ -4734,6 +4734,30 @@ await testCase('T9028b human-gate definition and proof exemption agree across th
   return bad.length ? { ok: false, msg: bad.map((b) => b.msg.slice(0, 90)).join(' | ') } : { ok: true }
 })
 
+// T9029 (#29) — Sam reuses an existing follow-up issue of the parent instead of filing a duplicate on relaunch.
+// Source-level: the shared rule constant is defined once, interpolated once inside samScoutPrompt, names the
+// sub_issues listing and carries the hidden marker key exactly once in the engine (the persona side is pinned
+// by the sam-parity guard in scripts/guards.cjs).
+await testCase('T9029 FOLLOWUP_ISSUE_RULE defined once, interpolated once in samScoutPrompt, names sub_issues (#29)', async () => {
+  const src = SUITE_ARGS.fpSource
+  if (!src) {
+    log('SKIP — T9029: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const MARKER_KEY = 'pipeline-followup:issue-'
+  const defLine = src.split('\n').find((l) => l.startsWith('const FOLLOWUP_ISSUE_RULE = ')) || ''
+  const e1 = eq('FOLLOWUP_ISSUE_RULE occurrences (definition + interpolation)', src.split('FOLLOWUP_ISSUE_RULE').length - 1, 2)
+  const e2 = eq('interpolations', src.split('${FOLLOWUP_ISSUE_RULE}').length - 1, 1)
+  const from = src.indexOf('const samScoutPrompt =')
+  const to = from < 0 ? -1 : src.indexOf('// Plan phase', from)
+  const scout = from < 0 || to < 0 ? '' : src.slice(from, to)
+  const e3 = includes('interpolated inside samScoutPrompt', scout, '${FOLLOWUP_ISSUE_RULE}')
+  const e4 = includes('rule text names the sub_issues listing', defLine, 'sub_issues')
+  const e5 = eq('marker key occurrences in the engine', src.split(MARKER_KEY).length - 1, 1)
+  const e6 = includes('marker key sits in the rule definition', defLine, MARKER_KEY)
+  return (e1 || e2 || e3 || e4 || e5 || e6) ? (e1 || e2 || e3 || e4 || e5 || e6) : { ok: true }
+})
+
 // T130 (#130) — run identity: the first log() is `deliver #<issue> — <brief>`, `Setup` is the first
 // declared phase and is entered before any agent call, and every agent label carries the issue number.
 // Source-anchored: the suite-scope log() cannot intercept the pipeline's own log (run-flow-suite.cjs).
