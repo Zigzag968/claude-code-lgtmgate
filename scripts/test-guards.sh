@@ -7,7 +7,8 @@
 # version floor, sam-parity (PLAN RULE both sides, LAYER RULE workflow only, no engine vocabulary in the persona),
 # doc-budgets (at budget / over / missing / per-line cap, through GUARDS_ROOT),
 # instructions-wired (imports outside code, once each, no @AGENTS.md, AGENTS.md names both, omitClaudeMd),
-# status-table (registry <-> §5 table both ways, grouped rows, missing registry or table; #180).
+# status-table (registry <-> §5 table both ways, grouped rows, missing registry or table; #180),
+# phase-titles (real titles, a 16-character title, a 17-character title, a case-insensitive prefix title, no phases list; #141).
 # Ends with `[test-guards] status=<ok|fail> passed=<n> failed=<n>`.
 set -u
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -320,6 +321,28 @@ printf 'const finish = (def, extra = {}) => ({ ...def, ...extra })\n' > "$T/st-n
 if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: status-table: no top-level `const STATUS = Object.freeze({ ... })` registry in workflows/deliver-pipeline.js$'; then ok "status-table: registry absent (only agentDeathRouting's table) -> FAIL"; else ko "status-table no registry (rc=$RC) $OUT"; fi
 printf '## 5. Handle the returned status\nNo table here.\n' > "$T/st-notable.md"; run_status "$T/st.js" "$T/st-notable.md"
 if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: status-table: no table under `## 5. Handle the returned status` in commands/deliver.md$'; then ok "status-table: §5 without a table -> FAIL"; else ko "status-table no table (rc=$RC) $OUT"; fi
+
+# ---- phase-titles (#141) ----
+# mkphases <file> <title>...: a workflow whose `export const meta` declares the given phase titles, followed by a decoy
+# `title:` of more than sixteen characters AFTER the meta block (proves only the meta block is read).
+mkphases() {
+  local f="$1"; shift
+  { printf "export const meta = {\n  name: 'x',\n  phases: [\n"
+    for t in "$@"; do printf "    { title: '%s', detail: 'd' },\n" "$t"; done
+    printf "  ],\n}\n\nconst ghost = { title: 'A decoy title that is far too long' }\n"; } > "$f"
+}
+run_phases() { OUT="$(GUARDS_ONLY=phases GUARDS_PHASES_JS_FILE="$1" node scripts/guards.cjs 2>&1)"; RC=$?; }
+run_phases workflows/deliver-pipeline.js
+if [ "$RC" -eq 0 ] && [ "$OUT" = "PASS: phase-titles: 5 declared titles, longest 8/16 characters, none a prefix of another" ]; then ok "phase-titles: the 5 real titles are within the cap and none is a prefix of another -> PASS"; else ko "phase-titles real file (rc=$RC) $OUT"; fi
+mkphases "$T/ph-16.js" Setup ABCDEFGHIJKLMNOP; run_phases "$T/ph-16.js"
+if [ "$RC" -eq 0 ] && [ "$OUT" = "PASS: phase-titles: 2 declared titles, longest 16/16 characters, none a prefix of another" ]; then ok "phase-titles: a title of exactly 16 characters passes (the decoy after the meta block is not read)"; else ko "phase-titles 16 characters (rc=$RC) $OUT"; fi
+mkphases "$T/ph-17.js" Setup ABCDEFGHIJKLMNOPQ; run_phases "$T/ph-17.js"
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q "^FAIL: phase-titles: title 'ABCDEFGHIJKLMNOPQ' has 17 characters, cap 16$"; then ok "phase-titles: a title of 17 characters -> FAIL naming it"; else ko "phase-titles 17 characters (rc=$RC) $OUT"; fi
+mkphases "$T/ph-pre.js" Setup Plan "Plan check"; run_phases "$T/ph-pre.js"; RC1=$RC; OUT1="$OUT"
+mkphases "$T/ph-pre-ci.js" Setup plan "Plan check"; run_phases "$T/ph-pre-ci.js"
+if [ "$RC1" -ne 0 ] && [ "$RC" -ne 0 ] && echo "$OUT1" | grep -q "^FAIL: phase-titles: title 'Plan' is a prefix of 'Plan check' (case-insensitive), the progress view merges them$" && echo "$OUT" | grep -q "^FAIL: phase-titles: title 'plan' is a prefix of 'Plan check' (case-insensitive), the progress view merges them$"; then ok "phase-titles: a title that is a prefix of another, case-insensitively -> FAIL naming both"; else ko "phase-titles prefix (rc=$RC1/$RC) $OUT1 $OUT"; fi
+printf "export const meta = {\n  name: 'x',\n}\n" > "$T/ph-none.js"; run_phases "$T/ph-none.js"
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: phase-titles: no '; then ok "phase-titles: a meta block without a phases list -> FAIL"; else ko "phase-titles no list (rc=$RC) $OUT"; fi
 
 STATUS=ok; [ "$FAIL_N" -eq 0 ] || STATUS=fail
 echo "[test-guards] status=${STATUS} passed=${PASS_N} failed=${FAIL_N}"
