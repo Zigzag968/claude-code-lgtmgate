@@ -1014,5 +1014,33 @@ r2_refused "docs/fixtures/incidents/30-x.json does not count"
 r2_prep r2-fix-subdir 'Closes #30' '' 'open type:bug'; r2_main_cfg "$D" "$R2_ENGINE"; r2_pr_fixture "$D" fixtures/incidents/30-a/b.json '{}'; r2_go
 r2_refused "fixtures/incidents/30-a/b.json (a subfolder) does not count"
 
+# 22. plugin update hint (#233): a merge of a plugin repo ends with ONE line naming the merged plugin version and the command that
+# updates the install (a running session keeps the engine it started with until the plugin is updated and the session restarted)
+hint_lines() { grep -c '^lead-merge: plugin ' "$D/out"; } # the number of hint lines of the last run
+D="$(setup hint-happy)"; run "$D" "$BASE/good.md"; rc=$?
+hl="$(grep -n '^lead-merge: plugin lgtmgate 0.8.81 merged' "$D/out" | head -1 | cut -d: -f1)"; ml="$(grep -n 'PR #7 merged' "$D/out" | head -1 | cut -d: -f1)"
+hint="$(grep '^lead-merge: plugin ' "$D/out" | head -1)"
+[ "$rc" -eq 0 ] && [ "$(hint_lines)" = 1 ] && [ -n "$hl" ] && [ -n "$ml" ] && [ "$hl" -gt "$ml" ] \
+  && case "$hint" in *'claude plugin update lgtmgate@<marketplace> --scope <scope>'*restart*) true ;; *) false ;; esac \
+  && ok "plugin-update hint: a merge that bumps the plugin version prints one line with the version and the update command, after the merge readback" \
+  || bad "plugin-update hint happy path (rc=$rc, hint lines=$(hint_lines), at $hl vs readback $ml): $(tail -4 "$D/out")"
+grep -q 'pr merge 7 -R o/r --merge' "$D/log" && [ "$(wc -l < "$D/pushes" | tr -d ' ')" = 1 ] \
+  && ok "plugin-update hint: the merge itself is unchanged (--merge, one push)" || bad "plugin-update hint: merge or push changed: $(cat "$D/log")"
+D="$(setup hint-hand)"; set_version "$D" work feat/x 1.0.0-beta.1 'chore: bump 1.0.0-beta.1 (lead-merge)'; run "$D" "$BASE/good.md"; rc=$?
+hint="$(grep '^lead-merge: plugin ' "$D/out" | head -1)"
+[ "$rc" -eq 0 ] && [ "$(hint_lines)" = 1 ] && case "$hint" in 'lead-merge: plugin lgtmgate 1.0.0-beta.1 merged'*'claude plugin update lgtmgate@<marketplace> --scope <scope>'*) true ;; *) false ;; esac \
+  && ok "plugin-update hint: a hand-bumped branch (bump skipped) names the version already on the branch" || bad "plugin-update hint hand bump (rc=$rc, lines=$(hint_lines)): $(tail -4 "$D/out")"
+D="$(setup hint-consumer)"
+rm_files "$D" work feat/x .claude-plugin/plugin.json workflows/deliver-pipeline.js
+rm_files "$D" other main .claude-plugin/plugin.json workflows/deliver-pipeline.js
+run "$D" "$BASE/close.md"; rc=$?
+[ "$rc" -eq 0 ] && [ "$(hint_lines)" = 0 ] && grep -qF 'lead-merge: no plugin manifest, version bump skipped' "$D/out" \
+  && ok "plugin-update hint: a consumer without a manifest prints no hint" || bad "plugin-update hint consumer (rc=$rc, lines=$(hint_lines)): $(tail -4 "$D/out")"
+D="$(setup hint-refused)"; run "$D" "$BASE/open.md"; rc=$?
+[ "$rc" -ne 0 ] && [ "$(hint_lines)" = 0 ] && ! grep -q 'pr merge' "$D/log" \
+  && ok "plugin-update hint: a refused run (open box) prints no hint" || bad "plugin-update hint refused run (rc=$rc, lines=$(hint_lines)): $(tail -3 "$D/out")"
+D="$(setup hint-ci)"; run "$D" "$BASE/good.md" 1; rc=$?
+[ "$rc" -ne 0 ] && [ "$(hint_lines)" = 0 ] && ok "plugin-update hint: a run whose checks fail (no merge) prints no hint" || bad "plugin-update hint failed checks (rc=$rc, lines=$(hint_lines)): $(tail -3 "$D/out")"
+
 echo "[lead-merge test] passed=$PASS failed=$FAIL"
 [ "$FAIL" -eq 0 ]
