@@ -2736,6 +2736,9 @@ if (after('plan', entryStage)) {
     while (true) {
       planAttempt++
       planPass++
+      // #141 — a plan planned again gets its own progress box (`Plan 2`, …); the first pass stays in `Plan`.
+      const planPhase = planPass > 1 ? `Plan ${planPass}` : 'Plan'
+      if (planPass > 1) phase(planPhase)
       const fixBlock = checkIssues.length
         ? `\n\nPLAN-VERIFICATION GATE FLAGGED THIS PLAN (attempt ${planAttempt}) — fix ALL of these before resubmitting:\n${checkIssues.map(i => `- ${i}`).join('\n')}`
         : ''
@@ -2743,7 +2746,7 @@ if (after('plan', entryStage)) {
       sam = await callAgentSafe(
         'sam',
         samScoutPrompt({ fixBlock, auditFixBlock }),
-        { agentType: scoutAgent, phase: 'Plan', schema: SAM, label: `scout-issue-${issue}-${planPass}`, model: scoutModel },
+        { agentType: scoutAgent, phase: planPhase, schema: SAM, label: `scout-issue-${issue}-${planPass}`, model: scoutModel },
         planPass,
       )
       if (isAgentDeath(sam)) {
@@ -4029,6 +4032,9 @@ if (after('review', entryStage)) {
     }
     prevRoundItems = v.items || []
     round++
+    // #141 — each extra review round gets its own progress box (`Review 2`, …) holding that round's fix, preflight and review.
+    const roundPhase = `Review ${round + 1}`
+    phase(roundPhase)
     log(`Round ${round}: ${v.verdict} (${(v.items || []).length} items)`)
 
     // #97 — plan/code blocker routing, computed from the CURRENT verdict BEFORE Nick is ever
@@ -4050,7 +4056,7 @@ if (after('review', entryStage)) {
       const samAmend = await callAgentSafe(
         'sam',
         samScoutPrompt({ reviewFixBlock: composeReviewFixBlock(planRoutes) }),
-        { agentType: scoutAgent, phase: 'Plan', schema: SAM, label: `scout-amend-${issue}-r${round}`, model: scoutModel },
+        { agentType: scoutAgent, phase: roundPhase, schema: SAM, label: `scout-amend-${issue}-r${round}`, model: scoutModel },
         round,
       )
       if (isAgentDeath(samAmend)) {
@@ -4099,7 +4105,7 @@ if (after('review', entryStage)) {
       const nickFixRound = await callAgentSafe(
         'nick',
         `Work in the shared worktree "${wtPath}". Read Morgan's review on PR #${pr} (gh pr view ${pr}${prFlag} --comments), address every REQUIRED_CHANGES item${planRouted ? ' listed below (the other blockers on this PR are handled by a plan amendment — do NOT touch them)' : ''} while staying faithful to the plan below, re-run the green bar (\`${buildCmd}\` + \`${testCmd}\`, format modified files via \`${formatCmd}\`), and push. When deleting repo-tracked files, use \`git rm <file>\` instead of bare \`rm\` — bare rm is sandbox-denied and burns permission rounds. ${SANDBOX_INSTALL_HINT} After pushing, post a ONE-LINE push-note comment on PR #${pr} (only there, not on the issue) prefixed EXACTLY with the pipeline-review-round marker \`${reviewMarker}\` as its own first line, summarizing the change you just made.${planRouted ? `\n\nItems to address:\n${nickItems.map(i => `- ${i}`).join('\n')}` : ''}\n\n${planBlock}`,
-        { agentType: 'Nick', phase: 'Review', label: `nick-pr-${issue}-${pr}`, model: 'sonnet' },
+        { agentType: 'Nick', phase: roundPhase, label: `nick-pr-${issue}-${pr}`, model: 'sonnet' },
         round,
       )
       if (isAgentDeath(nickFixRound)) {
@@ -4137,7 +4143,7 @@ if (after('review', entryStage)) {
         `Then post the new verdict (LGTM | REQUIRED_CHANGES | REGRESSION_DETECTED) as a comment on the PR. Prefix that posted comment EXACTLY with the pipeline-review-round marker \`${reviewVerdictMarker}\` as its own first line${reviewShaRule} (hidden HTML marker; do NOT let it leak into \`items\`). ` +
         `${morganItemsRule(acceptanceBlock)}` +
         `For each item in \`items\`, ALSO classify it in \`itemOwners\` ({item, itemOwner, proof}): 'code-defect' is the DEFAULT whenever you are uncertain — a plan owner ('plan-defect'|'checklist-wording-defect') REQUIRES a concrete \`proof\` quoting the exact contradiction between the plan/checklist and reality, and NEVER excuses unfinished code. ${ACCEPTANCE_PRESENCE_RULE}A box whose verification failed or was not run stays 'code-defect'.\n\n${planBlock}`,
-      { agentType: 'Morgan', phase: 'Review', schema: MORGAN, label: `morgan-pr-${issue}-${pr}-r${round}`, model: morganModel },
+      { agentType: 'Morgan', phase: roundPhase, schema: MORGAN, label: `morgan-pr-${issue}-${pr}-r${round}`, model: morganModel },
       round,
     )
 
