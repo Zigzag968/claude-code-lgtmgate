@@ -144,6 +144,15 @@ const PARSERS = {
       }
       return out
     }
+    const ciChecksMap = (x) => {
+      if (x === null || typeof x !== 'object' || Array.isArray(x)) return null
+      const out = {}
+      for (const k of Object.keys(x)) {
+        if (k === '__proto__' || k === 'constructor') continue
+        if (x[k] === 'green' || x[k] === 'failing' || x[k] === 'pending') out[k] = x[k]
+      }
+      return out
+    }
     return {
       now: str(v.now),
       headRefName: str(v.headRefName),
@@ -155,6 +164,12 @@ const PARSERS = {
       mergeStateStatus: str(v.mergeStateStatus),
       lastCommitDate: str(v.lastCommitDate),
       commitCount: Number.isInteger(v.commitCount) && v.commitCount >= 0 ? v.commitCount : null,
+      // #184: the CI state of the PR head as pr-state.sh derived it; anything else (absent, unknown) is null.
+      ciState: ['green', 'failing', 'pending', 'none'].includes(v.ciState) ? v.ciState : null,
+      // #184: the same classification per check name, {"<name>": green|failing|pending}; kept only as a plain object, and
+      // only the entries whose value is in that set (a dropped entry reads as an absent check: pending for the engine);
+      // a non-object or an absent field -> null; a __proto__ / constructor key is dropped, never copied.
+      ciChecks: ciChecksMap(v.ciChecks),
       reviewCommentIds: strArr(v.reviewCommentIds),
       openIssues: issues(v.openIssues),
       openIssuesTruncated: typeof v.openIssuesTruncated === 'boolean' ? v.openIssuesTruncated : false,

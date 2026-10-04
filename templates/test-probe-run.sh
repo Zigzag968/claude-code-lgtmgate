@@ -269,8 +269,42 @@ case "$*" in
       jq -nc --arg b "$GH_ACC" '{headRefName:"feat/issue-84",headRefOid:"abc123",body:$b,commits:[],comments:[]}'
       exit 0
     fi
+    if [ -n "${GH_CI:-}" ]; then
+      # [184] the statusCheckRollup served for the ciState cases: failing, pending, empty or absent (the field not returned)
+      case "$GH_CI" in
+        failing) ROLL='[{"__typename":"CheckRun","conclusion":"SUCCESS","name":"a","status":"COMPLETED"},{"__typename":"CheckRun","conclusion":"FAILURE","name":"b","status":"COMPLETED"}]' ;;
+        pending) ROLL='[{"__typename":"CheckRun","conclusion":"SUCCESS","name":"a","status":"COMPLETED"},{"__typename":"CheckRun","conclusion":"","name":"b","status":"IN_PROGRESS"}]' ;;
+        context-failing) ROLL='[{"__typename":"StatusContext","context":"ci","state":"FAILURE"}]' ;;
+        context-pending) ROLL='[{"__typename":"StatusContext","context":"ci","state":"PENDING"}]' ;;
+        cancelled) ROLL='[{"__typename":"CheckRun","conclusion":"CANCELLED","name":"a","status":"COMPLETED"}]' ;;
+        timed-out) ROLL='[{"__typename":"CheckRun","conclusion":"TIMED_OUT","name":"a","status":"COMPLETED"}]' ;;
+        mixed) ROLL='[{"__typename":"CheckRun","conclusion":"SUCCESS","name":"guards","status":"COMPLETED"},{"__typename":"CheckRun","conclusion":"NEUTRAL","name":"neutral","status":"COMPLETED"},{"__typename":"CheckRun","conclusion":"","name":"CodeQL","status":"IN_PROGRESS"},{"__typename":"StatusContext","context":"legacy/ci","state":"FAILURE"},{"__typename":"StatusContext","context":"legacy/wait","state":"PENDING"},{"__typename":"CheckRun","conclusion":"FAILURE","name":"dup","status":"COMPLETED","startedAt":"2026-01-01T00:00:00Z"},{"__typename":"CheckRun","conclusion":"SUCCESS","name":"dup","status":"COMPLETED","startedAt":"2026-01-01T00:05:00Z"}]' ;;
+        # [184] a superseded run stays in the rollup: only the LATEST entry per (name, workflowName) counts (startedAt; an entry
+        # with none, or the zero date of a queued run, is the newest attempt); a StatusContext keeps its latest per context
+        dup-cancel-then-ok) ROLL='[{"__typename":"CheckRun","conclusion":"CANCELLED","name":"guards","status":"COMPLETED","startedAt":"2026-01-01T00:00:00Z","workflowName":"ci"},{"__typename":"CheckRun","conclusion":"SUCCESS","name":"guards","status":"COMPLETED","startedAt":"2026-01-01T00:05:00Z","workflowName":"ci"}]' ;;
+        dup-cancel-then-ok-rev) ROLL='[{"__typename":"CheckRun","conclusion":"SUCCESS","name":"guards","status":"COMPLETED","startedAt":"2026-01-01T00:05:00Z","workflowName":"ci"},{"__typename":"CheckRun","conclusion":"CANCELLED","name":"guards","status":"COMPLETED","startedAt":"2026-01-01T00:00:00Z","workflowName":"ci"}]' ;;
+        dup-ok-then-fail) ROLL='[{"__typename":"CheckRun","conclusion":"SUCCESS","name":"guards","status":"COMPLETED","startedAt":"2026-01-01T00:00:00Z","workflowName":"ci"},{"__typename":"CheckRun","conclusion":"FAILURE","name":"guards","status":"COMPLETED","startedAt":"2026-01-01T00:05:00Z","workflowName":"ci"}]' ;;
+        dup-two-workflows) ROLL='[{"__typename":"CheckRun","conclusion":"SUCCESS","name":"build","status":"COMPLETED","startedAt":"2026-01-01T00:05:00Z","workflowName":"a"},{"__typename":"CheckRun","conclusion":"FAILURE","name":"build","status":"COMPLETED","startedAt":"2026-01-01T00:00:00Z","workflowName":"b"}]' ;;
+        dup-two-workflows-ok) ROLL='[{"__typename":"CheckRun","conclusion":"CANCELLED","name":"build","status":"COMPLETED","startedAt":"2026-01-01T00:00:00Z","workflowName":"a"},{"__typename":"CheckRun","conclusion":"SUCCESS","name":"build","status":"COMPLETED","startedAt":"2026-01-01T00:05:00Z","workflowName":"a"},{"__typename":"CheckRun","conclusion":"SUCCESS","name":"build","status":"COMPLETED","startedAt":"2026-01-01T00:01:00Z","workflowName":"b"}]' ;;
+        dup-newer-no-start) ROLL='[{"__typename":"CheckRun","conclusion":"SUCCESS","name":"guards","status":"COMPLETED","startedAt":"2026-01-01T00:00:00Z","workflowName":"ci"},{"__typename":"CheckRun","conclusion":"","name":"guards","status":"QUEUED","workflowName":"ci"}]' ;;
+        dup-newer-no-start-first) ROLL='[{"__typename":"CheckRun","conclusion":"","name":"guards","status":"QUEUED","workflowName":"ci"},{"__typename":"CheckRun","conclusion":"FAILURE","name":"guards","status":"COMPLETED","startedAt":"2026-01-01T00:00:00Z","workflowName":"ci"}]' ;;
+        dup-newer-zero-start) ROLL='[{"__typename":"CheckRun","conclusion":"FAILURE","name":"guards","status":"COMPLETED","startedAt":"2026-01-01T00:00:00Z","workflowName":"ci"},{"__typename":"CheckRun","conclusion":"","name":"guards","status":"QUEUED","startedAt":"0001-01-01T00:00:00Z","workflowName":"ci"}]' ;;
+        dup-context-cancel-ok) ROLL='[{"__typename":"StatusContext","context":"ci","state":"FAILURE","createdAt":"2026-01-01T00:00:00Z"},{"__typename":"StatusContext","context":"ci","state":"SUCCESS","createdAt":"2026-01-01T00:05:00Z"}]' ;;
+        dup-context-ok-fail) ROLL='[{"__typename":"StatusContext","context":"ci","state":"SUCCESS","createdAt":"2026-01-01T00:00:00Z"},{"__typename":"StatusContext","context":"ci","state":"FAILURE","createdAt":"2026-01-01T00:05:00Z"}]' ;;
+        dup-context-no-date) ROLL='[{"__typename":"StatusContext","context":"ci","state":"FAILURE"},{"__typename":"StatusContext","context":"ci","state":"SUCCESS"}]' ;;
+        none) ROLL='[]' ;;
+        *) ROLL='' ;;
+      esac
+      if [ -n "$ROLL" ]; then
+        jq -nc --argjson r "$ROLL" '{headRefName:"feat/issue-84",headRefOid:"abc123",body:"hello body",commits:[],comments:[],statusCheckRollup:$r}'
+      else
+        jq -nc '{headRefName:"feat/issue-84",headRefOid:"abc123",body:"hello body",commits:[],comments:[]}'
+      fi
+      exit 0
+    fi
     cat <<'JSON'
 {"headRefName":"feat/issue-84","headRefOid":"abc123","body":"hello body","mergeable":"MERGEABLE","mergeStateStatus":"CLEAN",
+ "statusCheckRollup":[{"__typename":"CheckRun","conclusion":"SUCCESS","name":"guards","status":"COMPLETED","workflowName":"guards"},{"__typename":"CheckRun","conclusion":"SKIPPED","name":"extra","status":"COMPLETED"}],
  "commits":[{"committedDate":"2026-01-01T00:10:00Z"},{"committedDate":"2026-01-01T00:20:00Z"}],
  "comments":[{"id":"IC_1","isMinimized":false,"body":"<!-- pipeline-review-round 1 -->\nverdict"},
              {"id":"IC_2","isMinimized":true,"body":"<!-- pipeline-review-round 0 -->\nold"},
@@ -357,6 +391,62 @@ GHEOF
   ' "$PR")"
   [ "$out6" = "[1,3]" ] && ok=1
   check "[183] pr-state parser keeps acceptanceChecked (a list of positive integers, else null)" "$ok"
+
+  # [184] ciState: the state of every check on the head, derived from the statusCheckRollup of the same gh call
+  ci_of() { PATH="$PSD/bin:$PATH" GH_CI="$1" bash "$PS" --pr 7 --wt "$PSD/wt" --repo o/r | jq -r '.ciState'; }
+  ok=0
+  [ "$(printf '%s' "$OUT" | jq -r '.ciState')" = 'green' ] \
+    && [ "$(ci_of failing)" = 'failing' ] && [ "$(ci_of pending)" = 'pending' ] && [ "$(ci_of none)" = 'none' ] \
+    && [ "$(ci_of context-failing)" = 'failing' ] && [ "$(ci_of context-pending)" = 'pending' ] \
+    && [ "$(ci_of cancelled)" = 'failing' ] && [ "$(ci_of timed-out)" = 'failing' ] \
+    && [ "$(ci_of absent)" = 'null' ] && [ "$(printf '%s' "$OUT4" | jq -r '.ciState')" = 'null' ] && ok=1
+  check "[184] pr-state.sh: ciState is green|failing|pending|none for the rollups (CheckRun and StatusContext entries) and null when gh fails or the field is absent" "$ok"
+  ok=0
+  cip="$(for j in '{"ciState":"green"}' '{"ciState":"failing"}' '{"ciState":"pending"}' '{"ciState":"none"}' '{"ciState":"weird"}' '{"ciState":true}' '{}'; do
+    printf '%s\n' "$j" | node -e '
+      const { PARSERS } = require(process.argv[1])
+      const v = PARSERS["pr-state"](require("fs").readFileSync(0, "utf8"), "", 0)
+      process.stdout.write(v.error ? "ERR;" : JSON.stringify(v.ciState) + ";")
+    ' "$PR"
+  done)"
+  [ "$cip" = '"green";"failing";"pending";"none";null;null;null;' ] && ok=1
+  check "[184] pr-state parser keeps ciState from {green,failing,pending,none}, else null" "$ok"
+  # [184] ciChecks: the per-check map {name: green|failing|pending} from the SAME per-entry classification (CheckRun .name,
+  # StatusContext .context; SKIPPED/NEUTRAL green; two entries of one (name, workflowName): the LATEST by startedAt wins; two workflows: the worst of the two); null when the rollup is absent
+  cc_of() { PATH="$PSD/bin:$PATH" GH_CI="$1" bash "$PS" --pr 7 --wt "$PSD/wt" --repo o/r | jq -cS '.ciChecks'; }
+  ok=0
+  [ "$(printf '%s' "$OUT" | jq -cS '.ciChecks')" = '{"extra":"green","guards":"green"}' ] \
+    && [ "$(cc_of mixed)" = '{"CodeQL":"pending","dup":"green","guards":"green","legacy/ci":"failing","legacy/wait":"pending","neutral":"green"}' ] \
+    && [ "$(cc_of failing)" = '{"a":"green","b":"failing"}' ] && [ "$(cc_of pending)" = '{"a":"green","b":"pending"}' ] \
+    && [ "$(cc_of cancelled)" = '{"a":"failing"}' ] && [ "$(cc_of none)" = '{}' ] \
+    && [ "$(cc_of absent)" = 'null' ] && [ "$(printf '%s' "$OUT4" | jq -c '.ciChecks')" = 'null' ] && ok=1
+  check "[184] pr-state.sh: ciChecks maps each check name to green|failing|pending (CheckRun name, StatusContext context), {} for an empty rollup, null when gh fails or the field is absent" "$ok"
+  # [184] a superseded run (a concurrency cancel) never outvotes the latest one, in ciState and in ciChecks alike
+  ok=0
+  [ "$(ci_of dup-cancel-then-ok)" = 'green' ] && [ "$(cc_of dup-cancel-then-ok)" = '{"guards":"green"}' ] \
+    && [ "$(ci_of dup-cancel-then-ok-rev)" = 'green' ] && [ "$(cc_of dup-cancel-then-ok-rev)" = '{"guards":"green"}' ] \
+    && [ "$(ci_of dup-ok-then-fail)" = 'failing' ] && [ "$(cc_of dup-ok-then-fail)" = '{"guards":"failing"}' ] \
+    && [ "$(ci_of dup-two-workflows)" = 'failing' ] && [ "$(cc_of dup-two-workflows)" = '{"build":"failing"}' ] \
+    && [ "$(ci_of dup-two-workflows-ok)" = 'green' ] && [ "$(cc_of dup-two-workflows-ok)" = '{"build":"green"}' ] \
+    && [ "$(ci_of dup-newer-no-start)" = 'pending' ] && [ "$(cc_of dup-newer-no-start)" = '{"guards":"pending"}' ] \
+    && [ "$(ci_of dup-newer-no-start-first)" = 'pending' ] && [ "$(cc_of dup-newer-no-start-first)" = '{"guards":"pending"}' ] \
+    && [ "$(ci_of dup-newer-zero-start)" = 'pending' ] && [ "$(cc_of dup-newer-zero-start)" = '{"guards":"pending"}' ] \
+    && [ "$(ci_of dup-context-cancel-ok)" = 'green' ] && [ "$(cc_of dup-context-cancel-ok)" = '{"ci":"green"}' ] \
+    && [ "$(ci_of dup-context-ok-fail)" = 'failing' ] && [ "$(cc_of dup-context-ok-fail)" = '{"ci":"failing"}' ] \
+    && [ "$(ci_of dup-context-no-date)" = 'green' ] && [ "$(cc_of dup-context-no-date)" = '{"ci":"green"}' ] && ok=1
+  check "[184] pr-state.sh: of two entries with one check name only the LATEST counts (startedAt; none or the zero date = newest; StatusContext by createdAt, else the last occurrence), per workflowName, in ciState and ciChecks" "$ok"
+  ok=0
+  ccp="$(for j in '{"ciChecks":{"guards":"green","CodeQL":"pending","x":"failing"}}' '{"ciChecks":{}}' '{"ciChecks":{"a":"green","b":"weird"}}' '{"ciChecks":{"a":1}}' '{"ciChecks":{"a":null}}' '{"ciChecks":["a"]}' '{"ciChecks":"green"}' '{"ciChecks":null}' '{}' '{"ciChecks":{"__proto__":"green","constructor":"green","ok":"green"}}'; do
+    printf '%s\n' "$j" | node -e '
+      const { PARSERS } = require(process.argv[1])
+      const v = PARSERS["pr-state"](require("fs").readFileSync(0, "utf8"), "", 0)
+      const c = v.ciChecks
+      const plain = c !== null && typeof c === "object" && Object.getPrototypeOf(c) === Object.prototype
+      process.stdout.write(v.error ? "ERR;" : JSON.stringify(c === null ? null : Object.keys(c).sort().map((k) => [k, c[k]])) + (c === null || plain ? "" : "!") + ";")
+    ' "$PR"
+  done)"
+  [ "$ccp" = '[["CodeQL","pending"],["guards","green"],["x","failing"]];[];[["a","green"]];[];[];null;null;null;null;[["ok","green"]];' ] && ok=1
+  check "[184] pr-state parser keeps ciChecks only as a plain object of green|failing|pending entries, else null (a bogus value drops its entry; a non-object gives null; __proto__ and constructor keys are dropped)" "$ok"
 
   # [164] decisionLog: the round lines of the real decision-log block (trimmed, heading dropped), [] without a block, null when gh fails
   DL_BODY='Closes #164

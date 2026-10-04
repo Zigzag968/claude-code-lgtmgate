@@ -131,7 +131,7 @@ export const meta = {
 // `version`, checked against plugin.json by templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '1.0.0-beta.21', cutFrom: '67a3a0b' }
+const BUILD = { plugin: 'lgtmgate', version: '1.0.0-beta.22', cutFrom: '440aa56' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -534,14 +534,6 @@ const gate = (stage, verdict = null) => {
   return false
 }
 
-// Set-subset by blocker KEY (lineKey: the `<!-- ac:N -->` id of a box line, else the exact string): a reworded line of
-// the same box is the same blocker. round-N ⊆ round-N+1 ⇒ no progress.
-function isSubset(smaller, larger) {
-  if (!Array.isArray(smaller) || smaller.length === 0 || !Array.isArray(larger)) return false
-  const L = larger.map(lineKey)
-  return smaller.every(i => L.includes(lineKey(i)))
-}
-
 // Reviewer-window issue selection — pure predicate. An issue is
 // a candidate iff its `createdAt` falls INSIDE the reviewer window — a reopened issue keeps its
 // ORIGINAL createdAt, so reopening one during the window never makes it a candidate (the class of
@@ -918,6 +910,76 @@ function parkUntickable(items, lines, itemOwners, refused, opts) {
     }
   }
   return { untickable, rest: all.filter((l) => !parked.has(lineKey(l))) }
+}
+// #184 — the three pure checks of the review loop. They live in this block because `lineKey` does.
+// reviewProgress(prev, cur): `prev` and `cur` are the `items` of two consecutive review rounds, compared by lineKey (the
+// id of a box line, else the normalised text), so the open box ids and the code blockers are ONE set. A previous round
+// with nothing to compare, or one blocker of it gone from `cur`: 'progress'; the very same blockers: 'flat'; every previous
+// blocker still there plus a new one: 'regressed'.
+function reviewProgress(prev, cur) {
+  const before = new Set((Array.isArray(prev) ? prev : []).map(lineKey))
+  if (before.size === 0) return 'progress'
+  const after = new Set((Array.isArray(cur) ? cur : []).map(lineKey))
+  for (const key of before) if (!after.has(key)) return 'progress'
+  for (const key of after) if (!before.has(key)) return 'regressed'
+  return 'flat'
+}
+// ciScope(overall, checks, names): the CI state the ready gate judges. `overall` is the pr-state probe's state over EVERY check
+// on the head, `checks` its per-check map ({ '<name>': 'green'|'failing'|'pending' }), `names` the repo's config.ciChecks (the
+// checks Morgan waits for). With a non-empty `names` and a map, only the named checks count, by precedence: any failing ->
+// 'failing'; else any pending -> 'pending'; else a named check the map does not hold (GitHub never reported it: a matrix job
+// reported as 'build (os)', a reusable workflow's 'caller / callee', a workflow filtered out by paths) -> 'absent', which is
+// NOT pending; else 'green'. An optional check (a code scanner, say) then neither holds the gate nor costs a Nick round that
+// has nothing to fix. Otherwise `overall` stands.
+function ciScope(overall, checks, names) {
+  if (!Array.isArray(names) || names.length === 0 || checks === null || typeof checks !== 'object' || Array.isArray(checks)) return overall
+  let pending = false
+  let absent = false
+  for (const name of names) {
+    const state = Object.prototype.hasOwnProperty.call(checks, name) ? checks[name] : undefined
+    if (state === 'failing') return 'failing'
+    if (state === undefined) absent = true
+    else if (state !== 'green') pending = true
+  }
+  return pending ? 'pending' : absent ? 'absent' : 'green'
+}
+// ciAbsent(checks, names): the names of `names` (config.ciChecks) the per-check map does not hold, in the config order; [] when
+// there is no usable map or no names.
+function ciAbsent(checks, names) {
+  if (!Array.isArray(names) || checks === null || typeof checks !== 'object' || Array.isArray(checks)) return []
+  return names.filter((name) => !Object.prototype.hasOwnProperty.call(checks, name))
+}
+// ciBlocker(ciState, morganCiGreen, absentNames): the CI half of the ready gate. null when CI is green, else ONE canonical blocker
+// line (a fixed sentence per source, so a persistent red CI reads identically across rounds). `ciState` is the live pr-state
+// read of the round ('green'|'failing'|'pending'|'absent'|'none'|null, ciScope's result) and wins over Morgan's report.
+// 'absent' (ciAbsent's names are `absentNames`) is its own line naming the configured checks GitHub does not report. 'none' means
+// the probe answered: the head has no check, Morgan's word decides (a blocker only when she reported ciGreen false). null or
+// absent means the probe gave no evidence (it failed, or is an older script): CI is unproven, a blocker unless Morgan reported
+// ciGreen true.
+function ciBlocker(ciState, morganCiGreen, absentNames) {
+  if (ciState === 'green') return null
+  if (ciState === 'failing' || ciState === 'pending') return `CI is not green on the PR head (live pr-state read: ${ciState})`
+  if (ciState === 'absent') return `config.ciChecks names check(s) not reported on the PR head: ${(Array.isArray(absentNames) ? absentNames : []).join(', ')}`
+  const unproven = ciState === 'none' ? morganCiGreen === false : morganCiGreen !== true
+  return unproven ? 'CI is not green on the PR head (reported by the review)' : null
+}
+// verdictProblem(v, schema): null when the verdict has the shape `schema` declares, else the name of the offending field:
+// 'not-an-object' (not a plain object), 'verdict' (outside schema.properties.verdict.enum), or a property declared
+// `type: 'array'` that is present and not an array, declared `type: 'boolean'` that is present and not a boolean, or an
+// array of declared string items holding a non-string. Structure only: no parsing, no model call.
+function verdictProblem(v, schema) {
+  if (v === null || typeof v !== 'object' || Array.isArray(v)) return 'not-an-object'
+  const props = schema.properties
+  if (!props.verdict.enum.includes(v.verdict)) return 'verdict'
+  for (const key of Object.keys(props)) {
+    if (key === 'verdict' || v[key] === undefined) continue
+    const decl = props[key]
+    if (decl.type === 'array') {
+      if (!Array.isArray(v[key])) return key
+      if (decl.items && decl.items.type === 'string' && v[key].some((x) => typeof x !== 'string')) return key
+    } else if (decl.type === 'boolean' && typeof v[key] !== 'boolean') return key
+  }
+  return null
 }
 // The items of a plan handed to a resumed run (entryStage dev/review, PR #190 review). The checklist is every run of
 // consecutive checkbox lines of `plan` that holds an `<!-- ac:N -->` id (a task list without ids is not the checklist),
@@ -3492,6 +3554,28 @@ if (after('review', entryStage)) {
     const endState = simulate ? null : await prState('window-end', round, windowStart ? { since: windowStart } : {})
     await flagReviewerWindowIssues(windowStart, round, endState)
     if (v === null) return v
+    // #184: a verdict that fails the structure check against MORGAN stops the run at once (no retry round, no tick: a
+    // malformed verdict never writes the PR body). A schema-valid verdict can never carry the verdict 'MALFORMED'.
+    const problem = verdictProblem(v, MORGAN)
+    if (problem !== null) {
+      // The boxes of an earlier round are not this verdict's: the escalate must not carry them.
+      boxesMapped = null
+      boxesGates = []
+      trace.push(`verdict-malformed:${round}`)
+      log(`callMorganGuarded round ${round}: the verdict fails the structure check (${problem}) — escalating`)
+      return { verdict: 'MALFORMED', malformed: problem }
+    }
+    // #184: the ready gate's CI half. An LGTM (after the box tick) whose CI is not green, read from this round's live
+    // pr-state probe (Morgan's ciGreen only when the probe has no answer), is REQUIRED_CHANGES carrying one canonical line.
+    const settle = async (x) => {
+      const settled = await tickAcceptanceBoxes(x, round)
+      if (settled.verdict !== 'LGTM') return settled
+      const line = ciBlocker(endState ? ciScope(endState.ciState, endState.ciChecks, config.ciChecks) : null, settled.ciGreen, endState ? ciAbsent(endState.ciChecks, config.ciChecks) : [])
+      if (line === null) return settled
+      trace.push(`ci-not-green:${round}`)
+      log(`callMorganGuarded round ${round}: LGTM with CI not green — REQUIRED_CHANGES (${line})`)
+      return { ...settled, verdict: 'REQUIRED_CHANGES', items: [...(settled.items || []), line] }
+    }
     // #182: Morgan's boxes mapped by id to the rendered items (finish() then carries them as `boxes`; a round whose
     // verdict has none clears the previous round's). An id no item carries is dropped and traced, so is an item she
     // returned no box for. #183: the boxes then drive the tick (tickAcceptanceBoxes).
@@ -3510,10 +3594,10 @@ if (after('review', entryStage)) {
       for (const id of mapped.missing) trace.push(`boxes-missing:${id}`)
     }
     const proofs = Array.isArray(v.artifactProofs) ? v.artifactProofs : []
-    if (proofs.length === 0) return await tickAcceptanceBoxes(v, round)
+    if (proofs.length === 0) return await settle(v)
     const floorIso = await artifactFloorIso(round, endState)
     const blockers = staleArtifactBlockers(proofs, floorIso)
-    if (blockers.length === 0) return await tickAcceptanceBoxes(v, round)
+    if (blockers.length === 0) return await settle(v)
     const merged = [...(v.items || [])]
     for (const b of blockers) {
       trace.push(`artifact-proof-rejected:${b.reason}`)
@@ -3529,7 +3613,7 @@ if (after('review', entryStage)) {
     }
     log(`callMorganGuarded round ${round}: overturned verdict ${v.verdict} -> REQUIRED_CHANGES ` +
       `(${blockers.length} stale/absent artifact proof(s): ${blockers.map(b => b.reason).join(', ')})`)
-    return await tickAcceptanceBoxes({ ...v, verdict: 'REQUIRED_CHANGES', items: merged }, round)
+    return await settle({ ...v, verdict: 'REQUIRED_CHANGES', items: merged })
   }
 
   // tickAcceptanceBoxes (#183) — the workflow ticks, Morgan only returns `boxes`. In an id run (items from Sam; a verdict
@@ -3984,6 +4068,12 @@ if (after('review', entryStage)) {
   // run (nothing marked yet).
   await minimizeSupersededReviewComments(0)
 
+  // #184: the verdict failed the structure check (callMorganGuarded): escalate at once, before anything reads its fields.
+  const escalateMalformed = async (bad, round) => {
+    await updateStatus('Blocked')
+    return finish(STATUS['escalate'], { reason: 'verdict-malformed', problem: bad.malformed, pr, issue, round, trace })
+  }
+
   let v = await callMorganGuarded(
     `Work in the shared worktree "${wtPath}". Review PR #${pr}.\n\n` +
       `${planBlock}\n\n` +
@@ -4010,6 +4100,7 @@ if (after('review', entryStage)) {
     log('Morgan died (null result) — run is resumable via resumeFromRunId (same-args crash-retry only)')
     return finish(STATUS['review-died'], { pr, issue, round: 0, trace })
   }
+  if (v.verdict === 'MALFORMED') return await escalateMalformed(v, round)
 
   await recordDecision(round, v.verdict, v.items)
 
@@ -4070,7 +4161,7 @@ if (after('review', entryStage)) {
       samPlan = samAmend.plan
       refreshPlanBlock()
       // The amendment renumbers the boxes (an id is a position): the blockers of the rounds before it are not the same
-      // boxes as the ones after it, so the history that same-blocker-twice compares is dropped.
+      // boxes as the ones after it, so the history that reviewProgress compares is dropped.
       prevRoundItems = null
       // #182: the amended checklist as items, checked and rendered like the first one; the legacy string is the fallback.
       const amendEntries = Array.isArray(samAmend.acceptanceItems) ? samAmend.acceptanceItems : null
@@ -4152,6 +4243,7 @@ if (after('review', entryStage)) {
       log(`Morgan died (null result) on round ${round} — run is resumable via resumeFromRunId (same-args crash-retry only)`)
       return finish(STATUS['review-died'], { pr, issue, round, trace })
     }
+    if (v.verdict === 'MALFORMED') return await escalateMalformed(v, round)
 
     await recordDecision(round, v.verdict, v.items)
 
@@ -4168,8 +4260,8 @@ if (after('review', entryStage)) {
       return finish(STATUS['ready-pending-human'], { pr, issue, round, humanGateItems: v.items, trace, decisionLog })
     }
 
-    // Plan-defect-persists escalation (issue #97, S13) — evaluated BEFORE same-blocker-twice, and
-    // ONLY when maxPlanAmendRounds > 0 (the shipped default 0 leaves same-blocker-twice bit-for-
+    // Plan-defect-persists escalation (issue #97, S13) — evaluated BEFORE the no-progress check, and
+    // ONLY when maxPlanAmendRounds > 0 (the shipped default 0 leaves the no-progress check bit-for-
     // bit unchanged). Budget exhausted (planAmendRounds >= maxPlanAmendRounds) AND the FRESH
     // verdict still classifies at least one item as a plan defect => the amendment did not fix
     // the plan; escalate NAMED as a plan defect, never mislabelled as Nick failing twice.
@@ -4185,11 +4277,17 @@ if (after('review', entryStage)) {
       }
     }
 
-    // Same-blocker-twice escalation (item 5)
-    if (round > 0 && v.verdict === 'REQUIRED_CHANGES' && isSubset(prevRoundItems, v.items)) {
-      log(`Same-blocker-twice: round ${round} items ⊇ round ${round - 1} items — escalating`)
-      await updateStatus('Blocked')
-      return finish(STATUS['escalate'], { reason: 'same-blocker-twice', pr, issue, round, items: v.items, trace })
+    // No-progress escalation (#184): this round's blockers against the previous round's.
+    // 'flat' (the very same blockers) and 'regressed' (every previous blocker still there, plus new ones) both stop the
+    // loop; the round caps stay constants.
+    if (round > 0 && v.verdict === 'REQUIRED_CHANGES') {
+      const progress = reviewProgress(prevRoundItems, v.items)
+      if (progress !== 'progress') {
+        trace.push(`review-${progress}:${round}`)
+        log(`No-progress: round ${round} is ${progress} against round ${round - 1} — escalating`)
+        await updateStatus('Blocked')
+        return finish(STATUS['escalate'], { reason: 'no-progress', progress, pr, issue, round, items: v.items, trace })
+      }
     }
   }
 
