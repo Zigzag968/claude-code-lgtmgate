@@ -65,7 +65,9 @@
 #   - Stale proofs: refused (`FAIL: tick-from-review: a push followed Morgan's verdict; re-review first`, nothing ticked)
 #     when a marker comment (e.g. a Nick push-note) follows the chosen verdict, or when the PR head commit date
 #     (REST `pulls/<N>` head sha -> `commits/<sha>` committer date) is later than the verdict's `created_at`.
-# Afterwards prints the manual step to sync the local main. The PR itself never bumps: this script does.
+# Afterwards prints the manual step to sync the local main and, in a plugin repo (a manifest in the merged tree), ONE line naming the
+# merged plugin version and the command that updates the installed plugin (#233: a running session keeps the engine it started with;
+# scripts/plugin-versions.sh lists the installs). The PR itself never bumps: this script does.
 # Env: LEAD_MERGE_POLL_MAX (default 30), LEAD_MERGE_POLL_SLEEP seconds (default 10).
 set -euo pipefail
 
@@ -477,11 +479,15 @@ PYSEMVER
 }
 
 # --- 4. bump from the merged tree (idempotent; plugin repo only, #145) ----------
+# merged_ver / plugin_name: the version this merge lands and the plugin it belongs to, for the update hint printed at the end (#233);
+# both stay empty in a consumer repo (no manifest), where nothing is printed.
+merged_ver=""; plugin_name=""
 if [ ! -f "$MANIFEST" ]; then
   echo "lead-merge: no plugin manifest, version bump skipped"
 else
 main_ver="$(git show "origin/main:$MANIFEST" | ver_of)"
 branch_ver="$(ver_of < "$MANIFEST")"
+plugin_name="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1])).get("name", ""))' "$MANIFEST")" || plugin_name=""
 [ -n "$main_ver" ] && [ -n "$branch_ver" ] || die "cannot read versions (main='$main_ver' branch='$branch_ver')"
 { semver valid "$main_ver" && semver valid "$branch_ver"; } || die "version is not semver (main='$main_ver' branch='$branch_ver')"
 have_build=0
@@ -489,6 +495,7 @@ if [ -f "$WORKFLOW" ] && grep -q '^const BUILD' "$WORKFLOW"; then have_build=1; 
 
 if semver gt "$branch_ver" "$main_ver" && git log -n 50 --format=%s origin/main..HEAD | grep -qxF "chore: bump $branch_ver (lead-merge)"; then
   echo "lead-merge: bump commit for $branch_ver already on the branch, skipping bump"
+  merged_ver="$branch_ver"
 else
   base_ver="$main_ver"
   if semver gt "$branch_ver" "$main_ver"; then base_ver="$branch_ver"; fi
@@ -512,6 +519,7 @@ PY
   if [ "$have_build" = 1 ]; then git add "$WORKFLOW"; fi
   git commit -m "chore: bump $new_ver (lead-merge)" || die "bump commit failed"
   echo "lead-merge: bumped $base_ver -> $new_ver"
+  merged_ver="$new_ver"
 fi
 fi
 
@@ -657,4 +665,8 @@ for issue in $closing_issues; do
 done
 
 echo "lead-merge: PR #$PR merged. Next manual step: in the main checkout run 'git fetch origin && git merge --ff-only origin/main'."
+# #233: the merged engine only runs once the installed plugin is updated and the session restarted (a plugin repo only)
+if [ -n "$merged_ver" ] && [ -n "$plugin_name" ]; then
+  echo "lead-merge: plugin $plugin_name $merged_ver merged; update the install: claude plugin update $plugin_name@<marketplace> --scope <scope>, then restart the session (scripts/plugin-versions.sh lists the installs)"
+fi
 [ "$close_failed" -eq 0 ] || die "PR #$PR merged, but some referenced issues could not be closed; close them by hand"
