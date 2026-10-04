@@ -570,6 +570,51 @@ await testCase('entryStage:dev / already-done guard merged-but-does-not-close-is
   return e ? e : { ok: true }
 })
 
+// T9031 (#31) — the already-done result carries the guard's own diagnostic, so a false positive is
+// diagnosable from the returned JSON without reading the engine source. Merged path: every field is set.
+await testCase('T9031 already-done result carries the guard diagnostic (merged path)', async () => {
+  const r = await run({
+    entryStage: 'dev',
+    simulate: {
+      alreadyDoneCheck: {
+        isAlreadyDone: true,
+        isIssueClosed: false,
+        issueState: 'OPEN',
+        isMerged: true,
+        mergedAt: '2026-07-31T10:52:36Z',
+        mergedPr: 446,
+        mergedHeadRef: 'features/issue-1',
+        mergedPrClosesIssue: true,
+        issueCreatedAt: '2026-07-29T07:45:22Z',
+      },
+    },
+  })
+  const e = eq('status', r.status, 'already-done')
+    || eq('guard.reason', r.guard && r.guard.reason, 'merged')
+    || eq('guard.mergedPr', r.guard && r.guard.mergedPr, 446)
+    || eq('guard.mergedHeadRef', r.guard && r.guard.mergedHeadRef, 'features/issue-1')
+    || eq('guard.mergedPrClosesIssue', r.guard && r.guard.mergedPrClosesIssue, true)
+    || eq('guard.issueState', r.guard && r.guard.issueState, 'OPEN')
+  return e ? e : { ok: true }
+})
+
+// T9031b (#31) — issue-closed path: the merged-PR fields are absent on the guard result and read null.
+await testCase('T9031b already-done result carries the guard diagnostic (issue-closed path)', async () => {
+  const r = await run({
+    entryStage: 'dev',
+    simulate: {
+      alreadyDoneCheck: { isAlreadyDone: true, isIssueClosed: true, issueState: 'CLOSED', isMerged: false },
+    },
+  })
+  const e = eq('status', r.status, 'already-done')
+    || eq('guard.reason', r.guard && r.guard.reason, 'issue-closed')
+    || eq('guard.issueState', r.guard && r.guard.issueState, 'CLOSED')
+    || eq('guard.mergedPr', r.guard && r.guard.mergedPr, null)
+    || eq('guard.mergedHeadRef', r.guard && r.guard.mergedHeadRef, null)
+    || eq('guard.mergedPrClosesIssue', r.guard && r.guard.mergedPrClosesIssue, null)
+  return e ? e : { ok: true }
+})
+
 // T183a (#183, resumeReason present) — a mergeable-conflicting-driven entryStage:'dev' resume
 // carries the resume reason, the PR number and the escalate-issue number into nickPromptPreview,
 // so Nick reasons from the PR's live state instead of concluding "already done".

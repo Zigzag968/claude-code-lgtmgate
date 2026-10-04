@@ -131,7 +131,7 @@ export const meta = {
 // `version`, checked against plugin.json by templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '1.0.0-beta.22', cutFrom: '440aa56' }
+const BUILD = { plugin: 'lgtmgate', version: '1.0.0-beta.23', cutFrom: '396c530' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -3072,8 +3072,16 @@ if (entryStage === 'dev' || entryStage === 'review') {
     // (acceptAlreadyDone skips it on a non-finite as-of parse).
     const verdict = acceptAlreadyDone(guard, expectedHead, stamp ? new Date(Number(stamp)).toISOString() : '')
     if (verdict.accepted) {
-      log(`Already-done guard: issue #${issue} is ${verdict.reason} — aborting relaunch`)
-      return finish(STATUS['already-done'], { issue, mergedAt: verdict.reason === 'merged' ? (guard.mergedAt || null) : null, trace })
+      // DEBT(#191): no replayed fixture (the incident journal predates the probe labels); proven by flow-suite case T9031
+      const guardDiag = {
+        reason: verdict.reason,
+        mergedPr: guard.mergedPr ?? null,
+        mergedHeadRef: guard.mergedHeadRef ?? null,
+        mergedPrClosesIssue: guard.mergedPrClosesIssue ?? null,
+        issueState: guard.issueState ?? null,
+      }
+      log(`Already-done guard: issue #${issue} is ${verdict.reason} (mergedPr=${guardDiag.mergedPr}, mergedHeadRef=${guardDiag.mergedHeadRef}, mergedPrClosesIssue=${guardDiag.mergedPrClosesIssue}, issueState=${guardDiag.issueState}) — aborting relaunch`)
+      return finish(STATUS['already-done'], { issue, mergedAt: verdict.reason === 'merged' ? (guard.mergedAt || null) : null, guard: guardDiag, trace })
     }
     if (guard?.isAlreadyDone === true || guard?.checkFailed === true) {
       log(`Already-done guard ERROR: unverified already-done claim rejected (${verdict.reason})${guard?.error ? ` — gh: ${guard.error}` : ''}. Proceeding with the run; the guard is a safety net, never a merge gate.`)
