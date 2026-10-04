@@ -77,6 +77,8 @@ jobs:
         run: bash scripts/test-guards.sh
       - name: lead-merge script regression test
         run: bash scripts/test-lead-merge.sh
+      - name: plugin-versions script regression test
+        run: bash scripts/test-plugin-versions.sh
       - name: block-merge-unchecked hook regression test
         run: bash hooks/test-block-merge-unchecked.sh
       - name: probe eval cases offline validation
