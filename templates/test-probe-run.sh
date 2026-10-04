@@ -944,6 +944,26 @@ BLK='/^\/\/ --- prBodySplice:start ---/,/^\/\/ --- prBodySplice:end ---/p'
 [ -n "$(sed -n "$BLK" "$ROOT/workflows/deliver-pipeline.js")" ] && [ "$(sed -n "$BLK" "$ROOT/workflows/deliver-pipeline.js")" = "$(sed -n "$BLK" "$SCRIPT_DIR/pr-body-splice.cjs")" ] && ok=1 || ok=0
 check "pr-body-splice.cjs: source identical to the engine block" "$ok"
 
+# [237] acceptanceBoxes: a first line of only carriage returns is blank whatever their number (the engine file and the template)
+for f237 in "$ROOT/workflows/deliver-pipeline.js" "$SCRIPT_DIR/pr-body-splice.cjs"; do
+  ok=0
+  node -e '
+    const fs = require("fs"), assert = require("assert")
+    const s = fs.readFileSync(process.argv[1], "utf8")
+    const a = s.indexOf("// --- prBodySplice:start ---"), b = s.indexOf("// --- prBodySplice:end ---")
+    assert.ok(a >= 0 && b > a, "prBodySplice markers not found")
+    const boxes = new Function(s.slice(a, b) + "\nreturn acceptanceBoxes")()
+    const rows = [["\r\n", []], ["\r\r\n", []], ["\r\r\r\n", []], ["\n", []], ["note\r\n", ["note"]], [" \r\n", [" "]]]
+    for (const [head, foreign] of rows) {
+      const got = boxes(head + "- [ ] <!-- ac:1 --> a\r\n")
+      assert.deepStrictEqual(got.foreign, foreign, "first line " + JSON.stringify(head) + ": foreign=" + JSON.stringify(got.foreign))
+      assert.deepStrictEqual([...got.checkedById], [[1, false]])
+    }
+  ' "$f237" 2>"$WORK/237.err" && ok=1
+  [ "$ok" -eq 1 ] || head -n 3 "$WORK/237.err"
+  check "[237] acceptanceBoxes treats a first line of only carriage returns as blank ($(basename "$f237"))" "$ok"
+done
+
 SHA_BLK="$(sed -n '/^\/\/ --- sha256Hex:start ---/,/^\/\/ --- sha256Hex:end ---/p' "$ROOT/workflows/deliver-pipeline.js")"
 ok=0
 [ -n "$SHA_BLK" ] && node -e '
