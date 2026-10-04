@@ -29,6 +29,12 @@
 //      and neither carries a `root-cause:` field (doctrine v3 has no LLM-filled field). The engine's own
 //      LAYER_RULE sentence lives in the workflow only (emitted for engineRepo:true); agents/sam.md, shipped
 //      to every consumer, carries none of the engine vocabulary (ENGINE_WORDS_RE).
+//      Human-gate text bridge (#28): the workflow, agents/sam.md and the two pr-acceptance copies
+//      (templates/pr-acceptance.md, .claude/rules/pr-acceptance.md) all carry the human-gate test
+//      (GATE_TEST), none carries the retired definition (OLD_GATE_DEF, whitespace-normalised), the
+//      workflow and the persona carry the proof-rule exemption (EXEMPTION_KEY), and the "when [human-gate]
+//      applies" rule sentence (from "efore tagging an item" to the end of its line) is identical in the
+//      workflow constant, the persona and both pr-acceptance copies, the case of its first letter aside.
 //   Invariant 1 (relaxed) version floor: .claude-plugin/plugin.json version >= origin/main's (semver 2.0.0
 //      precedence, prerelease included: 1.0.0-beta.2 > 1.0.0-beta.1, 1.0.0-beta.9 < 1.0.0).
 //      Since #74 (scripts/lead-merge.sh bumps at merge; bump-required is retired) this floor is
@@ -62,6 +68,8 @@
 //   GUARDS_BRANCH_MANIFEST branch plugin.json path (default: .claude-plugin/plugin.json)
 //   GUARDS_SAM_FILE        Sam persona for sam-parity (default: agents/sam.md)
 //   GUARDS_SAM_JS_FILE     workflow file for sam-parity (default: workflows/deliver-pipeline.js)
+//   GUARDS_PRACC_FILE      templates/pr-acceptance.md for sam-parity (default: templates/pr-acceptance.md)
+//   GUARDS_PRACC_COPY      its in-repo copy for sam-parity (default: .claude/rules/pr-acceptance.md)
 //   GUARDS_STATUS_JS_FILE  workflow file for status-table (default: workflows/deliver-pipeline.js)
 //   GUARDS_DELIVER_MD      Lead runbook for status-table (default: commands/deliver.md)
 //   GUARDS_PHASES_JS_FILE  workflow file for phase-titles (default: workflows/deliver-pipeline.js)
@@ -89,6 +97,13 @@ const EXEMPT = {
 const PLAN_RULE = 'PLAN RULE: plan the smallest change that removes the cause class; list `patch-avoided:` with the patches you rejected.'
 // The engine's own variant, in the workflow only (emitted when the project's config sets engineRepo:true).
 const LAYER_RULE = 'LAYER RULE: plan the smallest change that removes the cause class; never a `simulate.*` seam; say in the plan if the diff adds a status, an `agent()`, a hook or a seam; list `patch-avoided:` with the patches you rejected.'
+
+// Human-gate text bridge (#28): phrases every site must agree on (whitespace-normalised before comparing).
+const GATE_TEST = 'a decision, an authorization or an action to perform, or a judgement no read-only command can confirm'
+const OLD_GATE_DEF = 'an external system out of reach'
+const EXEMPTION_KEY = 'read-only confirmation of an action that was already authorized and executed'
+// The "when [human-gate] applies" rule sentence, from after its first letter to the end of its line.
+const GATE_RULE_RE = /efore tagging an item[^\n']*/
 
 // Engine-only vocabulary a consumer-facing persona must not carry.
 const ENGINE_WORDS_RE = /\bsimulate\b|\bseam\b|agent\(\)|fixtures\/incidents/
@@ -342,8 +357,29 @@ function checkSamParity() {
     }
     if (txt.includes('root-cause:')) problems.push(`${name} carries a root-cause: field`)
   }
+  // Human-gate text bridge (#28): one definition, one exemption, one rule sentence across the sites.
+  const norm = (t) => t.replace(/\s+/g, ' ')
+  const gateSites = [
+    ...sites.map(([name, txt]) => [name, txt, true]),
+    ['templates/pr-acceptance.md', readOr(process.env.GUARDS_PRACC_FILE || path.join(ROOT, 'templates/pr-acceptance.md')), false],
+    ['.claude/rules/pr-acceptance.md', readOr(process.env.GUARDS_PRACC_COPY || path.join(ROOT, '.claude/rules/pr-acceptance.md')), false],
+  ]
+  const ruleSentences = []
+  for (const [name, txt, carriesExemption] of gateSites) {
+    if (txt === null) { if (!sites.some(([n]) => n === name)) problems.push(`${name} unreadable`); continue }
+    const flat = norm(txt)
+    if (!flat.includes(GATE_TEST)) problems.push(`${name} lacks the human-gate test`)
+    if (flat.includes(OLD_GATE_DEF)) problems.push(`${name} still carries the retired human-gate definition`)
+    if (carriesExemption && !flat.includes(EXEMPTION_KEY)) problems.push(`${name} lacks the proof-rule exemption`)
+    const m = GATE_RULE_RE.exec(txt)
+    if (!m) problems.push(`${name} lacks the human-gate rule sentence`)
+    else ruleSentences.push([name, norm(m[0])])
+  }
+  for (const [name, sentence] of ruleSentences.slice(1)) {
+    if (sentence !== ruleSentences[0][1]) problems.push(`${name} human-gate rule sentence differs from ${ruleSentences[0][0]}`)
+  }
   if (problems.length) bad(`FAIL: sam-parity: ${problems.join('; ')}`)
-  else out('PASS: sam-parity: patch-avoided: and the PLAN RULE sentence on both sides, the LAYER RULE sentence in the workflow, no engine vocabulary in the persona, no root-cause: field')
+  else out('PASS: sam-parity: patch-avoided: and the PLAN RULE sentence on both sides, the LAYER RULE sentence in the workflow, no engine vocabulary in the persona, no root-cause: field, one human-gate test, exemption and rule sentence across the workflow, the persona and both pr-acceptance copies')
 }
 
 // ---- instructions-wired (#77) ------------------------------------------------------------------

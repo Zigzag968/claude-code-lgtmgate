@@ -196,8 +196,14 @@ if [ "$RC" -ne 0 ]; then ok "suite named only in a step name (not a run:) -> FAI
 # PR = neutral PLAN_RULE (persona + workflow), LR = engine LAYER_RULE (workflow only; the persona must not carry it, #163)
 PR="$(node -e "const s=require('fs').readFileSync('scripts/guards.cjs','utf8');console.log(/const PLAN_RULE = '(.*)'\n/.exec(s)[1])")"
 LR="$(node -e "const s=require('fs').readFileSync('scripts/guards.cjs','utf8');console.log(/const LAYER_RULE = '(.*)'\n/.exec(s)[1])")"
-printf '%s\nlist patch-avoided: x\n' "$PR" > "$T/sam-ok.md"
-printf '%s\n%s\nlist patch-avoided: x\n' "$PR" "$LR" > "$T/sam-js-ok.md"
+# Human-gate text bridge (#28): GT = the human-gate test, EX = the proof-rule exemption key, HGR = the rule sentence
+# (taken from the real persona, so the fixtures follow its wording), OLD = the retired definition
+GT="$(node -e "const s=require('fs').readFileSync('scripts/guards.cjs','utf8');console.log(/const GATE_TEST = '(.*)'\n/.exec(s)[1])")"
+EX="$(node -e "const s=require('fs').readFileSync('scripts/guards.cjs','utf8');console.log(/const EXEMPTION_KEY = '(.*)'\n/.exec(s)[1])")"
+OLD="$(node -e "const s=require('fs').readFileSync('scripts/guards.cjs','utf8');console.log(/const OLD_GATE_DEF = '(.*)'\n/.exec(s)[1])")"
+HGR="$(node -e "const s=require('fs').readFileSync('agents/sam.md','utf8');console.log(/efore tagging an item[^\n']*/.exec(s)[0])")"
+printf '%s\nlist patch-avoided: x\n%s\n%s\nB%s\n' "$PR" "$GT" "$EX" "$HGR" > "$T/sam-ok.md"
+printf '%s\n%s\nlist patch-avoided: x\n%s\n%s\nb%s\n' "$PR" "$LR" "$GT" "$EX" "$HGR" > "$T/sam-js-ok.md"
 run_parity() { OUT="$(GUARDS_ONLY=parity GUARDS_SAM_FILE="$1" GUARDS_SAM_JS_FILE="$2" node scripts/guards.cjs 2>&1)"; RC=$?; }
 run_parity "$T/sam-ok.md" "$T/sam-js-ok.md"
 if [ "$RC" -eq 0 ] && echo "$OUT" | grep -q '^PASS: sam-parity'; then ok "sam-parity: persona carries PLAN RULE + token, workflow adds the LAYER RULE -> PASS"; else ko "sam-parity positive (rc=$RC) $OUT"; fi
@@ -214,6 +220,29 @@ if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: sam-parity:.*engine vocabula
 printf '%s\nlist patch-avoided: x\nroot-cause: y\n' "$PR" > "$T/sam-rc.md"
 run_parity "$T/sam-rc.md" "$T/sam-js-ok.md"
 if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: sam-parity:.*root-cause:'; then ok "sam-parity: root-cause: present -> FAIL"; else ko "sam-parity root-cause (rc=$RC) $OUT"; fi
+# human-gate bridge (#28): the exemption, the retired definition (also wrapped over two lines), the rule sentence
+grep -v -F "$EX" "$T/sam-ok.md" > "$T/sam-noex.md"
+run_parity "$T/sam-noex.md" "$T/sam-js-ok.md"
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: sam-parity:.*agents/sam.md lacks the proof-rule exemption'; then ok "sam-parity: proof-rule exemption missing in the persona -> FAIL"; else ko "sam-parity exemption persona (rc=$RC) $OUT"; fi
+grep -v -F "$EX" "$T/sam-js-ok.md" > "$T/sam-js-noex.md"
+run_parity "$T/sam-ok.md" "$T/sam-js-noex.md"
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: sam-parity:.*workflows/deliver-pipeline.js lacks the proof-rule exemption'; then ok "sam-parity: proof-rule exemption missing in the workflow -> FAIL"; else ko "sam-parity exemption workflow (rc=$RC) $OUT"; fi
+grep -v -F "$GT" "$T/sam-ok.md" > "$T/sam-nogt.md"
+run_parity "$T/sam-nogt.md" "$T/sam-js-ok.md"
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: sam-parity:.*agents/sam.md lacks the human-gate test'; then ok "sam-parity: human-gate test missing in the persona -> FAIL"; else ko "sam-parity gate test (rc=$RC) $OUT"; fi
+printf '%s\nand also %s\n' "$(cat "$T/sam-ok.md")" "$OLD" > "$T/sam-old.md"
+run_parity "$T/sam-old.md" "$T/sam-js-ok.md"
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: sam-parity:.*agents/sam.md still carries the retired human-gate definition'; then ok "sam-parity: retired human-gate definition in the persona -> FAIL"; else ko "sam-parity retired def (rc=$RC) $OUT"; fi
+printf '%s\nB%s\n' "$GT" "$HGR" > "$T/pracc-ok.md"
+printf 'x\n%s\n%s\nB%s\n' "an external system out" "of reach" "$HGR" > "$T/pracc-wrapped.md"
+run_pracc() { OUT="$(GUARDS_ONLY=parity GUARDS_SAM_FILE="$T/sam-ok.md" GUARDS_SAM_JS_FILE="$T/sam-js-ok.md" GUARDS_PRACC_FILE="$1" GUARDS_PRACC_COPY="$2" node scripts/guards.cjs 2>&1)"; RC=$?; }
+run_pracc "$T/pracc-ok.md" "$T/pracc-ok.md"
+if [ "$RC" -eq 0 ] && echo "$OUT" | grep -q '^PASS: sam-parity'; then ok "sam-parity: both pr-acceptance copies carry the test and the rule sentence -> PASS"; else ko "sam-parity pracc positive (rc=$RC) $OUT"; fi
+run_pracc "$T/pracc-wrapped.md" "$T/pracc-ok.md"
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: sam-parity:.*templates/pr-acceptance.md still carries the retired human-gate definition'; then ok "sam-parity: retired definition wrapped over two lines in pr-acceptance -> FAIL"; else ko "sam-parity pracc wrapped (rc=$RC) $OUT"; fi
+printf '%s\nBefore tagging an item whatever you like.\n' "$GT" > "$T/pracc-diff.md"
+run_pracc "$T/pracc-ok.md" "$T/pracc-diff.md"
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: sam-parity:.*.claude/rules/pr-acceptance.md human-gate rule sentence differs'; then ok "sam-parity: pr-acceptance copy with another rule sentence -> FAIL"; else ko "sam-parity pracc differs (rc=$RC) $OUT"; fi
 
 # ---- doc-budgets (#77) ----
 # mkdocs <dir> <vision lines> <architecture lines>: fake repo root holding the two docs (0 = absent)
