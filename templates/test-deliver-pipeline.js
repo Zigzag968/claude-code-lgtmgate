@@ -4753,9 +4753,24 @@ await testCase('T9029 FOLLOWUP_ISSUE_RULE defined once, interpolated once in sam
   const scout = from < 0 || to < 0 ? '' : src.slice(from, to)
   const e3 = includes('interpolated inside samScoutPrompt', scout, '${FOLLOWUP_ISSUE_RULE}')
   const e4 = includes('rule text names the sub_issues listing', defLine, 'sub_issues')
-  const e5 = eq('marker key occurrences in the engine', src.split(MARKER_KEY).length - 1, 1)
+  // The marker literal opens the filing marker and the prefix scan of the jq filter: two occurrences, both in the rule.
+  const e5 = eq('marker key occurrences in the engine', src.split(MARKER_KEY).length - 1, 2)
   const e6 = includes('marker key sits in the rule definition', defLine, MARKER_KEY)
-  return (e1 || e2 || e3 || e4 || e5 || e6) ? (e1 || e2 || e3 || e4 || e5 || e6) : { ok: true }
+  // The scan matches the prefix up to its colon (never the model-invented slug), before every filing, through --jq filters.
+  const e7 = includes('filing marker keeps the slug', defLine, '<!-- pipeline-followup:issue-<N>:<short-scope-slug> -->')
+  const e8 = includes('scan matches the prefix with its trailing colon', defLine, 'contains("pipeline-followup:issue-<N>:")')
+  const e9 = includes('trigger is every filing', defLine, 'Before every filing')
+  const e10 = defLine.includes('On every relaunch, before filing') ? { ok: false, error: 'the relaunch trigger is back in the rule' } : null
+  const e11 = includes('children listing is filtered by --jq', defLine, 'issues/<N>/sub_issues --jq')
+  const e12 = includes('open listing is filtered by --jq', defLine, 'per_page=100" --jq')
+  const e13 = includes('filter selects', defLine, 'select(')
+  const e14 = includes('filter drops pull requests', defLine, 'pull_request')
+  const e15 = includes('filter survives a null body', defLine, '(.body // "")')
+  const e16 = includes('fails closed on a failed listing', defLine, 'file nothing and name the failure')
+  const e17 = includes('only an open issue is reused', defLine, 'closed one is never reused')
+  const e18 = includes('file write carries the Bash caution', defLine, 'absolute path, 1 command per call')
+  const first = [e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, e12, e13, e14, e15, e16, e17, e18].find((e) => e)
+  return first || { ok: true }
 })
 
 // T130 (#130) — run identity: the first log() is `deliver #<issue> — <brief>`, `Setup` is the first
