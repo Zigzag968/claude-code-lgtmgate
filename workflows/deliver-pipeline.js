@@ -1463,10 +1463,11 @@ function staleArtifactBlockers(proofs, floorIso) {
     if (p.exists !== true) {
       blockers.push({ item, reason: 'artifact-absent' }); continue
     }
-    if (Number.isFinite(p.bytes) && p.bytes <= 0) {
+    if (Number.isFinite(p.bytes) ? p.bytes <= 0 : p.committedInPr === true) {
       blockers.push({ item, reason: 'artifact-empty' }); continue
     }
     // DEBT(#191): a file committed in the PR has an mtime that predates the PR's last commit by construction, so no-valid-mtime and artifact-stale do not apply to it (no replayed fixture; proven by flow-suite case T9005)
+    // Residual risk: committedInPr is self-attested by the reviewer; a deterministic cross-check needs a pr-state probe-output change (tracked in a follow-up)
     if (p.committedInPr === true) continue
     const mtime = typeof p.mtime === 'string' ? p.mtime : ''
     if (!ISO.test(mtime)) {
@@ -3749,10 +3750,10 @@ if (after('review', entryStage)) {
     `ticked box ({item: the verbatim checklist line, path, exists, mtime ISO-8601 — MUST include an ` +
     `explicit UTC 'Z' or numeric timezone offset (e.g. \`date -u +%Y-%m-%dT%H:%M:%SZ\`); a bare ` +
     `timestamp without Z/offset is rejected, bytes}). Absent, ` +
-    `empty or predating the latest commit ⇒ the box stays UNTICKED and its verbatim line goes into ` +
+    `empty or predating the latest commit (except a file committed in the PR, below) ⇒ the box stays UNTICKED and its verbatim line goes into ` +
     `\`items\` ⇒ REQUIRED_CHANGES, never a tick. ` +
     `COMMITTED-IN-PR EXCEPTION: when the artifact is itself content of the PR head (its path appears in ` +
-    `\`git diff --name-only origin/${baseBranch}...HEAD\` — run it and cite the line), set \`committedInPr: true\` ` +
+    `\`git -C "${wtPath}" diff --name-only origin/${baseBranch}...HEAD\` — run it and cite the line), set \`committedInPr: true\` ` +
     `on its \`artifactProofs\` entry: such a file exists before the latest commit, so its mtime legitimately ` +
     `predates it and is not judged (path, existence and non-empty size still are). Leave the field out for any ` +
     `artifact a run produced that the PR does not commit: those keep the mtime rule above. ` +

@@ -1749,9 +1749,50 @@ await testCase('T9005b the MORGAN schema declares committedInPr and artifactProo
   const step = slice('const artifactProofStep =', '// Worktree freshness probe')
   const e1 = includes('schema field', schema, "committedInPr: { type: 'boolean' }")
   const e2 = includes('prompt clause names the field', step, 'committedInPr')
-  const e3 = includes('prompt clause names the command', step, 'git diff --name-only origin/')
+  const e3 = includes('prompt clause names the command', step, 'diff --name-only origin/')
   const e4 = eq('interpolations in the Morgan prompts', src.split('${artifactProofStep}').length - 1, 2)
   return (e1 || e2 || e3 || e4) ? (e1 || e2 || e3 || e4) : { ok: true }
+})
+
+// T9005c (#5) — a flagged proof must carry a positive numeric size: `bytes` missing, NaN or a string is
+// rejected `artifact-empty` (the unflagged rule is untouched: T45/T46/T47 and T9005 cases c/d).
+await testCase('T9005c a committedInPr proof needs a positive numeric size (#5)', async () => {
+  const old = { item: ARTIFACT_PROOF_ITEM, path: ARTIFACT_PROOF_PATH, exists: true, mtime: '2026-08-03T12:50:44Z', bytes: 4096 }
+  const auto = (p) => run({ mode: 'auto', simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM', artifactProofs: [p] }], artifactFloor: ARTIFACT_FLOOR } })
+  const noBytes = { ...old, committedInPr: true }
+  delete noBytes.bytes
+  const cases = [
+    ['bytes missing', noBytes],
+    ['bytes NaN', { ...old, committedInPr: true, bytes: NaN }],
+    ["bytes '0'", { ...old, committedInPr: true, bytes: '0' }],
+    ["bytes '4096'", { ...old, committedInPr: true, bytes: '4096' }],
+    ['bytes 0', { ...old, committedInPr: true, bytes: 0 }],
+  ]
+  for (const [name, p] of cases) {
+    const r = await auto(p)
+    const err = eq(`flagged ${name}: status`, r.status, 'escalate')
+      || eq(`flagged ${name}: reason`, r.reason, 'artifact-proof-rejected')
+      || includes(`flagged ${name}: trace`, r.trace || [], 'artifact-proof-rejected:artifact-empty')
+    if (err) return err
+  }
+  const ok = await auto({ ...old, committedInPr: true, bytes: 1 })
+  return eq('flagged bytes 1: status', ok.status, 'ready') || { ok: true }
+})
+
+// T9005d (#5) — source-level: both unconditional sentences of artifactProofStep carry the committed-in-PR
+// qualifier, and the clause's command uses the same `git -C "<worktree>"` form as the regression-guard step.
+await testCase('T9005d artifactProofStep qualifies both freshness sentences and uses git -C for the diff (#5)', async () => {
+  const src = SUITE_ARGS.fpSource
+  if (!src) {
+    log('SKIP — T9005d: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const i = src.indexOf('const artifactProofStep =')
+  const j = i < 0 ? -1 : src.indexOf('// Worktree freshness probe', i)
+  const step = i < 0 || j < 0 ? '' : src.slice(i, j)
+  const e1 = eq('qualifier count', step.split('(except a file committed in the PR, below)').length - 1, 2)
+  const e2 = includes('git -C form', step, 'git -C "${wtPath}" diff --name-only origin/${baseBranch}...HEAD')
+  return e1 || e2 || { ok: true }
 })
 
 // T48 (#526, back-compat) — an LGTM with NO artifactProofs declared (the pre-#526 shape every
