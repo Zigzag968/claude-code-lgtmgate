@@ -5884,6 +5884,39 @@ await testCase('T141c a refused plan planned again records Plan 2', async () => 
   return e1 || e2 || { ok: true }
 })
 
+// The per-call `phase:` options never reach the harness in simulate mode (callAgent returns the fixture before agent()), so
+// they are pinned on the engine source text: the plan-loop scout passes `phase: planPhase`; inside the review loop (from the
+// roundPhase declaration to the round's Morgan call) the plan-amend scout, the Nick fix and Morgan pass `phase: roundPhase`
+// and no literal `phase: 'Review'` or `phase: 'Plan'` remains.
+await testCase('T141d the plan scout passes planPhase and the review loop calls pass roundPhase, never a fixed title', async () => {
+  const src = SUITE_ARGS.fpSource
+  if (!src) {
+    log('SKIP — T141d: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const optsLine = (from, label) => {
+    const at = src.indexOf(label, from)
+    if (at < 0) return null
+    const start = src.lastIndexOf('\n', at) + 1
+    const end = src.indexOf('\n', at)
+    return { line: src.slice(start, end), end }
+  }
+  const scout = optsLine(0, 'label: `scout-issue-${issue}-${planPass}`')
+  const e1 = scout && scout.line.includes('phase: planPhase') ? null : { ok: false, msg: 'the plan-loop scout must pass `phase: planPhase`' }
+  const loopStart = src.indexOf('const roundPhase = ')
+  if (loopStart < 0) return { ok: false, msg: 'const roundPhase declaration not found' }
+  const amend = optsLine(loopStart, 'label: `scout-amend-${issue}-r${round}`')
+  const nick = optsLine(loopStart, 'label: `nick-pr-${issue}-${pr}`')
+  const morgan = optsLine(loopStart, 'label: `morgan-pr-${issue}-${pr}-r${round}`')
+  const e2 = amend && amend.line.includes('phase: roundPhase') ? null : { ok: false, msg: 'the plan-amend scout must pass `phase: roundPhase`' }
+  const e3 = nick && nick.line.includes('phase: roundPhase') ? null : { ok: false, msg: 'the Nick fix call must pass `phase: roundPhase`' }
+  const e4 = morgan && morgan.line.includes('phase: roundPhase') ? null : { ok: false, msg: 'the review-loop Morgan call must pass `phase: roundPhase`' }
+  const region = morgan ? src.slice(loopStart, morgan.end) : ''
+  const e5 = /phase:\s*['"`](Review|Plan)['"`]/.test(region)
+    ? { ok: false, msg: "a literal `phase: 'Review'` or `phase: 'Plan'` remains in the review loop" } : null
+  return e1 || e2 || e3 || e4 || e5 || { ok: true }
+})
+
 // T123 (#42) — every test ID is unique across the suite. Must stay the LAST case so `results`
 // holds every other case name. Includes a negative control proving the detector really detects.
 await testCase('T123 test IDs are unique across the suite (no duplicated T<n>)', async () => {
