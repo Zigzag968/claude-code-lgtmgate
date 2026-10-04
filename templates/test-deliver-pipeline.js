@@ -1559,6 +1559,131 @@ await testCase('T47 artifact-proof gate overturns LGTM on a missing artifact', a
   return errs.length ? errs[0] : { ok: true }
 })
 
+// T9007 (#7) — an item-less LGTM whose OWN artifact proof entry is unusable (empty artifact, malformed entry)
+// is a defect no dev round can repair: the run escalates `artifact-proof-rejected` before any Nick dispatch.
+// A stale proof (Nick can regenerate the artifact) keeps the REQUIRED_CHANGES overturn (control).
+await testCase('T9007 an item-less LGTM whose own artifact proof is unusable escalates artifact-proof-rejected, no Nick round', async () => {
+  const emptyProof = { item: ARTIFACT_PROOF_ITEM, path: ARTIFACT_PROOF_PATH, exists: true, mtime: '2026-08-04T10:29:49Z', bytes: 0 }
+  const reasons = (r) => (Array.isArray(r.blockers) ? r.blockers.map((b) => b && b.reason) : r.blockers)
+  // 1. initial review: a zero-byte artifact
+  const a = await run({
+    mode: 'auto',
+    simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM', artifactProofs: [emptyProof] }], artifactFloor: ARTIFACT_FLOOR },
+  })
+  const a1 = eq('empty: status', a.status, 'escalate')
+  const a2 = eq('empty: reason', a.reason, 'artifact-proof-rejected')
+  const a3 = eq('empty: round', a.round, 0)
+  const a4 = includes('empty: trace', a.trace || [], 'artifact-proof-rejected:artifact-empty')
+  const a5 = eq('empty: blockers', reasons(a), ['artifact-empty'])
+  // 2. initial review: a null (malformed) proof entry
+  const b = await run({
+    mode: 'auto',
+    simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM', artifactProofs: [null] }], artifactFloor: ARTIFACT_FLOOR },
+  })
+  const b1 = eq('malformed: status', b.status, 'escalate')
+  const b2 = eq('malformed: reason', b.reason, 'artifact-proof-rejected')
+  const b3 = eq('malformed: round', b.round, 0)
+  const b4 = includes('malformed: trace', b.trace || [], 'artifact-proof-rejected:malformed-proof')
+  const b5 = eq('malformed: blockers', reasons(b), ['malformed-proof'])
+  // 3. re-review loop: round 1 ran Nick for the first verdict, none after the rejected proof
+  const c = await run({
+    mode: 'auto',
+    simulate: {
+      sam: 'GO',
+      morgan: [{ verdict: 'REQUIRED_CHANGES', items: ['a'] }, { verdict: 'LGTM', artifactProofs: [emptyProof] }],
+      artifactFloor: ARTIFACT_FLOOR,
+    },
+  })
+  const c1 = eq('loop: status', c.status, 'escalate')
+  const c2 = eq('loop: reason', c.reason, 'artifact-proof-rejected')
+  const c3 = eq('loop: round', c.round, 1)
+  const c4 = includes('loop: trace', c.trace || [], 'artifact-proof-rejected:artifact-empty')
+  // 4. control: a stale proof is still repairable by Nick -> needs-revision, not escalate
+  const d = await run({
+    mode: 'semi',
+    proceedThrough: 'dev',
+    simulate: {
+      sam: 'GO',
+      morgan: [{ verdict: 'LGTM', artifactProofs: [{ ...emptyProof, mtime: '2026-08-03T12:50:44Z', bytes: 4096 }] }],
+      artifactFloor: ARTIFACT_FLOOR,
+    },
+  })
+  const d1 = eq('control: status', d.status, 'needs-revision')
+  const d2 = includes('control: trace', d.trace || [], 'artifact-proof-rejected:artifact-stale')
+  return a1 || a2 || a3 || a4 || a5 || nickTrace(a) || b1 || b2 || b3 || b4 || b5 || nickTrace(b)
+    || c1 || c2 || c3 || c4 || d1 || d2 || { ok: true }
+})
+
+// T9007b (#7) — the escalation needs EVERY blocker to be a defect of Morgan's own proof entry, on an item-less LGTM
+// (and only there): each case below pins one of those conditions, so loosening any of them fails the suite.
+await testCase('T9007b artifact-proof-rejected escalation: every blocker own-defect, LGTM only, item-less only', async () => {
+  const emptyProof = { item: ARTIFACT_PROOF_ITEM, path: ARTIFACT_PROOF_PATH, exists: true, mtime: '2026-08-04T10:29:49Z', bytes: 0 }
+  const staleProof = { item: ARTIFACT_PROOF_ITEM + ' (second)', path: ARTIFACT_PROOF_PATH + '.2', exists: true, mtime: '2026-08-03T12:50:44Z', bytes: 4096 }
+  const absentProof = { item: ARTIFACT_PROOF_ITEM + ' (third)', path: ARTIFACT_PROOF_PATH + '.3', exists: false, mtime: '2026-08-04T10:29:49Z', bytes: 4096 }
+  const reasons = (r) => (Array.isArray(r.blockers) ? r.blockers.map((b) => b && b.reason) : r.blockers)
+  const semi = (morgan) => run({ mode: 'semi', proceedThrough: 'dev', simulate: { sam: 'GO', morgan: [morgan], artifactFloor: ARTIFACT_FLOOR } })
+  const auto = (morgan, extra = {}) => run({ mode: 'auto', ...extra, simulate: { sam: 'GO', morgan: [morgan], artifactFloor: ARTIFACT_FLOOR } })
+  // a. mixed blockers (one own defect + one repairable by Nick) -> back to Nick, never an escalation
+  const a = await semi({ verdict: 'LGTM', artifactProofs: [emptyProof, staleProof] })
+  const a1 = eq('mixed empty+stale: status', a.status, 'needs-revision')
+  const a2 = includes('mixed empty+stale: trace', a.trace || [], 'artifact-proof-rejected:artifact-empty')
+  const a3 = includes('mixed empty+stale: trace', a.trace || [], 'artifact-proof-rejected:artifact-stale')
+  const a4 = a.reason === 'artifact-proof-rejected' ? { ok: false, msg: 'mixed empty+stale: must not escalate artifact-proof-rejected' } : null
+  const b = await semi({ verdict: 'LGTM', artifactProofs: [emptyProof, absentProof] })
+  const b1 = eq('mixed empty+absent: status', b.status, 'needs-revision')
+  const b2 = includes('mixed empty+absent: trace', b.trace || [], 'artifact-proof-rejected:artifact-absent')
+  const b3 = b.reason === 'artifact-proof-rejected' ? { ok: false, msg: 'mixed empty+absent: must not escalate artifact-proof-rejected' } : null
+  // b. a REQUIRED_CHANGES verdict with no items and an empty artifact: not an LGTM, so it goes to Nick
+  const c = await semi({ verdict: 'REQUIRED_CHANGES', artifactProofs: [emptyProof] })
+  const c1 = eq('required-changes: status', c.status, 'needs-revision')
+  const c2 = includes('required-changes: trace', c.trace || [], 'artifact-proof-rejected:artifact-empty')
+  const c3 = c.reason === 'artifact-proof-rejected' ? { ok: false, msg: 'required-changes: must not escalate artifact-proof-rejected' } : null
+  // c. an LGTM that carries an item is not item-less: it goes to Nick
+  const d = await semi({ verdict: 'LGTM', items: ['note'], artifactProofs: [emptyProof] })
+  const d1 = eq('lgtm with an item: status', d.status, 'needs-revision')
+  const d2 = includes('lgtm with an item: items', d.items || [], 'note')
+  const d3 = d.reason === 'artifact-proof-rejected' ? { ok: false, msg: 'lgtm with an item: must not escalate artifact-proof-rejected' } : null
+  // d. no path -> own defect
+  const e = await auto({ verdict: 'LGTM', artifactProofs: [{ ...emptyProof, path: '', bytes: 4096 }] })
+  const e1 = eq('no-path: status', e.status, 'escalate')
+  const e2 = eq('no-path: reason', e.reason, 'artifact-proof-rejected')
+  const e3 = eq('no-path: blockers', reasons(e), ['no-path'])
+  // e. unparseable mtime -> own defect
+  const f = await auto({ verdict: 'LGTM', artifactProofs: [{ ...emptyProof, mtime: 'yesterday', bytes: 4096 }] })
+  const f1 = eq('no-valid-mtime: status', f.status, 'escalate')
+  const f2 = eq('no-valid-mtime: reason', f.reason, 'artifact-proof-rejected')
+  const f3 = eq('no-valid-mtime: blockers', reasons(f), ['no-valid-mtime'])
+  // f. the board status is set to Blocked on the escalation (initial review and re-review), with the blockers listed
+  const g1 = eq('no-path: last trace entry', e.trace[e.trace.length - 1], 'Blocked')
+  const g2 = eq('no-valid-mtime: last trace entry', f.trace[f.trace.length - 1], 'Blocked')
+  const h = await run({
+    mode: 'auto',
+    simulate: {
+      sam: 'GO',
+      morgan: [{ verdict: 'REQUIRED_CHANGES', items: ['a'] }, { verdict: 'LGTM', artifactProofs: [emptyProof] }],
+      artifactFloor: ARTIFACT_FLOOR,
+    },
+  })
+  const h1 = eq('loop: status', h.status, 'escalate')
+  const h2 = eq('loop: blockers', reasons(h), ['artifact-empty'])
+  const h3 = eq('loop: last trace entry', h.trace[h.trace.length - 1], 'Blocked')
+  // g. a review-entry run (existing PR) escalates the same way
+  const i = await run({
+    mode: 'auto',
+    entryStage: 'review',
+    prNumber: 227,
+    simulate: { morgan: [{ verdict: 'LGTM', artifactProofs: [emptyProof] }], artifactFloor: ARTIFACT_FLOOR },
+  })
+  const i1 = eq('review entry: status', i.status, 'escalate')
+  const i2 = eq('review entry: reason', i.reason, 'artifact-proof-rejected')
+  const i3 = eq('review entry: pr', i.pr, 227)
+  const i4 = eq('review entry: blockers', reasons(i), ['artifact-empty'])
+  const i5 = eq('review entry: last trace entry', i.trace[i.trace.length - 1], 'Blocked')
+  return a1 || a2 || a3 || a4 || b1 || b2 || b3 || c1 || c2 || c3 || d1 || d2 || d3 || e1 || e2 || e3
+    || f1 || f2 || f3 || g1 || g2 || h1 || h2 || h3 || nickTrace(e) || nickTrace(f) || nickTrace(i)
+    || i1 || i2 || i3 || i4 || i5 || { ok: true }
+})
+
 // T48 (#526, back-compat) — an LGTM with NO artifactProofs declared (the pre-#526 shape every
 // existing flow case uses) must be completely unaffected: zero extra agent calls, exact trace.
 await testCase('T48 artifact-proof gate back-compat (no artifactProofs → unaffected)', async () => {

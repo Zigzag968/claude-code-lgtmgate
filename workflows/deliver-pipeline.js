@@ -131,7 +131,7 @@ export const meta = {
 // `version`, checked against plugin.json by templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '1.0.0-beta.23', cutFrom: '396c530' }
+const BUILD = { plugin: 'lgtmgate', version: '1.0.0-beta.24', cutFrom: '6c17426' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -3606,6 +3606,11 @@ if (after('review', entryStage)) {
     const floorIso = await artifactFloorIso(round, endState)
     const blockers = staleArtifactBlockers(proofs, floorIso)
     if (blockers.length === 0) return await settle(v)
+    // #7: an item-less LGTM whose every blocker is a defect of Morgan's OWN proof entry (empty artifact, malformed
+    // entry, no path, no parsable mtime) is not repairable by a dev round: the Review call sites escalate on the mark.
+    // DEBT(#191): no replayed fixture (the incident journal predates the probe labels and the current engine cannot replay it); proven by flow-suite case T9007
+    const ownProofDefect = v.verdict === 'LGTM' && (!Array.isArray(v.items) || v.items.length === 0) &&
+      blockers.every((b) => ['artifact-empty', 'malformed-proof', 'no-path', 'no-valid-mtime'].includes(b.reason))
     const merged = [...(v.items || [])]
     for (const b of blockers) {
       trace.push(`artifact-proof-rejected:${b.reason}`)
@@ -3618,6 +3623,11 @@ if (after('review', entryStage)) {
         const designates = named !== null && boxesMapped.some((box) => box.id === named)
         boxesMapped = boxesMapped.map((box) => (!designates || box.id === named ? { ...box, proven: false } : box))
       }
+    }
+    if (ownProofDefect) {
+      log(`callMorganGuarded round ${round}: LGTM with no items and an unusable own artifact proof ` +
+        `(${blockers.map(b => b.reason).join(', ')}) — escalating artifact-proof-rejected, no Nick round`)
+      return { ...v, artifactProofRejected: blockers }
     }
     log(`callMorganGuarded round ${round}: overturned verdict ${v.verdict} -> REQUIRED_CHANGES ` +
       `(${blockers.length} stale/absent artifact proof(s): ${blockers.map(b => b.reason).join(', ')})`)
@@ -4082,6 +4092,13 @@ if (after('review', entryStage)) {
     return finish(STATUS['escalate'], { reason: 'verdict-malformed', problem: bad.malformed, pr, issue, round, trace })
   }
 
+  // #7: an item-less LGTM whose own artifact proof is unusable (callMorganGuarded marks it): no dev round can repair it.
+  // DEBT(#191): no replayed fixture (the incident journal predates the probe labels and the current engine cannot replay it); proven by flow-suite case T9007
+  const escalateArtifactRejected = async (bad, round) => {
+    await updateStatus('Blocked')
+    return finish(STATUS['escalate'], { reason: 'artifact-proof-rejected', pr, issue, round, trace, blockers: bad.artifactProofRejected })
+  }
+
   let v = await callMorganGuarded(
     `Work in the shared worktree "${wtPath}". Review PR #${pr}.\n\n` +
       `${planBlock}\n\n` +
@@ -4109,6 +4126,7 @@ if (after('review', entryStage)) {
     return finish(STATUS['review-died'], { pr, issue, round: 0, trace })
   }
   if (v.verdict === 'MALFORMED') return await escalateMalformed(v, round)
+  if (v.artifactProofRejected) return await escalateArtifactRejected(v, round)
 
   await recordDecision(round, v.verdict, v.items)
 
@@ -4252,6 +4270,7 @@ if (after('review', entryStage)) {
       return finish(STATUS['review-died'], { pr, issue, round, trace })
     }
     if (v.verdict === 'MALFORMED') return await escalateMalformed(v, round)
+    if (v.artifactProofRejected) return await escalateArtifactRejected(v, round)
 
     await recordDecision(round, v.verdict, v.items)
 
