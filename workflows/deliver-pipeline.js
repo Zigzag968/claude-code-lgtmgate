@@ -3072,8 +3072,16 @@ if (entryStage === 'dev' || entryStage === 'review') {
     // (acceptAlreadyDone skips it on a non-finite as-of parse).
     const verdict = acceptAlreadyDone(guard, expectedHead, stamp ? new Date(Number(stamp)).toISOString() : '')
     if (verdict.accepted) {
-      log(`Already-done guard: issue #${issue} is ${verdict.reason} — aborting relaunch`)
-      return finish(STATUS['already-done'], { issue, mergedAt: verdict.reason === 'merged' ? (guard.mergedAt || null) : null, trace })
+      // DEBT(#191): no replayed fixture (the incident journal predates the probe labels); proven by flow-suite case T9031
+      const guardDiag = {
+        reason: verdict.reason,
+        mergedPr: guard.mergedPr ?? null,
+        mergedHeadRef: guard.mergedHeadRef ?? null,
+        mergedPrClosesIssue: guard.mergedPrClosesIssue ?? null,
+        issueState: guard.issueState ?? null,
+      }
+      log(`Already-done guard: issue #${issue} is ${verdict.reason} (mergedPr=${guardDiag.mergedPr}, mergedHeadRef=${guardDiag.mergedHeadRef}, mergedPrClosesIssue=${guardDiag.mergedPrClosesIssue}, issueState=${guardDiag.issueState}) — aborting relaunch`)
+      return finish(STATUS['already-done'], { issue, mergedAt: verdict.reason === 'merged' ? (guard.mergedAt || null) : null, guard: guardDiag, trace })
     }
     if (guard?.isAlreadyDone === true || guard?.checkFailed === true) {
       log(`Already-done guard ERROR: unverified already-done claim rejected (${verdict.reason})${guard?.error ? ` — gh: ${guard.error}` : ''}. Proceeding with the run; the guard is a safety net, never a merge gate.`)
