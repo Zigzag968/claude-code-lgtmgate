@@ -9,8 +9,8 @@ Sam drafts the checklist in the plan (posted on the issue). Every item MUST be :
 - **Relevant** — an acceptance criterion that actually matters for what the PR ships.
 - **Verifiable by Morgan** — a concrete command Morgan can run, or an artifact he can inspect.
   Never an item Morgan cannot verify (no "looks good", no manual step out of his reach).
-- **Marked `[human-gate]` only when no command can decide it** — a judgement, an external system out
-  of reach or a product decision. A human-gate item carries no `command`; a command written in its text is
+- **Marked `[human-gate]` only for a decision, an authorization or an action to perform, or a judgement no
+  read-only command can confirm.** A human-gate item carries no `command`; a command written in its text is
   judged by the plan check (a command that could decide the item is not conforming; a judgement about
   wording, layout or taste is).
 
