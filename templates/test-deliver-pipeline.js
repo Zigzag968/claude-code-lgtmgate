@@ -5241,8 +5241,153 @@ const t183Splice = () => {
   const block = extractBetween(src, '// --- prBodySplice:start ---', '// --- prBodySplice:end ---')
   if (!block) throw new Error('prBodySplice:start/:end markers not found in the pipeline source')
   // eslint-disable-next-line no-new-func
-  return new Function(block + '\nreturn { spliceAcceptanceBlock, tickAcceptanceBlock, checkedAcceptanceIds }')()
+  return new Function(block + '\nreturn { spliceAcceptanceBlock, tickAcceptanceBlock, checkedAcceptanceIds, spliceDecisionLogBlock, decisionLogEntries, composeDecisionLogBlock }')()
 }
+
+// ---------------------------------------------------------------------------
+// #164 — the decision log: ONE block per body whose rounds accumulate across review runs, and a round with only
+// human-gate boxes open reads `pending human gate`, not REQUIRED_CHANGES
+// ---------------------------------------------------------------------------
+const DL_START = '<!-- decision-log:start -->'
+const DL_END = '<!-- decision-log:end -->'
+
+await testCase('T164a two review runs leave ONE decision-log pair holding both runs\' rounds', async () => {
+  const body0 = PR385_BODY_REAL + DL_START + '\n' + DL_END + '\n'
+  const r1 = await run({ mode: 'auto', simulate: { sam: 'GO', morgan: [{ verdict: 'REQUIRED_CHANGES', items: ['a'] }, { verdict: 'LGTM' }], prBody: body0 } })
+  const r2 = await run({ mode: 'auto', entryStage: 'review', prNumber: 190, simulate: { branchCheckRaw: 'features/issue-1', morgan: [{ verdict: 'LGTM' }], prBody: r1.prBodyPreview } })
+  const body = String(r2.prBodyPreview || '')
+  const lines = ['- round 0 — REQUIRED_CHANGES (1 blocker)', '- round 1 — LGTM', '- round 2 — LGTM']
+  const e1 = eq('run 1 log', r1.decisionLog, lines.slice(0, 2))
+  const e2 = eq('run 1 carries nothing', (r1.trace || []).filter((t) => String(t).startsWith('decision-log-carried')), [])
+  const e3 = eq('run 2 status', r2.status, 'ready')
+  const e4 = eq('start markers', countOccurrences(body, DL_START), 1)
+  const e5 = eq('end markers', countOccurrences(body, DL_END), 1)
+  const e6 = eq('both runs\' rounds inside the one block, in order', body.slice(body.indexOf(DL_START), body.indexOf(DL_END)).split('\n').filter((l) => l.startsWith('- round ')), lines)
+  const e7 = eq('run 2 log', r2.decisionLog, lines)
+  const e8 = includes('run 2 trace', r2.trace, 'decision-log-carried:2')
+  const e9 = eq('acceptance block untouched', countUncheckedBoxes(body), countUncheckedBoxes(PR385_BODY_REAL))
+  return e1 || e2 || e3 || e4 || e5 || e6 || e7 || e8 || e9 || { ok: true }
+})
+
+await testCase('T164b a round whose only open boxes are human gates logs pending human gate', async () => {
+  const gate = { text: 'the maintainer reads the rendered page and posts approval', humanGate: true }
+  const gate2 = { text: 'the maintainer confirms the second render', humanGate: true }
+  const real = { text: '`grep -c FOO file` prints `1`', humanGate: false }
+  const accBody = (items) => 'Closes #164\n\n<!-- acceptance:start -->\n' + t182Lines(items).join('\n') + '\n<!-- acceptance:end -->\n' + DL_START + '\n' + DL_END + '\n'
+  // (i) the T18 shape: one gate -> pending human gate, never REQUIRED_CHANGES, in the log and in the body
+  const a = await run({ mode: 'auto', simulate: { sam: { 1: t182Sam([gate]) }, morgan: [{ verdict: 'REQUIRED_CHANGES', items: t182Lines([gate]) }], prBody: accBody([gate]) } })
+  const e1 = eq('(i) status', a.status, 'ready-pending-human')
+  const e2 = eq('(i) log', a.decisionLog, ['- round 0 — pending human gate (1 box)'])
+  const e3 = includes('(i) body', String(a.prBodyPreview || ''), '- round 0 — pending human gate (1 box)')
+  const e4 = eq('(i) no REQUIRED_CHANGES in the body block', String(a.prBodyPreview || '').split(DL_START)[1].includes('REQUIRED_CHANGES'), false)
+  // (ii) the T19 shape: a gate and a real blocker, then the gate alone
+  const l2 = t182Lines([gate, real])
+  const b = await run({ mode: 'auto', simulate: { sam: { 1: t182Sam([gate, real]) }, morgan: [{ verdict: 'REQUIRED_CHANGES', items: [l2[0], l2[1]] }, { verdict: 'REQUIRED_CHANGES', items: [l2[0]] }] } })
+  const e5 = eq('(ii) status', b.status, 'ready-pending-human')
+  const e6 = eq('(ii) log', b.decisionLog, ['- round 0 — REQUIRED_CHANGES (2 blockers)', '- round 1 — pending human gate (1 box)'])
+  // (iii) two gates in one round
+  const c = await run({ mode: 'auto', simulate: { sam: { 1: t182Sam([gate, gate2]) }, morgan: [{ verdict: 'REQUIRED_CHANGES', items: t182Lines([gate, gate2]) }] } })
+  const e7 = eq('(iii) log', c.decisionLog, ['- round 0 — pending human gate (2 boxes)'])
+  // (iv) control: a non-gate item still reads REQUIRED_CHANGES
+  const d = await run({ mode: 'auto', simulate: { sam: 'GO', morgan: [{ verdict: 'REQUIRED_CHANGES', items: ['a'] }, { verdict: 'LGTM' }] } })
+  const e8 = eq('(iv) log', d.decisionLog, ['- round 0 — REQUIRED_CHANGES (1 blocker)', '- round 1 — LGTM'])
+  return e1 || e2 || e3 || e4 || e5 || e6 || e7 || e8 || { ok: true }
+})
+
+await testCase('T164c block level: an indented end marker keeps one block, the entries reader', async () => {
+  const fns = t183Splice()
+  if (!fns) return t182Skip('T164c')
+  // The shape of PR #146's body: the start marker at column 0, the heading, the rounds and the end marker indented.
+  const pr146 = 'Closes #146\n\n## What this ships\n- x\n\n' + DL_START + '\n  ## Decision log\n  - round 0 — REQUIRED_CHANGES (1 blocker)\n  - round 1 — LGTM\n  ' + DL_END + '\n'
+  const out = fns.spliceDecisionLogBlock(pr146, fns.composeDecisionLogBlock(['- round 0 — a', '- round 1 — b', '- round 2 — c']))
+  const e1 = eq('one start marker', countOccurrences(out, DL_START), 1)
+  const e2 = eq('one end marker', countOccurrences(out, DL_END), 1)
+  const e3 = includes('new lines', out, '- round 2 — c\n' + DL_END)
+  const e4 = eq('old lines gone', out.includes('REQUIRED_CHANGES'), false)
+  const e5 = eq('entries of the indented shape, trimmed', fns.decisionLogEntries(pr146), ['- round 0 — REQUIRED_CHANGES (1 blocker)', '- round 1 — LGTM'])
+  const e6 = eq('entries of a fenced example only', fns.decisionLogEntries(FENCED_EXAMPLE_BODY), [])
+  const e7 = eq('entries of an empty body', fns.decisionLogEntries(''), [])
+  // A fenced example AFTER the real column-0 block is never taken for the end of a block that has its own.
+  const after = 'x\n\n' + DL_START + '\n- round 0 — LGTM\n' + DL_END + '\n\n```\n  ' + DL_START + '\n  - round 9 — example\n  ' + DL_END + '\n```\n'
+  const e8 = eq('real block entries with a fenced example after it', fns.decisionLogEntries(after), ['- round 0 — LGTM'])
+  const e9 = eq('the example after is untouched by a splice', fns.spliceDecisionLogBlock(after, fns.composeDecisionLogBlock(['- round 0 — LGTM', '- round 1 — LGTM'])).includes('  - round 9 — example'), true)
+  return e1 || e2 || e3 || e4 || e5 || e6 || e7 || e8 || e9 || { ok: true }
+})
+
+// The shape of PR #146's body: three decision-log blocks (start at column 0, end marker indented), text between them and an
+// acceptance block, the rounds of the three runs 0, 1 and 2 in body order.
+const DL_ACC = '<!-- acceptance:start -->\n- [ ] <!-- ac:1 --> a box\n<!-- acceptance:end -->'
+const dlIndented = (line) => DL_START + '\n  ## Decision log\n  ' + line + '\n  ' + DL_END
+const PR146_BODY = 'Closes #146\n\n## What this ships\n- x\n\n' + dlIndented('- round 0 — REQUIRED_CHANGES (1 blocker)') +
+  '\n\nmiddle text\n\n' + dlIndented('- round 1 — REQUIRED_CHANGES (2 blockers)') + '\n\n## Acceptance checklist\n' + DL_ACC + '\n\n' +
+  dlIndented('- round 2 — LGTM') + '\n'
+const PR146_ROUNDS = ['- round 0 — REQUIRED_CHANGES (1 blocker)', '- round 1 — REQUIRED_CHANGES (2 blockers)', '- round 2 — LGTM']
+// The body PR146_BODY once the three blocks are one, the new block `block` at the place of the last: every line outside the
+// blocks, byte for byte, in its order.
+const pr146Outside = (block) => 'Closes #146\n\n## What this ships\n- x\n\n' + '\nmiddle text\n\n' + '\n## Acceptance checklist\n' + DL_ACC + '\n\n' + block + '\n'
+
+await testCase('T164d block level: a body with 2 or 3 decision-log blocks collapses to ONE pair, the rounds of all blocks in body order', async () => {
+  const fns = t183Splice()
+  if (!fns) return t182Skip('T164d')
+  const block = fns.composeDecisionLogBlock([...PR146_ROUNDS, '- round 3 — LGTM'])
+  const out = fns.spliceDecisionLogBlock(PR146_BODY, block)
+  const e1 = eq('entries of the 3 blocks, in body order', fns.decisionLogEntries(PR146_BODY), PR146_ROUNDS)
+  const e2 = eq('one start marker', countOccurrences(out, DL_START), 1)
+  const e3 = eq('one end marker', countOccurrences(out, DL_END), 1)
+  const e4 = eq('the outside text is byte-identical, the new block at the place of the last', out, pr146Outside(block))
+  const e5 = eq('the acceptance block untouched', out.includes(DL_ACC), true)
+  const e6 = eq('idempotent: the same splice again', fns.spliceDecisionLogBlock(out, block), out)
+  // Two blocks, column-0 end markers.
+  const two = 'a\n\n' + fns.composeDecisionLogBlock(['- round 0 — x']) + '\n\nb\n\n' + fns.composeDecisionLogBlock(['- round 1 — y']) + '\n'
+  const block2 = fns.composeDecisionLogBlock(['- round 0 — x', '- round 1 — y', '- round 2 — z'])
+  const e7 = eq('2 blocks: entries', fns.decisionLogEntries(two), ['- round 0 — x', '- round 1 — y'])
+  const e8 = eq('2 blocks: one pair, outside text kept', fns.spliceDecisionLogBlock(two, block2), 'a\n\n\nb\n\n' + block2 + '\n')
+  // A fenced example before the real blocks is not one of them.
+  const fenced = fns.decisionLogEntries('```\n  ' + DL_START + '\n  - round 9 — example\n  ' + DL_END + '\n```\n' + PR146_BODY)
+  const e9 = eq('a fenced example before the blocks is not carried', fenced, PR146_ROUNDS)
+  return e1 || e2 || e3 || e4 || e5 || e6 || e7 || e8 || e9 || { ok: true }
+})
+
+await testCase('T164e a relaunch at entryStage review on the 3-block body ends with exactly one marker pair holding every round', async () => {
+  const body = PR385_BODY_REAL + PR146_BODY
+  const r = await run({ mode: 'auto', entryStage: 'review', prNumber: 146, simulate: { branchCheckRaw: 'features/issue-1', morgan: [{ verdict: 'LGTM' }], prBody: body } })
+  const out = String(r.prBodyPreview || '')
+  const lines = [...PR146_ROUNDS, '- round 3 — LGTM']
+  const e1 = eq('status', r.status, 'ready')
+  const e2 = eq('start markers', countOccurrences(out, DL_START), 1)
+  const e3 = eq('end markers', countOccurrences(out, DL_END), 1)
+  const e4 = eq('every round inside the one block, in order', out.slice(out.indexOf(DL_START), out.indexOf(DL_END)).split('\n').filter((l) => l.startsWith('- round ')), lines)
+  const e5 = eq('log', r.decisionLog, lines)
+  const e6 = includes('trace', r.trace, 'decision-log-carried:3')
+  return e1 || e2 || e3 || e4 || e5 || e6 || { ok: true }
+})
+
+// An unreadable prior block must never replace an existing one with a shorter one: with no prior read the run writes no
+// decision-log block, leaves a trace token and keeps going. The flow suite cannot make the body unreadable while it exists, so the
+// unreadable read is simulate.probes.prBody null (the body the read could not get); the run's own log is still returned.
+await testCase('T164f no prior read of the decision log (unreadable body): no block written, a trace token, the run goes on', async () => {
+  const r = await run({ mode: 'auto', simulate: { sam: 'GO', morgan: [{ verdict: 'REQUIRED_CHANGES', items: ['a'] }, { verdict: 'LGTM' }], prBody: null } })
+  const e1 = eq('status', r.status, 'ready')
+  const e2 = eq('no body written for the decision log', r.prBodyPreview, null)
+  const e3 = eq('trace token, once', (r.trace || []).filter((t) => String(t).startsWith('decision-log-skipped')), ['decision-log-skipped:no-prior-read'])
+  const e4 = eq('the run\'s own log is still returned', r.decisionLog, ['- round 0 — REQUIRED_CHANGES (1 blocker)', '- round 1 — LGTM'])
+  // Control: a readable body is written (no token).
+  const c = await run({ mode: 'auto', simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }], prBody: PR385_BODY_REAL } })
+  const e5 = eq('control: no token', (c.trace || []).filter((t) => String(t).startsWith('decision-log-skipped')), [])
+  const e6 = includes('control: block written', String(c.prBodyPreview || ''), '- round 0 — LGTM')
+  return e1 || e2 || e3 || e4 || e5 || e6 || { ok: true }
+})
+
+// M12: the wording `pending human gate` follows the same condition as the status ready-pending-human: a REQUIRED_CHANGES verdict
+// whose open lines are all human gates. A regression verdict with only gate lines open is a regression, not a pending gate.
+await testCase('T164g a regression verdict with only human-gate lines open does not read pending human gate', async () => {
+  const gate = { text: 'the maintainer reads the rendered page and posts approval', humanGate: true }
+  const lines = t182Lines([gate])
+  const r = await run({ mode: 'auto', simulate: { sam: { 1: t182Sam([gate]) }, morgan: [{ verdict: 'REGRESSION_DETECTED', items: lines }, { verdict: 'REQUIRED_CHANGES', items: lines }] } })
+  const e1 = eq('log', r.decisionLog, ['- round 0 — REGRESSION_DETECTED (1 blocker)', '- round 1 — pending human gate (1 box)'])
+  return e1 || { ok: true }
+})
+
 const T183_L3 = t182Lines(T183_PLAIN)
 const T183_R2_LINE = '- [ ] fixture `fixtures/incidents/1-*.json` present, replayed red on the base and green on the branch by `scripts/run-offline.cjs`'
 // A semi review of PR #190 on the 3 plain boxes, the body and Morgan's verdicts given.
