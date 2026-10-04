@@ -2437,7 +2437,8 @@ const pluginVersionPieces = () => {
   const m = /const BUILD = \{[^}]*\bversion: '([^']+)'/.exec(src)
   if (!block || !m) return { missing: true, src }
   // eslint-disable-next-line no-new-func
-  const fns = new Function(block + '\nreturn { pluginVersionCmd, pluginVersionVerdict, pluginVersionOrder }')()
+  // minPluginVersionVerdict (#233) is undefined until the engine has it: the T195 cases never depend on it
+  const fns = new Function(block + '\nreturn { pluginVersionCmd, pluginVersionVerdict, pluginVersionOrder, minPluginVersionVerdict: typeof minPluginVersionVerdict === "function" ? minPluginVersionVerdict : undefined }')()
   return { ...fns, src, V: m[1] }
 }
 await testCase('T195a pluginRoot of the engine\'s own version passes unchanged (#195)', async () => {
@@ -2601,6 +2602,134 @@ await testCase('T195d the check runs first, only when the templates come from pl
     eq('a failure of the probe itself keeps the provision-failed signature', body.includes("reason: 'provision-failed', issue, missing: [], exitCode: null, probeReason: pv.probeFailed, probeHint: PROBE_REASON_HINTS[pv.probeFailed]"), true),
     eq('gate writes no label (no updateStatus, no prWrite)', body.includes('updateStatus') || body.includes('prWrite'), false),
     eq('lines is registered in PROBES', src.includes("  'lines': 'lines',"), true),
+  ]
+  return checks.find(c => c) || { ok: true }
+})
+
+// T9233 (#233) — config.minPluginVersion: a repo can make the engine refuse to run when the engine is older than the
+// version it asks for (a Lead who merges engine fixes keeps running the old engine until the plugin is updated and
+// the session restarted). Pure decision (minPluginVersionVerdict, extracted from the pluginVersion markers), raised
+// before Setup and before any probe as a reason on the existing `escalate`: no status, agent, seam or label write.
+await testCase('T9233a an engine below config.minPluginVersion escalates plugin-version-too-old before anything runs (#233)', async () => {
+  const pv = pluginVersionPieces()
+  if (!pv) {
+    log('SKIP — T9233a: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  if (pv.missing) return { ok: false, msg: 'pluginVersion markers or the BUILD version not found in pipeline source' }
+  const r = await run({ mode: 'auto', config: { ...CONFIG, minPluginVersion: '99.0.0' }, simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] } })
+  const reason = String(r.reason || '')
+  const titles = Array.isArray(SUITE_ARGS.phaseTitles) ? SUITE_ARGS.phaseTitles.slice() : null
+  const checks = [
+    eq('status', r.status, 'escalate'),
+    eq('reason starts with the code', reason.startsWith('plugin-version-too-old'), true),
+    includes('names the minimum the repo asks for', reason, '99.0.0'),
+    includes('names the engine version', reason, pv.V),
+    includes('names the remedy', reason, 'claude plugin update lgtmgate@<marketplace> --scope <scope>'),
+    includes('names the restart', reason, 'restart the session'),
+    eq('the reason carries no local path', reason.includes('/tmp/') || reason.includes('/Users/') || reason.includes('/Volumes/'), false),
+    eq('the issue is echoed', r.issue, 1),
+    eq('nothing ran: no trace entry', r.trace, undefined),
+    titles ? eq('nothing ran: no phase() call, so no Setup, Plan or Dev', titles, []) : null,
+  ]
+  return checks.find(c => c) || { ok: true }
+})
+await testCase('T9233b at or above config.minPluginVersion, or with the key absent, the run proceeds unchanged, plugin-version-too-old never raised (#233)', async () => {
+  const pv = pluginVersionPieces()
+  if (!pv) {
+    log('SKIP — T9233b: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  if (pv.missing) return { ok: false, msg: 'pluginVersion markers or the BUILD version not found in pipeline source' }
+  const sim = { sam: 'GO', morgan: [{ verdict: 'LGTM' }] }
+  const TRACE = ['Plan', 'Dev', 'Review', 'PR Ready']
+  const below = await run({ mode: 'auto', config: { ...CONFIG, minPluginVersion: '0.0.1' }, simulate: sim })
+  const equal = await run({ mode: 'auto', config: { ...CONFIG, minPluginVersion: pv.V }, simulate: sim })
+  const absent = await run({ mode: 'auto', simulate: sim })
+  const checks = [
+    eq('minimum below the engine: status', below.status, 'ready'),
+    eq('minimum below the engine: trace', below.trace, TRACE),
+    eq('minimum equal to the engine version: status', equal.status, 'ready'),
+    eq('minimum equal to the engine version: trace', equal.trace, TRACE),
+    eq('key absent: status', absent.status, 'ready'),
+    eq('key absent: trace', absent.trace, TRACE),
+  ]
+  return checks.find(c => c) || { ok: true }
+})
+await testCase('T9233c the minPluginVersion verdict orders versions numerically and refuses an unusable value, plugin-version-too-old only when the engine is older (#233)', async () => {
+  const pv = pluginVersionPieces()
+  if (!pv) {
+    log('SKIP — T9233c: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  if (pv.missing) return { ok: false, msg: 'pluginVersion markers or the BUILD version not found in pipeline source' }
+  const { minPluginVersionVerdict } = pv
+  if (typeof minPluginVersionVerdict !== 'function') return { ok: false, msg: 'minPluginVersionVerdict not found inside the pluginVersion markers' }
+  const v = (engine, min) => minPluginVersionVerdict({ engineVersion: engine, minVersion: min, plugin: 'lgtmgate' })
+  // [engine, minimum, too old?]: numeric per field (beta.9 < beta.10), a prerelease sits below its release, build metadata is ignored
+  const cases = [
+    ['1.0.0-beta.9', '1.0.0-beta.10', true],
+    ['1.0.0-beta.10', '1.0.0-beta.9', false],
+    ['1.0.0-beta.27', '1.0.0', true],
+    ['1.0.0', '1.0.0-rc.1', false],
+    ['1.0.0-beta.27', '1.0.0-beta.27', false],
+    ['1.0.0', '1.0.0', false],
+    ['1.0.0+build.5', '1.0.0', false],
+    ['1.0.0', '1.0.0+build.9', false],
+    ['0.9.9', '1.0.0-beta.1', true],
+    ['1.2.3', '1.10.0', true],
+    ['1.10.0', '1.2.3', false],
+  ]
+  for (const [engine, min, tooOld] of cases) {
+    const got = v(engine, min)
+    const bad = tooOld
+      ? (eq(`engine ${engine} vs minimum ${min}: too old`, got && got.code, 'plugin-version-too-old')
+        || includes(`engine ${engine} vs minimum ${min}: names the minimum`, got.reason, min)
+        || includes(`engine ${engine} vs minimum ${min}: names the engine`, got.reason, engine))
+      : eq(`engine ${engine} vs minimum ${min}: accepted`, got, null)
+    if (bad) return bad
+  }
+  const noMin = eq('undefined: no minimum', v('1.0.0', undefined), null) || eq('null: no minimum', v('1.0.0', null), null)
+  if (noMin) return noMin
+  // an unusable value never reads as "no minimum" (a typo must not turn the check off)
+  for (const bad of ['', 'banana', '1.0', ' 1.0.0', '1.0.0 ', 'v1.0.0', 1, true, {}, []]) {
+    let err = null
+    try { v('1.0.0', bad) } catch (e) { err = e }
+    if (!(err instanceof Error)) return { ok: false, msg: `${JSON.stringify(bad)}: expected an Error, none thrown` }
+    const e2 = includes(`${JSON.stringify(bad)}: message`, err.message, 'Invalid minPluginVersion')
+    if (e2) return e2
+  }
+  // end to end: the same refusal as a throw of the run (zero agent spawns), like Invalid planFreshness
+  let thrown = null
+  try { await run({ mode: 'auto', config: { ...CONFIG, minPluginVersion: 'banana' }, simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] } }) } catch (e) { thrown = e }
+  if (!thrown) return { ok: false, msg: 'run() with minPluginVersion "banana" did not reject' }
+  return includes('run() rejection message', String(thrown.message), 'Invalid minPluginVersion') || { ok: true }
+})
+await testCase('T9233d the minPluginVersion check runs before Setup and before every probe, escalates on the existing status and writes nothing (#233)', async () => {
+  const pv = pluginVersionPieces()
+  if (!pv) {
+    log('SKIP — T9233d: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const src = pv.src
+  const call = 'const tooOld = minPluginVersionVerdict({'
+  const iCall = src.indexOf(call)
+  if (iCall < 0) return { ok: false, msg: 'minPluginVersion call site not found in pipeline source' }
+  const iIf = src.indexOf('if (tooOld)', iCall)
+  const body = iIf < 0 ? '' : src.slice(iCall, src.indexOf('\n', iIf))
+  const iSetup = src.indexOf("phase('Setup')")
+  const iVersionProbe = src.indexOf("await probe('lines', pluginVersionCmd(")
+  const iProvision = src.indexOf("await probe('provision',")
+  const iProceed = src.indexOf('invalid-proceedThrough: ${JSON.stringify(proceedThrough)}')
+  const checks = [
+    eq('the call follows the invalid-proceedThrough return', iProceed > -1 && iCall > iProceed, true),
+    eq('the call precedes phase(Setup)', iSetup > -1 && iCall < iSetup, true),
+    eq('the call precedes the plugin-version probe', iVersionProbe > -1 && iCall < iVersionProbe, true),
+    eq('the call precedes the provision probe', iProvision > -1 && iCall < iProvision, true),
+    eq('it reads the engine build and the repo config', body.includes('engineVersion: BUILD.version') && body.includes('minVersion: config.minPluginVersion'), true),
+    eq('it escalates on the existing status with its reason', body.includes("return finish(STATUS['escalate'], { reason: tooOld.reason"), true),
+    eq('the call site holds no label write, probe or agent call', ['updateStatus', 'prWrite', 'probe(', 'callAgent', 'agent('].some((t) => body.includes(t)), false),
+    eq('the verdict sits inside the pluginVersion markers (pure, extractable)', typeof pv.minPluginVersionVerdict, 'function'),
   ]
   return checks.find(c => c) || { ok: true }
 })

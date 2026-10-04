@@ -22,7 +22,7 @@ export const meta = {
 // | `issue` | GitHub issue number (required) |
 // | `brief` | one-line description of the change (required) |
 // | `wtPath` | shared worktree absolute path (required) |
-// | `config` | REQUIRED object: the parsed `.claude/pipeline.config.json`, supplied by the Lead. Absent or not an object (e.g. a JSON string) -> throws before any agent call (#13, #12). Project-specific configuration (stack-agnostic; see pipeline.config.template.json): `{ ghProject, baseBranch, branchPrefix, worktreeRoot, conventionsRule, commands:{build,test,format}, ciChecks:[], regressionGuard:{testGlob,testFnPattern,baselineCmd}, provision:{extraLinks:[{src,dst}]}, preflight:{canonicalStringBan:[]}, commitHygiene:{squashBeforeHandoff,maxCommits}, commentHygiene:bool, oneWayDoorPaths:[] (optional; R3 path globs/prefixes, default none; see oneWayDoorSignals), oneWayDoorKinds:[] (optional; R3 kinds among status\|agent\|hook\|seam, default none), engineRepo:true (optional; marks the repo that IS this plugin: engine-only rules, default absent = consumer; see engineRules), repo:'owner/repo' }` — repo: code repo for cross-repo runs; absent -> cwd-resolved. worktreeRoot resolution order: LGTMGATE_WORKTREE_ROOT env var -> configLocal.worktreeRoot -> config.worktreeRoot -> wtPath's parent dir (see resolveWorktreeRoot below). |
+// | `config` | REQUIRED object: the parsed `.claude/pipeline.config.json`, supplied by the Lead. Absent or not an object (e.g. a JSON string) -> throws before any agent call (#13, #12). Project-specific configuration (stack-agnostic; see pipeline.config.template.json): `{ ghProject, baseBranch, branchPrefix, worktreeRoot, conventionsRule, commands:{build,test,format}, ciChecks:[], regressionGuard:{testGlob,testFnPattern,baselineCmd}, provision:{extraLinks:[{src,dst}]}, preflight:{canonicalStringBan:[]}, commitHygiene:{squashBeforeHandoff,maxCommits}, commentHygiene:bool, oneWayDoorPaths:[] (optional; R3 path globs/prefixes, default none; see oneWayDoorSignals), oneWayDoorKinds:[] (optional; R3 kinds among status\|agent\|hook\|seam, default none), engineRepo:true (optional; marks the repo that IS this plugin: engine-only rules, default absent = consumer; see engineRules), minPluginVersion:'x.y.z[-pre.N]' (optional, off by default; the oldest engine version this repo accepts: an engine below it escalates `plugin-version-too-old` before anything runs, #233; an unusable value throws), repo:'owner/repo' }` — repo: code repo for cross-repo runs; absent -> cwd-resolved. worktreeRoot resolution order: LGTMGATE_WORKTREE_ROOT env var -> configLocal.worktreeRoot -> config.worktreeRoot -> wtPath's parent dir (see resolveWorktreeRoot below). |
 // | `configLocal` | parsed `.claude/pipeline.config.local.json`, supplied by the Lead (the workflow sandbox has no filesystem — see resolveWorktreeRoot below); only `worktreeRoot` is read today (#61). Gitignored, machine-local, never versioned. Absent/garbage -> {}. |
 // | `pmReview` | run Mia before Sam (default false) |
 // | `issueType` | the issue's type, from its `type:*` label (e.g. 'bug', 'feature', 'chore'); optional, absent = not a bug. With 'bug' AND a Sam target under `workflows/` AND config.engineRepo is true, the R2 fixture acceptance item is injected into Nick's prompt (#76, #163). A launch arg, not a simulate key. |
@@ -131,7 +131,7 @@ export const meta = {
 // `version`, checked against plugin.json by templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '1.0.0-beta.27', cutFrom: '45934b9' }
+const BUILD = { plugin: 'lgtmgate', version: '1.0.0-beta.28', cutFrom: '3b76314' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -247,6 +247,10 @@ if (proceedThrough !== null && !['plan', 'dev', 'review'].includes(proceedThroug
     issue,
   })
 }
+// #233 — config.minPluginVersion (optional, off by default): an engine older than the version the repo asks for stops here,
+// before Setup and before any probe (a reason on the existing escalate: nothing ran, no label written, no trace yet).
+const tooOld = minPluginVersionVerdict({ engineVersion: BUILD.version, minVersion: config.minPluginVersion, plugin: BUILD.plugin })
+if (tooOld) return finish(STATUS['escalate'], { reason: tooOld.reason, issue })
 // Run identity (#130): first log line + Setup phase, before any agent call, so runs can be told apart.
 log(`deliver #${issue} — ${String(brief).slice(0, 80)}${entryStage === 'review' ? ` (PR #${prNumber})` : ''}`)
 phase('Setup')
@@ -2354,6 +2358,22 @@ function pluginVersionVerdict({ engineVersion, probeFailed, exit, lines }) {
   }
   const cause = one.startsWith(E) ? one.slice(E.length) : 'no usable answer'
   return { code: 'plugin-version-unreadable', reason: `plugin-version-unreadable: cannot read the version in the plugin root's .claude-plugin/plugin.json (${cause}); engine is ${engineVersion}; ${remedy}` }
+}
+// #233: a repo can ask for a minimum engine (config.minPluginVersion, optional, off by default); an engine below it stops the
+// run before anything runs. Pure (the engine's own BUILD.version against the minimum, ordered by pluginVersionOrder: no probe,
+// no model). An unusable value throws, like Invalid planFreshness: a typo must never read as "no minimum".
+// -> null when there is no minimum or the engine meets it, else { code, reason }.
+function minPluginVersionVerdict({ engineVersion, minVersion, plugin }) {
+  if (minVersion === undefined || minVersion === null) return null
+  const dir = typeof minVersion === 'string' ? pluginVersionOrder(engineVersion, minVersion) : null
+  if (dir === null) {
+    throw new Error(`Invalid minPluginVersion: ${JSON.stringify(minVersion)} (must be a version x.y.z, optionally with a -prerelease)`)
+  }
+  if (dir >= 0) return null
+  return {
+    code: 'plugin-version-too-old',
+    reason: `plugin-version-too-old: this engine is ${engineVersion}, below the minPluginVersion ${minVersion} this repository asks for; nothing ran. Update the plugin (claude plugin update ${plugin}@<marketplace> --scope <scope>), restart the session, then relaunch`,
+  }
 }
 // --- pluginVersion:end ---
 
