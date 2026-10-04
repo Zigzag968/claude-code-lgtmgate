@@ -5843,6 +5843,80 @@ await testCase('T183za the fence scanner: tilde and longer fences, a fence insid
   return e10 || e11 || e12 || e13 || e14 || { ok: true }
 })
 
+// T141 (#141) — the progress view shows one box per plan pass and per review round: the phase() titles the run calls, in
+// order, are recorded by scripts/run-flow-suite.cjs in SUITE_ARGS.phaseTitles (reset at every run, read right after it).
+const t141Titles = () => (SUITE_ARGS && Array.isArray(SUITE_ARGS.phaseTitles) ? SUITE_ARGS.phaseTitles.slice() : null)
+const t141Skip = (id) => { log(`SKIP — ${id}: SUITE_ARGS.phaseTitles absent (suite not run via scripts/run-flow-suite.cjs)`); return { ok: true } }
+
+await testCase('T141a a run without any loop records exactly Setup, Diagnose, Plan, Dev, Review', async () => {
+  const r = await run({ mode: 'auto', simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] } })
+  const e1 = eq('status', r.status, 'ready')
+  const titles = t141Titles()
+  if (!titles) return e1 || t141Skip('T141a')
+  const e2 = eq('phase titles', titles, ['Setup', 'Diagnose', 'Plan', 'Dev', 'Review'])
+  return e1 || e2 || { ok: true }
+})
+
+await testCase('T141b two fix rounds record Review 2 then Review 3, each title at most 16 characters', async () => {
+  const r = await run({
+    mode: 'auto',
+    simulate: {
+      sam: 'GO',
+      morgan: [{ verdict: 'REQUIRED_CHANGES', items: ['a'] }, { verdict: 'REQUIRED_CHANGES', items: ['b'] }, { verdict: 'LGTM' }],
+    },
+  })
+  const e1 = eq('status', r.status, 'ready')
+  const e2 = eq('rounds', r.rounds, 2)
+  const titles = t141Titles()
+  if (!titles) return e1 || e2 || t141Skip('T141b')
+  const e3 = eq('phase titles', titles, ['Setup', 'Diagnose', 'Plan', 'Dev', 'Review', 'Review 2', 'Review 3'])
+  const e4 = eq('titles over 16 characters', titles.filter((t) => t.length > 16), [])
+  return e1 || e2 || e3 || e4 || { ok: true }
+})
+
+await testCase('T141c a refused plan planned again records Plan 2', async () => {
+  const withCommand = T182_ITEMS.map((it) => (it.humanGate ? { ...it, command: 'node scripts/guards.cjs' } : it))
+  const r = await run({ mode: 'semi', simulate: { sam: { 1: t182Sam(withCommand), 2: t182Sam(T182_ITEMS) }, planCheck: T182_CONFORMING } })
+  const e1 = eq('status', r.status, 'plan-ready')
+  const titles = t141Titles()
+  if (!titles) return e1 || t141Skip('T141c')
+  const e2 = eq('phase titles', titles, ['Setup', 'Diagnose', 'Plan', 'Plan 2'])
+  return e1 || e2 || { ok: true }
+})
+
+// The per-call `phase:` options never reach the harness in simulate mode (callAgent returns the fixture before agent()), so
+// they are pinned on the engine source text: the plan-loop scout passes `phase: planPhase`; inside the review loop (from the
+// roundPhase declaration to the round's Morgan call) the plan-amend scout, the Nick fix and Morgan pass `phase: roundPhase`
+// and no literal `phase: 'Review'` or `phase: 'Plan'` remains.
+await testCase('T141d the plan scout passes planPhase and the review loop calls pass roundPhase, never a fixed title', async () => {
+  const src = SUITE_ARGS.fpSource
+  if (!src) {
+    log('SKIP — T141d: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const optsLine = (from, label) => {
+    const at = src.indexOf(label, from)
+    if (at < 0) return null
+    const start = src.lastIndexOf('\n', at) + 1
+    const end = src.indexOf('\n', at)
+    return { line: src.slice(start, end), end }
+  }
+  const scout = optsLine(0, 'label: `scout-issue-${issue}-${planPass}`')
+  const e1 = scout && scout.line.includes('phase: planPhase') ? null : { ok: false, msg: 'the plan-loop scout must pass `phase: planPhase`' }
+  const loopStart = src.indexOf('const roundPhase = ')
+  if (loopStart < 0) return { ok: false, msg: 'const roundPhase declaration not found' }
+  const amend = optsLine(loopStart, 'label: `scout-amend-${issue}-r${round}`')
+  const nick = optsLine(loopStart, 'label: `nick-pr-${issue}-${pr}`')
+  const morgan = optsLine(loopStart, 'label: `morgan-pr-${issue}-${pr}-r${round}`')
+  const e2 = amend && amend.line.includes('phase: roundPhase') ? null : { ok: false, msg: 'the plan-amend scout must pass `phase: roundPhase`' }
+  const e3 = nick && nick.line.includes('phase: roundPhase') ? null : { ok: false, msg: 'the Nick fix call must pass `phase: roundPhase`' }
+  const e4 = morgan && morgan.line.includes('phase: roundPhase') ? null : { ok: false, msg: 'the review-loop Morgan call must pass `phase: roundPhase`' }
+  const region = morgan ? src.slice(loopStart, morgan.end) : ''
+  const e5 = /phase:\s*['"`](Review|Plan)['"`]/.test(region)
+    ? { ok: false, msg: "a literal `phase: 'Review'` or `phase: 'Plan'` remains in the review loop" } : null
+  return e1 || e2 || e3 || e4 || e5 || { ok: true }
+})
+
 // T123 (#42) — every test ID is unique across the suite. Must stay the LAST case so `results`
 // holds every other case name. Includes a negative control proving the detector really detects.
 await testCase('T123 test IDs are unique across the suite (no duplicated T<n>)', async () => {

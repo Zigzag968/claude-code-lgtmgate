@@ -48,8 +48,14 @@
 //      every registry key has a row (a row's first cell may group several statuses, each in backticks)
 //      and every row names a registry key. A failure names the status.
 //
+//   phase-titles (#141): the titles declared in `export const meta = { ... phases: [ ... ] }` of
+//      workflows/deliver-pipeline.js are each at most 16 characters (the progress view truncates longer ones)
+//      and none is a case-insensitive prefix of another (the view merges them into one box; the run-time
+//      numbered titles `Review 2`, `Plan 2` rely on this; titles are compared after trimming surrounding whitespace,
+//      as the viewer does). Only the meta block is read. A failure names the title.
+//
 // Env (test seams, all optional)
-//   GUARDS_ONLY            comma list among r1,wired,version,parity,budgets,instructions,status (default: all)
+//   GUARDS_ONLY            comma list among r1,wired,version,parity,budgets,instructions,status,phases (default: all)
 //   GUARDS_BASE_FILE       workflow file used as the base for R1 (default: git show origin/main:<file>)
 //   GUARDS_BRANCH_FILE     workflow file used as the branch for R1 (default: workflows/deliver-pipeline.js)
 //   GUARDS_BASE_MANIFEST   base plugin.json path for the version floor (default: git show origin/main:...)
@@ -58,6 +64,7 @@
 //   GUARDS_SAM_JS_FILE     workflow file for sam-parity (default: workflows/deliver-pipeline.js)
 //   GUARDS_STATUS_JS_FILE  workflow file for status-table (default: workflows/deliver-pipeline.js)
 //   GUARDS_DELIVER_MD      Lead runbook for status-table (default: commands/deliver.md)
+//   GUARDS_PHASES_JS_FILE  workflow file for phase-titles (default: workflows/deliver-pipeline.js)
 //   GUARDS_ROOT            repo root (default: parent of scripts/)
 
 const fs = require('fs')
@@ -69,7 +76,7 @@ const WORKFLOW = 'workflows/deliver-pipeline.js'
 const MANIFEST = '.claude-plugin/plugin.json'
 const GUARDS_YML = '.github/workflows/guards.yml'
 const DELIVER_MD = 'commands/deliver.md'
-const ONLY = process.env.GUARDS_ONLY ? process.env.GUARDS_ONLY.split(',') : ['r1', 'wired', 'version', 'parity', 'budgets', 'instructions', 'status']
+const ONLY = process.env.GUARDS_ONLY ? process.env.GUARDS_ONLY.split(',') : ['r1', 'wired', 'version', 'parity', 'budgets', 'instructions', 'status', 'phases']
 
 // Suites that are NOT named in guards.yml, each with its reason. Add a suite here only if it is
 // red on main (report it, do not wire it) or is run through another runner.
@@ -470,6 +477,39 @@ function checkStatusTable() {
   else out(`PASS: status-table: ${keys.length} STATUS keys, each with a row in ${DELIVER_MD} §5, no row without a key`)
 }
 
+// ---- phase-titles (#141) -----------------------------------------------------------------------
+// The declared titles are the `title: '...'` entries of the `phases: [` list inside the top-level
+// `export const meta = { ... }` block (closed by a `}` at column 0); anything after the block is ignored.
+const PHASE_TITLE_CAP = 16
+function declaredPhaseTitles(src) {
+  const m = /^export const meta = \{\n([\s\S]*?)^\}/m.exec(src)
+  if (!m) return null
+  const at = m[1].search(/\bphases:\s*\[/)
+  if (at < 0) return null
+  const titles = [...m[1].slice(at).matchAll(/\btitle:\s*(['"`])((?:(?!\1).)*)\1/g)].map((x) => x[2])
+  return titles.length ? titles : null
+}
+function checkPhaseTitles() {
+  const js = readOr(process.env.GUARDS_PHASES_JS_FILE || path.join(ROOT, WORKFLOW))
+  if (js === null) { bad(`FAIL: phase-titles: cannot read ${WORKFLOW}`); return }
+  const titles = declaredPhaseTitles(js)
+  if (!titles) { bad(`FAIL: phase-titles: no \`phases: [ { title: '...' } ]\` list in the \`export const meta\` block of ${WORKFLOW}`); return }
+  const problems = []
+  for (const t of [...new Set(titles)]) {
+    const n = [...t].length
+    if (n > PHASE_TITLE_CAP) problems.push(`title '${t}' has ${n} characters, cap ${PHASE_TITLE_CAP}`)
+  }
+  // Each pair once; the shorter title (the first one when equal) is named as the prefix.
+  for (let i = 0; i < titles.length; i++) {
+    for (let j = i + 1; j < titles.length; j++) {
+      const [short, long] = titles[i].trim().length <= titles[j].trim().length ? [titles[i], titles[j]] : [titles[j], titles[i]]
+      if (long.trim().toLowerCase().startsWith(short.trim().toLowerCase())) problems.push(`title '${short}' is a prefix of '${long}' (case-insensitive), the progress view merges them`)
+    }
+  }
+  if (problems.length) { for (const pr of problems) bad(`FAIL: phase-titles: ${pr}`); return }
+  out(`PASS: phase-titles: ${titles.length} declared titles, longest ${Math.max(...titles.map((t) => [...t].length))}/${PHASE_TITLE_CAP} characters, none a prefix of another`)
+}
+
 if (ONLY.includes('r1')) checkR1()
 if (ONLY.includes('wired')) checkWired()
 if (ONLY.includes('version')) checkVersion()
@@ -477,4 +517,5 @@ if (ONLY.includes('parity')) checkSamParity()
 if (ONLY.includes('budgets')) checkDocBudgets()
 if (ONLY.includes('instructions')) checkInstructionsWired()
 if (ONLY.includes('status')) checkStatusTable()
+if (ONLY.includes('phases')) checkPhaseTitles()
 process.exit(failed ? 1 : 0)
