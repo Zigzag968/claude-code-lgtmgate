@@ -16,11 +16,13 @@
 //      from any top-level `export const ...` / `export function ...` so each body can
 //      be wrapped in a plain async function.
 //   2. Pipeline-scope injected globals — `args`, `agent`, `log`, `phase`
-//      (deliver-pipeline.js never consumes `workflow`, `parallel` or `bash`).
+//      (deliver-pipeline.js never consumes `workflow`, `parallel` or `bash`). `phase` records its
+//      titles in `args.phaseTitles` (suite scope), reset at every `workflow()` run and read by the
+//      suite right after a run (#141).
 //   3. Suite-scope injected globals — `args`, `log`, `workflow`
 //      (templates/test-deliver-pipeline.js:91-95 reads `args.fpScriptPath`; the suite
 //      never consumes `agent` or `phase` directly — it drives the pipeline only
-//      through `workflow()`).
+//      through `workflow()`; it also reads `args.phaseTitles`, the recorded phase() sequence).
 //   4. `workflow(ref, args)` resolves `ref.scriptPath` ONLY — a bare-name `ref` is a
 //      HARNESS-SIDE default (see buildWorkflowMock below), never registry resolution.
 //      If a case starts passing a bare name expecting real registry behavior, this
@@ -86,23 +88,26 @@ function stripExports(src) {
 async function deadAgent() {
   throw new Error('agent() called — simulate fixture missing')
 }
-const noopPhase = () => {}
 
 // Runs the REAL deliver-pipeline.js body (already export-stripped source) under the
 // pipeline-scope globals. Mirrors run_feature_pipeline_sim.cjs's `new Function` wrap.
-function buildPipelineRunner(fpSrcStripped, log) {
+// phase() records its title in `phaseTitles` (reset at every run): the suite reads the sequence right after a run.
+function buildPipelineRunner(fpSrcStripped, log, phaseTitles) {
   // eslint-disable-next-line no-new-func
   const fn = new Function(
     'args', 'agent', 'log', 'phase',
     'return (async () => {\n' + fpSrcStripped + '\n})()',
   )
-  return async (args) => fn(args, deadAgent, log, noopPhase)
+  return async (args) => {
+    phaseTitles.length = 0
+    return fn(args, deadAgent, log, (t) => { phaseTitles.push(String(t)) })
+  }
 }
 
 // workflow(ref, args) mock — resolves ref.scriptPath ONLY (harness-side default; see
 // the header note above). Re-runs the pipeline body fresh on every call, matching real
 // Workflow-tool semantics (no cross-call state leaks between cases).
-function buildWorkflowMock(log) {
+function buildWorkflowMock(log, phaseTitles) {
   return async (ref, args) => {
     const scriptPath = ref && typeof ref === 'object' ? ref.scriptPath : null
     if (!scriptPath) {
@@ -111,7 +116,7 @@ function buildWorkflowMock(log) {
         `default, never registry resolution) — got ${JSON.stringify(ref)}`)
     }
     const src = stripExports(fs.readFileSync(scriptPath, 'utf-8'))
-    const run = buildPipelineRunner(src, log)
+    const run = buildPipelineRunner(src, log, phaseTitles)
     return run(args)
   }
 }
@@ -137,7 +142,8 @@ async function main() {
   }
 
   const suiteSrcStripped = stripExports(fs.readFileSync(suitePath, 'utf-8'))
-  const workflowMock = buildWorkflowMock(log)
+  const phaseTitles = []
+  const workflowMock = buildWorkflowMock(log, phaseTitles)
   const workflow = dumpPath
     ? async (ref, a) => { const r = await workflowMock(ref, a); if (r && typeof r === 'object') pendingReturns.push(r); return r }
     : workflowMock
@@ -148,7 +154,7 @@ async function main() {
   // engine has no filesystem.
   let repoConfig = null
   try { repoConfig = JSON.parse(fs.readFileSync(path.resolve('.claude/pipeline.config.json'), 'utf-8')) } catch (_) { repoConfig = null }
-  const suiteArgs = { fpScriptPath: fpPath, fpSource: fs.readFileSync(fpPath, 'utf-8'), repoConfig }
+  const suiteArgs = { fpScriptPath: fpPath, fpSource: fs.readFileSync(fpPath, 'utf-8'), repoConfig, phaseTitles }
 
   // eslint-disable-next-line no-new-func
   const suiteFn = new Function(
