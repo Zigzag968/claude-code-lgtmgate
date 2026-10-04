@@ -8,7 +8,7 @@
 # doc-budgets (at budget / over / missing / per-line cap, through GUARDS_ROOT),
 # instructions-wired (imports outside code, once each, no @AGENTS.md, AGENTS.md names both, omitClaudeMd),
 # status-table (registry <-> §5 table both ways, grouped rows, missing registry or table; #180),
-# phase-titles (real titles, a 16-character title, a 17-character title, a case-insensitive prefix title, no phases list; #141).
+# phase-titles (real titles, a 16-character title, a 17-character title, a case-insensitive prefix title either order, a whitespace-padded title, no phases list; #141).
 # Ends with `[test-guards] status=<ok|fail> passed=<n> failed=<n>`.
 set -u
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -341,6 +341,11 @@ if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q "^FAIL: phase-titles: title 'ABCDEFG
 mkphases "$T/ph-pre.js" Setup Plan "Plan check"; run_phases "$T/ph-pre.js"; RC1=$RC; OUT1="$OUT"
 mkphases "$T/ph-pre-ci.js" Setup plan "Plan check"; run_phases "$T/ph-pre-ci.js"
 if [ "$RC1" -ne 0 ] && [ "$RC" -ne 0 ] && echo "$OUT1" | grep -q "^FAIL: phase-titles: title 'Plan' is a prefix of 'Plan check' (case-insensitive), the progress view merges them$" && echo "$OUT" | grep -q "^FAIL: phase-titles: title 'plan' is a prefix of 'Plan check' (case-insensitive), the progress view merges them$"; then ok "phase-titles: a title that is a prefix of another, case-insensitively -> FAIL naming both"; else ko "phase-titles prefix (rc=$RC1/$RC) $OUT1 $OUT"; fi
+mkphases "$T/ph-pre-rev.js" Setup "Plan check" Plan; run_phases "$T/ph-pre-rev.js"
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q "^FAIL: phase-titles: title 'Plan' is a prefix of 'Plan check' (case-insensitive), the progress view merges them$"; then ok "phase-titles: the longer title listed before its prefix title -> FAIL naming both"; else ko "phase-titles prefix, longer first (rc=$RC) $OUT"; fi
+mkphases "$T/ph-trim.js" Setup Plan " Plan"; run_phases "$T/ph-trim.js"; RC1=$RC; OUT1="$OUT"
+mkphases "$T/ph-trim-pre.js" Setup "Plan " " Plan check"; run_phases "$T/ph-trim-pre.js"
+if [ "$RC1" -ne 0 ] && [ "$RC" -ne 0 ] && echo "$OUT1" | /usr/bin/grep -q "^FAIL: phase-titles: title 'Plan' is a prefix of ' Plan'" && echo "$OUT" | /usr/bin/grep -q "^FAIL: phase-titles: title 'Plan ' is a prefix of ' Plan check'"; then ok "phase-titles: titles compared after trimming surrounding whitespace -> FAIL"; else ko "phase-titles trim (rc=$RC1/$RC) $OUT1 $OUT"; fi
 printf "export const meta = {\n  name: 'x',\n}\n" > "$T/ph-none.js"; run_phases "$T/ph-none.js"
 if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: phase-titles: no '; then ok "phase-titles: a meta block without a phases list -> FAIL"; else ko "phase-titles no list (rc=$RC) $OUT"; fi
 

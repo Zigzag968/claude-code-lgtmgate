@@ -47,11 +47,13 @@
 //      workflows/deliver-pipeline.js) and the status table of commands/deliver.md §5 name the same set:
 //      every registry key has a row (a row's first cell may group several statuses, each in backticks)
 //      and every row names a registry key. A failure names the status.
-////   phase-titles (#141): the titles declared in `export const meta = { ... phases: [ ... ] }` of
+//
+//   phase-titles (#141): the titles declared in `export const meta = { ... phases: [ ... ] }` of
 //      workflows/deliver-pipeline.js are each at most 16 characters (the progress view truncates longer ones)
 //      and none is a case-insensitive prefix of another (the view merges them into one box; the run-time
-//      numbered titles `Review 2`, `Plan 2` rely on this). Only the meta block is read. A failure names the title.
-
+//      numbered titles `Review 2`, `Plan 2` rely on this; titles are compared after trimming surrounding whitespace,
+//      as the viewer does). Only the meta block is read. A failure names the title.
+//
 // Env (test seams, all optional)
 //   GUARDS_ONLY            comma list among r1,wired,version,parity,budgets,instructions,status,phases (default: all)
 //   GUARDS_BASE_FILE       workflow file used as the base for R1 (default: git show origin/main:<file>)
@@ -500,8 +502,8 @@ function checkPhaseTitles() {
   // Each pair once; the shorter title (the first one when equal) is named as the prefix.
   for (let i = 0; i < titles.length; i++) {
     for (let j = i + 1; j < titles.length; j++) {
-      const [short, long] = titles[i].length <= titles[j].length ? [titles[i], titles[j]] : [titles[j], titles[i]]
-      if (long.toLowerCase().startsWith(short.toLowerCase())) problems.push(`title '${short}' is a prefix of '${long}' (case-insensitive), the progress view merges them`)
+      const [short, long] = titles[i].trim().length <= titles[j].trim().length ? [titles[i], titles[j]] : [titles[j], titles[i]]
+      if (long.trim().toLowerCase().startsWith(short.trim().toLowerCase())) problems.push(`title '${short}' is a prefix of '${long}' (case-insensitive), the progress view merges them`)
     }
   }
   if (problems.length) { for (const pr of problems) bad(`FAIL: phase-titles: ${pr}`); return }
