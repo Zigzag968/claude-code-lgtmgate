@@ -2703,6 +2703,8 @@ if (after('plan', entryStage)) {
 // #163 — the engine's own layer rule (simulate seam, status/agent/hook/seam) only for the repo whose config sets
 // engineRepo:true; every consumer Sam gets the neutral PLAN RULE (see engineRules above). Pinned by T163a, T163c.
 const SAM_LAYER_RULE = samLayerRule(config)
+// #28 — when a Sam acceptance item may be tagged human-gate; the same text sits in agents/sam.md and pr-acceptance.md. Pinned by flow test T9028.
+const HUMAN_GATE_TAG_RULE = 'HUMAN-GATE TAG RULE: before tagging an item `[human-gate]`, ask whether the box asks someone to decide, authorize or perform an action (tag it), or only to confirm that an action already happened (do not tag it). A confirmation has a read-only command (a run-status query, a policy read, a log read): write that command as a normal Morgan-verifiable box and cite the earlier human decision inline in the item text. Default to a normal box whenever a read-only command exists; tag only a genuine judgment call or an action no read-only command can confirm.'
 // #77 — product direction, Sam + Morgan prompts only, tool-neutral: agents receive each repo's own
 // instructions natively (Claude Code loads the project's CLAUDE.md and its imports), so the engine names no
 // file and imposes no doc on a consumer; a repo that states no direction gets the same run.
@@ -2749,6 +2751,7 @@ const samScoutPrompt = ({ fixBlock = '', auditFixBlock = '', reviewFixBlock = ''
     `${SAM_ONE_WAY_DOOR}${SAM_PRODUCT_DIRECTION}` +
     `Author the acceptance checklist against ${conventionsRule} — in particular its Format-status and Test-status acceptance-item sections: never assert a whole-repo clean state the base branch cannot satisfy. ` +
     `${ACCEPTANCE_PROOF_RULE} ` +
+    `${HUMAN_GATE_TAG_RULE} ` +
     `Then post an INDEX comment on issue #${issue} — never the full plan, whatever its size. The index comment is exactly: ${planMarker} alone on its first line, a condensed summary (~15 lines max), the acceptance checklist VERBATIM, and a pointer to the canonical artifact "${planPath}" in the shared worktree. ` +
     `HARD CAP: keep that comment under ${planCommentMaxChars} characters (GitHub rejects an issue-comment body over 65536 chars); it is an index, so the bound holds by construction — if you approach it, cut summary prose, never the checklist. ` +
     `POST IDEMPOTENTLY: write the index body to ".pipeline/issue-${issue}-comment.md", then look for an existing marked comment with ` +
