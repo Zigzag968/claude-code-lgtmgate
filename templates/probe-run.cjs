@@ -59,6 +59,11 @@ const USAGE =
   "usage: node probe-run.cjs --label L --round N --out /abs/dir --parser NAME [--model M] [--no-reuse] [--expect-cmd SHA256 (required by write parsers)] --cmd '<shell cmd>'\n" +
   '       node probe-run.cjs --verify --label L --round N --out /abs/dir --parser NAME --attest /abs/file.jsonl\n'
 
+// #239: the cause of a failed `gh` read, as templates/gh-read-class.sh names it. A closed set: a script prints a class,
+// never the stderr text, and a parser keeps one only when it is in the set.
+const READ_CLASSES = ['tls', 'auth', 'rate-limit', 'not-found', 'other']
+const readClass = (x) => (typeof x === 'string' && READ_CLASSES.includes(x) ? x : null)
+
 // ---- pure PARSERS: (stdout, stderr, exit) -> JSON-able value ----------------------------------
 const PARSERS = {
   lines(stdout) {
@@ -122,7 +127,8 @@ const PARSERS = {
       }
     }
     if (v.mode === 'branch') {
-      return { mode: 'branch', headRef: str(v.headRef), branchPrefix: typeof v.branchPrefix === 'string' ? v.branchPrefix : null }
+      // #239: `readFailed` (the named cause of a failed PR read) only from the closed set, no key when absent.
+      return { mode: 'branch', headRef: str(v.headRef), branchPrefix: typeof v.branchPrefix === 'string' ? v.branchPrefix : null, ...(readClass(v.readFailed) ? { readFailed: v.readFailed } : {}) }
     }
     return { error: 'bad-mode' }
   },
@@ -177,6 +183,7 @@ const PARSERS = {
   },
   // pr-write.sh output (E2.6a, #85): ONE JSON object {op, result, reason, bytes}. result must be one of
   // written|skipped|failed, anything else is an error; a malformed op/reason/bytes is normalised to null. No regex.
+  // #239: `detail` (the named cause of a failed read) is kept only from the closed set, and the key is absent otherwise.
   'pr-write'(stdout) {
     let v
     try { v = JSON.parse(String(stdout)) } catch (_) { return { error: 'bad-json' } }
@@ -188,6 +195,7 @@ const PARSERS = {
       result: v.result,
       reason: str(v.reason),
       bytes: Number.isInteger(v.bytes) && v.bytes >= 0 ? v.bytes : null,
+      ...(readClass(v.detail) ? { detail: v.detail } : {}),
     }
   },
 }

@@ -131,7 +131,7 @@ export const meta = {
 // `version`, checked against plugin.json by templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '1.0.0-beta.29', cutFrom: '9898bc6' }
+const BUILD = { plugin: 'lgtmgate', version: '1.0.0-beta.30', cutFrom: '50c6784' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -2462,7 +2462,7 @@ async function prWrite(op, label, round, argv) {
     prWriteFailure = 'probe-error'
     log(`pr-write ${op} (${label}, round ${round}): failed (${e.message}) — fail-open`)
   }
-  if (out) log(`pr-write ${op} (${label}, round ${round}): ${out.result}${out.reason ? ' — ' + out.reason : ''}`)
+  if (out) log(`pr-write ${op} (${label}, round ${round}): ${out.result}${out.reason ? ' — ' + out.reason : ''}${out.detail ? ' (' + out.detail + ')' : ''}`)
   return out
 }
 
@@ -3175,10 +3175,15 @@ let subIssuesUncovered = []    // lgtmgate#193 — post-gate list, exposed on de
 // Extracted (lgtmgate#45) so the SAME check runs both on a fresh Dev-phase dispatch AND on an
 // `entryStage:'review'` resume, which otherwise skips the entire Dev block (and therefore this
 // guard) since `after('dev', entryStage)` is false for that entryStage.
+// #239: the cause of a failed PR read as the branch probe names it (templates/gh-read-class.sh), a closed set; anything else is no
+// named failure (a missing / garbled answer stays fail-open, as before).
+const PR_READ_CLASSES = ['tls', 'auth', 'rate-limit', 'not-found', 'other']
+const namedReadFailure = (x) => (typeof x === 'string' && PR_READ_CLASSES.includes(x) ? x : null)
 const assertBranchConformance = async (prNum, nickBranchFallback) => {
   const expectedBranch = `${expectedBranchName}`
   let headRef = nickBranchFallback ?? null
   let rawHeadRef = null
+  let readFailed = null   // #239: the named cause when the PR read of the branch probe failed
   let branchPf = null   // one preflight 'branch' probe per guard call, shared by the head-ref and prefix reads
   let branchPfDone = false
   const branchProbe = async () => {
@@ -3189,11 +3194,22 @@ const assertBranchConformance = async (prNum, nickBranchFallback) => {
     return branchPf
   }
   if (simulate) {
-    if (simulate.probes?.branchCheckRaw !== undefined) rawHeadRef = simulate.probes?.branchCheckRaw
+    const sim = simulate.probes?.branchCheckRaw
+    // an object answer is the branch probe's own answer ({ readFailed }); a string / null keeps its old meaning
+    if (sim !== null && typeof sim === 'object') readFailed = namedReadFailure(sim.readFailed)
+    else if (sim !== undefined) rawHeadRef = sim
   } else if (prNum) {
     const pf = await branchProbe()
-    if (pf) rawHeadRef = pf.headRef ?? ''
-    else log(`Branch guard: preflight branch probe unavailable — falling back to nick.branch`)
+    if (pf) {
+      readFailed = namedReadFailure(pf.readFailed)
+      rawHeadRef = pf.headRef ?? ''
+    } else log(`Branch guard: preflight branch probe unavailable — falling back to nick.branch`)
+  }
+  if (readFailed) {
+    // The PR could not be read, for a cause the script named: stop here with it, before a reviewer is spent (#239).
+    trace.push(`pr-read-failed:${readFailed}`)
+    log(`Branch guard: the read of PR #${prNum} failed (${readFailed}) — escalating pr-read-failed:${readFailed}, no review spent`)
+    return { reason: `pr-read-failed:${readFailed}`, pr: prNum ?? null, issue, trace }
   }
   if (rawHeadRef !== null) {
     const parsed = parseHeadRef(rawHeadRef, expectedBranch)
@@ -3690,7 +3706,9 @@ if (after('review', entryStage)) {
     // One try: null when the tick landed, else the reason it did not. simulate.probes.acceptanceSync: false (refused),
     // a reason string, or a list of those answered one per try (true / absent: the real tickAcceptanceBlock on the body).
     let tries = 0
+    let tickDetail = null   // #239: the named cause of the last try's failed read (tls, auth, ...), null when none
     const tryTick = async (label) => {
+      tickDetail = null
       if (simulate) {
         const sim = simulate.probes?.acceptanceSync
         const answers = Array.isArray(sim) ? sim : [sim]
@@ -3698,6 +3716,11 @@ if (after('review', entryStage)) {
         tries += 1
         if (answer === false) return 'write-failed'
         if (typeof answer === 'string') return answer
+        if (answer !== null && typeof answer === 'object') {
+          // the probe's own answer shape { reason, detail }
+          tickDetail = namedReadFailure(answer.detail)
+          return typeof answer.reason === 'string' && answer.reason ? answer.reason : 'write-failed'
+        }
         const base = simBody()
         if (base === undefined || base === null) return null
         const out = tickAcceptanceBlock(base, rendered, tickIds, keepIds)
@@ -3707,6 +3730,7 @@ if (after('review', entryStage)) {
       }
       const res = await prWrite('body-splice', label, round, ['--pr', pr, '--mode', 'tick', '--text-b64', base64Utf8(rendered), '--ids', tickIds.join(','), '--keep', keepIds.join(',')])
       if (res && (res.result === 'written' || res.result === 'skipped')) return null
+      tickDetail = res ? namedReadFailure(res.detail) : null
       return res ? (res.reason || 'write-failed') : (prWriteFailure || 'probe-unavailable')
     }
     let reason = await tryTick('acceptance-tick')
@@ -3737,7 +3761,7 @@ if (after('review', entryStage)) {
     } else if (tickBoxes.length > 0) {
       trace.push(`acceptance-tick-refused:${round}`)
       trace.push(`acceptance-tick-reason:${reason}`)
-      log(`tickAcceptanceBoxes round ${round}: the tick of box(es) ${tickIds.join(',')} was refused (${reason}) — parking for the Lead`)
+      log(`tickAcceptanceBoxes round ${round}: the tick of box(es) ${tickIds.join(',')} was refused (${reason}${tickDetail ? ' — ' + tickDetail : ''}) — parking for the Lead`)
       if (verdict === 'LGTM') { verdict = 'REQUIRED_CHANGES'; changed = true }
       tickReason = reason
       untickable = tickBoxes.map((b) => {
@@ -3746,7 +3770,7 @@ if (after('review', entryStage)) {
         return { id: b.id, item: renderLine(item), proof: b.proof }
       })
     }
-    return changed || untickable ? { ...v, verdict, items, ...(untickable ? { untickable, tickReason } : {}) } : v
+    return changed || untickable ? { ...v, verdict, items, ...(untickable ? { untickable, tickReason, ...(tickDetail ? { tickDetail } : {}) } : {}) } : v
   }
 
   // Regression guard — baseline SET-DIFF, not a grep/function-count check.
@@ -4045,9 +4069,9 @@ if (after('review', entryStage)) {
     log(`Verified-untickable: ${untickable.length} box(es) proven but not tickable — parking for the Lead, no Nick round${rest.length > 0 ? ` (+ ${rest.length} human-gate)` : ''}`)
     await updateStatus('Pending Tick')   // best-effort; logs + skips if the option is unconfigured
     if (rest.length === 0) {
-      return finish(STATUS['verified-untickable'], { pr, issue, round, untickableItems: untickable, ...(v.tickReason ? { tickReason: v.tickReason } : {}), trace, decisionLog })
+      return finish(STATUS['verified-untickable'], { pr, issue, round, untickableItems: untickable, ...(v.tickReason ? { tickReason: v.tickReason } : {}), ...(v.tickDetail ? { tickDetail: v.tickDetail } : {}), trace, decisionLog })
     }
-    return finish(STATUS['ready-pending-human'], { pr, issue, round, humanGateItems: rest, untickableItems: untickable, ...(v.tickReason ? { tickReason: v.tickReason } : {}), trace, decisionLog })
+    return finish(STATUS['ready-pending-human'], { pr, issue, round, humanGateItems: rest, untickableItems: untickable, ...(v.tickReason ? { tickReason: v.tickReason } : {}), ...(v.tickDetail ? { tickDetail: v.tickDetail } : {}), trace, decisionLog })
   }
 
   // syncAcceptanceBlock (issue #97) — deterministic, FAIL-CLOSED sync of Sam's amended acceptance
@@ -4186,7 +4210,7 @@ if (after('review', entryStage)) {
 
   while (v.verdict !== 'LGTM' && round < 3) {
     if (gate('review', v.verdict)) {
-      return finish(STATUS['needs-revision'], { round, items: v.items, pr, issue, ...(v.tickReason ? { tickReason: v.tickReason } : {}), trace })
+      return finish(STATUS['needs-revision'], { round, items: v.items, pr, issue, ...(v.tickReason ? { tickReason: v.tickReason } : {}), ...(v.tickDetail ? { tickDetail: v.tickDetail } : {}), trace })
     }
     prevRoundItems = v.items || []
     round++
