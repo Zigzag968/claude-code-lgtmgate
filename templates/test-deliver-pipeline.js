@@ -6345,6 +6345,38 @@ await testCase('T183za the fence scanner: tilde and longer fences, a fence insid
   return e10 || e11 || e12 || e13 || e14 || { ok: true }
 })
 
+// T237 (#237) — acceptanceBoxes drops the first line of the block text when it is blank: a line of only carriage returns,
+// whatever their number (a string replace stripped ONE). The function is read from the engine block by its markers (as
+// t183Splice does), so `--fp <base copy>` replays the case on the base.
+const t237Boxes = () => {
+  const src = SUITE_ARGS.fpSource
+  if (!src) return null
+  const block = extractBetween(src, '// --- prBodySplice:start ---', '// --- prBodySplice:end ---')
+  if (!block) throw new Error('prBodySplice:start/:end markers not found in the pipeline source')
+  // eslint-disable-next-line no-new-func
+  return new Function(block + '\nreturn acceptanceBoxes')()
+}
+
+// DEBT(#240): no incident fixture can replay a function-level engine fix (run-offline replays whole runs only); this case, run against the base engine through --fp, is the red-then-green proof
+await testCase('T237a acceptanceBoxes: a first line of only carriage returns is blank whatever their number; a first line with content is kept', async () => {
+  const boxes = t237Boxes()
+  if (!boxes) return t182Skip('T237a')
+  const rows = [
+    ['\r\n', []],
+    ['\r\r\n', []],
+    ['\r\r\r\n', []],
+    ['\n', []],
+    ['note\r\n', ['note']],
+    [' \r\n', [' ']],
+  ]
+  for (const [head, foreign] of rows) {
+    const got = boxes(head + '- [ ] <!-- ac:1 --> a\r\n')
+    const e = eq(`first line ${JSON.stringify(head)}: foreign`, got.foreign, foreign) || eq(`first line ${JSON.stringify(head)}: ids`, [...got.checkedById], [[1, false]])
+    if (e) return e
+  }
+  return { ok: true }
+})
+
 // T141 (#141) — the progress view shows one box per plan pass and per review round: the phase() titles the run calls, in
 // order, are recorded by scripts/run-flow-suite.cjs in SUITE_ARGS.phaseTitles (reset at every run, read right after it).
 const t141Titles = () => (SUITE_ARGS && Array.isArray(SUITE_ARGS.phaseTitles) ? SUITE_ARGS.phaseTitles.slice() : null)

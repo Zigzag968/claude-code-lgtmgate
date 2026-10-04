@@ -131,7 +131,7 @@ export const meta = {
 // `version`, checked against plugin.json by templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '1.0.0-beta.28', cutFrom: '3b76314' }
+const BUILD = { plugin: 'lgtmgate', version: '1.0.0-beta.29', cutFrom: '9898bc6' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -719,7 +719,7 @@ function acceptanceBoxes(text) {
   const checkedById = new Map()
   const foreign = []
   const all = String(text).split('\n')
-  if (all.length > 0 && all[0].replace('\r', '') === '') all.shift()
+  if (all.length > 0 && all[0].split('\r').join('') === '') all.shift()
   if (all.length > 0 && all[all.length - 1] === '') all.pop()
   let fence = ''
   for (const raw of all) {
