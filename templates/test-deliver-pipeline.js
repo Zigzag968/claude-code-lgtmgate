@@ -456,7 +456,7 @@ await testCase('null Morgan round 0 (2026-07-21 crash) → review-died PR preser
 })
 
 // 15. auto, sam:GO, round 0 REQUIRED_CHANGES + round 1 SAME items → escalate
-await testCase('same-blocker-twice (round 1 items ⊇ round 0) → escalate', async () => {
+await testCase('no-progress (round 1 items ⊇ round 0) → escalate', async () => {
   const r = await run({
     mode: 'auto',
     simulate: {
@@ -468,7 +468,7 @@ await testCase('same-blocker-twice (round 1 items ⊇ round 0) → escalate', as
     },
   })
   const e1 = eq('status', r.status, 'escalate')
-  const e2 = eq('reason', r.reason, 'same-blocker-twice')
+  const e2 = eq('reason', r.reason, 'no-progress')
   return (e1 || e2) ? (e1 || e2) : { ok: true }
 })
 
@@ -680,7 +680,7 @@ const t182Block = () => {
   const block = extractBetween(src, '// --- acceptanceItems:start ---', '// --- acceptanceItems:end ---')
   if (!block) throw new Error('acceptanceItems:start/:end markers not found in the pipeline source')
   // eslint-disable-next-line no-new-func
-  return new Function(block + '\nreturn { numberItems, renderLine, renderChecklist, parseChecklist, itemsFromPlan, validateAcceptanceItems, planLacksItems, mapBoxes, nickBlockNote, morganBoxesNote, boxLineId, lineKey, humanGateLine, onlyHumanGateLines, parkUntickable, morganItemsRule }')()
+  return new Function(block + '\nreturn { numberItems, renderLine, renderChecklist, parseChecklist, itemsFromPlan, validateAcceptanceItems, planLacksItems, mapBoxes, nickBlockNote, morganBoxesNote, boxLineId, lineKey, humanGateLine, onlyHumanGateLines, parkUntickable, morganItemsRule, reviewProgress, ciBlocker, verdictProblem }')()
 }
 const T182_ITEMS = [
   { text: '`node scripts/guards.cjs; echo $?` prints `0` as its last line', humanGate: false },
@@ -748,10 +748,10 @@ await testCase('T19 mixed round loops on real blocker then human-gate terminates
 })
 
 // 20. T20 — normalization catches cosmetic rewording (Part 2)
-// Two cosmetically-reworded copies of one id-less blocker trigger same-blocker-twice escalate (#183: the key of a line
+// Two cosmetically-reworded copies of one id-less blocker trigger the no-progress escalate (#183: the key of a line
 // without an `<!-- ac:N -->` id is its lowercased, whitespace-collapsed text without trailing punctuation).
 // Would fail under an exact-string key, passes under the normalized one.
-await testCase('T20 normalization catches cosmetic rewording → same-blocker-twice escalate', async () => {
+await testCase('T20 normalization catches cosmetic rewording → no-progress escalate', async () => {
   const r = await run({
     mode: 'auto',
     simulate: {
@@ -763,7 +763,7 @@ await testCase('T20 normalization catches cosmetic rewording → same-blocker-tw
     },
   })
   const e1 = eq('status', r.status, 'escalate')
-  const e2 = eq('reason', r.reason, 'same-blocker-twice')
+  const e2 = eq('reason', r.reason, 'no-progress')
   return (e1 || e2) ? (e1 || e2) : { ok: true }
 })
 
@@ -3821,7 +3821,7 @@ await testCase('T110 no itemOwners (neutral default) → ready, no plan-route/pl
 
 // T111 — budget exhausted: maxPlanAmendRounds:1, and the FRESH verdict after the one allowed
 // amendment round still classifies the same item as a plan defect → plan-defect-persists,
-// named as a plan defect rather than mislabelled same-blocker-twice.
+// named as a plan defect rather than mislabelled no-progress.
 await testCase('T111 plan-defect persists through the amendment round → escalate plan-defect-persists', async () => {
   const r = await run({
     mode: 'auto',
@@ -5156,7 +5156,7 @@ await testCase('T183h an LGTM with a non-gate box not proven is forced to REQUIR
   return e1 || e2 || e3 || e4 || e5 || { ok: true }
 })
 
-await testCase('T183i the same id reworded in two rounds is the same blocker → escalate same-blocker-twice; two different ids loop', async () => {
+await testCase('T183i the same id reworded in two rounds is the same blocker → escalate no-progress; two different ids loop', async () => {
   const mk = (n, text) => `- [ ] <!-- ac:${n} --> ${text}`
   const r = await run({
     mode: 'auto',
@@ -5169,7 +5169,7 @@ await testCase('T183i the same id reworded in two rounds is the same blocker →
     },
   })
   const e1 = eq('status', r.status, 'escalate')
-  const e2 = eq('reason', r.reason, 'same-blocker-twice')
+  const e2 = eq('reason', r.reason, 'no-progress')
   const c = await run({
     mode: 'auto',
     simulate: {
@@ -5471,7 +5471,7 @@ await testCase('T183o a plan amendment resets the blocker history: a different b
   // Control: with no amendment between them, the same id in two rounds is still the same blocker.
   const c = await run({ mode: 'auto', simulate: { sam: { 1: t182Sam(A) }, morgan: [{ verdict: 'REQUIRED_CHANGES', items: [la[1]] }, { verdict: 'REQUIRED_CHANGES', items: [la[1]] }] } })
   const e3 = eq('control: status', c.status, 'escalate')
-  const e4 = eq('control: reason', c.reason, 'same-blocker-twice')
+  const e4 = eq('control: reason', c.reason, 'no-progress')
   return e1 || e2 || e3 || e4 || { ok: true }
 })
 
@@ -5915,6 +5915,167 @@ await testCase('T141d the plan scout passes planPhase and the review loop calls 
   const e5 = /phase:\s*['"`](Review|Plan)['"`]/.test(region)
     ? { ok: false, msg: "a literal `phase: 'Review'` or `phase: 'Plan'` remains in the review loop" } : null
   return e1 || e2 || e3 || e4 || e5 || { ok: true }
+})
+
+// ---------------------------------------------------------------------------
+// #184 — review-loop progress check, live-state ready gate, malformed-verdict escalation
+// ---------------------------------------------------------------------------
+// The caps stay constants; two reasons ride on the existing `escalate` status (`no-progress`, `verdict-malformed`).
+
+// A schema of the same shape as the engine's MORGAN (the pure function reads the declared types and the verdict enum;
+// the end-to-end cases T184d/e go through the real MORGAN).
+const T184_SCHEMA = {
+  type: 'object',
+  required: ['verdict'],
+  properties: {
+    verdict: { enum: ['LGTM', 'REQUIRED_CHANGES', 'REGRESSION_DETECTED'] },
+    items: { type: 'array', items: { type: 'string' } },
+    boxes: { type: 'array', items: { type: 'object' } },
+    ciGreen: { type: 'boolean' },
+  },
+}
+
+await testCase('T184a two rounds with identical blockers → escalate no-progress after round 2, progress flat', async () => {
+  const r = await run({
+    mode: 'auto',
+    simulate: {
+      sam: 'GO',
+      morgan: [
+        { verdict: 'REQUIRED_CHANGES', items: ['a'] },
+        { verdict: 'REQUIRED_CHANGES', items: ['a'] },
+      ],
+    },
+  })
+  const e1 = eq('status', r.status, 'escalate')
+  const e2 = eq('reason', r.reason, 'no-progress')
+  const e3 = eq('round', r.round, 1)
+  const e4 = eq('progress', r.progress, 'flat')
+  return e1 || e2 || e3 || e4 || { ok: true }
+})
+
+await testCase('T184b LGTM + every non-gate box proven + CI green → ready at round 0', async () => {
+  const r = await run({
+    mode: 'auto',
+    simulate: {
+      sam: { 1: t182Sam(T183_PLAIN) },
+      morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, true, true) }],
+    },
+  })
+  const e1 = eq('status', r.status, 'ready')
+  const e2 = eq('rounds', r.rounds, 0)
+  const e3 = (r.trace || []).includes('ci-not-green:0') ? { ok: false, msg: 'ci-not-green traced on a green run' } : null
+  return e1 || e2 || e3 || { ok: true }
+})
+
+await testCase('T184c LGTM with one open non-gate box is never ready: it loops, then stops on no-progress', async () => {
+  const lines = t182Lines(T183_PLAIN)
+  const r = await run({
+    mode: 'auto',
+    simulate: {
+      sam: { 1: t182Sam(T183_PLAIN) },
+      morgan: [
+        { verdict: 'LGTM', boxes: t183Boxes(true, false, true) },
+        { verdict: 'LGTM', boxes: t183Boxes(true, false, true) },
+      ],
+    },
+  })
+  const e1 = r.status === 'ready' ? { ok: false, msg: 'ready with a box not proven' } : null
+  const e2 = eq('status', r.status, 'escalate')
+  const e3 = eq('reason', r.reason, 'no-progress')
+  const e4 = includes('trace', r.trace || [], 'acceptance-open-lgtm:0')
+  // Control: with a single verdict the run stops at the review gate carrying the box-2 line.
+  const s = await run({
+    mode: 'semi',
+    entryStage: 'review',
+    prNumber: 190,
+    planText: t182Sam(T183_PLAIN).plan,
+    simulate: { morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, false, true) }] },
+  })
+  const e5 = eq('control: status', s.status, 'needs-revision')
+  const e6 = eq('control: items', s.items, [lines[1]])
+  return e1 || e2 || e3 || e4 || e5 || e6 || { ok: true }
+})
+
+await testCase('T184d a verdict outside the schema escalates at round 0: verdict-malformed, no Nick round', async () => {
+  const r = await run({ mode: 'auto', simulate: { sam: 'GO', morgan: [{ verdict: 'MAYBE' }] } })
+  const e1 = eq('status', r.status, 'escalate')
+  const e2 = eq('reason', r.reason, 'verdict-malformed')
+  const e3 = eq('round', r.round, 0)
+  const e4 = eq('problem', r.problem, 'verdict')
+  const e5 = includes('trace', r.trace || [], 'verdict-malformed:0')
+  return e1 || e2 || e3 || e4 || e5 || nickTrace(r) || { ok: true }
+})
+
+await testCase('T184e a verdict malformed by shape in a later round escalates at once; a valid REGRESSION_DETECTED then LGTM is ready', async () => {
+  const r = await run({
+    mode: 'auto',
+    simulate: {
+      sam: 'GO',
+      morgan: [
+        { verdict: 'REQUIRED_CHANGES', items: ['a'] },
+        { verdict: 'LGTM', items: 'oops' },
+      ],
+    },
+  })
+  const e1 = eq('status', r.status, 'escalate')
+  const e2 = eq('reason', r.reason, 'verdict-malformed')
+  const e3 = eq('round', r.round, 1)
+  const e4 = eq('problem', r.problem, 'items')
+  const c = await run({
+    mode: 'auto',
+    simulate: { sam: 'GO', morgan: [{ verdict: 'REGRESSION_DETECTED', items: ['a'] }, { verdict: 'LGTM' }] },
+  })
+  const e5 = eq('control: status', c.status, 'ready')
+  const e6 = eq('control: rounds', c.rounds, 1)
+  return e1 || e2 || e3 || e4 || e5 || e6 || { ok: true }
+})
+
+await testCase('T184f reviewProgress and verdictProblem tables (the engine\'s own functions)', async () => {
+  const fns = t182Block()
+  if (!fns) return t182Skip('T184f')
+  const mk = (n, text) => `- [ ] <!-- ac:${n} --> ${text}`
+  const rp = fns.reviewProgress
+  const e1 = eq('identical -> flat', rp(['a', 'b'], ['a', 'b']), 'flat')
+  const e2 = eq('same box id reworded -> flat', rp([mk(1, 'old wording')], [mk(1, 'new wording')]), 'flat')
+  const e3 = eq('one resolved -> progress', rp(['a', 'b'], ['a']), 'progress')
+  const e4 = eq('resolved + added -> progress', rp(['a'], ['b']), 'progress')
+  const e5 = eq('prev null -> progress', rp(null, ['a']), 'progress')
+  const e6 = eq('prev empty -> progress', rp([], ['a']), 'progress')
+  const e7 = eq('prev subset of cur -> regressed', rp(['a'], ['a', 'b']), 'regressed')
+  const e8 = eq('box ids: 1 -> 1,2 -> regressed', rp([mk(1, 'x')], [mk(1, 'x'), mk(2, 'y')]), 'regressed')
+  const vp = fns.verdictProblem
+  const e9 = eq('valid verdict -> null', vp({ verdict: 'LGTM', items: ['a'], boxes: [], ciGreen: true }, T184_SCHEMA), null)
+  const e10 = eq('unknown verdict -> verdict', vp({ verdict: 'MAYBE' }, T184_SCHEMA), 'verdict')
+  const e11 = eq('missing verdict -> verdict', vp({ items: [] }, T184_SCHEMA), 'verdict')
+  const e12 = eq('items not an array -> items', vp({ verdict: 'LGTM', items: 'oops' }, T184_SCHEMA), 'items')
+  const e13 = eq('items holding a non-string -> items', vp({ verdict: 'LGTM', items: ['a', 3] }, T184_SCHEMA), 'items')
+  const e14 = eq('ciGreen not a boolean -> ciGreen', vp({ verdict: 'LGTM', ciGreen: 'yes' }, T184_SCHEMA), 'ciGreen')
+  const e15 = eq('boxes not an array -> boxes', vp({ verdict: 'LGTM', boxes: {} }, T184_SCHEMA), 'boxes')
+  const e16 = eq('not an object -> not-an-object', vp('LGTM', T184_SCHEMA), 'not-an-object')
+  const e17 = eq('array -> not-an-object', vp([], T184_SCHEMA), 'not-an-object')
+  return e1 || e2 || e3 || e4 || e5 || e6 || e7 || e8 || e9 || e10 || e11 || e12 || e13 || e14 || e15 || e16 || e17 || { ok: true }
+})
+
+await testCase('T184g the CI half of the ready gate: a red CI at LGTM is REQUIRED_CHANGES, a persistent one stops on no-progress; ciBlocker table', async () => {
+  const r = await run({ mode: 'auto', simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM', ciGreen: false }, { verdict: 'LGTM' }] } })
+  const e1 = eq('status', r.status, 'ready')
+  const e2 = eq('rounds', r.rounds, 1)
+  const e3 = includes('trace', r.trace || [], 'ci-not-green:0')
+  const p = await run({ mode: 'auto', simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM', ciGreen: false }, { verdict: 'LGTM', ciGreen: false }] } })
+  const e4 = eq('persistent: status', p.status, 'escalate')
+  const e5 = eq('persistent: reason', p.reason, 'no-progress')
+  const fns = t182Block()
+  if (!fns) return e1 || e2 || e3 || e4 || e5 || t182Skip('T184g')
+  const cb = fns.ciBlocker
+  const e6 = eq('green wins over a Morgan false', cb('green', false), null)
+  const e7 = typeof cb('failing', true) === 'string' ? null : { ok: false, msg: 'failing + true must give a blocker line' }
+  const e8 = typeof cb('pending', true) === 'string' ? null : { ok: false, msg: 'pending + true must give a blocker line' }
+  const e9 = typeof cb(null, false) === 'string' ? null : { ok: false, msg: 'null + false must give a blocker line' }
+  const e10 = typeof cb('none', false) === 'string' ? null : { ok: false, msg: 'none + false must give a blocker line' }
+  const e11 = eq('null + true -> null', cb(null, true), null)
+  const e12 = eq('undefined + undefined -> null', cb(undefined, undefined), null)
+  const e13 = eq('the line is stable across calls', cb('failing', true), cb('failing', true))
+  return e1 || e2 || e3 || e4 || e5 || e6 || e7 || e8 || e9 || e10 || e11 || e12 || e13 || { ok: true }
 })
 
 // T123 (#42) — every test ID is unique across the suite. Must stay the LAST case so `results`
