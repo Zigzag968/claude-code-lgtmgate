@@ -35,6 +35,8 @@
 //      workflow and the persona carry the proof-rule exemption (EXEMPTION_KEY), and the "when [human-gate]
 //      applies" rule sentence (from "efore tagging an item" to the end of its line) is identical in the
 //      workflow constant, the persona and both pr-acceptance copies, the case of its first letter aside.
+//      Follow-up issue rule (#29): the workflow and the persona carry one identical "FOLLOW-UP ISSUE RULE:"
+//      sentence that names sub_issues, and each file holds the hidden marker key (FOLLOWUP_MARKER_KEY) once.
 //   Invariant 1 (relaxed) version floor: .claude-plugin/plugin.json version >= origin/main's (semver 2.0.0
 //      precedence, prerelease included: 1.0.0-beta.2 > 1.0.0-beta.1, 1.0.0-beta.9 < 1.0.0).
 //      Since #74 (scripts/lead-merge.sh bumps at merge; bump-required is retired) this floor is
@@ -104,6 +106,9 @@ const OLD_GATE_DEF = 'an external system out of reach'
 const EXEMPTION_KEY = 'read-only confirmation of an action that was already authorized and executed'
 // The "when [human-gate] applies" rule sentence, from after its first letter to the end of its line.
 const GATE_RULE_RE = /efore tagging an item[^\n']*/
+// Follow-up issue rule (#29): the sentence from its label to the end of its line, and its hidden marker key.
+const FOLLOWUP_RULE_RE = /FOLLOW-UP ISSUE RULE:[^\n']*/
+const FOLLOWUP_MARKER_KEY = 'pipeline-followup:issue-'
 
 // Engine-only vocabulary a consumer-facing persona must not carry.
 const ENGINE_WORDS_RE = /\bsimulate\b|\bseam\b|agent\(\)|fixtures\/incidents/
@@ -378,8 +383,22 @@ function checkSamParity() {
   for (const [name, sentence] of ruleSentences.slice(1)) {
     if (sentence !== ruleSentences[0][1]) problems.push(`${name} human-gate rule sentence differs from ${ruleSentences[0][0]}`)
   }
+  // Follow-up issue rule (#29): one sentence, naming sub_issues, with the marker key once, on both sides.
+  const followupSentences = []
+  for (const [name, txt] of sites) {
+    if (txt === null) continue
+    const m = FOLLOWUP_RULE_RE.exec(txt)
+    if (!m) { problems.push(`${name} lacks the follow-up issue rule`); continue }
+    if (!m[0].includes('sub_issues')) problems.push(`${name} follow-up issue rule lacks sub_issues`)
+    const keyCount = txt.split(FOLLOWUP_MARKER_KEY).length - 1
+    if (keyCount !== 1) problems.push(`${name} carries the follow-up marker ${keyCount} times, expected 1`)
+    followupSentences.push([name, norm(m[0])])
+  }
+  if (followupSentences.length === 2 && followupSentences[0][1] !== followupSentences[1][1]) {
+    problems.push(`${followupSentences[1][0]} follow-up issue rule differs from ${followupSentences[0][0]}`)
+  }
   if (problems.length) bad(`FAIL: sam-parity: ${problems.join('; ')}`)
-  else out('PASS: sam-parity: patch-avoided: and the PLAN RULE sentence on both sides, the LAYER RULE sentence in the workflow, no engine vocabulary in the persona, no root-cause: field, one human-gate test, exemption and rule sentence across the workflow, the persona and both pr-acceptance copies')
+  else out('PASS: sam-parity: patch-avoided: and the PLAN RULE sentence on both sides, the LAYER RULE sentence in the workflow, no engine vocabulary in the persona, no root-cause: field, one human-gate test, exemption and rule sentence across the workflow, the persona and both pr-acceptance copies, one follow-up issue rule across the workflow and the persona')
 }
 
 // ---- instructions-wired (#77) ------------------------------------------------------------------
