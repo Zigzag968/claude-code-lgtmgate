@@ -4699,6 +4699,41 @@ await testCase('T9028 HUMAN_GATE_TAG_RULE defined once, interpolated once in sam
   return (e1 || e2 || e3 || e4) ? (e1 || e2 || e3 || e4) : { ok: true }
 })
 
+// T9028b (#28) — the human-gate tag rule must not contradict the texts Sam also reads. Source-level, on the
+// engine: (i) the named exemption to the proof rule (a read-only confirmation of an already-executed action) is in
+// ACCEPTANCE_PROOF_RULE, the plan-check item (5) and the plan-audit proof check, and the rules that forbid an
+// external-world state still forbid it; (ii) the old definition of a human gate ("an external system out of
+// reach") is gone and the schema description and ACCEPTANCE_ITEMS_RULE state the new test. The Sam persona and
+// the two pr-acceptance copies are not readable here: the sam-parity guard (scripts/guards.cjs) checks them.
+await testCase('T9028b human-gate definition and proof exemption agree across the engine texts (#28)', async () => {
+  const src = SUITE_ARGS.fpSource
+  if (!src) {
+    log('SKIP — T9028b: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const EXEMPTION = 'read-only confirmation of an action that was already authorized and executed'
+  const GATE_TEST = 'a decision, an authorization or an action to perform, or a judgement no read-only command can confirm'
+  const lines = src.split('\n')
+  const line = (pred) => lines.find(pred) || ''
+  const proofRule = line((l) => l.startsWith('const ACCEPTANCE_PROOF_RULE = '))
+  const itemsRule = line((l) => l.startsWith('const ACCEPTANCE_ITEMS_RULE = '))
+  const planCheck = line((l) => l.includes('(5) ACCEPTANCE PROOF CHECK'))
+  const planAudit = line((l) => l.includes('ACCEPTANCE PROOF CHECK: an acceptance item lacking'))
+  const schema = line((l) => l.includes('humanGate: { type: \'boolean\''))
+  const checks = [
+    includes('exemption in ACCEPTANCE_PROOF_RULE', proofRule, EXEMPTION),
+    includes('exemption in the plan-check item (5)', planCheck, EXEMPTION),
+    includes('exemption in the plan-audit proof check', planAudit, EXEMPTION),
+    includes('proof rule still forbids "no known X"', proofRule, '"no known X"'),
+    includes('plan-check still refuses a "no known X" claim', planCheck, '"no known X"'),
+    includes('human-gate test in the schema description', schema, GATE_TEST),
+    includes('human-gate test in ACCEPTANCE_ITEMS_RULE', itemsRule, GATE_TEST),
+    eq('old definition "an external system out of reach" occurrences', src.split('an external system out of reach').length - 1, 0),
+  ]
+  const bad = checks.filter((c) => c)
+  return bad.length ? { ok: false, msg: bad.map((b) => b.msg.slice(0, 90)).join(' | ') } : { ok: true }
+})
+
 // T130 (#130) — run identity: the first log() is `deliver #<issue> — <brief>`, `Setup` is the first
 // declared phase and is entered before any agent call, and every agent label carries the issue number.
 // Source-anchored: the suite-scope log() cannot intercept the pipeline's own log (run-flow-suite.cjs).
