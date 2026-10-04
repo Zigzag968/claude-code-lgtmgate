@@ -595,24 +595,60 @@ function decisionLogSpan(src) {
   }
   return null
 }
-// The round lines (`- round ...`, trimmed) the real block of `body` holds, in order; [] when there is no block. Pure.
+// Every block of `src`, in body order, as { s, e, eLen } (the last one is the real block, see decisionLogSpan): a legacy body
+// can hold several (lgtmgate#164, PR #146: three, each with an indented end marker). An earlier block runs from a column-0
+// start marker to the first end marker alone on its line (column 0 or indented) before the next start marker; a start with no
+// such end is not a block and is left alone. String operations only.
+function decisionLogSpans(src) {
+  const last = decisionLogSpan(src)
+  if (last === null) return []
+  const starts = []
+  for (let at = src.indexOf(DECISION_LOG_START); at !== -1 && at < last.s; at = src.indexOf(DECISION_LOG_START, at + 1)) {
+    const nl = src.indexOf('\n', at)
+    if ((at === 0 || src[at - 1] === '\n') && src.slice(at + DECISION_LOG_START.length, nl === -1 ? src.length : nl).trim() === '') starts.push(at)
+  }
+  const spans = []
+  starts.forEach((s, k) => {
+    const bound = k + 1 < starts.length ? starts[k + 1] : last.s
+    for (let at = src.indexOf(DECISION_LOG_END, s); at !== -1 && at < bound; at = src.indexOf(DECISION_LOG_END, at + 1)) {
+      const lineStart = src.lastIndexOf('\n', at - 1) + 1
+      const nl = src.indexOf('\n', at)
+      const lineEnd = nl === -1 ? src.length : nl
+      if (lineStart > s && src.slice(lineStart, at).trim() === '' && src.slice(at + DECISION_LOG_END.length, lineEnd).trim() === '') {
+        spans.push({ s, e: at, eLen: lineEnd - at })
+        break
+      }
+    }
+  })
+  return [...spans, last]
+}
+// The round lines (`- round ...`, trimmed) the blocks of `body` hold, those of every block in body order; [] when there is no
+// block. Pure.
 function decisionLogEntries(body) {
   const src = String(body ?? '')
-  const span = decisionLogSpan(src)
-  if (span === null) return []
-  return src.slice(span.s + DECISION_LOG_START.length, span.e).split('\n').map((l) => l.trim()).filter((l) => l.startsWith('- round '))
+  const out = []
+  for (const span of decisionLogSpans(src)) {
+    for (const l of src.slice(span.s + DECISION_LOG_START.length, span.e).split('\n')) if (l.trim().startsWith('- round ')) out.push(l.trim())
+  }
+  return out
 }
 
-// Idempotent splice of a pre-composed decision-log block into a body. Replaces an existing
-// block in place; appends at the end when the markers are absent (legacy/resumed PRs). Pure —
-// extracted from upsertDecisionLog (issue #87) so the SAME splice algorithm can be embedded
-// (via .toString()) into the single deterministic shell chain recordDecision runs, instead of
-// being hand-duplicated there.
+// Idempotent splice of a pre-composed decision-log block into a body. Replaces the real block in place and removes every
+// earlier block, line for line (their rounds are carried by the caller, from decisionLogEntries): the body ends with ONE pair,
+// the text outside the blocks untouched and in its order; appends at the end when the markers are absent (legacy/resumed
+// PRs). Pure — extracted from upsertDecisionLog (issue #87) so the SAME splice algorithm can be embedded (via .toString())
+// into the single deterministic shell chain recordDecision runs, instead of being hand-duplicated there.
 function spliceDecisionLogBlock(body, block) {
   const src = String(body ?? '')
-  const span = decisionLogSpan(src)
-  if (span !== null) return src.slice(0, span.s) + block + src.slice(span.e + span.eLen)
-  return (src.endsWith('\n') ? src : src + '\n') + '\n' + block + '\n'
+  const spans = decisionLogSpans(src)
+  if (spans.length === 0) return (src.endsWith('\n') ? src : src + '\n') + '\n' + block + '\n'
+  let out = src
+  for (let i = spans.length - 1; i >= 0; i--) {
+    const { s, e, eLen } = spans[i]
+    const to = e + eLen
+    out = i === spans.length - 1 ? out.slice(0, s) + block + out.slice(to) : out.slice(0, s) + out.slice(out[to] === '\n' ? to + 1 : to)
+  }
+  return out
 }
 
 // Idempotent upsert of the workflow-owned decision-log block. Thin wrapper — external behavior
@@ -3312,10 +3348,15 @@ if (after('review', entryStage)) {
   }
 
   const reviewerWindowStart = async (round) => {
-    if (simulate) return simulate.probes?.windowStart
+    if (simulate) {
+      // The read of the body a simulated run does: null when the body is unreadable (simulate.probes.prBody null).
+      const body = simBody()
+      notePriorRead(body === null ? null : decisionLogEntries(body))
+      return simulate.probes?.windowStart
+    }
     const st = await prState('window-start', round)
     // The decision-log lines the body already holds, read once, before this run writes any (lgtmgate#164).
-    if (decisionBase === null && decisionPrior === null && Array.isArray(st?.decisionLog)) decisionPrior = st.decisionLog
+    notePriorRead(st?.decisionLog)
     return st?.now ?? null
   }
 
@@ -3774,11 +3815,15 @@ if (after('review', entryStage)) {
   let round = 0
 
   // The lines of the WHOLE decision-log block: the ones the body already held first (a relaunch at entryStage review,
-  // lgtmgate#164), then this run's. decisionPrior: the lines the first window-start pr-state read of the run saw (real mode;
-  // null = not read). decisionBase: how many lines predate this run, fixed at the first recordDecision.
+  // lgtmgate#164), then this run's. decisionPrior: the lines the first successful read of the body saw before this run
+  // wrote anything (null = no read succeeded). decisionBase: how many lines predate this run, fixed at the first
+  // recordDecision. decisionSkip: set at that moment when no read succeeded; the run then never writes the block (an
+  // unreadable block is never replaced by a shorter one) and a later read does not undo it.
   const decisionLog = []
   let decisionPrior = null
   let decisionBase = null
+  let decisionSkip = false
+  const notePriorRead = (lines) => { if (decisionBase === null && decisionPrior === null && Array.isArray(lines)) decisionPrior = lines }
   let guardProbeResult = null   // simulate-only: T87b probes the REAL bodyWriteGuardOk (issue #87)
   let acceptanceSpliceProbe = null   // simulate.probes?.acceptanceSpliceProbe-only: T113 probes the REAL spliceAcceptanceBlock (issue #97)
   let planAmendRounds = 0   // #97 — budget counter for the plan-defect-persists escalation (S13)
@@ -3798,8 +3843,12 @@ if (after('review', entryStage)) {
   const recordDecision = async (r, verdict, items) => {
     const n = Array.isArray(items) ? items.length : 0
     if (decisionBase === null) {
-      const prior = simulate ? decisionLogEntries(simBody()) : (decisionPrior ?? [])
-      if (!simulate && decisionPrior === null) log('recordDecision: the body block was not read before this run (pr-state unavailable) — earlier rounds are not carried')
+      const prior = decisionPrior ?? []
+      if (decisionPrior === null) {
+        decisionSkip = true
+        trace.push('decision-log-skipped:no-prior-read')
+        log('recordDecision: the decision log of the body was not read before this run — the block is not written (an earlier block is never replaced by a shorter one)')
+      }
       decisionLog.push(...prior)
       decisionBase = prior.length
       if (prior.length > 0) trace.push(`decision-log-carried:${prior.length}`)
@@ -3811,6 +3860,7 @@ if (after('review', entryStage)) {
       : gateOnly
         ? `- round ${k} — pending human gate (${n} box${n === 1 ? '' : 'es'})`
         : `- round ${k} — ${verdict} (${n} blocker${n === 1 ? '' : 's'})`)
+    if (decisionSkip) return
     if (simulate) {
       // T87b (issue #87) — additive lever, zero behavior change when absent (mirrors
       // simulate.probes?.artifactFloor/simulate.probes?.behindCount). Exercises the REAL production

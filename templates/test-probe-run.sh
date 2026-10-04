@@ -396,6 +396,22 @@ GHEOF
     && [ "$(printf 'no block here\n' | node "$SPL" entries -)" = '[]' ] && ok=1
   check "[164] pr-body-splice.cjs entries prints the round lines of the real block as a JSON array ([] with no block)" "$ok"
 
+  # [164] a legacy body with 3 decision-log blocks (PR #146 shape: indented end markers): one pair after a splice, every round kept
+  # in body order, the text outside the blocks untouched; pr-state.sh lists the rounds of all the blocks
+  printf 'Closes #146\n\n<!-- decision-log:start -->\n  ## Decision log\n  - round 0 — a\n  <!-- decision-log:end -->\n\nmiddle\n\n<!-- decision-log:start -->\n  ## Decision log\n  - round 1 — b\n  <!-- decision-log:end -->\n\n<!-- acceptance:start -->\n- [ ] <!-- ac:1 --> x\n<!-- acceptance:end -->\n\n<!-- decision-log:start -->\n  ## Decision log\n  - round 2 — c\n  <!-- decision-log:end -->\n' > "$WORK/dl3-pre.md"
+  printf '<!-- decision-log:start -->\n## Decision log\n- round 0 — a\n- round 1 — b\n- round 2 — c\n- round 3 — d\n<!-- decision-log:end -->\n' > "$WORK/dl3-text.md"
+  printf 'Closes #146\n\n\nmiddle\n\n\n<!-- acceptance:start -->\n- [ ] <!-- ac:1 --> x\n<!-- acceptance:end -->\n\n<!-- decision-log:start -->\n## Decision log\n- round 0 — a\n- round 1 — b\n- round 2 — c\n- round 3 — d\n<!-- decision-log:end -->\n' > "$WORK/dl3-want.md"
+  ok=0
+  [ "$(node "$SPL" entries "$WORK/dl3-pre.md")" = '["- round 0 — a","- round 1 — b","- round 2 — c"]' ] \
+    && node "$SPL" splice decision-log "$WORK/dl3-pre.md" "$WORK/dl3-text.md" "$WORK/dl3-out.md" \
+    && [ "$(grep -c 'decision-log:start' "$WORK/dl3-out.md")" = "1" ] && [ "$(grep -c 'decision-log:end' "$WORK/dl3-out.md")" = "1" ] \
+    && cmp -s "$WORK/dl3-out.md" "$WORK/dl3-want.md" && ok=1
+  check "[164] pr-body-splice.cjs: 3 decision-log blocks (indented end markers) -> entries lists every round in order; splice leaves one pair, the text outside byte-identical" "$ok"
+  OUT8="$(GH_ACC="$(cat "$WORK/dl3-pre.md")" PATH="$PSD/bin:$PATH" bash "$PS" --pr 7 --wt "$PSD/wt" --repo o/r)"
+  ok=0
+  [ "$(printf '%s' "$OUT8" | jq -c '.decisionLog')" = '["- round 0 — a","- round 1 — b","- round 2 — c"]' ] && ok=1
+  check "[164] pr-state.sh: decisionLog lists the rounds of ALL the decision-log blocks of the body, in body order" "$ok"
+
   ok=0
   out5="$(PATH="$PSD/bin:$PATH" bash "$PS" --pr 7 --wt "$PSD/wt" --repo o/r | node -e '
     const { PARSERS } = require(process.argv[1])
