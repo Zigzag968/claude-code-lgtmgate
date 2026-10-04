@@ -6357,6 +6357,7 @@ const t237Boxes = () => {
   return new Function(block + '\nreturn acceptanceBoxes')()
 }
 
+// DEBT(#240): no incident fixture can replay a function-level engine fix (run-offline replays whole runs only); this case, run against the base engine through --fp, is the red-then-green proof
 await testCase('T237a acceptanceBoxes: a first line of only carriage returns is blank whatever their number; a first line with content is kept', async () => {
   const boxes = t237Boxes()
   if (!boxes) return t182Skip('T237a')
