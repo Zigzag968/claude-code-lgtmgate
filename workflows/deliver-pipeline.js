@@ -719,7 +719,7 @@ function acceptanceBoxes(text) {
   const checkedById = new Map()
   const foreign = []
   const all = String(text).split('\n')
-  if (all.length > 0 && all[0].replace('\r', '') === '') all.shift()
+  if (all.length > 0 && all[0].split('\r').join('') === '') all.shift()
   if (all.length > 0 && all[all.length - 1] === '') all.pop()
   let fence = ''
   for (const raw of all) {
