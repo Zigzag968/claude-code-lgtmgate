@@ -131,7 +131,7 @@ export const meta = {
 // `version`, checked against plugin.json by templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '1.0.0-beta.24', cutFrom: '6c17426' }
+const BUILD = { plugin: 'lgtmgate', version: '1.0.0-beta.25', cutFrom: '8be922b' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -1184,7 +1184,9 @@ const MORGAN = {
       description: 'One entry per ticked acceptance box whose text claims a live/replayed run ' +
         'produced an artifact (report, export, render, log, file at a named path). item is the ' +
         'VERBATIM checklist line; mtime MUST include an explicit UTC \'Z\' or numeric timezone ' +
-        'offset (e.g. `date -u +%Y-%m-%dT%H:%M:%SZ`) — a bare timestamp without Z/offset is rejected.',
+        'offset (e.g. `date -u +%Y-%m-%dT%H:%M:%SZ`) — a bare timestamp without Z/offset is rejected. ' +
+        'committedInPr is optional and true only when the path is content of the PR head (it appears in ' +
+        '`git diff --name-only origin/<base>...HEAD`).',
       items: {
         type: 'object',
         properties: {
@@ -1193,6 +1195,8 @@ const MORGAN = {
           exists: { type: 'boolean' },
           mtime: { type: 'string' },
           bytes: { type: 'number' },
+          // DEBT(#191): no replayed fixture (the incident journal predates the probe labels and the current engine cannot replay it); proven by flow-suite case T9005
+          committedInPr: { type: 'boolean' },
         },
       },
     },
@@ -1437,6 +1441,7 @@ function reconcileStaleProjectConfig(rawJson) {
 // her verdict alone (same doctrine as acceptAlreadyDone above, one lane earlier).
 // Returns [] when nothing is wrong; otherwise one { item, reason } per rejected proof, in the
 // FIRST-matching-reason order below. Pure: no I/O, no closure over simulate/config/trace.
+// Exception: a proof with committedInPr === true (file is content of the PR head) skips the mtime checks.
 function staleArtifactBlockers(proofs, floorIso) {
   if (!Array.isArray(proofs) || proofs.length === 0) return []
   // Accepts an explicit UTC 'Z' or a numeric offset: Morgan stats artifacts on the local
@@ -1458,9 +1463,12 @@ function staleArtifactBlockers(proofs, floorIso) {
     if (p.exists !== true) {
       blockers.push({ item, reason: 'artifact-absent' }); continue
     }
-    if (Number.isFinite(p.bytes) && p.bytes <= 0) {
+    if (Number.isFinite(p.bytes) ? p.bytes <= 0 : p.committedInPr === true) {
       blockers.push({ item, reason: 'artifact-empty' }); continue
     }
+    // DEBT(#191): a file committed in the PR has an mtime that predates the PR's last commit by construction, so no-valid-mtime and artifact-stale do not apply to it (no replayed fixture; proven by flow-suite case T9005)
+    // Residual risk: committedInPr is self-attested by the reviewer; a deterministic cross-check needs a pr-state probe-output change (tracked in a follow-up)
+    if (p.committedInPr === true) continue
     const mtime = typeof p.mtime === 'string' ? p.mtime : ''
     if (!ISO.test(mtime)) {
       blockers.push({ item, reason: 'no-valid-mtime' }); continue
@@ -3731,18 +3739,25 @@ if (after('review', entryStage)) {
   // fresh re-run; a content-only check (the clause above) cannot catch a stale-but-matching
   // artifact. This clause makes freshness/existence itself the proof, machine-re-derived by
   // staleArtifactBlockers() — the workflow overturns an LGTM whose proofs do not hold.
+  // DEBT(#191): no replayed fixture (the incident journal predates the probe labels and the current engine cannot replay it); proven by flow-suite case T9005
   const artifactProofStep =
     `ARTIFACT-PROOF GATE (lane-agnostic): before ticking ANY acceptance box whose text claims a live ` +
     `or replayed run produced an artifact (report, export, render, log, file at a named path), verify ` +
     `the artifact YOURSELF — \`ls -l\` / \`stat\` the exact path — and confirm it EXISTS, is NON-EMPTY, ` +
-    `and that its mtime is AFTER the PR's latest commit; an artifact from an earlier run is STALE ` +
+    `and that its mtime is AFTER the PR's latest commit (except a file committed in the PR, below); an artifact from an earlier run is STALE ` +
     `evidence, not proof. Cite path + mtime + size in the posted proof; a grep whose output cannot be ` +
     `traced to a named, freshly stat-ed path is NOT proof. Return one \`artifactProofs\` entry per such ` +
     `ticked box ({item: the verbatim checklist line, path, exists, mtime ISO-8601 — MUST include an ` +
     `explicit UTC 'Z' or numeric timezone offset (e.g. \`date -u +%Y-%m-%dT%H:%M:%SZ\`); a bare ` +
     `timestamp without Z/offset is rejected, bytes}). Absent, ` +
-    `empty or predating the latest commit ⇒ the box stays UNTICKED and its verbatim line goes into ` +
-    `\`items\` ⇒ REQUIRED_CHANGES, never a tick. The workflow re-derives this from \`artifactProofs\` and ` +
+    `empty or predating the latest commit (except a file committed in the PR, below) ⇒ the box stays UNTICKED and its verbatim line goes into ` +
+    `\`items\` ⇒ REQUIRED_CHANGES, never a tick. ` +
+    `COMMITTED-IN-PR EXCEPTION: when the artifact is itself content of the PR head (its path appears in ` +
+    `\`git -C "${wtPath}" diff --name-only origin/${baseBranch}...HEAD\` — run it and cite the line), set \`committedInPr: true\` ` +
+    `on its \`artifactProofs\` entry: such a file exists before the latest commit, so its mtime legitimately ` +
+    `predates it and is not judged (path, existence and non-empty size still are). Leave the field out for any ` +
+    `artifact a run produced that the PR does not commit: those keep the mtime rule above. ` +
+    `The workflow re-derives this from \`artifactProofs\` and ` +
     `will overturn an LGTM whose proofs do not hold. `
 
   // Worktree freshness probe — best-effort, read-only (fetch only, never checkout/reset/

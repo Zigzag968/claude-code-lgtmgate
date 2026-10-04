@@ -1684,6 +1684,117 @@ await testCase('T9007b artifact-proof-rejected escalation: every blocker own-def
     || i1 || i2 || i3 || i4 || i5 || { ok: true }
 })
 
+// T9005 (#5) — a proof file that is content of the PR head (`committedInPr: true`) has an mtime that predates
+// the PR's last commit by construction: the mtime checks are skipped for it, and ONLY for it. Path, existence
+// and size still apply; an untracked artifact (no flag, or a non-boolean flag) keeps the exact T45/T46/T47 rules.
+await testCase('T9005 a proof committed in the PR skips the mtime checks; untracked artifacts keep the exact rules (#5)', async () => {
+  const old = { item: ARTIFACT_PROOF_ITEM, path: ARTIFACT_PROOF_PATH, exists: true, mtime: '2026-08-03T12:50:44Z', bytes: 4096 } // predates ARTIFACT_FLOOR
+  const semi = (artifactProofs) => run({ mode: 'semi', proceedThrough: 'dev', simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM', artifactProofs }], artifactFloor: ARTIFACT_FLOOR } })
+  const auto = (artifactProofs) => run({ mode: 'auto', simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM', artifactProofs }], artifactFloor: ARTIFACT_FLOOR } })
+  const rejected = (r) => (r.trace || []).some((t) => typeof t === 'string' && t.startsWith('artifact-proof-rejected'))
+  // 1. committed in the PR + old mtime -> the LGTM stands
+  const a = await auto([{ ...old, committedInPr: true }])
+  const a1 = eq('committed+old mtime: status', a.status, 'ready')
+  const a2 = eq('committed+old mtime: trace', a.trace, ['Plan', 'Dev', 'Review', 'PR Ready'])
+  const a3 = rejected(a) ? { ok: false, msg: 'committed+old mtime: no artifact-proof-rejected entry expected' } : null
+  // 2. committed + unparseable mtime -> no-valid-mtime is skipped too
+  const b = await auto([{ ...old, committedInPr: true, mtime: 'yesterday' }])
+  const b1 = eq('committed+bad mtime: status', b.status, 'ready')
+  // 3. the same proof without the flag is still overturned
+  const c = await semi([{ ...old }])
+  const c1 = eq('no flag: status', c.status, 'needs-revision')
+  const c2 = includes('no flag: trace', c.trace || [], 'artifact-proof-rejected:artifact-stale')
+  // 4. only a boolean true counts
+  const d = await semi([{ ...old, committedInPr: 'true' }])
+  const d1 = eq('string flag: status', d.status, 'needs-revision')
+  const d2 = includes('string flag: trace', d.trace || [], 'artifact-proof-rejected:artifact-stale')
+  // 5. committed but absent on disk -> still rejected
+  const e = await semi([{ ...old, committedInPr: true, exists: false }])
+  const e1 = eq('committed+absent: status', e.status, 'needs-revision')
+  const e2 = includes('committed+absent: trace', e.trace || [], 'artifact-proof-rejected:artifact-absent')
+  // 6. committed but empty -> still rejected (own defect: escalates, no Nick round)
+  const f = await auto([{ ...old, committedInPr: true, bytes: 0 }])
+  const f1 = eq('committed+empty: status', f.status, 'escalate')
+  const f2 = eq('committed+empty: reason', f.reason, 'artifact-proof-rejected')
+  const f3 = includes('committed+empty: trace', f.trace || [], 'artifact-proof-rejected:artifact-empty')
+  // 7. committed but no path -> still rejected
+  const g = await auto([{ ...old, committedInPr: true, path: '' }])
+  const g1 = eq('committed+no path: status', g.status, 'escalate')
+  const g2 = eq('committed+no path: reason', g.reason, 'artifact-proof-rejected')
+  const g3 = includes('committed+no path: trace', g.trace || [], 'artifact-proof-rejected:no-path')
+  // 8. the flag applies per proof, never to the whole list
+  const second = { ...old, item: ARTIFACT_PROOF_ITEM + ' (second)', path: ARTIFACT_PROOF_PATH + '.2' }
+  const h = await semi([{ ...old, committedInPr: true }, second])
+  const h1 = eq('mixed: status', h.status, 'needs-revision')
+  const h2 = includes('mixed: items', h.items || [], second.item)
+  const h3 = (h.items || []).includes(ARTIFACT_PROOF_ITEM) ? { ok: false, msg: 'mixed: the committed proof must not be listed in items' } : null
+  return a1 || a2 || a3 || b1 || c1 || c2 || d1 || d2 || e1 || e2 || f1 || f2 || f3 || nickTrace(f)
+    || g1 || g2 || g3 || nickTrace(g) || h1 || h2 || h3 || { ok: true }
+})
+
+// T9005b (#5) — source-level: the MORGAN schema declares `committedInPr` as a boolean and the shared
+// artifactProofStep asks for it (single constant, interpolated in both Morgan prompts).
+await testCase('T9005b the MORGAN schema declares committedInPr and artifactProofStep asks for it (#5)', async () => {
+  const src = SUITE_ARGS.fpSource
+  if (!src) {
+    log('SKIP — T9005b: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const slice = (from, to) => {
+    const i = src.indexOf(from)
+    const j = i < 0 ? -1 : src.indexOf(to, i)
+    return i < 0 || j < 0 ? '' : src.slice(i, j)
+  }
+  const schema = slice('artifactProofs: {', 'itemOwners: {')
+  const step = slice('const artifactProofStep =', '// Worktree freshness probe')
+  const e1 = includes('schema field', schema, "committedInPr: { type: 'boolean' }")
+  const e2 = includes('prompt clause names the field', step, 'committedInPr')
+  const e3 = includes('prompt clause names the command', step, 'diff --name-only origin/')
+  const e4 = eq('interpolations in the Morgan prompts', src.split('${artifactProofStep}').length - 1, 2)
+  return (e1 || e2 || e3 || e4) ? (e1 || e2 || e3 || e4) : { ok: true }
+})
+
+// T9005c (#5) — a flagged proof must carry a positive numeric size: `bytes` missing, NaN or a string is
+// rejected `artifact-empty` (the unflagged rule is untouched: T45/T46/T47 and T9005 cases c/d).
+await testCase('T9005c a committedInPr proof needs a positive numeric size (#5)', async () => {
+  const old = { item: ARTIFACT_PROOF_ITEM, path: ARTIFACT_PROOF_PATH, exists: true, mtime: '2026-08-03T12:50:44Z', bytes: 4096 }
+  const auto = (p) => run({ mode: 'auto', simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM', artifactProofs: [p] }], artifactFloor: ARTIFACT_FLOOR } })
+  const noBytes = { ...old, committedInPr: true }
+  delete noBytes.bytes
+  const cases = [
+    ['bytes missing', noBytes],
+    ['bytes NaN', { ...old, committedInPr: true, bytes: NaN }],
+    ["bytes '0'", { ...old, committedInPr: true, bytes: '0' }],
+    ["bytes '4096'", { ...old, committedInPr: true, bytes: '4096' }],
+    ['bytes 0', { ...old, committedInPr: true, bytes: 0 }],
+  ]
+  for (const [name, p] of cases) {
+    const r = await auto(p)
+    const err = eq(`flagged ${name}: status`, r.status, 'escalate')
+      || eq(`flagged ${name}: reason`, r.reason, 'artifact-proof-rejected')
+      || includes(`flagged ${name}: trace`, r.trace || [], 'artifact-proof-rejected:artifact-empty')
+    if (err) return err
+  }
+  const ok = await auto({ ...old, committedInPr: true, bytes: 1 })
+  return eq('flagged bytes 1: status', ok.status, 'ready') || { ok: true }
+})
+
+// T9005d (#5) — source-level: both unconditional sentences of artifactProofStep carry the committed-in-PR
+// qualifier, and the clause's command uses the same `git -C "<worktree>"` form as the regression-guard step.
+await testCase('T9005d artifactProofStep qualifies both freshness sentences and uses git -C for the diff (#5)', async () => {
+  const src = SUITE_ARGS.fpSource
+  if (!src) {
+    log('SKIP — T9005d: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const i = src.indexOf('const artifactProofStep =')
+  const j = i < 0 ? -1 : src.indexOf('// Worktree freshness probe', i)
+  const step = i < 0 || j < 0 ? '' : src.slice(i, j)
+  const e1 = eq('qualifier count', step.split('(except a file committed in the PR, below)').length - 1, 2)
+  const e2 = includes('git -C form', step, 'git -C "${wtPath}" diff --name-only origin/${baseBranch}...HEAD')
+  return e1 || e2 || { ok: true }
+})
+
 // T48 (#526, back-compat) — an LGTM with NO artifactProofs declared (the pre-#526 shape every
 // existing flow case uses) must be completely unaffected: zero extra agent calls, exact trace.
 await testCase('T48 artifact-proof gate back-compat (no artifactProofs → unaffected)', async () => {
