@@ -6105,6 +6105,56 @@ await testCase('T212b a tick retried after a digest mismatch that repeats parks:
   return e1 || e2 || e3 || e4 || { ok: true }
 })
 
+// #239: a PR read that failed for a NAMED cause (the preflight branch probe's `readFailed`) stops the run at the start of the
+// review stage with the cause in the reason, before a reviewer is spent. Simulated by simulate.probes.branchCheckRaw = { readFailed }
+// (the raw answer of the branch probe). A missing / garbled answer stays fail-open (T164f and the branch-check cases).
+await testCase('T239a an unreadable PR at the start of the review stage escalates pr-read-failed:<class>, no reviewer runs', async () => {
+  const classes = ['tls', 'auth', 'rate-limit', 'not-found', 'other']
+  for (const c of classes) {
+    const r = await t183Review({ branchCheckRaw: { readFailed: c }, prBody: t183Body(T183_L3), morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, true, true) }] }, { mode: 'auto' })
+    const e1 = eq(c + ': status', r.status, 'escalate')
+    const e2 = eq(c + ': reason', r.reason, 'pr-read-failed:' + c)
+    const e3 = includes(c + ': trace', r.trace || [], 'pr-read-failed:' + c)
+    const e4 = eq(c + ': no review ran (no decision log)', r.decisionLog, undefined)
+    const e5 = eq(c + ': nothing ticked', (r.trace || []).filter((t) => String(t).startsWith('acceptance-ticked')), [])
+    const e6 = eq(c + ': the PR named', r.pr, 190)
+    const bad = e1 || e2 || e3 || e4 || e5 || e6
+    if (bad) return bad
+  }
+  // Control: a string answer (the real head ref) is unchanged: the run reaches the reviewer and is ready.
+  const ok = await t183Review({ branchCheckRaw: 'features/issue-1', prBody: t183Body(T183_L3), morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, true, true) }] }, { mode: 'auto' })
+  const e7 = eq('control: a readable PR reaches the reviewer', ok.status, 'ready')
+  // Control: an object answer with no named cause (or an out-of-set one) is not a read failure: fail-open as before.
+  const un = await t183Review({ branchCheckRaw: { readFailed: 'x509: unknown authority' }, prBody: t183Body(T183_L3), morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, true, true) }] }, { mode: 'auto' })
+  const e8 = eq('control: an out-of-set cause is no named failure', (un.trace || []).filter((t) => String(t).startsWith('pr-read-failed')), [])
+  return e7 || e8 || { ok: true }
+})
+
+await testCase('T239b the Dev-end branch guard of a fresh run escalates pr-read-failed:<class> before the review stage', async () => {
+  const r = await run({ mode: 'auto', simulate: { sam: 'GO', branchCheckRaw: { readFailed: 'tls' }, morgan: [{ verdict: 'LGTM' }] } })
+  const e1 = eq('status', r.status, 'escalate')
+  const e2 = eq('reason', r.reason, 'pr-read-failed:tls')
+  const e3 = includes('trace', r.trace || [], 'pr-read-failed:tls')
+  const e4 = eq('no Review phase', (r.trace || []).filter((t) => String(t) === 'Review'), [])
+  const e5 = eq('no review ran', r.decisionLog, undefined)
+  return e1 || e2 || e3 || e4 || e5 || { ok: true }
+})
+
+await testCase('T239c a refused tick carries the cause of a failed read (tickDetail), a refusal with no detail has no tickDetail key', async () => {
+  const r = await t183Review({ prBody: t183Body(T183_L3), acceptanceSync: { reason: 'read-failed', detail: 'tls' }, morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, true, true) }] })
+  const e1 = eq('status', r.status, 'verified-untickable')
+  const e2 = eq('tickReason', r.tickReason, 'read-failed')
+  const e3 = eq('tickDetail', r.tickDetail, 'tls')
+  // Control: the same refusal without a detail (a bare reason string) names no tickDetail.
+  const c = await t183Review({ prBody: t183Body(T183_L3), acceptanceSync: 'read-failed', morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, true, true) }] })
+  const e4 = eq('control: tickReason', c.tickReason, 'read-failed')
+  const e5 = eq('control: no tickDetail key', 'tickDetail' in c, false)
+  // The detail also rides the semi needs-revision of a refused tick with an unproven box.
+  const y = await t183Review({ prBody: t183Body(T183_L3), acceptanceSync: { reason: 'read-failed', detail: 'auth' }, morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, false, true) }] })
+  const e6 = eq('needs-revision: tickDetail', y.tickDetail, 'auth')
+  return e1 || e2 || e3 || e4 || e5 || e6 || { ok: true }
+})
+
 await testCase('T183t a rejected artifact proof that names no box ticks nothing this round; one that names a box un-proves only that box', async () => {
   const proof = (item) => [{ item, path: 'report.md', exists: false, mtime: '2026-01-02T00:00:00Z', bytes: 1 }]
   const none = await t183Review({ prBody: t183Body(T183_L3), artifactFloor: '2026-01-01T00:00:00Z', morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, true, true), artifactProofs: proof('report.md was produced') }] })

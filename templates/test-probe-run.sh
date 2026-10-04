@@ -200,7 +200,7 @@ if command -v jq >/dev/null 2>&1 && command -v git >/dev/null 2>&1; then
   cat > "$PFD/bin/gh" <<'GHEOF'
 #!/usr/bin/env bash
 case "$*" in
-  *"pr view"*) [ -n "${GH_FAIL:-}" ] && exit 1; echo "feat/issue-83" ;;
+  *"pr view"*) [ -n "${GH_FAIL:-}" ] && { [ -n "${GH_ERR:-}" ] && printf '%s\n' "$GH_ERR" >&2; exit 1; }; echo "feat/issue-83" ;;
   *"issue view"*) [ -n "${GH_FAIL:-}" ] && exit 1; echo "${GH_TOTAL:-0}" ;;
   *"sub_issues"*) printf '12\n15\n' ;;
   *) exit 1 ;;
@@ -216,6 +216,11 @@ GHEOF
   OUT="$(GH_FAIL=1 PATH="$PFD/bin:$PATH" bash "$PF" branch --wt "$PFD/nowt" --pr 7)"; RC=$?
   ok=0; [ "$RC" -eq 0 ] && [ "$OUT" = '{"mode":"branch","headRef":null,"branchPrefix":null}' ] && ok=1
   check "preflight.sh branch: failing gh and missing config -> nulls, exit 0, one line" "$ok"
+
+  # [239] a failing head-ref read names its cause (closed set), the config read is kept, no raw stderr text leaves the script
+  OUT="$(GH_FAIL=1 GH_ERR='Post "https://api.github.com/graphql": tls: failed to verify certificate: x509: certificate signed by unknown authority' PATH="$PFD/bin:$PATH" bash "$PF" branch --wt "$PFD/wt" --pr 7 --repo o/r)"; RC=$?
+  ok=0; [ "$RC" -eq 0 ] && [ "$OUT" = '{"mode":"branch","headRef":null,"branchPrefix":"feat/","readFailed":"tls"}' ] && ok=1
+  check "[239] preflight.sh branch: a failing PR read names its cause as readFailed (tls), branchPrefix kept, no stderr text" "$ok"
 
   echo '{}' > "$PFD/wt/.claude/pipeline.config.json"
   OUT="$(PATH="$PFD/bin:$PATH" bash "$PF" branch --wt "$PFD/wt" --pr '')"
@@ -536,6 +541,7 @@ case "$*" in
   *"pr comment"*|*"issue comment"*|*"project item-edit"*|*minimizeComment*) exit 0 ;;
 esac
 [ -n "${GH_READ_FAIL:-}" ] && exit 1
+[ -n "${GH_READ_ERR:-}" ] && { printf '%s\n' "$GH_READ_ERR" >&2; exit 1; }
 case "$*" in
   *"pr view"*"--json body"*)
     cat "$GH_BODY_FILE"
@@ -927,6 +933,43 @@ BLKEOF
     && grep -qxF -- "- [x] <!-- ac:1 --> run \`node a.cjs | grep -c \"x\"\` and expect '0'" "$PWD_/body.md" && grep -qxF -- "- [x] <!-- ac:3 --> third, with a \"double\" and a 'single' quote, then 100% done" "$PWD_/body.md" && ok=1
   check "[tick-digest] the right digest with --text-b64 through probe-run: written, ids ticked, the PROBE line parses as written" "$ok"
 
+  # [239] a failed READ names its cause: reason stays read-failed, `detail` is one of tls|auth|rate-limit|not-found|other,
+  # never the stderr text; a silent failure and every non-failure keep today's exact line
+  detail_of() { printf '%s' "$1" | jq -r '.detail // "-"'; }
+  E_TLS='Post "https://api.github.com/graphql": tls: failed to verify certificate: x509: certificate signed by unknown authority'
+  printf '%s\n' "$PRE_BODY" > "$PWD_/body.md"
+  OUT="$(GH_READ_ERR="$E_TLS" run_pw body-splice --pr 9 --mode tick --text "$TK_TXT" --ids 1 --keep 2)"
+  ok=0; [ "$(res "$OUT")" = "failed/read-failed" ] && [ "$(detail_of "$OUT")" = "tls" ] && [ "$(no_call 'pr edit')" = 1 ] && [ "$(one_line "$OUT")" = 1 ] && ok=1
+  check "[239] pr-write.sh body-splice (tick): a TLS certificate failure on the body read -> failed/read-failed, detail tls, no edit" "$ok"
+  OUT="$(GH_READ_ERR='HTTP 401: Bad credentials (https://api.github.com/graphql)
+Try authenticating with:  gh auth login -h github.com' run_pw body-splice --pr 9 --mode tick --text "$TK_TXT" --ids 1 --keep 2)"
+  ok=0; [ "$(res "$OUT")" = "failed/read-failed" ] && [ "$(detail_of "$OUT")" = "auth" ] && [ "$(no_call 'pr edit')" = 1 ] && ok=1
+  check "[239] pr-write.sh body-splice: a 401 on the body read -> detail auth" "$ok"
+  OUT="$(GH_READ_ERR='GraphQL: API rate limit already exceeded for user ID 1234' run_pw body-splice --pr 9 --mode tick --text "$TK_TXT" --ids 1 --keep 2)"
+  ok=0; [ "$(res "$OUT")" = "failed/read-failed" ] && [ "$(detail_of "$OUT")" = "rate-limit" ] && ok=1
+  check "[239] pr-write.sh body-splice: a rate limit on the body read -> detail rate-limit" "$ok"
+  OUT="$(GH_READ_ERR='GraphQL: Could not resolve to a PullRequest with the number of 99999. (repository.pullRequest)' run_pw body-splice --pr 9 --mode tick --text "$TK_TXT" --ids 1 --keep 2)"
+  ok=0; [ "$(res "$OUT")" = "failed/read-failed" ] && [ "$(detail_of "$OUT")" = "not-found" ] && ok=1
+  check "[239] pr-write.sh body-splice: an unknown PR on the body read -> detail not-found" "$ok"
+  OUT="$(GH_READ_ERR='dial tcp: lookup api.github.com: no such host' run_pw body-splice --pr 9 --mode tick --text "$TK_TXT" --ids 1 --keep 2)"
+  ok=0; [ "$(res "$OUT")" = "failed/read-failed" ] && [ "$(detail_of "$OUT")" = "other" ] && ok=1
+  check "[239] pr-write.sh body-splice: an unrecognised read error -> detail other" "$ok"
+  OUT="$(GH_READ_FAIL=1 run_pw body-splice --pr 9 --mode tick --text "$TK_TXT" --ids 1 --keep 2)"
+  OUT_OK="$(run_pw body-splice --pr 9 --mode decision-log --text "$DL")"
+  ok=0
+  [ "$OUT" = '{"op":"body-splice","result":"failed","reason":"read-failed","bytes":null}' ] && [ "$(printf '%s' "$OUT_OK" | jq -r 'has("detail")')" = "false" ] && ok=1
+  check "[239] pr-write.sh: a failure with no stderr and a successful op print today's exact line (no detail key)" "$ok"
+  OUT="$(GH_READ_ERR='tls: failed to verify certificate, token ghp_abcdefghijklmnopqrstuvwxyzabcdefghij sent to https://api.github.com/graphql' run_pw body-splice --pr 9 --mode tick --text "$TK_TXT" --ids 1 --keep 2)"
+  ok=0; [ "$(detail_of "$OUT")" = "tls" ] && [ "$(printf '%s' "$OUT" | grep -c 'ghp_\|https://')" = 0 ] && ok=1
+  check "[239] pr-write.sh: a token-shaped string and a URL in stderr never reach the output line (only the class does)" "$ok"
+  OUT="$(GH_READ_ERR="$E_TLS" run_pw pr-comment --pr 501 --marker "$MK" --body "$MK
+text")"
+  ok=0; [ "$(res "$OUT")" = "failed/read-failed" ] && [ "$(detail_of "$OUT")" = "tls" ] && [ "$(no_call 'pr comment')" = 1 ] && ok=1
+  check "[239] pr-write.sh pr-comment: a TLS failure on the comment read -> detail tls, no comment call" "$ok"
+  OUT="$(GH_READ_ERR='HTTP 401: Bad credentials (https://api.github.com/graphql)' run_pw status $SARGS)"
+  ok=0; [ "$(res "$OUT")" = "failed/read-failed" ] && [ "$(detail_of "$OUT")" = "auth" ] && [ "$(no_call 'project item-edit')" = 1 ] && ok=1
+  check "[239] pr-write.sh status: a 401 on the project item read -> detail auth, no item-edit" "$ok"
+
   # parser round trip and the engine/helper block parity
   OUT="$(GH_MINIMIZED=true run_pw minimize --id IC_1)"
   out_rt="$(printf '%s\n' "$OUT" | node -e '
@@ -939,6 +982,34 @@ BLKEOF
 else
   echo "SKIP - pr-write.sh e2e needs jq"
 fi
+
+# [239] the parsers keep the named cause only from the closed set (never an out-of-set string), and add no key when it is absent
+ok=0
+node -e '
+  const assert = require("assert")
+  const { PARSERS } = require(process.argv[1])
+  const pw = (o) => PARSERS["pr-write"](JSON.stringify(o), "", 0)
+  const base = { op: "body-splice", result: "failed", reason: "read-failed", bytes: null }
+  for (const c of ["tls", "auth", "rate-limit", "not-found", "other"]) assert.deepStrictEqual(pw({ ...base, detail: c }), { ...base, detail: c })
+  for (const bad of ["x509: certificate signed by unknown authority", "TLS", "", null, 7, ["tls"]]) assert.deepStrictEqual(pw({ ...base, detail: bad }), base)
+  assert.deepStrictEqual(pw(base), base)
+  assert.ok(!("detail" in pw({ op: "status", result: "written", reason: null, bytes: null })))
+' "$PR" 2>"$WORK/239p.err" && ok=1
+[ "$ok" -eq 1 ] || head -n 3 "$WORK/239p.err"
+check "[239] PARSERS pr-write keeps detail only from the closed set and adds no key when absent" "$ok"
+ok=0
+node -e '
+  const assert = require("assert")
+  const { PARSERS } = require(process.argv[1])
+  const pf = (o) => PARSERS.preflight(JSON.stringify(o), "", 0)
+  const base = { mode: "branch", headRef: null, branchPrefix: "feat/" }
+  for (const c of ["tls", "auth", "rate-limit", "not-found", "other"]) assert.deepStrictEqual(pf({ ...base, readFailed: c }), { ...base, readFailed: c })
+  for (const bad of ["x509: unknown authority", "TLS", "", null, 7]) assert.deepStrictEqual(pf({ ...base, readFailed: bad }), base)
+  assert.deepStrictEqual(pf(base), base)
+  assert.ok(!("readFailed" in pf({ mode: "dev", planStale: null, openSubIssues: null, gitDir: null, writable: null, readFailed: "tls" })))
+' "$PR" 2>"$WORK/239f.err" && ok=1
+[ "$ok" -eq 1 ] || head -n 3 "$WORK/239f.err"
+check "[239] PARSERS preflight keeps readFailed only from the closed set (branch mode) and adds no key when absent" "$ok"
 
 BLK='/^\/\/ --- prBodySplice:start ---/,/^\/\/ --- prBodySplice:end ---/p'
 [ -n "$(sed -n "$BLK" "$ROOT/workflows/deliver-pipeline.js")" ] && [ "$(sed -n "$BLK" "$ROOT/workflows/deliver-pipeline.js")" = "$(sed -n "$BLK" "$SCRIPT_DIR/pr-body-splice.cjs")" ] && ok=1 || ok=0
