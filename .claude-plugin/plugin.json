@@ -14,7 +14,7 @@
       "type": "string",
       "title": "Default pipeline mode",
       "description": "Default orchestration mode for /lgtmgate:deliver (auto = run through, semi = stop at milestones, manual = stop at each stage).",
-      "default": "semi"
+      "default": "auto"
     }
   }
 }

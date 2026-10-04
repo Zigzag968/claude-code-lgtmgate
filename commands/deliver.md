@@ -1,6 +1,6 @@
 ---
 description: Deliver a change end-to-end through the Mia -> Sam -> Nick -> Morgan pipeline (creates the shared worktree, drives deliver-pipeline.js).
-argument-hint: "[issue] [brief]"
+argument-hint: "[issue] [brief] [--mode]"
 allowed-tools: Bash, Read, Workflow, TaskCreate, TaskUpdate, TaskGet, TaskList, AskUserQuestion, SendMessage, TeamCreate, Agent
 ---
 
@@ -8,7 +8,7 @@ allowed-tools: Bash, Read, Workflow, TaskCreate, TaskUpdate, TaskGet, TaskList, 
 
 You are the **Lead**. You deliver a change end-to-end through the **Mia -> Sam -> Nick -> Morgan** pipeline. The workflow (plugin component `lgtmgate:deliver-pipeline`, or the local copy `.claude/workflows/deliver-pipeline.js` as fallback — exact resolution in the "## 1. Read the config" section below) orchestrates the agents; you prepare the shared worktree, launch the workflow, and handle the statuses it returns to you.
 
-**Args**: `$ARGUMENTS` = `<issue> "<brief>"` (GitHub issue number + short description). If either is missing, ask for it.
+**Args**: `$ARGUMENTS` = `<issue> "<brief>" [--mode semi|manual]` (GitHub issue number + short description, then an optional mode). If the issue or the brief is missing, ask for it. Without `--mode` the run is `auto`; a `--mode` value other than `semi` or `manual` makes you stop and ask.
 
 **Bash: absolute path, 1 command/call, no `cd`/`&&`/`|`.**
 
@@ -65,7 +65,7 @@ args = {
   issue:  <N>,
   brief:  "<brief>",
   wtPath: "<WT>",
-  mode:   "semi",
+  mode:   "auto",   // or the --mode value (semi | manual) when given
   pmReview: <true if the issue's pm_review checkbox is checked, false otherwise>,
   config: <the full .claude/pipeline.config.json object>,
   configLocal: <parsed content of .claude/pipeline.config.local.json, or {} if absent — the workflow sandbox does not read files (legacy#61), so it's the Lead who reads and passes it through>,
@@ -78,7 +78,7 @@ args = {
 ```
 - **Resolved plugin component** -> launch by the **namespaced** name `lgtmgate:deliver-pipeline` (never the bare name `deliver-pipeline`, which a `--plugin-dir` or another project can shadow — claude-agent-pipeline#54).
 - **Resolved not-yet-migrated local copy** -> launch explicitly with `Workflow({ scriptPath: "<repo>/.claude/workflows/deliver-pipeline.js", args })` — never by name, bare or namespaced: this project's copied test suite still validates THIS copy, not the plugin's component.
-> `mode: "semi"` = checkpoints at milestones (plan ready, review requesting changes). `auto` runs everything through unless a `proceedThrough` is set (an explicit `proceedThrough` is honoured in every mode, `auto` included: `proceedThrough:"plan"` stops at `plan-ready`), `manual` stops at every step. Agents do NOT have the Workflow tool — only the Lead drives it.
+> `mode: "auto"` (the default) runs everything through unless a `proceedThrough` is set (an explicit `proceedThrough` is honoured in every mode: `proceedThrough:"plan"` stops at `plan-ready`). It still returns on a one-way-door plan without `architectureDecisionApproved:true`, on an `escalate` or `*-died` status and on `verified-untickable`, and leaves `[human-gate]` boxes to a person. `--mode semi` = checkpoints at milestones (plan ready, review requesting changes); `--mode manual` = stops at every step. Agents do NOT have the Workflow tool — only the Lead drives it.
 > **Iteration machinery**: if you patch `.claude/workflows/deliver-pipeline.js` mid-session, relaunch the workflow via `scriptPath: "<abs path>"` (fresh read from disk) and NOT `name:` (resolution cached on first use → would replay the old version). (friction F9)
 > **Test suite**: the same staleness applies INSIDE the flow suite — `test-deliver-pipeline.js` also resolves the pipeline under test via the registry. To validate a branch, pass `args: { fpScriptPath: "<worktree>/.claude/workflows/deliver-pipeline.js" }`; by `name:` the suite silently tests the base branch's copy instead (real incident observed: two cases reported as failing against a pipeline that simply didn't have the gate).
 
