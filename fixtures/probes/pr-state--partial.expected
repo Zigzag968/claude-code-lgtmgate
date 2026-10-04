@@ -1,1 +1,1 @@
-{"now":"2026-01-01T01:00:00Z","headRefName":null,"headRefOid":null,"bodyDigest":null,"acceptanceChecked":null,"decisionLog":null,"mergeable":null,"mergeStateStatus":null,"lastCommitDate":null,"commitCount":null,"reviewCommentIds":null,"openIssues":null,"openIssuesTruncated":false}
+{"now":"2026-01-01T01:00:00Z","headRefName":null,"headRefOid":null,"bodyDigest":null,"acceptanceChecked":null,"decisionLog":null,"mergeable":null,"mergeStateStatus":null,"lastCommitDate":null,"commitCount":null,"ciState":null,"reviewCommentIds":null,"openIssues":null,"openIssuesTruncated":false}

@@ -155,6 +155,8 @@ const PARSERS = {
       mergeStateStatus: str(v.mergeStateStatus),
       lastCommitDate: str(v.lastCommitDate),
       commitCount: Number.isInteger(v.commitCount) && v.commitCount >= 0 ? v.commitCount : null,
+      // #184: the CI state of the PR head as pr-state.sh derived it; anything else (absent, unknown) is null.
+      ciState: ['green', 'failing', 'pending', 'none'].includes(v.ciState) ? v.ciState : null,
       reviewCommentIds: strArr(v.reviewCommentIds),
       openIssues: issues(v.openIssues),
       openIssuesTruncated: typeof v.openIssuesTruncated === 'boolean' ? v.openIssuesTruncated : false,

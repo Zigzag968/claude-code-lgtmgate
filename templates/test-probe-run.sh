@@ -269,8 +269,26 @@ case "$*" in
       jq -nc --arg b "$GH_ACC" '{headRefName:"feat/issue-84",headRefOid:"abc123",body:$b,commits:[],comments:[]}'
       exit 0
     fi
+    if [ -n "${GH_CI:-}" ]; then
+      # [184] the statusCheckRollup served for the ciState cases: failing, pending, empty or absent (the field not returned)
+      case "$GH_CI" in
+        failing) ROLL='[{"__typename":"CheckRun","conclusion":"SUCCESS","name":"a","status":"COMPLETED"},{"__typename":"CheckRun","conclusion":"FAILURE","name":"b","status":"COMPLETED"}]' ;;
+        pending) ROLL='[{"__typename":"CheckRun","conclusion":"SUCCESS","name":"a","status":"COMPLETED"},{"__typename":"CheckRun","conclusion":"","name":"b","status":"IN_PROGRESS"}]' ;;
+        context-failing) ROLL='[{"__typename":"StatusContext","context":"ci","state":"FAILURE"}]' ;;
+        context-pending) ROLL='[{"__typename":"StatusContext","context":"ci","state":"PENDING"}]' ;;
+        none) ROLL='[]' ;;
+        *) ROLL='' ;;
+      esac
+      if [ -n "$ROLL" ]; then
+        jq -nc --argjson r "$ROLL" '{headRefName:"feat/issue-84",headRefOid:"abc123",body:"hello body",commits:[],comments:[],statusCheckRollup:$r}'
+      else
+        jq -nc '{headRefName:"feat/issue-84",headRefOid:"abc123",body:"hello body",commits:[],comments:[]}'
+      fi
+      exit 0
+    fi
     cat <<'JSON'
 {"headRefName":"feat/issue-84","headRefOid":"abc123","body":"hello body","mergeable":"MERGEABLE","mergeStateStatus":"CLEAN",
+ "statusCheckRollup":[{"__typename":"CheckRun","conclusion":"SUCCESS","name":"guards","status":"COMPLETED","workflowName":"guards"},{"__typename":"CheckRun","conclusion":"SKIPPED","name":"extra","status":"COMPLETED"}],
  "commits":[{"committedDate":"2026-01-01T00:10:00Z"},{"committedDate":"2026-01-01T00:20:00Z"}],
  "comments":[{"id":"IC_1","isMinimized":false,"body":"<!-- pipeline-review-round 1 -->\nverdict"},
              {"id":"IC_2","isMinimized":true,"body":"<!-- pipeline-review-round 0 -->\nold"},
@@ -357,6 +375,25 @@ GHEOF
   ' "$PR")"
   [ "$out6" = "[1,3]" ] && ok=1
   check "[183] pr-state parser keeps acceptanceChecked (a list of positive integers, else null)" "$ok"
+
+  # [184] ciState: the state of every check on the head, derived from the statusCheckRollup of the same gh call
+  ci_of() { PATH="$PSD/bin:$PATH" GH_CI="$1" bash "$PS" --pr 7 --wt "$PSD/wt" --repo o/r | jq -r '.ciState'; }
+  ok=0
+  [ "$(printf '%s' "$OUT" | jq -r '.ciState')" = 'green' ] \
+    && [ "$(ci_of failing)" = 'failing' ] && [ "$(ci_of pending)" = 'pending' ] && [ "$(ci_of none)" = 'none' ] \
+    && [ "$(ci_of context-failing)" = 'failing' ] && [ "$(ci_of context-pending)" = 'pending' ] \
+    && [ "$(ci_of absent)" = 'null' ] && [ "$(printf '%s' "$OUT4" | jq -r '.ciState')" = 'null' ] && ok=1
+  check "[184] pr-state.sh: ciState is green|failing|pending|none for the rollups (CheckRun and StatusContext entries) and null when gh fails or the field is absent" "$ok"
+  ok=0
+  cip="$(for j in '{"ciState":"green"}' '{"ciState":"failing"}' '{"ciState":"pending"}' '{"ciState":"none"}' '{"ciState":"weird"}' '{"ciState":true}' '{}'; do
+    printf '%s\n' "$j" | node -e '
+      const { PARSERS } = require(process.argv[1])
+      const v = PARSERS["pr-state"](require("fs").readFileSync(0, "utf8"), "", 0)
+      process.stdout.write(v.error ? "ERR;" : JSON.stringify(v.ciState) + ";")
+    ' "$PR"
+  done)"
+  [ "$cip" = '"green";"failing";"pending";"none";null;null;null;' ] && ok=1
+  check "[184] pr-state parser keeps ciState from {green,failing,pending,none}, else null" "$ok"
 
   # [164] decisionLog: the round lines of the real decision-log block (trimmed, heading dropped), [] without a block, null when gh fails
   DL_BODY='Closes #164

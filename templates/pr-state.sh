@@ -10,13 +10,17 @@
 #   bash pr-state.sh --pr N [--wt DIR] [--repo OWNER/REPO] [--since ISO]
 #
 # -> {"now":"<ISO>","headRefName":..,"headRefOid":..,"bodyDigest":"<12 hex>","acceptanceChecked":[N,..]|null,
-#     "decisionLog":["- round N — ..",..]|null,"mergeable":..,"mergeStateStatus":..,"lastCommitDate":..,"commitCount":N,"reviewCommentIds":["<id>",..],
+#     "decisionLog":["- round N — ..",..]|null,"mergeable":..,"mergeStateStatus":..,"lastCommitDate":..,"commitCount":N,"ciState":"green|failing|pending|none"|null,"reviewCommentIds":["<id>",..],
 #     "openIssues":[{"number":N,"createdAt":..,"url":..}]|null,"openIssuesTruncated":false}
 # "now" comes from `date -u` HERE: the workflow script itself may not read the wall clock (harness ban on
 # argless new Date(), claude-agent-pipeline#144/#135), and no LLM interprets it any more (incident #14).
 # acceptanceChecked (#183): the ids of the acceptance boxes ticked in the body (templates/pr-body-splice.cjs, op checked: the
 # same fence-aware block reader the tick uses); null when the body or node could not be read. The engine reads it for the
 # human-gate boxes only: a gate is settled iff its id is listed here (a person ticked it); any other box needs a proof of the round.
+# ciState (#184): the state of EVERY check on the PR head, read from the statusCheckRollup of the same `gh pr view` call (no new
+# call, no new flag). Per entry: a StatusContext reads its `state`, a CheckRun its `conclusion` once `status` is COMPLETED, else
+# PENDING. Any value outside SUCCESS/NEUTRAL/SKIPPED/PENDING/EXPECTED -> "failing"; else a PENDING/EXPECTED one -> "pending";
+# else "green". No check on the head -> "none"; the rollup absent (gh failed) -> null. The engine's ready gate reads it.
 # decisionLog (#164): the round lines (`- round ...`, trimmed) of the real decision-log block of the body (templates/pr-body-splice.cjs,
 # op entries); [] when the body holds no block; null when the body or node could not be read. The engine seeds its log from it,
 # so a relaunch at entryStage review keeps the rounds of the earlier runs in the ONE block.
@@ -49,13 +53,13 @@ main() {
   now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   [ -n "$WT" ] && cd "$WT"
 
-  pr_json='{"headRefName":null,"headRefOid":null,"bodyDigest":null,"acceptanceChecked":null,"decisionLog":null,"mergeable":null,"mergeStateStatus":null,"lastCommitDate":null,"commitCount":null,"reviewCommentIds":null}'
+  pr_json='{"headRefName":null,"headRefOid":null,"bodyDigest":null,"acceptanceChecked":null,"decisionLog":null,"mergeable":null,"mergeStateStatus":null,"lastCommitDate":null,"commitCount":null,"ciState":null,"reviewCommentIds":null}'
 
   if [ -n "$PR" ]; then
     if [ -n "$REPO" ]; then
-      view="$(gh pr view "$PR" -R "$REPO" --json headRefName,headRefOid,body,mergeable,mergeStateStatus,commits,comments 2>/dev/null)"
+      view="$(gh pr view "$PR" -R "$REPO" --json headRefName,headRefOid,body,mergeable,mergeStateStatus,commits,comments,statusCheckRollup 2>/dev/null)"
     else
-      view="$(gh pr view "$PR" --json headRefName,headRefOid,body,mergeable,mergeStateStatus,commits,comments 2>/dev/null)"
+      view="$(gh pr view "$PR" --json headRefName,headRefOid,body,mergeable,mergeStateStatus,commits,comments,statusCheckRollup 2>/dev/null)"
     fi
     if [ -n "$view" ] && printf '%s' "$view" | jq -e 'type == "object"' >/dev/null 2>&1; then
       body="$(printf '%s' "$view" | jq -r '.body // ""')"
@@ -70,7 +74,8 @@ main() {
         dl_json="$(printf '%s\n' "$dl" | jq -c 'if type == "array" and all(.[]; type == "string") then . else null end' 2>/dev/null)" || dl_json=null
         [ -n "$dl_json" ] || dl_json=null
       fi
-      pr_json="$(printf '%s' "$view" | jq -c --arg digest "$digest" --argjson ac "$ac_json" --argjson dl "$dl_json" '{
+      pr_json="$(printf '%s' "$view" | jq -c --arg digest "$digest" --argjson ac "$ac_json" --argjson dl "$dl_json" 'def entry_state: if .__typename == "StatusContext" then (.state // "PENDING") elif .status == "COMPLETED" then (.conclusion // "PENDING") else "PENDING" end;
+      {
         headRefName: (.headRefName // null),
         headRefOid: (.headRefOid // null),
         bodyDigest: (if $digest == "" then null else $digest end),
@@ -80,9 +85,10 @@ main() {
         mergeStateStatus: (.mergeStateStatus // null),
         lastCommitDate: (((.commits // []) | last | .committedDate) // null),
         commitCount: (if .commits == null then null else (.commits | length) end),
+        ciState: (if .statusCheckRollup == null then null elif (.statusCheckRollup | length) == 0 then "none" else (.statusCheckRollup | map(entry_state)) as $s | if any($s[]; IN("SUCCESS","NEUTRAL","SKIPPED","PENDING","EXPECTED") | not) then "failing" elif any($s[]; IN("PENDING","EXPECTED")) then "pending" else "green" end end),
         reviewCommentIds: (if .comments == null then null else [.comments[] | select(.isMinimized == false) | select((.body // "") | startswith("<!-- pipeline-review-round")) | .id] end)
       }' 2>/dev/null)"
-      [ -n "$pr_json" ] || pr_json='{"headRefName":null,"headRefOid":null,"bodyDigest":null,"acceptanceChecked":null,"decisionLog":null,"mergeable":null,"mergeStateStatus":null,"lastCommitDate":null,"commitCount":null,"reviewCommentIds":null}'
+      [ -n "$pr_json" ] || pr_json='{"headRefName":null,"headRefOid":null,"bodyDigest":null,"acceptanceChecked":null,"decisionLog":null,"mergeable":null,"mergeStateStatus":null,"lastCommitDate":null,"commitCount":null,"ciState":null,"reviewCommentIds":null}'
     fi
   fi
 
