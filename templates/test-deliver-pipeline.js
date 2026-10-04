@@ -444,6 +444,19 @@ await testCase('dryRun:true → dry-run-ok passthrough', async () => {
   return err ? err : { ok: true }
 })
 
+// T246 (#246) — `auto` is the default mode: a launch that passes no `mode` runs through to ready, and the
+// other modes stay an explicit opt-in (an explicit `semi` still stops at plan-ready).
+await testCase('T246 no mode arg → auto: dryRun echoes auto, a GO/LGTM run reaches ready, explicit semi still stops at plan-ready', async () => {
+  const dry = await run({ dryRun: true })
+  const full = await run({ simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] } })
+  const semi = await run({ mode: 'semi', simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] } })
+  return eq('dryRun echoed mode', dry.mode, 'auto')
+    || eq('status without mode', full.status, 'ready')
+    || eq('trace without mode', full.trace, ['Plan', 'Dev', 'Review', 'PR Ready'])
+    || eq('explicit semi status', semi.status, 'plan-ready')
+    || { ok: true }
+})
+
 // 14. auto, sam:GO, morgan[0]:null (session-limit death) → review-died, PR preserved
 await testCase('null Morgan round 0 (2026-07-21 crash) → review-died PR preserved', async () => {
   const r = await run({
@@ -5306,7 +5319,7 @@ await testCase('T182k plan amendment with items: valid items feed the sync (read
   return e1 || e2 || e3 || e4 || { ok: true }
 })
 
-// T182l-n (#182, PR #190 review) — the default `semi` flow stops at plan-ready and the Lead relaunches at entryStage dev
+// T182l-n (#182, PR #190 review) — the `semi` flow stops at plan-ready and the Lead relaunches at entryStage dev
 // (then review) with `planText`: no Plan phase runs in that process, so the items are rebuilt from the plan's
 // `<!-- ac:N -->` lines. The plan also holds a task list without ids, which must not become an item.
 const t182PlanText = (ids = true) => '## Plan\n- [ ] step one: a task, not an acceptance item\n\n' + t182Sam(T182_ITEMS, ids).plan
