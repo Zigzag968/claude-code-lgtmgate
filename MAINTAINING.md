@@ -31,7 +31,7 @@ procedure, not a caveat**:
 
 1. Before trusting ANY `--plugin-dir` dev run, set a dev-only version in the worktree — **both**
    `BUILD.version` in `workflows/deliver-pipeline.js` **and** `.claude-plugin/plugin.json`'s
-   `version` — to the same value, e.g. `0.9.0-dev` (this keeps `test-canonical-guards.sh`'s
+   `version` — to the same value, e.g. `1.0.1-dev` (this keeps `test-canonical-guards.sh`'s
    `stamp-parity` invariant green while making the run's origin unambiguous).
 2. Run it, then CONFIRM the run's `logs[0]` / `result.buildStamp` (see §9) carries that
    `-dev` string.
@@ -117,7 +117,7 @@ human-legible identity key (a 40-char SHA is not), and it gives the installed ca
 
 **An unbumped release delivers nothing at all** — a github-source plugin only updates a
 consumer's cache when the manifest version differs from what they already have.
-The bump is NOT part of a PR (#74): `scripts/lead-merge.sh` bumps the version (`plugin.json` + `BUILD`) at merge time: patch+1, or the prerelease counter+1 for `X.Y.Z-beta.N` (a branch already above main through a `chore: bump X (lead-merge)` commit is merged as is); the guards only check the floor (branch >= origin/main, semver precedence, prerelease included) and stamp parity.
+The bump is NOT part of a PR (#74): `scripts/lead-merge.sh` bumps the version (`plugin.json` + `BUILD`) at merge time: patch+1, or the prerelease counter+1 for `X.Y.Z-beta.N` (a branch already above main through a `chore: bump X (lead-merge)` commit is merged as is); the guards only check the floor (branch >= origin/main, semver precedence, prerelease included) and stamp parity. It never sets a version by itself: a first stable version (1.0.0) or the start of a new prerelease line (for example 1.1.0-beta.1) is set by a dedicated release commit that changes only `plugin.json` `version` and `BUILD.version`. After the first stable release, `main` is moved to the next prerelease line (1.1.0-beta.1) by a dedicated commit, so that the script continues with beta.2, beta.3 and the beta channel stays distinguishable from the stable one.
 
 **No `CHANGELOG.md` file — the version-bump commit subject IS the changelog** (human decision,
 2026-09-15, legacy#86). Every paired bump above ships as its own conventional-commit subject (`fix:`,
@@ -354,6 +354,8 @@ installs the stable, `sha`-pinned version.
 Hard rule: **one `lgtmgate` manifest active per repo**. Two enabled plugins with the same manifest
 name shadow each other silently (anthropics/claude-code#45266) and their hooks fire twice; enabling
 both channels at the same scope prints no warning (checked on the canary).
+
+After 1.0.0 is published, a dedicated commit moves `main` to 1.1.0-beta.1 so the beta channel stays distinguishable from stable.
 
 Switch a repo to beta (per machine, never committed — `.claude/settings.local.json` is gitignored):
 
