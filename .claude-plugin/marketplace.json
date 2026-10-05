@@ -10,7 +10,7 @@
         "source": "github",
         "repo": "Zigzag968/claude-code-lgtmgate",
         "ref": "main",
-        "sha": "43c2911e82b32d029172a2ae93dc1d8dbea76a74"
+        "sha": "1db6236a5465a832cda933e67c53a3e5cbede212"
       },
       "description": "Stack-agnostic delivery pipeline: Theo (diagnose) -> Mia (PM) -> Sam (plan) -> Nick (dev+PR) -> Morgan (review), orchestrated by a per-project workflow and configured via .claude/pipeline.config.json.",
       "author": {
