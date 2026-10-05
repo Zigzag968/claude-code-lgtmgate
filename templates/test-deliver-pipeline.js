@@ -5627,6 +5627,23 @@ await testCase('T183f a human gate is told by its id, not by a [human-gate] tag 
   return e1 || e2 || e3 || e4 || { ok: true }
 })
 
+await testCase('T249 a human gate ticked in the body is settled even when Morgan still lists it (REQUIRED_CHANGES -> ready)', async () => {
+  const r = await run({ mode: 'auto', simulate: { sam: { 1: t182Sam(T182_ITEMS) }, prBody: t182GateTickedBody(), morgan: [{ verdict: 'REQUIRED_CHANGES', items: [t182Lines(T182_ITEMS)[1]], boxes: t183Boxes(true, false, true) }] } })
+  const e1 = eq('status', r.status, 'ready')
+  const e2 = r.humanGateItems === undefined ? null : { ok: false, msg: 'humanGateItems carried for a settled gate' }
+  const e3 = includes('trace', r.trace || [], 'human-gate-settled:2')
+  return e1 || e2 || e3 || { ok: true }
+})
+
+await testCase('T249b the same review with the gate unticked in the body stays ready-pending-human', async () => {
+  const lines = t182Lines(T182_ITEMS)
+  const body = 'Closes #182\n\n<!-- acceptance:start -->\n' + lines.join('\n') + '\n<!-- acceptance:end -->\n'
+  const r = await run({ mode: 'auto', simulate: { sam: { 1: t182Sam(T182_ITEMS) }, prBody: body, morgan: [{ verdict: 'REQUIRED_CHANGES', items: [lines[1]], boxes: t183Boxes(true, false, true) }] } })
+  const e1 = eq('status', r.status, 'ready-pending-human')
+  const e2 = eq('humanGateItems', r.humanGateItems, [lines[1]])
+  return e1 || e2 || { ok: true }
+})
+
 await testCase('T183g a refused tick + an open human gate → ready-pending-human carrying humanGateItems and untickableItems', async () => {
   const lines = t182Lines(T182_ITEMS)
   const r = await run({
