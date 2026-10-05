@@ -3763,6 +3763,7 @@ if (after('review', entryStage)) {
         open.forEach(addLine)
       }
     }
+    // DEBT(#240): no replayed fixture (the incident capture ends before the LGTM path); proven by flow-suite cases T249 and T249b
     // #249: a human-gate box a person ticked in the body is settled, whatever the verdict says: its line leaves `items`
     // (by id, boxLineId). A REQUIRED_CHANGES left with nothing else, every non-gate box proven, is the LGTM it should be.
     const before = items.length
