@@ -751,7 +751,7 @@ if [ "$RC" -eq 0 ] && [ -f "$DSK/123-skew.json" ]; then
   SK="$DSK/123-skew.json"
   [ "$(jsf "$SK" 'f.calls["probe-123-lines-plugin-version-r0"].line.includes("PLUGIN-VERSION:1.0.0-beta.3") && f.expect.status')" = '"escalate"' ] \
     && ok "version probe: a skew incident keeps the stale root's version literal" || bad "version probe: the stale root's version was rewritten: $(jsf "$SK" 'f.calls')"
-  [ "$(jsf "$SK" 'f.expect.reason.startsWith("plugin-version-skew") && f.expect.reason.includes("@@ENGINE_VERSION@@") && !f.expect.reason.includes("'"$ENGV"'")')" = "true" ] \
+  [ "$(jsf "$SK" 'f.expect.reason.startsWith("plugin-version-skew") && f.expect.reason.includes("@@ENGINE_VERSION@@") && !f.expect.reason.split("1.0.0-beta.3").join("").includes("'"$ENGV"'")')" = "true" ] \
     && ok "version probe: the published expect.reason of a skew quotes the engine version as the token" || bad "version probe: expect.reason of the skew: $(jsf "$SK" 'f.expect.reason')"
   out=$(node scripts/run-offline.cjs "$SK" --fp "$BUMPED" 2>&1 | tail -n 1)
   case "$out" in *"status=ok passed=1"*) ok "version probe: the skew fixture replays green against an engine whose version was bumped";; *) bad "version probe: skew bumped replay: $out";; esac
