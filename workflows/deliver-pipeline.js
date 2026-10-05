@@ -30,7 +30,7 @@ export const meta = {
 // | `branchOverride` | exact branch name used verbatim instead of <branchPrefix>issue-<N> (#232; rebase-without-force-push, numbered slices). Arg, else config.branchOverride. Empty = unset; chars limited to [A-Za-z0-9._/-]. Skips the config-prefix reconcile so a config-prefix branch is never accepted. |
 // | `branchPrefix` | top-level arg is IGNORED (config.branchPrefix wins); a differing value logs a warning + trace 'branch-prefix-arg-ignored' (#232). Use branchOverride to force a branch. config.branchPrefix absent/blank -> falls back to 'features/' and traces 'branch-prefix-fallback-default' (#267), so a caller that fails to thread the project's own branchPrefix through config is diagnosable, not silent. |
 // | `prNumber` | existing PR number; required when entryStage='review' |
-// | `mode` | 'auto' \| 'semi' (default) \| 'manual' |
+// | `mode` | 'auto' (default) \| 'semi' \| 'manual' |
 // | `entryStage` | 'plan' (default) \| 'dev' \| 'review' (skip completed phases on crash-resume) |
 // | `proceedThrough` | last stage the Lead authorized to RUN on resume ('plan'\|'dev'\|'review'\|null). The pipeline PAUSES before any stage beyond it, in every mode (mode 'auto' without it runs through; #187). proceedThrough='plan' stops at plan-ready. Validated up front (#208): any other value escalates `invalid-proceedThrough`, nothing runs; echoed by dryRun. 'plan' is what resolves a design-step stop at entryStage='plan' (both triggers); a later stage does not. |
 // | `planText` | Sam's plan text, supplied on resume (entryStage='dev'\|'review') so the hand-off survives a crash without re-reading GitHub. If absent on resume, the plan is re-materialized from the artifact file (see planPath below). |
@@ -131,7 +131,7 @@ export const meta = {
 // `version`, checked against plugin.json by templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '1.0.0-beta.30', cutFrom: '50c6784' }
+const BUILD = { plugin: 'lgtmgate', version: '1.0.0-beta.31', cutFrom: '3948c60' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -204,7 +204,7 @@ const {
   configLocal = {},
   prNumber = null,
   resumeReason = null,
-  mode = 'semi',
+  mode = 'auto',
   entryStage = 'plan',
   proceedThrough = null,
   planText = null,
