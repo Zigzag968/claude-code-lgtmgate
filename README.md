@@ -7,7 +7,7 @@
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Claude Code Plugin](https://img.shields.io/badge/Claude%20Code-plugin-5A32FB)](https://code.claude.com/docs/en/plugins)
-[![Tests: 709 offline](https://img.shields.io/badge/tests-709%20offline-2ea043)](#engineering-highlights)
+[![Tests: 936 offline](https://img.shields.io/badge/tests-936%20offline-2ea043)](#engineering-highlights)
 
 lgtmgate is a Claude Code plugin that takes a GitHub issue through to a merge-ready pull request. A diagnosis agent checks the issue is real before anyone writes a plan for it. A reviewer checks each item on the acceptance checklist against actual evidence, a command's output or an artifact, before approving. None of the agents merge anything themselves, including when this repo ships its own releases.
 
@@ -40,9 +40,9 @@ $ /lgtmgate:deliver 142 "Login page shows a stale error after a successful retry
 
 1. **Theo** reproduces the stale-error state, confirms it's real, hands off to Sam.
 2. **Sam** posts an anchored plan on issue #142: impact table, implementation steps, an acceptance checklist Morgan can verify offline.
-   - `plan-ready`: the pipeline stops here and waits for your green light before Nick starts.
+   - `plan-ready`: in the default `auto` mode the run continues to Nick; with `--mode semi` (or `proceedThrough`) it stops here and waits for your green light.
 3. **Nick** implements it and opens a draft PR with the checklist copied into the body, unticked.
-   - `dev-done`: the pipeline stops again and waits for your green light before Morgan reviews.
+   - `dev-done`: in `auto` the run continues to Morgan; with `--mode semi` it stops here and waits for your green light.
 4. **Morgan** runs the regression guard, checks conventions, ticks each box against real proof, posts a verdict:
    - `REQUIRED_CHANGES` → Nick fixes, Morgan re-reviews. Loops until resolved.
    - `LGTM` → PR undrafted, mergeable. The Lead merges it; Nick and Morgan never do.
@@ -53,7 +53,7 @@ $ /lgtmgate:deliver 142 "Login page shows a stale error after a successful retry
 - A git hook refuses `gh pr merge` from inside a hooked session while any acceptance box is unchecked; a box only gets checked once there's evidence behind it. (This only catches the `gh` command inside a session with the hook wired in: a merge from the GitHub web UI isn't intercepted, so treat it as a speed bump, not a wall.)
 - Once every box is checked, nothing merges automatically: the Lead is instructed to always wait for an explicit go-ahead before running `gh pr merge`. That's a prompt-level convention the agents follow; nothing in the tooling enforces it.
 - Review and implementation are split across two different agents (Morgan and Nick), so neither one reviews its own work.
-- The human maintainer stays in the loop without babysitting the run: Sam posts the plan on the issue before Nick writes any code, so anyone watching can weigh in early. Any acceptance-checklist item tagged `[human-gate]` can never be ticked by Morgan, no matter the evidence; only a human checks it.
+- The human maintainer stays in the loop without babysitting the run: Sam posts the plan on the issue before Nick writes any code, so anyone watching can weigh in early. Any acceptance-checklist item tagged `[human-gate]` can never be ticked by Morgan, no matter the evidence; only a human checks it. Once a person has ticked it in the PR body, the engine settles it on the next verdict; the run then no longer waits on it.
 - The pipeline is built to need you as little as possible: when a run goes silent, the Lead resolves it on its own first, resuming a resumable run through a bounded retry loop, and a run parked on another repo's issue un-parks itself via the `blockedBy` signal once that issue's label flips. It only escalates to you when the retries are exhausted or the decision genuinely needs a human, such as any `[human-gate]` item.
 
 ### This project matured through real use. Here's how.
@@ -80,7 +80,7 @@ The full key-by-key reference, including precedence rules and edge cases, is in 
 <details>
 <summary>Engineering highlights (you can reproduce every number below by running the scripts yourself)</summary>
 
-- 709 offline test cases across 6 suites, no network or mocked API calls: `templates/test-canonical-guards.sh` (20 release invariants), `scripts/run-flow-suite.cjs` (177 pipeline-logic cases), `plugins/backlog/tests/` (467 Python unit tests), `templates/test-blocked-by-check.sh` (9), `hooks/test-Stop-supervise-runs.sh` (17), `hooks/test-deny-destructive-git.sh` (19).
+- 936 offline test cases across 6 suites, no network or mocked API calls: `templates/test-canonical-guards.sh` (24 release invariants), `scripts/run-flow-suite.cjs` (325 pipeline-logic cases), `plugins/backlog/tests/` (503 Python unit tests), `templates/test-blocked-by-check.sh` (9), `hooks/test-Stop-supervise-runs.sh` (17), `hooks/test-deny-destructive-git.sh` (58).
 - An opt-in adversarial plan audit (`planAudit`): a separate agent can challenge Sam's plan before Nick starts coding, capped at a fixed number of rounds so a disagreement can't spawn agents indefinitely.
 - A regression guard based on a SET-DIFF: Morgan captures a baseline from the pre-change branch and diffs the exact test set the change touched, rather than re-running the whole suite on every PR.
 - Every run gets its own git worktree. Theo, Sam, Nick and Morgan work inside that same worktree so plan, code and review sit on the same frozen base, and the pipeline never touches your own working checkout.
@@ -96,7 +96,7 @@ The full key-by-key reference, including precedence rules and edge cases, is in 
 - **Nick**: implements the change and the tests Sam's plan specifies (Sam's impact table names what needs testing, not just what to build), opens a draft PR, copies the acceptance checklist into the body. (sonnet)
 - **Morgan**: impartial reviewer, running the regression guard, the convention review, the acceptance-checklist gate and CI verification, then posting a verdict. Never commits. (sonnet)
 
-The Lead (you, or the orchestrator) creates a shared git worktree and launches the Workflow. The step order, checkpoints, and resume logic are scripted inside the plugin's `workflows/deliver-pipeline.js`, not decided by the Lead turn by turn: the Lead's job is to launch it and relay a go-ahead at each checkpoint. The agents work inside that same worktree so plan, code, and review sit on one frozen base.
+The Lead (you, or the orchestrator) creates a shared git worktree and launches the Workflow. The step order, checkpoints, and resume logic are scripted inside the plugin's `workflows/deliver-pipeline.js`, not decided by the Lead turn by turn: the Lead's job is to launch it and, in `semi` or `manual` mode, relay a go-ahead at each checkpoint. The agents work inside that same worktree so plan, code, and review sit on one frozen base.
 
 ## Install
 
@@ -119,6 +119,9 @@ Restart the session, then in your target project run `/lgtmgate:init`. It genera
 - **Node.js**: runs `workflows/deliver-pipeline.js`, `scripts/run-flow-suite.cjs`, and the consumer's copied `.claude/workflows/test-deliver-pipeline.js`.
 - **Python 3**: runs `hooks/SessionStart/inject_stub.py`.
 - **`git`** with a `github.com` remote.
+- **Claude Code with the `Workflow` tool available** (every run is a `Workflow`).
+- **GitHub only**: issues, pull requests and `gh`; a `github.com` remote.
+- **A long macOS session**: a session open for more than about three days can lose the certificate bundle of its sandbox so that `git` and `gh` over HTTPS fail with TLS errors; restart it (details in #251).
 - **`bash`** (3.2 floor, see the `bash-3.2-floor` invariant in `templates/test-canonical-guards.sh`).
 
 </details>
@@ -152,6 +155,16 @@ claude plugin update lgtmgate
 ```
 
 Restart Claude Code to apply. The marketplace's `lgtmgate` entry carries `ref: "main"` **and** a pinned `sha`: an unbumped `plugin.json` version is never delivered, and only a maintainer moving that `sha` on `main` publishes a new release. See `MAINTAINING.md` for the full release/rollback runbook. Run the two commands above explicitly rather than relying on a background refresh — auto-update timing isn't guaranteed even for a public marketplace.
+
+</details>
+
+<details>
+<summary>Release channels</summary>
+
+- **stable** (`zigzag-plugins`): serves the commit pinned by `sha` in `.claude-plugin/marketplace.json`; 1.0.0 is its first version.
+- **beta** (`zigzag-plugins-beta`): follows every merge on `main`, for testing ahead of a release, not the way to install.
+- Enable one channel per repo: two enabled `lgtmgate` plugins shadow each other.
+- Setup and switching: `MAINTAINING.md` section 12.
 
 </details>
 
