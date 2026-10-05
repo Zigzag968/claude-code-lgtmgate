@@ -33,7 +33,7 @@
         "url": "https://github.com/Zigzag968/claude-code-lgtmgate.git",
         "path": "plugins/backlog",
         "ref": "main",
-        "sha": "43c2911e82b32d029172a2ae93dc1d8dbea76a74"
+        "sha": "1db6236a5465a832cda933e67c53a3e5cbede212"
       },
       "description": "Config-driven backlog discipline for GitHub repos: /backlog:file, /backlog:triage (propose-only), /backlog:next. Inert unless the repo has .claude/backlog.yml.",
       "author": {
