@@ -131,7 +131,7 @@ export const meta = {
 // `version`, checked against plugin.json by templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '1.0.0-beta.31', cutFrom: '3948c60' }
+const BUILD = { plugin: 'lgtmgate', version: '1.0.0-beta.32', cutFrom: '71f0ffa' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -3470,14 +3470,18 @@ if (after('review', entryStage)) {
     }
   }
 
+  // #249: the ids ticked in the PR body at the window start (set by reviewerWindowStart, read by callMorganGuarded).
+  let windowTickedIds = []
   const reviewerWindowStart = async (round) => {
     if (simulate) {
       // The read of the body a simulated run does: null when the body is unreadable (simulate.probes.prBody null).
       const body = simBody()
       notePriorRead(body === null ? null : decisionLogEntries(body))
+      windowTickedIds = checkedAcceptanceIds(body ?? '')
       return simulate.probes?.windowStart
     }
     const st = await prState('window-start', round)
+    windowTickedIds = Array.isArray(st?.acceptanceChecked) ? st.acceptanceChecked : []
     // The decision-log lines the body already holds, read once, before this run writes any (lgtmgate#164).
     notePriorRead(st?.decisionLog)
     return st?.now ?? null
@@ -3594,6 +3598,11 @@ if (after('review', entryStage)) {
   // pre-existing flow is unchanged.
   const callMorganGuarded = async (prompt, opts, round) => {
     const windowStart = await reviewerWindowStart(round)
+    // #249: the human-gate boxes a person already ticked are settled; say so, so the reviewer does not list them.
+    const tickedGates = (samAcceptanceItems || []).filter((i) => i.humanGate && windowTickedIds.includes(i.id)).map((i) => i.id)
+    if (tickedGates.length > 0) {
+      prompt += `\n\nHuman-gate box(es) ${tickedGates.join(', ')} already ticked by a person in the PR body: settled, do not list them in items.`
+    }
     let v
     try {
       v = await callAgent('morgan', prompt, opts, round)
@@ -3753,6 +3762,22 @@ if (after('review', entryStage)) {
         changed = true
         open.forEach(addLine)
       }
+    }
+    // DEBT(#240): no replayed fixture (the incident capture ends before the LGTM path); proven by flow-suite cases T249 and T249b
+    // #249: a human-gate box a person ticked in the body is settled, whatever the verdict says: its line leaves `items`
+    // (by id, boxLineId). A REQUIRED_CHANGES left with nothing else, every non-gate box proven, is the LGTM it should be.
+    const before = items.length
+    for (let k = items.length - 1; k >= 0; k--) {
+      const id = boxLineId(items[k])
+      if (id !== null && boxesGates.includes(id)) {
+        items.splice(k, 1)
+        trace.push(`human-gate-settled:${id}`)
+        changed = true
+      }
+    }
+    if (verdict === 'REQUIRED_CHANGES' && before > 0 && items.length === 0 &&
+      samAcceptanceItems.every((i) => i.humanGate || tickIds.includes(i.id))) {
+      verdict = 'LGTM'
     }
     let untickable
     let tickReason
