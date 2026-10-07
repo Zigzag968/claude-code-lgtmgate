@@ -22,7 +22,7 @@ export const meta = {
 // | `issue` | GitHub issue number (required) |
 // | `brief` | one-line description of the change (required) |
 // | `wtPath` | shared worktree absolute path (required) |
-// | `config` | REQUIRED object: the parsed `.claude/pipeline.config.json`, supplied by the Lead. Absent or not an object (e.g. a JSON string) -> throws before any agent call (#13, #12). Project-specific configuration (stack-agnostic; see pipeline.config.template.json): `{ ghProject, baseBranch, branchPrefix, worktreeRoot, conventionsRule, commands:{build,test,format}, ciChecks:[], regressionGuard:{testGlob,testFnPattern,baselineCmd}, provision:{extraLinks:[{src,dst}]}, preflight:{canonicalStringBan:[]}, commitHygiene:{squashBeforeHandoff,maxCommits}, commentHygiene:bool, oneWayDoorPaths:[] (optional; R3 path globs/prefixes, default none; see oneWayDoorSignals), oneWayDoorKinds:[] (optional; R3 kinds among status\|agent\|hook\|seam, default none), engineRepo:true (optional; marks the repo that IS this plugin: engine-only rules, default absent = consumer; see engineRules), minPluginVersion:'x.y.z[-pre.N]' (optional, off by default; the oldest engine version this repo accepts: an engine below it escalates `plugin-version-too-old` before anything runs, #233; an unusable value throws), repo:'owner/repo' }` — repo: code repo for cross-repo runs; absent -> cwd-resolved. worktreeRoot resolution order: LGTMGATE_WORKTREE_ROOT env var -> configLocal.worktreeRoot -> config.worktreeRoot -> wtPath's parent dir (see resolveWorktreeRoot below). |
+// | `config` | REQUIRED object: the parsed `.claude/pipeline.config.json`, supplied by the Lead. Absent or not an object (e.g. a JSON string) -> throws before any agent call (#13, #12). Project-specific configuration (stack-agnostic; see pipeline.config.template.json): `{ ghProject, baseBranch, branchPrefix, worktreeRoot, commands:{build,test,format}, ciChecks:[], regressionGuard:{testGlob,testFnPattern,baselineCmd}, provision:{extraLinks:[{src,dst}]}, preflight:{canonicalStringBan:[]}, commitHygiene:{squashBeforeHandoff,maxCommits}, commentHygiene:bool, oneWayDoorPaths:[] (optional; R3 path globs/prefixes, default none; see oneWayDoorSignals), oneWayDoorKinds:[] (optional; R3 kinds among status\|agent\|hook\|seam, default none), engineRepo:true (optional; marks the repo that IS this plugin: engine-only rules, default absent = consumer; see engineRules), minPluginVersion:'x.y.z[-pre.N]' (optional, off by default; the oldest engine version this repo accepts: an engine below it escalates `plugin-version-too-old` before anything runs, #233; an unusable value throws), repo:'owner/repo' }` — repo: code repo for cross-repo runs; absent -> cwd-resolved. worktreeRoot resolution order: LGTMGATE_WORKTREE_ROOT env var -> configLocal.worktreeRoot -> config.worktreeRoot -> wtPath's parent dir (see resolveWorktreeRoot below). |
 // | `configLocal` | parsed `.claude/pipeline.config.local.json`, supplied by the Lead (the workflow sandbox has no filesystem — see resolveWorktreeRoot below); only `worktreeRoot` is read today (#61). Gitignored, machine-local, never versioned. Absent/garbage -> {}. |
 // | `pmReview` | run Mia before Sam (default false) |
 // | `issueType` | the issue's type, from its `type:*` label (e.g. 'bug', 'feature', 'chore'); optional, absent = not a bug. With 'bug' AND a Sam target under `workflows/` AND config.engineRepo is true, the R2 fixture acceptance item is injected into Nick's prompt (#76, #163). A launch arg, not a simulate key. |
@@ -160,6 +160,7 @@ let boxesMapped = null
 let specificsPayload = null
 let specificsLine = null
 let specificsOversize = null
+let retiredKeyPath = null
 // #183: the ids of the human-gate boxes the PR body shows ticked (a person's tick): the one kind of box settled by the body.
 let boxesGates = []
 // #183: why the last pr-write probe call gave no usable answer (null while it did), read by tickAcceptanceBoxes.
@@ -201,6 +202,7 @@ const finish = (def, extra = {}) => ({ buildStamp: BUILD_STAMP, ...(simulate ? {
   ...(boxesMapped ? { boxes: boxesMapped } : {}),
   ...(specificsLine ? { specifics: specificsLine } : {}),
   ...(specificsOversize ? { specificsOversize } : {}),
+  ...(retiredKeyPath ? { retiredKeyPath } : {}),
   ...(classifierOutageDeath && def.status.endsWith('-died')
     ? { reason: 'classifier-outage: resume with resumeFromRunId' } : {}), ...def, ...extra })
 
@@ -392,42 +394,8 @@ const prFlag = repo ? ` -R ${repo}` : ''
 // by the delivered-no-pr escalation. `repo` absent -> Nick derives the slug from the origin URL.
 const httpsPushCmdFor = (branch) =>
   `git -c credential.helper= -c credential.helper='!gh auth git-credential' push https://github.com/${repo || '<owner>/<repo from git remote get-url origin>'}.git refs/heads/${branch}:refs/heads/${branch}`
-let conventionsRule = config.conventionsRule || '.claude/rules/conventions.md'
-// lgtmgate#139: on a crash-resume ('dev'/'review' entry) re-verify baseBranch/conventionsRule
-// against the worktree's OWN pipeline.config.json instead of trusting the possibly-stale
-// caller-supplied config.* — same principle as reconcileStaleBranchPrefix, extended to these two
-// fields (see reconcileStaleProjectConfig above). Never runs on a fresh 'plan' dispatch (mirrors
-// the inverse fresh-vs-resume gate at the base-staleness preflight below) — no reason to pay for a
-// recheck on a run that just read this same file at provisioning time.
-if (entryStage !== 'plan') {
-  let configProjectRecheckRaw = null
-  if (simulate) {
-    if (simulate.probes?.configProjectRecheckRaw !== undefined) configProjectRecheckRaw = simulate.probes?.configProjectRecheckRaw
-  } else {
-    try {
-      configProjectRecheckRaw = await agent(
-        `Run EXACTLY this command: jq -c '{baseBranch, conventionsRule}' "${wtPath}/.claude/pipeline.config.json" 2>/dev/null. ` +
-        `Your answer MUST be that command's stdout VERBATIM — nothing else: ` +
-        `no sentence, no quotes, no backticks, no markdown, no explanation. ` +
-        `If the command itself fails, answer exactly ERROR.`,
-        { label: `config-project-recheck-${issue}`, model: 'haiku' },
-      )
-    } catch (e) {
-      log(`Project config guard: pipeline.config.json re-check failed (${e.message}) — keeping caller-supplied values`)
-    }
-  }
-  const reconciled = reconcileStaleProjectConfig(configProjectRecheckRaw)
-  if (reconciled.baseBranch && reconciled.baseBranch !== baseBranch) {
-    log(`Project config guard: baseBranch "${baseBranch}" stale vs worktree's own pipeline.config.json — reconciling to "${reconciled.baseBranch}"`)
-    baseBranch = reconciled.baseBranch
-    trace.push('config-baseBranch-reconciled')
-  }
-  if (reconciled.conventionsRule && reconciled.conventionsRule !== conventionsRule) {
-    log(`Project config guard: conventionsRule "${conventionsRule}" stale vs worktree's own pipeline.config.json — reconciling to "${reconciled.conventionsRule}"`)
-    conventionsRule = reconciled.conventionsRule
-    trace.push('config-conventionsRule-reconciled')
-  }
-}
+// A leftover convention-rule key in a consumer config is ignored, traced and handed back for init's migration (#270).
+if (typeof config.conventionsRule === 'string' && config.conventionsRule !== '') { retiredKeyPath = config.conventionsRule; trace.push(`conventionsRule-ignored:${retiredKeyPath}`) }
 const commands = config.commands || {}
 const buildCmd = commands.build || 'build the project'
 const testCmd = commands.test || 'run the unit tests'
@@ -1545,13 +1513,13 @@ function reconcileStaleBranchPrefix(headRef, issue, realBranchPrefixRaw) {
 
 // --- reconcileStaleProjectConfig:start --- (pure & self-contained — keep extractable by the consuming project's tests)
 // lgtmgate#139: extends reconcileStaleBranchPrefix's "don't trust an unverified value,
-// verify against what's really there" principle (above) from branchPrefix to baseBranch/
-// conventionsRule — both are caller-supplied config.* read once at dispatch and never re-read
-// from the worktree's own pipeline.config.json on a crash-resume. rawJson is the verbatim stdout
-// of `jq -c '{baseBranch, conventionsRule}' pipeline.config.json` (or the 'ERROR' sentinel, or
-// garbage). Returns { baseBranch, conventionsRule }, each the worktree's own value when it passes
-// the same non-empty/not-'ERROR'/^[A-Za-z0-9._/-]+$ validation as reconcileStaleBranchPrefix, else
-// null (never accept a blank or malformed value as a "reconciled" one).
+// verify against what's really there" principle (above) from branchPrefix to baseBranch —
+// a caller-supplied config.* read once at dispatch and never re-read from the worktree's own
+// pipeline.config.json on a crash-resume. rawJson is the verbatim stdout of
+// `jq -c '{baseBranch}' pipeline.config.json` (or the 'ERROR' sentinel, or garbage). Returns
+// { baseBranch }, the worktree's own value when it passes the same non-empty/not-'ERROR'/
+// ^[A-Za-z0-9._/-]+$ validation as reconcileStaleBranchPrefix, else null (never accept a blank
+// or malformed value as a "reconciled" one).
 function reconcileStaleProjectConfig(rawJson) {
   const validate = (v) => {
     const raw = String(v ?? '').trim()
@@ -1565,7 +1533,6 @@ function reconcileStaleProjectConfig(rawJson) {
   }
   return {
     baseBranch: validate(parsed?.baseBranch),
-    conventionsRule: validate(parsed?.conventionsRule),
   }
 }
 // --- reconcileStaleProjectConfig:end ---
@@ -2627,6 +2594,30 @@ if (!simulate && pluginRoot && !config.probeRunPath) {
   log(`Plugin version: pluginRoot holds ${BUILD.version}, same as the engine`)
 }
 
+// lgtmgate#139 / #253: on a crash-resume ('dev'/'review' entry) re-verify baseBranch against the
+// worktree's OWN pipeline.config.json instead of trusting the possibly-stale caller-supplied
+// config.baseBranch — same principle as reconcileStaleBranchPrefix (see reconcileStaleProjectConfig
+// above). Never runs on a fresh 'plan' dispatch (no reason to pay for a recheck on a run that just
+// read this same file at provisioning time). Runs through the probe layer (a script reads the file,
+// the model only carries the line), so it sits after the probe consts; fail-open on any read failure.
+if (entryStage !== 'plan') {
+  let configProjectRecheckRaw = null
+  if (simulate) {
+    if (simulate.probes?.configProjectRecheckRaw !== undefined) configProjectRecheckRaw = simulate.probes?.configProjectRecheckRaw
+  } else {
+    const r = await probe('lines', `jq -c '{baseBranch}' ${shellSingleQuote(wtPath + '/.claude/pipeline.config.json')} 2>/dev/null`, {
+      label: 'config-project-recheck', noReuse: true, onFail: (reason) => { log(`Project config guard: pipeline.config.json re-check failed (${reason}) — keeping caller-supplied values`); return null },
+    })
+    configProjectRecheckRaw = r && r.exit === 0 && Array.isArray(r.json && r.json.lines) ? r.json.lines[0] : null
+  }
+  const reconciled = reconcileStaleProjectConfig(configProjectRecheckRaw)
+  if (reconciled.baseBranch && reconciled.baseBranch !== baseBranch) {
+    log(`Project config guard: baseBranch "${baseBranch}" stale vs worktree's own pipeline.config.json — reconciling to "${reconciled.baseBranch}"`)
+    baseBranch = reconciled.baseBranch
+    trace.push('config-baseBranch-reconciled')
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Worktree provisioning (ported from an internal reference implementation) — deterministic script,
 // runs UNCONDITIONALLY before any stage (Diagnose included), on every fresh dispatch AND every
@@ -2906,7 +2897,7 @@ const samScoutPrompt = ({ fixBlock = '', auditFixBlock = '', reviewFixBlock = ''
     `An amended plan is about the size of a fresh plan for the current scope — usually SMALLER than the previous revision, never monotonically larger. ` +
     `${SAM_LAYER_RULE} ` +
     `${SAM_ONE_WAY_DOOR}${SAM_PRODUCT_DIRECTION}` +
-    `Author the acceptance checklist against ${conventionsRule} — in particular its Format-status and Test-status acceptance-item sections: never assert a whole-repo clean state the base branch cannot satisfy. ` +
+    `Author the acceptance checklist against the project specifics (if any): never assert a whole-repo clean state the base branch cannot satisfy. ` +
     `${ACCEPTANCE_PROOF_RULE} ` +
     `${HUMAN_GATE_TAG_RULE} ` +
     `${FOLLOWUP_ISSUE_RULE} ` +
@@ -4328,7 +4319,7 @@ if (after('review', entryStage)) {
     `Work in the shared worktree "${wtPath}". Review PR #${pr}.\n\n` +
       `${planBlock}\n\n` +
       `${MORGAN_PRODUCT_DIRECTION}` +
-      `Gate on the acceptance checklist FROM THAT PLAN, review against ${conventionsRule}, ` +
+      `Gate on the acceptance checklist FROM THAT PLAN, review against the project specifics (if any), ` +
       `${regressionGuardStep}` +
       `For asset/render/human-facing lanes, BEFORE any verdict, execute the real-case live run yourself (the exact command the plan names, deps included) and machine-verify the output contract from the plan (e.g. the exact pixel/asset dimensions and named visual elements the plan calls for, screenshot non-empty, named fields written). Units mock the other side, so seam errors pass with the mock; only a taste judgment then remains for the human-gate. ` +
       `${artifactProofStep}` +
@@ -4576,7 +4567,7 @@ if (after('review', entryStage)) {
       `1. cd "${wtPath}"; git fetch origin ${baseBranch}.\n` +
       `2. ABORT (do nothing, report skipped) if ANY of: \`git rev-parse --abbrev-ref HEAD\` != \`${headRefName}\`; \`git status --porcelain\` is non-empty; \`git rev-list --merges --count $(git merge-base HEAD origin/${baseBranch})..HEAD\` != 0.\n` +
       `3. OLD=$(git rev-parse HEAD); MB=$(git merge-base HEAD origin/${baseBranch}).\n` +
-      `4. git reset --soft "$MB", then create 2-3 Conventional-Commits commits (${conventionsRule}) splitting the work LOGICALLY — never one commit per review round.\n` +
+      `4. git reset --soft "$MB", then create 2-3 Conventional-Commits commits (per the project specifics, if any) splitting the work LOGICALLY — never one commit per review round.\n` +
       `5. Tree-identity proof (mandatory): \`git diff "$OLD" HEAD --stat\` must print NOTHING. If it prints anything: \`git reset --hard "$OLD"\`, push nothing, report squashed:false with the diff.\n` +
       `6. git push --force-with-lease origin "${headRefName}".\n` +
       `7. Post ONE comment on PR #${pr}, prefixed with \`${reviewVerdictMarker}\` as its own first line, replacing \`<HEAD_SHA>\` with the NEW head (\`git rev-parse HEAD\` after the push, full 40-hex): it re-attests the review onto the squashed head. State the old and new head SHAs and that \`git diff <old> <new>\` is empty (the LGTM still holds).\n` +

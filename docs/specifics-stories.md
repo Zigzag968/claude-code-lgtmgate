@@ -22,7 +22,7 @@ Proof column rules:
 | US-C10 | a plugin agent no longer cites one repo's rules or stack | #263 | agent-neutrality |
 | US-R1 | no more substitute agents to get a planner for a stack | #266 | pending: #266 |
 | US-R2 | no more `lane-refused` status and relaunch with `scoutAgent` | #266 | pending: #266 |
-| US-R3 | no more `conventionsRule` to set and hope | #270 | pending: #270 |
+| US-R3 | no more convention-rule key to set and hope | #270 | pending: #270 |
 | US-R4 | plugin agents free of one maintainer's references | #263 | project-specifics-slot |
 | US-R5 | no more prose instructions inside `commands.build` (project decision) | #267 | doc |
 | US-R6 | no more copying agent md files into the project (Claude Code behaviour, one README sentence) | #265 | doc |
