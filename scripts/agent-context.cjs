@@ -125,7 +125,16 @@ function normalise(buf) {
 }
 
 const trimBlank = (s) => s.replace(/^(?:[ \t]*\n)+/, '').replace(/(?:\n[ \t]*)+$/, '')
-const stripComments = (s) => s.replace(/<!--[\s\S]*?-->/g, '')
+// Repeat until stable so a comment opener rebuilt by a removal (`<!<!-- x -->--`) is stripped too.
+const stripComments = (s) => {
+  let prev
+  let cur = s
+  do {
+    prev = cur
+    cur = cur.replace(/<!--[\s\S]*?-->/g, '')
+  } while (cur !== prev)
+  return cur
+}
 const lineOf = (text, idx) => text.slice(0, idx).split('\n').length
 
 // parseFrontmatter(text) -> {body, meta, errors}; meta = {lane, persona?, hint?, paths?} or null
