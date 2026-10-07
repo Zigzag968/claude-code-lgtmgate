@@ -298,7 +298,7 @@ out=$(node scripts/run-offline.cjs "$TMP/relaunch-carry-first.json" 2>&1)
 case "$out" in *"FAIL:"*"run 1 \"carry\" must be an object and needs an earlier run"*) ok "carry on the first run is refused, even an empty one";; *) bad "carry on the first run not refused: $out";; esac
 
 # Fail closed on the two-run path (#185 F3): an empty or non-array callLabelsAbsent is a vacuous assertion, and a misspelled
-# run key (`carries`) would silently drop the carry. Unknown `expect` keys are left as they are (36 fixtures rely on that).
+# run key (`carries`) would silently drop the carry. Unknown `expect` keys are refused too (#262).
 out=$(node scripts/run-offline.cjs "$TMP/relaunch-absent-empty.json" 2>&1)
 case "$out" in *"FAIL:"*"callLabelsAbsent: must be a non-empty array of non-empty label prefixes"*) f1=1;; *) f1=0;; esac
 out=$(node scripts/run-offline.cjs "$TMP/relaunch-absent-string.json" 2>&1)
@@ -328,6 +328,28 @@ const n4 = tokenizeVersionProbes(c, ["1.0.0-beta.3"]); out.push(n4 === 0 ? "idem
 console.log(out.join(" "))
 ' 2>&1)
 case "$tv" in "prefix-ok reverse-ok exact-ok fields-ok idem-ok") ok "tokenizeVersionProbes is quote-delimited, rewrites only line and verify of the version probe, and is idempotent";; *) bad "tokenizeVersionProbes unit: $tv";; esac
+
+# ---- #262: expect.promptIncludes / promptOrder assert what an agent is told; unknown expect keys are refused ----
+cat > "$TMP/mkp.cjs" <<'JS'
+const fs = require('fs'); const path = require('path')
+const h = require(path.resolve('scripts/run-offline.cjs'))
+const fix = JSON.parse(fs.readFileSync('fixtures/smoke/auto-lgtm.json', 'utf-8'))
+const run = h.buildPipelineRunner(h.stripExports(fs.readFileSync('workflows/deliver-pipeline.js', 'utf-8')))
+h.replayFixture(fix, run, { prompts: true }).then((r) => {
+  const c = r.calls[0]; const p = c.prompt; const out = process.argv[2]
+  const w = (n, e) => fs.writeFileSync(path.join(out, n), JSON.stringify(Object.assign({}, fix, { expect: Object.assign({}, fix.expect, e) })))
+  w('prompt-ok.json', { promptIncludes: { label: c.label, nth: 0, includes: [p.slice(0, 20)] }, promptOrder: { label: c.label, nth: 0, order: [p.slice(0, 12), p.slice(-12)] } })
+  w('prompt-bad.json', { promptIncludes: { label: c.label, includes: ['zzz-not-in-any-prompt'] }, promptOrder: { label: c.label, order: [p.slice(-12), p.slice(0, 12)] } })
+  w('expect-unknown.json', { bogusKey: 1 })
+})
+JS
+node "$TMP/mkp.cjs" "$TMP"
+out=$(node scripts/run-offline.cjs "$TMP/prompt-ok.json" 2>&1)
+case "$out" in *"status=ok passed=1"*) ok "promptIncludes and promptOrder are satisfied by the real prompt (#262)";; *) bad "promptIncludes/promptOrder satisfied case: $out";; esac
+out=$(node scripts/run-offline.cjs "$TMP/prompt-bad.json" 2>&1)
+case "$out" in *"FAIL:"*"promptIncludes:"*"promptOrder:"*) ok "a violated promptIncludes and promptOrder fail the fixture (#262)";; *) bad "violated prompt expectations not reported: $out";; esac
+out=$(node scripts/run-offline.cjs "$TMP/expect-unknown.json" 2>&1)
+case "$out" in *"FAIL:"*"unknown expect key \"bogusKey\""*) ok "an unknown expect key fails the fixture (#262)";; *) bad "unknown expect key not refused: $out";; esac
 
 rm -rf "$TMP"
 STATUS=ok; [ "$FAIL" -gt 0 ] && STATUS=fail
