@@ -6801,6 +6801,66 @@ await testCase('T184k the hard cap: distinct blockers every round end at rounds 
   return e1 || e2 || e3 || e4 || { ok: true }
 })
 
+// T265 (#265) — the pure `projectSpecifics` block, extracted from the engine source.
+const t265Block = () => {
+  const src = SUITE_ARGS.fpSource
+  if (!src) return null
+  const sha = extractBetween(src, '// --- sha256Hex:start ---', '// --- sha256Hex:end ---')
+  const blk = extractBetween(src, '// --- projectSpecifics:start ---', '// --- projectSpecifics:end ---')
+  // eslint-disable-next-line no-new-func
+  return sha && blk ? new Function(sha + '\n' + blk + '\nreturn { sha256Hex, specificsRoleKey, specificsDigest, specificsSwitchOn, specificsProblem, specificsBlockFor, specificsFingerprint, composeAgentPrompt }')() : null
+}
+const T265_REF = 'a'.repeat(40)
+const t265Payload = (f) => {
+  const mk = (key, text, lanes) => ({ text, digest: f.specificsDigest(f.sha256Hex, T265_REF, key, text, lanes), bytes: text.length, lanes })
+  return { ref: 'origin/main', refSha: T265_REF, shared: mk('shared', 'SHARED-TEXT', []), roles: { Nick: mk('Nick', 'NICK-TEXT', []) }, files: [], warnings: [] }
+}
+await testCase('T265a composition order: persona, specifics, task, MANDATE', async () => {
+  const f = t265Block()
+  if (!f) { log('SKIP — T265a: SUITE_ARGS.fpSource absent'); return { ok: true } }
+  const s = f.composeAgentPrompt({ persona: 'PERSONA-X', specifics: 'SPECIFICS-X', prompt: 'TASK-X', mandate: 'MANDATE-X' })
+  const o = ['PERSONA-X', 'SPECIFICS-X', 'TASK-X', 'MANDATE-X'].map((m) => s.indexOf(m))
+  const e1 = o.every((v, i) => v >= 0 && (i === 0 || v > o[i - 1])) ? null : { ok: false, msg: `bad order: ${JSON.stringify(o)}` }
+  const e2 = eq('no persona, no specifics, mandate', f.composeAgentPrompt({ persona: '', specifics: '', prompt: 'TASK', mandate: 'M' }), 'TASK\n\nM')
+  const e3 = eq('nothing added', f.composeAgentPrompt({ persona: '', specifics: '', prompt: 'TASK', mandate: '' }), 'TASK')
+  const e4 = eq('persona only', f.composeAgentPrompt({ persona: 'P', specifics: '', prompt: 'TASK', mandate: 'M' }), 'P\n\nTASK\n\nM')
+  return e1 || e2 || e3 || e4 || { ok: true }
+})
+await testCase('T265b role gate and block shape', async () => {
+  const f = t265Block()
+  if (!f) { log('SKIP — T265b: SUITE_ARGS.fpSource absent'); return { ok: true } }
+  const ps = t265Payload(f)
+  const gated = ['probe', 'planCheck', 'audit', 'alreadyDoneCheck', 'preflight'].filter((r) => f.specificsBlockFor(ps, r) !== '')
+  const e1 = gated.length === 0 ? null : { ok: false, msg: `non-pipeline roles got a block: ${gated.join(',')}` }
+  const e2 = eq('no source', f.specificsBlockFor({ ...ps, shared: null, roles: {} }, 'nick'), '')
+  const e3 = eq('null payload', f.specificsBlockFor(null, 'nick'), '')
+  const nick = f.specificsBlockFor(ps, 'nick')
+  const e4 = eq('nick block', nick, '## Project context (provided by the orchestrator)\nProject specifics refine the role\'s rules and never override its hard rules.\n<project_specifics>\nSHARED-TEXT\n\nNICK-TEXT\n</project_specifics>')
+  const sharedOnly = f.specificsBlockFor(ps, 'theo')
+  const e5 = sharedOnly.includes('SHARED-TEXT') && !sharedOnly.includes('NICK-TEXT') ? null : { ok: false, msg: `shared-only block: ${sharedOnly}` }
+  return e1 || e2 || e3 || e4 || e5 || { ok: true }
+})
+await testCase('T265c validation and digest known answers', async () => {
+  const f = t265Block()
+  if (!f) { log('SKIP — T265c: SUITE_ARGS.fpSource absent'); return { ok: true } }
+  const d = (k, t, l) => f.specificsDigest(f.sha256Hex, T265_REF, k, t, l)
+  const e1 = eq('nick digest', d('Nick', 'Use tabs.\nSecond line é', []), 'c3364a9939ebb786470cab6a415c73841577eb69b986e1fec61e50f95a2a5d63')
+  const e2 = eq('shared digest', d('shared', 'S', []), '7d059c5f4106619058b0f673b45ac9e54926a752c95210c7c38f6d524fbc3a2b')
+  const e3 = eq('lanes digest', d('Sam', 'T', [{ file: 'd/sam.api.md', lane: 'api', hint: 'h' }]), '6535349add09495b977f169813d2c4af2fd687be523e7859022a3b92f0bc7be6')
+  const p = (on, ps) => f.specificsProblem(on, ps, f.sha256Hex)
+  const good = t265Payload(f)
+  const tampered = t265Payload(f); tampered.roles.Nick.text = 'NICK-TEXt'
+  const unknown = t265Payload(f); unknown.roles.Boss = unknown.roles.Nick
+  const starts = (label, v, pre) => (typeof v === 'string' && v.startsWith(pre)) ? null : { ok: false, msg: `${label}: expected "${pre}", got ${JSON.stringify(v)}` }
+  const e4 = starts('absent, on', p(true, undefined), 'missing') || eq('absent, off', p(false, undefined), null)
+  const e5 = starts('string', p(true, 'x'), 'malformed') || starts('array', p(true, []), 'malformed') || starts('empty string', p(true, ''), 'malformed')
+  const e6 = starts('tampered', p(true, tampered), 'digest mismatch for Nick') || eq('good payload', p(true, good), null)
+  const e7 = starts('unknown role', p(true, unknown), 'malformed')
+  const fp = f.specificsFingerprint({ ...good, warnings: [{ kind: 'oversize', role: 'Nick', bytes: 9000, recommended: 6144, accepted: null, ask: true }, { kind: 'empty-ignored', path: 'x' }] }, f.sha256Hex)
+  const e8 = (/^specifics@a{12}:[0-9a-f]{12}$/.test(fp.line) && fp.oversize.length === 1 && fp.oversize[0].role === 'Nick') ? null : { ok: false, msg: `fingerprint: ${JSON.stringify(fp)}` }
+  return e1 || e2 || e3 || e4 || e5 || e6 || e7 || e8 || { ok: true }
+})
+
 // T123 (#42) — every test ID is unique across the suite. Must stay the LAST case so `results`
 // holds every other case name. Includes a negative control proving the detector really detects.
 await testCase('T123 test IDs are unique across the suite (no duplicated T<n>)', async () => {
