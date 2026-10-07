@@ -36,16 +36,11 @@
 # sam-parity, doc-budgets, instructions-wired), 24 critical-paths-proven, 26 stories-covered,
 # 27 agent-neutrality, 28 project-specifics-slot, 29 no-plugin-copy-in-specifics.
 #
-# Enforcement note (#54 MANDATORY 2, human decision 2026-08-23): this repo is PRIVATE on a
-# plan where branch protection and rulesets are both unavailable (verified this session:
-# `gh api repos/Zigzag968/claude-code-lgtmgate/branches/main/protection` and
-# `.../rulesets` both return 403 "Upgrade to GitHub Pro or make this repository public to
-# enable this feature"). `.github/workflows/guards.yml` runs this script on every PR to
-# main and REPORTS; it CANNOT be a required check on this repo. Enforcement is therefore
-# human: this script's verdict is a mandatory acceptance-checklist line on every PR that
-# touches the shipped surface, and no PR merges with a red `guards` line — the acceptance
-# box stays unticked and block-merge-unchecked.sh refuses the merge. The pre-commit hook
-# below is a local pre-check only (per-clone `core.hooksPath` opt-in), not the enforcement.
+# Enforcement note: this repo is public (since 2026-09-29) and the `main-protection` ruleset
+# requires the `guards` check (job in `.github/workflows/guards.yml`, which runs this script
+# on every PR to main) to succeed before a merge. The acceptance-checklist line for this
+# script's verdict stays as a second layer; `.githooks/pre-commit` is a local pre-check only
+# (per-clone `core.hooksPath` opt-in), not the enforcement.
 #
 # Fully offline / non-interactive. Run from anywhere; resolves the repo root itself:
 #   bash templates/test-canonical-guards.sh
