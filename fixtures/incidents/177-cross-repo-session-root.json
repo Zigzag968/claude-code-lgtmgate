@@ -1,0 +1,43 @@
+{
+  "name": "177-cross-repo-session-root",
+  "note": "#177: args.sessionRoot is the root of a session opened in another repository than the run worktree (agents would receive that session's instruction files): the session-root probe answers SESSION-ROOT:differs and the run stops on escalate (reason session-root-mismatch) before provisioning, any label write and any agent call beyond the probe. On the base engine (no sessionRoot gate) the run never asks this probe and does not escalate for this reason.",
+  "args": {
+    "sessionRoot": "/other/repo/main-checkout",
+    "issue": 177,
+    "brief": "a run driven from a session opened in another repository must be refused, not run under the wrong instructions",
+    "wtPath": "/wt/root/issue-177",
+    "config": {
+      "probeRunPath": "/plugin/templates/probe-run.cjs"
+    },
+    "mode": "auto"
+  },
+  "calls": {
+    "probe-177-lines-session-root-r0": {
+      "line": "PROBE name=lines exit=0 sha=b03e838dd43d5a01d1eab98cd3e1987c5f231fb4fe3fdd9d17e3f04e58e239e5 cmd=ad444b4ce1042e15c2a818cdec92a6a5490fdcb64937628ba12ae5a71825f3e2 json={\"lines\":[\"SESSION-ROOT:differs\"]}",
+      "verify": "VERIFY ok line=PROBE name=lines exit=0 sha=b03e838dd43d5a01d1eab98cd3e1987c5f231fb4fe3fdd9d17e3f04e58e239e5 cmd=ad444b4ce1042e15c2a818cdec92a6a5490fdcb64937628ba12ae5a71825f3e2 json={\"lines\":[\"SESSION-ROOT:differs\"]}"
+    }
+  },
+  "expect": {
+    "status": "escalate",
+    "reason": "session-root-mismatch: the session root is not the repository of the run's worktree; agents would receive this session's instruction files instead of the target repository's; drive this repository from a session opened in it (restart the session after any instruction files change), then relaunch; nothing ran",
+    "trace": [
+      "branch-prefix-fallback-default",
+      "probe:lines:haiku"
+    ],
+    "traceExact": true,
+    "callLabels": [
+      "probe-177-lines-session-root-r0"
+    ],
+    "callLabelsAbsent": [
+      "provision",
+      "diagnose-",
+      "plan-",
+      "dev-",
+      "review-"
+    ],
+    "logsInclude": [
+      "Session root check failed",
+      "session-root-mismatch"
+    ]
+  }
+}
