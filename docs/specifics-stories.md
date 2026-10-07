@@ -19,10 +19,10 @@ Proof column rules:
 | US-C7 | exceeding the recommended size is announced once and the owner decides | #265 | pending: #265 |
 | US-C8 | the owner's rules survive plugin updates; init never overwrites | #267 | pending: #267 |
 | US-C9 | the Lead gets a clear failure before any agent starts | #265 | pending: #265 |
-| US-C10 | a plugin agent no longer cites one repo's rules or stack | #263 | pending: #263 |
+| US-C10 | a plugin agent no longer cites one repo's rules or stack | #263 | agent-neutrality |
 | US-R1 | no more substitute agents to get a planner for a stack | #266 | pending: #266 |
 | US-R2 | no more `lane-refused` status and relaunch with `scoutAgent` | #266 | pending: #266 |
 | US-R3 | no more `conventionsRule` to set and hope | #270 | pending: #270 |
-| US-R4 | plugin agents free of one maintainer's references | #263 | pending: #263 |
+| US-R4 | plugin agents free of one maintainer's references | #263 | project-specifics-slot |
 | US-R5 | no more prose instructions inside `commands.build` (project decision) | #267 | doc |
 | US-R6 | no more copying agent md files into the project (Claude Code behaviour, one README sentence) | #265 | doc |
