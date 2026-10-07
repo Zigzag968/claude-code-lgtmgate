@@ -726,6 +726,40 @@ $R2L"
   OUT="$(run_pw body-splice --pr 9 --mode tick --text "$TK_TXT" --ids 1,3 --keep 2)"
   ok=0; [ "$(res "$OUT")" = "skipped/unchanged" ] && [ "$(no_call 'pr edit')" = 1 ] && ok=1
   check "[183] pr-write.sh tick again over the kept line: skipped/unchanged, no edit" "$ok"
+  # [tick-ids] (#257): --mode tick-ids ticks the listed ids of a 14-box body, no text on the command line
+  ti_box() { # <id> <mark> : the line of box <id>, [human-gate] on box 5
+    local g=""; [ "$1" = 5 ] && g="[human-gate] "
+    printf -- '- [%s] <!-- ac:%s --> %sbox number %s `cmd %s` prints `%s`' "$2" "$1" "$g" "$1" "$1" "$1"
+  }
+  ti_block() { # <space-separated ids ticked> : the 14 box lines
+    local i m out=""
+    for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14; do
+      m=" "; case " $1 " in *" $i "*) m="x" ;; esac
+      out="$out$(ti_box "$i" "$m")"$'\n'
+    done
+    printf '%s' "${out%$'\n'}"
+  }
+  tk_body "$(ti_block '1 3 14')"; cp "$PWD_/body.md" "$PWD_/ti-expected.md"
+  tk_body "$(ti_block '')"
+  OUT="$(run_pw body-splice --pr 9 --mode tick-ids --ids 1,3,14)"
+  ok=0; [ "$(res "$OUT")" = "written/-" ] && [ "$(grep -c -- '^- \[x\]' "$PWD_/body.md")" = 3 ] && [ "$(grep -c -- '^- \[ \]' "$PWD_/body.md")" = 11 ] \
+    && grep -qF -- '- [x] <!-- ac:1 --> ' "$PWD_/body.md" && grep -qF -- '- [x] <!-- ac:3 --> ' "$PWD_/body.md" && grep -qF -- '- [x] <!-- ac:14 --> ' "$PWD_/body.md" && ok=1
+  check "[tick-ids] ids 1,3,14 of a 14-box body become [x], the other 11 stay open" "$ok"
+  ok=0; cmp -s "$PWD_/body.md" "$PWD_/ti-expected.md" && ok=1
+  check "[tick-ids] every other byte of the body is unchanged (the body equals the hand-built expected one)" "$ok"
+  ok=0; [ "$(res "$OUT")" = "written/-" ] && [ "$(one_line "$OUT")" = 1 ] && ok=1
+  check "[tick-ids] the output is the single line written/- as in text mode" "$ok"
+  tk_body "$(ti_block '')"; cp "$PWD_/body.md" "$PWD_/ti-before.md"
+  OUT="$(run_pw body-splice --pr 9 --mode tick-ids --ids 2,15)"
+  ok=0; [ "$(res "$OUT")" = "failed/unknown-id" ] && cmp -s "$PWD_/body.md" "$PWD_/ti-before.md" && [ "$(no_call 'pr edit')" = 1 ] && ok=1
+  check "[tick-ids] an unknown id (15) is refused: failed/unknown-id, body untouched, no edit (the valid id 2 is not ticked either)" "$ok"
+  OUT="$(run_pw body-splice --pr 9 --mode tick-ids --ids 4,5)"
+  ok=0; [ "$(res "$OUT")" = "failed/human-gate-id" ] && cmp -s "$PWD_/body.md" "$PWD_/ti-before.md" && [ "$(no_call 'pr edit')" = 1 ] && ok=1
+  check "[tick-ids] a human-gate id (5) is refused: failed/human-gate-id, body untouched, no edit" "$ok"
+  tk_body "$(ti_block '1 3 14')"
+  OUT="$(run_pw body-splice --pr 9 --mode tick-ids --ids 1,3,14)"
+  ok=0; [ "$(res "$OUT")" = "skipped/unchanged" ] && [ "$(no_call 'pr edit')" = 1 ] && ok=1
+  check "[tick-ids] a second tick of the same ids is skipped/unchanged, no edit" "$ok"
   # [183] second review round (G1): the tick replaces only the id boxes; every other line of the block survives, once, in order
   while IFS= read -r FOREIGN <&3; do
     tk_body "- [ ] <!-- ac:1 --> first

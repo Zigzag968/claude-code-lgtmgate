@@ -211,8 +211,8 @@
       "verify": "_"
     },
     "probe-185-pr-write-acceptance-tick-retry-r0": {
-      "line": "PROBE name=pr-write exit=0 sha=db2f30184e8065f3d07db54de61195197fdc381c47b9ebb2b27e38b0c62b0499 cmd=47f1a27aa34ac763dfe5be4d4e728bd81421cfac200fc91d96e066f879b54d56 json={\"op\":\"body-splice\",\"result\":\"written\",\"reason\":null,\"bytes\":3728}",
-      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=db2f30184e8065f3d07db54de61195197fdc381c47b9ebb2b27e38b0c62b0499 cmd=47f1a27aa34ac763dfe5be4d4e728bd81421cfac200fc91d96e066f879b54d56 json={\"op\":\"body-splice\",\"result\":\"written\",\"reason\":null,\"bytes\":3728}"
+      "line": "PROBE name=pr-write exit=0 sha=db2f30184e8065f3d07db54de61195197fdc381c47b9ebb2b27e38b0c62b0499 cmd=85282ba908a750a33850129ffae9d3adf8151f10d07d03e0f450219ce60398fb json={\"op\":\"body-splice\",\"result\":\"written\",\"reason\":null,\"bytes\":3728}",
+      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=db2f30184e8065f3d07db54de61195197fdc381c47b9ebb2b27e38b0c62b0499 cmd=85282ba908a750a33850129ffae9d3adf8151f10d07d03e0f450219ce60398fb json={\"op\":\"body-splice\",\"result\":\"written\",\"reason\":null,\"bytes\":3728}"
     },
     "probe-185-pr-write-decision-log-r0": {
       "line": "_",

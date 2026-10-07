@@ -101,7 +101,7 @@
       "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=0774fad4714f3978deed785c2de6fd25ce5cf3d7d8c46b32d362616459f0cde0 cmd=f376e3fdb86b7d91e48693d506c2c881a7bb80543454bc86e5ab42208bf8a06a json={\"op\":\"body-splice\",\"result\":\"written\",\"reason\":null,\"bytes\":1234}"
     },
     "probe-123-pr-write-acceptance-tick-r0": {
-      "line": "PROBE name=pr-write exit=0 sha=d272e034505a9eea2bb36b11779eeb1fd77847a079c71cd583a11197d3a3eb42 cmd=3b435b2ef8ce5f5d367e2aa18b37f20ddac8511b8b6e8733e20284824f9d1934 json={\"op\":\"body-splice\",\"result\":\"written\",\"reason\":\"\",\"bytes\":null}",
+      "line": "PROBE name=pr-write exit=0 sha=d272e034505a9eea2bb36b11779eeb1fd77847a079c71cd583a11197d3a3eb42 cmd=3399965105a406a2e3912d38228ea895bb5f493037cdcb6fbf7377a9137041c3 json={\"op\":\"body-splice\",\"result\":\"written\",\"reason\":\"\",\"bytes\":null}",
       "verify": "VERIFY fail reason=no-attestation"
     }
   },

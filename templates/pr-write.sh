@@ -28,6 +28,10 @@
 #       skipped/not-on-project (never an edit with an empty id); option already set -> skipped/already-set;
 #       else gh project item-edit.
 #   body-splice --pr N --mode decision-log|acceptance|tick --text T|--text-b64 B [--ids CSV --keep CSV] [--expect-digest D]
+#   body-splice --pr N --mode tick-ids --ids CSV [--expect-digest D]
+#       (#257) the short tick: no text. The script reads the body itself and sets `[x]` on the boxes of --ids (a
+#       non-empty digits/commas list), every other byte kept; an id with no box -> failed/unknown-id, a `[human-gate]`
+#       box -> failed/human-gate-id (nothing written). Same read, recheck, guard and result line as the other modes.
 #       read the body, splice (templates/pr-body-splice.cjs), unchanged -> skipped/unchanged; acceptance
 #       markers absent -> failed/no-markers (never appends); write; re-read; guard (>= 90 % of the pre
 #       length and both acceptance markers) else restore the pre body -> failed/guard-failed-restored.
@@ -40,7 +44,7 @@
 #       first read -> failed/stale-read. The body is also re-read right before the edit: changed since the
 #       first read -> failed/stale-read, no edit (#151).
 #   comment ops: on a thread of >= 100 comments the marker lookup re-reads ALL comments through REST.
-# reasons on failed: bad-args, read-failed, write-failed, splice-failed, no-markers, stale-read, guard-failed-restored.
+# reasons on failed: bad-args, read-failed, write-failed, splice-failed, no-markers, unknown-id, human-gate-id, stale-read, guard-failed-restored.
 # Requires jq, gh and node (body-splice). bash 3.2 compatible. Never uses rm (the stderr file is overwritten each call).
 
 OP="${1:-}"
@@ -160,21 +164,30 @@ body_digest() { printf '%s\n' "$(cat "$1")" | { shasum -a 256 2>/dev/null || sha
 
 body_splice_op() {
   local pre_len post_len rc
-  if ! is_num "$PR" || [ -z "$TEXT" ]; then emit failed bad-args; return; fi
-  case "$MODE" in decision-log|acceptance|tick) ;; *) emit failed bad-args; return ;; esac
+  if ! is_num "$PR"; then emit failed bad-args; return; fi
+  case "$MODE" in decision-log|acceptance|tick|tick-ids) ;; *) emit failed bad-args; return ;; esac
+  if [ "$MODE" = "tick-ids" ]; then
+    if [ -z "$IDS" ]; then emit failed bad-args; return; fi
+  elif [ -z "$TEXT" ]; then emit failed bad-args; return; fi
   case "$IDS$KEEP" in *[!0-9,]*) emit failed bad-args; return ;; esac
   mkdir -p .pipeline
   gh pr view "$PR" ${REPO:+-R "$REPO"} --json body -q .body > ".pipeline/pr-body-$PR.pre.md" 2>"$ERRF" || { read_failed; return; }
   if [ -n "$EXPECT" ] && [ "$(body_digest ".pipeline/pr-body-$PR.pre.md")" != "$EXPECT" ]; then emit failed stale-read; return; fi
   pre_len="$(wc -c < ".pipeline/pr-body-$PR.pre.md" | tr -d ' ')"
-  printf '%s\n' "$TEXT" > ".pipeline/pr-body-$PR.text.md" || { emit failed splice-failed; return; }
-  if [ "$MODE" = "tick" ]; then
+  if [ "$MODE" != "tick-ids" ]; then
+    printf '%s\n' "$TEXT" > ".pipeline/pr-body-$PR.text.md" || { emit failed splice-failed; return; }
+  fi
+  if [ "$MODE" = "tick-ids" ]; then
+    node "$SD/pr-body-splice.cjs" tick-ids ".pipeline/pr-body-$PR.pre.md" ".pipeline/pr-body-$PR.md" "$IDS" >/dev/null 2>&1
+  elif [ "$MODE" = "tick" ]; then
     node "$SD/pr-body-splice.cjs" tick ".pipeline/pr-body-$PR.pre.md" ".pipeline/pr-body-$PR.text.md" ".pipeline/pr-body-$PR.md" "$IDS" "$KEEP" >/dev/null 2>&1
   else
     node "$SD/pr-body-splice.cjs" splice "$MODE" ".pipeline/pr-body-$PR.pre.md" ".pipeline/pr-body-$PR.text.md" ".pipeline/pr-body-$PR.md" >/dev/null 2>&1
   fi
   rc=$?
   if [ "$rc" -eq 3 ]; then emit failed no-markers; return; fi
+  if [ "$MODE" = "tick-ids" ] && [ "$rc" -eq 5 ]; then emit failed unknown-id; return; fi
+  if [ "$MODE" = "tick-ids" ] && [ "$rc" -eq 6 ]; then emit failed human-gate-id; return; fi
   if [ "$rc" -ne 0 ]; then emit failed splice-failed; return; fi
   if cmp -s ".pipeline/pr-body-$PR.pre.md" ".pipeline/pr-body-$PR.md"; then emit skipped unchanged; return; fi
   gh pr view "$PR" ${REPO:+-R "$REPO"} --json body -q .body > ".pipeline/pr-body-$PR.recheck.md" 2>"$ERRF" || { read_failed; return; }

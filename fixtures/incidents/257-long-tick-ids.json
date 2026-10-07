@@ -1,0 +1,345 @@
+{
+  "name": "257-long-tick-ids",
+  "args": {
+    "issue": 257,
+    "brief": "_",
+    "wtPath": "_",
+    "mode": "auto",
+    "pmReview": false,
+    "config": {
+      "ghProject": {
+        "owner": "_",
+        "projectNumber": 1
+      },
+      "repo": "_",
+      "baseBranch": "_",
+      "branchPrefix": "feat/",
+      "worktreeRoot": "_",
+      "commands": {
+        "build": "_",
+        "test": "bash templates/test-canonical-guards.sh && node scripts/run-flow-suite.cjs",
+        "format": "_"
+      },
+      "ciChecks": [
+        "_",
+        "_"
+      ],
+      "oneWayDoorKinds": [
+        "status",
+        "agent",
+        "hook",
+        "seam"
+      ],
+      "engineRepo": true,
+      "oneWayDoorPaths": [
+        "hooks/**",
+        "!hooks/test-*",
+        "docs/critical-paths.md"
+      ],
+      "provision": {
+        "extraLinks": []
+      },
+      "preflight": {
+        "canonicalStringBan": [],
+        "envSymlink": "ignore"
+      },
+      "regressionGuard": {
+        "testGlob": "",
+        "testFnPattern": "",
+        "baselineCmd": ""
+      }
+    },
+    "configLocal": {
+      "worktreeRoot": "_"
+    },
+    "pluginRoot": "_"
+  },
+  "calls": {
+    "probe-257-lines-plugin-version-r0": {
+      "line": "PROBE name=lines exit=0 sha=0710ad5aeed8f41c78c28bb67822cc6d938912af28e0368e7a1b2bf6d670b99f cmd=faa7a8a1c26ebb071130b90d20d883cda8f6acb6cc149d06b15e3e1684c3ecfa json={\"lines\":[\"PLUGIN-VERSION:@@ENGINE_VERSION@@\"]}",
+      "verify": "VERIFY ok line=PROBE name=lines exit=0 sha=0710ad5aeed8f41c78c28bb67822cc6d938912af28e0368e7a1b2bf6d670b99f cmd=faa7a8a1c26ebb071130b90d20d883cda8f6acb6cc149d06b15e3e1684c3ecfa json={\"lines\":[\"PLUGIN-VERSION:@@ENGINE_VERSION@@\"]}"
+    },
+    "probe-257-provision-provision-r0": {
+      "line": "PROBE name=provision exit=0 sha=0a0001500e6f649a575d2515664fed6807d2e283f35ade49abafa5cfd5ddcda7 cmd=d34e45906d4eb0322470588a0096cdc73ddbc76d9af4e28d5166c17de634a97d json={\"version\":2,\"linked\":[],\"missing\":[],\"skipped\":false}",
+      "verify": "VERIFY ok line=PROBE name=provision exit=0 sha=0a0001500e6f649a575d2515664fed6807d2e283f35ade49abafa5cfd5ddcda7 cmd=d34e45906d4eb0322470588a0096cdc73ddbc76d9af4e28d5166c17de634a97d json={\"version\":2,\"linked\":[],\"missing\":[],\"skipped\":false}"
+    },
+    "probe-257-provision-freshness-provision-freshness-r0": {
+      "line": "PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b cmd=5430d2285cdf1982f619b08cf794226d4a3e082cac2ffdb9d7944e1ef1cbccc9 json={\"state\":\"fresh\",\"behind\":0,\"own\":0}",
+      "verify": "VERIFY ok line=PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b cmd=5430d2285cdf1982f619b08cf794226d4a3e082cac2ffdb9d7944e1ef1cbccc9 json={\"state\":\"fresh\",\"behind\":0,\"own\":0}"
+    },
+    "diagnose-issue-257": {
+      "confirmed": true,
+      "evidence": "_",
+      "actualCause": "",
+      "laneOk": true,
+      "requiredScout": "",
+      "persistentStateSignal": false,
+      "authSecurityBoundarySignal": false,
+      "deployConfigSignal": false,
+      "immatureVendorApiSignal": false,
+      "designStepSignalEvidence": "_",
+      "issueClassificationMismatch": false
+    },
+    "scout-issue-257-1": {
+      "decision": "_",
+      "planPath": "_",
+      "targetFiles": [
+        "_",
+        "_",
+        "_",
+        "_"
+      ],
+      "rationale": "_",
+      "acceptanceItems": [
+        {
+          "text": "`node scripts/check-1.cjs; echo $?` prints `0`",
+          "humanGate": false,
+          "command": "_"
+        },
+        {
+          "text": "`node scripts/check-2.cjs; echo $?` prints `0`",
+          "humanGate": false,
+          "command": "_"
+        },
+        {
+          "text": "`node scripts/check-3.cjs; echo $?` prints `0`",
+          "humanGate": false,
+          "command": "_"
+        },
+        {
+          "text": "`node scripts/check-4.cjs; echo $?` prints `0`",
+          "humanGate": false,
+          "command": "_"
+        },
+        {
+          "text": "the maintainer approves the one-way door 5",
+          "humanGate": true
+        },
+        {
+          "text": "`node scripts/check-6.cjs; echo $?` prints `0`",
+          "humanGate": false,
+          "command": "_"
+        },
+        {
+          "text": "`node scripts/check-7.cjs; echo $?` prints `0`",
+          "humanGate": false,
+          "command": "_"
+        },
+        {
+          "text": "`node scripts/check-8.cjs; echo $?` prints `0`",
+          "humanGate": false,
+          "command": "_"
+        },
+        {
+          "text": "`node scripts/check-9.cjs; echo $?` prints `0`",
+          "humanGate": false,
+          "command": "_"
+        },
+        {
+          "text": "the maintainer approves the one-way door 10",
+          "humanGate": true
+        },
+        {
+          "text": "`node scripts/check-11.cjs; echo $?` prints `0`",
+          "humanGate": false,
+          "command": "_"
+        },
+        {
+          "text": "`node scripts/check-12.cjs; echo $?` prints `0`",
+          "humanGate": false,
+          "command": "_"
+        },
+        {
+          "text": "`node scripts/check-13.cjs; echo $?` prints `0`",
+          "humanGate": false,
+          "command": "_"
+        },
+        {
+          "text": "`node scripts/check-14.cjs; echo $?` prints `0`",
+          "humanGate": false,
+          "command": "_"
+        }
+      ],
+      "plan": "Plan of the long checklist.\n\n## Acceptance checklist\n- [ ] <!-- ac:1 --> `node scripts/check-1.cjs; echo $?` prints `0`\n- [ ] <!-- ac:2 --> `node scripts/check-2.cjs; echo $?` prints `0`\n- [ ] <!-- ac:3 --> `node scripts/check-3.cjs; echo $?` prints `0`\n- [ ] <!-- ac:4 --> `node scripts/check-4.cjs; echo $?` prints `0`\n- [ ] <!-- ac:5 --> [human-gate] the maintainer approves the one-way door 5\n- [ ] <!-- ac:6 --> `node scripts/check-6.cjs; echo $?` prints `0`\n- [ ] <!-- ac:7 --> `node scripts/check-7.cjs; echo $?` prints `0`\n- [ ] <!-- ac:8 --> `node scripts/check-8.cjs; echo $?` prints `0`\n- [ ] <!-- ac:9 --> `node scripts/check-9.cjs; echo $?` prints `0`\n- [ ] <!-- ac:10 --> [human-gate] the maintainer approves the one-way door 10\n- [ ] <!-- ac:11 --> `node scripts/check-11.cjs; echo $?` prints `0`\n- [ ] <!-- ac:12 --> `node scripts/check-12.cjs; echo $?` prints `0`\n- [ ] <!-- ac:13 --> `node scripts/check-13.cjs; echo $?` prints `0`\n- [ ] <!-- ac:14 --> `node scripts/check-14.cjs; echo $?` prints `0`\n"
+    },
+    "plan-check-257-1": {
+      "verdict": "CONFORMING",
+      "issues": []
+    },
+    "probe-257-preflight-dev-r0": {
+      "line": "PROBE name=preflight exit=0 sha=5cb984bc5618fc5f042965705e1dac42914fd6aedfdac92d26681085dc782d45 cmd=9675d9ef114afdb7f56c978ee0ec32c198204ec50ff51e562f8d60599e4825c9 json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/Volumes/<disk>/Dev/Apps/claude-code-lgtmgate/.git/worktrees/issue-257\",\"writable\":true}",
+      "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=5cb984bc5618fc5f042965705e1dac42914fd6aedfdac92d26681085dc782d45 cmd=9675d9ef114afdb7f56c978ee0ec32c198204ec50ff51e562f8d60599e4825c9 json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/Volumes/<disk>/Dev/Apps/claude-code-lgtmgate/.git/worktrees/issue-257\",\"writable\":true}"
+    },
+    "nick-issue-257": {
+      "prNumber": 206,
+      "branch": "_",
+      "testsPass": true,
+      "summary": "_"
+    },
+    "probe-257-preflight-branch-r0": {
+      "line": "PROBE name=preflight exit=0 sha=dc2761f983d4c5e0ab724aa755bdae3d1f5d7e5455028105001fac0e9f3807af cmd=4576e0d85c4dedff3b6e1a3a44fa90be457627660549c4f3886d8d598faf1fa8 json={\"mode\":\"branch\",\"headRef\":\"feat/issue-257\",\"branchPrefix\":\"feat/\"}",
+      "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=dc2761f983d4c5e0ab724aa755bdae3d1f5d7e5455028105001fac0e9f3807af cmd=4576e0d85c4dedff3b6e1a3a44fa90be457627660549c4f3886d8d598faf1fa8 json={\"mode\":\"branch\",\"headRef\":\"feat/issue-257\",\"branchPrefix\":\"feat/\"}"
+    },
+    "probe-257-git-rev-list-count-worktree-behind-206-r0": {
+      "line": "_",
+      "verify": "_"
+    },
+    "preflight-257-206-0": {
+      "pass": false,
+      "testCommandRun": "cd \"/Volumes/<disk>/Dev/Worktrees/claude-code-lgtmgate/issue-257\" && bash templates/test-canonical-guards.sh && node scripts/run-flow-suite.cjs",
+      "issues": [
+        "_",
+        "_"
+      ],
+      "failedChecks": []
+    },
+    "nick-preflight-fix-257-206": "_",
+    "preflight-257-206-1": {
+      "pass": true,
+      "issues": [],
+      "testCommandRun": "cd \"/Volumes/<disk>/Dev/Worktrees/claude-code-lgtmgate/issue-257\" && bash templates/test-canonical-guards.sh && node scripts/run-flow-suite.cjs"
+    },
+    "probe-257-pr-state-window-start-r0": {
+      "line": "PROBE name=pr-state exit=0 sha=ce2e8943f842dd7d2bed076a624f8e9c732727557397ee99985a198c021b587d cmd=3acd9e3d494a7fbaca683f40c7e506bc80ced9a2fd0f53f9425733d199d985b9 json={\"now\":\"2026-10-03T17:39:56Z\",\"headRefName\":\"feat/issue-257\",\"headRefOid\":\"a996535df7d4c4b7b66f0ffa37c7a503c78b5990\",\"bodyDigest\":\"5a0fdef5ceaa\",\"acceptanceChecked\":[],\"decisionLog\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-10-03T17:29:04Z\",\"commitCount\":2,\"reviewCommentIds\":[],\"openIssues\":null,\"openIssuesTruncated\":false}",
+      "verify": "VERIFY ok line=PROBE name=pr-state exit=0 sha=ce2e8943f842dd7d2bed076a624f8e9c732727557397ee99985a198c021b587d cmd=3acd9e3d494a7fbaca683f40c7e506bc80ced9a2fd0f53f9425733d199d985b9 json={\"now\":\"2026-10-03T17:39:56Z\",\"headRefName\":\"feat/issue-257\",\"headRefOid\":\"a996535df7d4c4b7b66f0ffa37c7a503c78b5990\",\"bodyDigest\":\"5a0fdef5ceaa\",\"acceptanceChecked\":[],\"decisionLog\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-10-03T17:29:04Z\",\"commitCount\":2,\"reviewCommentIds\":[],\"openIssues\":null,\"openIssuesTruncated\":false}"
+    },
+    "morgan-pr-257-206-r0": {
+      "verdict": "LGTM",
+      "ciGreen": true,
+      "items": [],
+      "boxes": [
+        {
+          "id": 1,
+          "proven": true,
+          "proof": "_"
+        },
+        {
+          "id": 2,
+          "proven": true,
+          "proof": "_"
+        },
+        {
+          "id": 3,
+          "proven": true,
+          "proof": "_"
+        },
+        {
+          "id": 4,
+          "proven": true,
+          "proof": "_"
+        },
+        {
+          "id": 6,
+          "proven": true,
+          "proof": "_"
+        },
+        {
+          "id": 7,
+          "proven": true,
+          "proof": "_"
+        },
+        {
+          "id": 8,
+          "proven": true,
+          "proof": "_"
+        },
+        {
+          "id": 9,
+          "proven": true,
+          "proof": "_"
+        },
+        {
+          "id": 11,
+          "proven": true,
+          "proof": "_"
+        },
+        {
+          "id": 12,
+          "proven": true,
+          "proof": "_"
+        },
+        {
+          "id": 13,
+          "proven": true,
+          "proof": "_"
+        },
+        {
+          "id": 14,
+          "proven": true,
+          "proof": "_"
+        }
+      ]
+    },
+    "probe-257-pr-state-window-end-r0": {
+      "line": "PROBE name=pr-state exit=0 sha=ef588e8a052fe426c596adf12f33c625c9966b19848adb1c9578281ac7573f02 cmd=d03155f2bcc4cc1198bed2e4cc8cde68562ea2d70fb8d245166684e29bb5cab5 json={\"now\":\"2026-10-03T17:42:40Z\",\"headRefName\":\"feat/issue-257\",\"headRefOid\":\"a996535df7d4c4b7b66f0ffa37c7a503c78b5990\",\"bodyDigest\":\"5a0fdef5ceaa\",\"acceptanceChecked\":[],\"decisionLog\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-10-03T17:29:04Z\",\"commitCount\":2,\"reviewCommentIds\":[\"IC_kwDOUzMNuc8AAAABY_IDVQ\"],\"openIssues\":[],\"openIssuesTruncated\":false}",
+      "verify": "VERIFY ok line=PROBE name=pr-state exit=0 sha=ef588e8a052fe426c596adf12f33c625c9966b19848adb1c9578281ac7573f02 cmd=d03155f2bcc4cc1198bed2e4cc8cde68562ea2d70fb8d245166684e29bb5cab5 json={\"now\":\"2026-10-03T17:42:40Z\",\"headRefName\":\"feat/issue-257\",\"headRefOid\":\"a996535df7d4c4b7b66f0ffa37c7a503c78b5990\",\"bodyDigest\":\"5a0fdef5ceaa\",\"acceptanceChecked\":[],\"decisionLog\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-10-03T17:29:04Z\",\"commitCount\":2,\"reviewCommentIds\":[\"IC_kwDOUzMNuc8AAAABY_IDVQ\"],\"openIssues\":[],\"openIssuesTruncated\":false}"
+    },
+    "probe-257-pr-write-acceptance-tick-r0": {
+      "line": "PROBE name=pr-write exit=0 sha=db2f30184e8065f3d07db54de61195197fdc381c47b9ebb2b27e38b0c62b0499 cmd=2802f2e66e6820d276fa8b9e471b189c60a0a00507f49549c93069a2ce354d60 json={\"op\":\"body-splice\",\"result\":\"written\",\"reason\":null,\"bytes\":3728}",
+      "verify": "_"
+    },
+    "probe-257-pr-write-acceptance-tick-retry-r0": {
+      "line": "PROBE name=pr-write exit=0 sha=db2f30184e8065f3d07db54de61195197fdc381c47b9ebb2b27e38b0c62b0499 cmd=a073f997aa9e87ab47eb3ba240e8eb03c724c2088da691c628fc4a4a4f86040e json={\"op\":\"body-splice\",\"result\":\"written\",\"reason\":null,\"bytes\":3728}",
+      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=db2f30184e8065f3d07db54de61195197fdc381c47b9ebb2b27e38b0c62b0499 cmd=a073f997aa9e87ab47eb3ba240e8eb03c724c2088da691c628fc4a4a4f86040e json={\"op\":\"body-splice\",\"result\":\"written\",\"reason\":null,\"bytes\":3728}"
+    },
+    "probe-257-pr-write-decision-log-r0": {
+      "line": "_",
+      "verify": "_"
+    },
+    "probe-257-pr-state-merge-r0": {
+      "line": "PROBE name=pr-state exit=0 sha=3767a6d729c9d3d60c65241e1b8663b1233e7935733b50fc82254f383329cd72 cmd=3acd9e3d494a7fbaca683f40c7e506bc80ced9a2fd0f53f9425733d199d985b9 json={\"now\":\"2026-10-03T17:42:40Z\",\"headRefName\":\"feat/issue-257\",\"headRefOid\":\"a996535df7d4c4b7b66f0ffa37c7a503c78b5990\",\"bodyDigest\":\"5a0fdef5ceaa\",\"acceptanceChecked\":[1,2,3,4,5,6],\"decisionLog\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-10-03T17:29:04Z\",\"commitCount\":2,\"reviewCommentIds\":[\"IC_kwDOUzMNuc8AAAABY_IDVQ\"],\"openIssues\":[],\"openIssuesTruncated\":false}",
+      "verify": "VERIFY ok line=PROBE name=pr-state exit=0 sha=3767a6d729c9d3d60c65241e1b8663b1233e7935733b50fc82254f383329cd72 cmd=3acd9e3d494a7fbaca683f40c7e506bc80ced9a2fd0f53f9425733d199d985b9 json={\"now\":\"2026-10-03T17:42:40Z\",\"headRefName\":\"feat/issue-257\",\"headRefOid\":\"a996535df7d4c4b7b66f0ffa37c7a503c78b5990\",\"bodyDigest\":\"5a0fdef5ceaa\",\"acceptanceChecked\":[1,2,3,4,5,6],\"decisionLog\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-10-03T17:29:04Z\",\"commitCount\":2,\"reviewCommentIds\":[\"IC_kwDOUzMNuc8AAAABY_IDVQ\"],\"openIssues\":[],\"openIssuesTruncated\":false}"
+    }
+  },
+  "expect": {
+    "status": "ready-pending-human",
+    "trace": [
+      "probe:lines:haiku",
+      "probe:provision:haiku",
+      "probe:provision-freshness:haiku",
+      "probe:preflight:haiku",
+      "probe:preflight:haiku",
+      "probe:git-rev-list-count:haiku",
+      "probe:pr-state:haiku",
+      "probe:pr-state:haiku",
+      "probe:pr-write:haiku",
+      "acceptance-tick-retry:0",
+      "probe:pr-write:haiku",
+      "acceptance-open-lgtm:0",
+      "acceptance-ticked:0",
+      "probe:pr-write:haiku"
+    ],
+    "traceExact": true,
+    "callLabels": [
+      "probe-257-lines-plugin-version-r0",
+      "probe-257-provision-provision-r0",
+      "probe-257-provision-freshness-provision-freshness-r0",
+      "diagnose-issue-257",
+      "scout-issue-257-1",
+      "plan-check-257-1",
+      "probe-257-preflight-dev-r0",
+      "nick-issue-257",
+      "probe-257-preflight-branch-r0",
+      "probe-257-git-rev-list-count-worktree-behind-206-r0",
+      "preflight-257-206-0",
+      "nick-preflight-fix-257-206",
+      "preflight-257-206-1",
+      "probe-257-pr-state-window-start-r0",
+      "morgan-pr-257-206-r0",
+      "probe-257-pr-state-window-end-r0",
+      "probe-257-pr-write-acceptance-tick-r0",
+      "probe-257-pr-write-acceptance-tick-retry-r0",
+      "probe-257-pr-write-decision-log-r0"
+    ],
+    "promptIncludes": [
+      {
+        "label": "probe-257-pr-write-acceptance-tick-r0",
+        "nth": 0,
+        "includes": [
+          "tick-ids",
+          "1,2,3,4,6,7,8,9,11,12,13,14"
+        ]
+      }
+    ]
+  }
+}
