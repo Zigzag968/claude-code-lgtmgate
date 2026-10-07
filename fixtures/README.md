@@ -8,6 +8,7 @@ before it is committed, and the `no-private-refs` invariant scans the whole trac
 | `smoke/` | one nominal run per mode, every `agent()` call answered with a raw value | `run-offline.cjs --all fixtures` (CI) |
 | `incidents/` | one file per real incident, named `<issue>-<label>.json`; the replay asserts the status the fix must produce | same, plus the acceptance item of every engine bug fix (doctrine R2) |
 | `relaunch/` | harness cases that replay several runs of one issue (`runs`), e.g. a relaunch | `run-offline.cjs --all fixtures` (CI) |
+| `specifics/` | project specifics (#265): payloads shaped like the assembler output with a fake ref, asserted through `promptIncludes`/`promptOrder`; the launch refusals end in a `throws` with no agent call | `run-offline.cjs --all fixtures` (CI) |
 | `probes/` | raw stdout of a real `gh`/`git` command (`*.raw`), consumed by `templates/test-probe-run.sh` once the probe layer exists (E2.2) | `test-probe-run.sh` |
 
 ## Fixture format

@@ -189,6 +189,9 @@ Nothing stack-specific lives in the plugin. Everything project-dependent is read
 | `oneWayDoorPaths` | optional, default `[]` (no path-based stop): the repo's own one-way-door paths. A plan whose `targetFiles` match one ends in `design-step-required` before dev. Entry styles: `dir/` prefix, glob (`*` within a segment, `**` across segments, `?`), exact path; a leading `!` excludes (wins over any match) |
 | `oneWayDoorKinds` | optional, default `[]` (no kind question, no kind stop): the change kinds, among `status`, `agent`, `hook` and `seam`, that are one-way doors in the repo. Sam is asked to announce only these (`one-way-door: <kind> — <what>`); an announced one ends the run in `design-step-required` before dev, any other word is ignored. How lgtmgate applies both keys to itself (R3): `ARCHITECTURE.md` |
 | `engineRepo` | optional, default absent = consumer; `true` only in the lgtmgate repository's own config. It turns on the engine-only rules: Sam's layer rule (the engine's own vocabulary) and Nick's R2 fixture item and `scripts/lead-merge.sh`'s R2 waiver gate (`FAIL: r2-waiver`, which only checks that a valid-JSON fixture file is present: that it replays is the CI's job). Any other value, or no key, is a consumer: Sam gets the neutral plan rule (smallest change, `patch-avoided:`) and Nick no R2 item |
+| `projectSpecifics` | optional, default absent = off: a folder holding `shared.md`, `<role>.md` and `<role>.*.md` (e.g. `.claude/lgtmgate`), read from the base ref at launch by `scripts/agent-context.cjs`. The Lead passes the assembler output as the Workflow arg `projectSpecifics`; the engine verifies its digests and inserts each role's text in every prompt of that role, inside a `<project_specifics>` block. A project file does not replace `lgtmgate:<Role>`: it is appended to the role's prompt, the agent files are never copied or edited. |
+| `agentContext` | optional, default absent: `{"*": [paths], "<Role>": [paths]}`, extra files read from the base ref for every role (`*`) or for one role. Turns the same injection on with or without the folder. |
+| `specifics.acceptOversize` | sizes the owner accepted per role, `{"<Role>": bytes}`, written by `agent-context.cjs --accept-oversize <Role>` into `.claude/pipeline.config.local.json`; the question is asked again above +25 %. |
 | `models` | per-role model override `{ scout?, planAudit?, morgan? }`, default `sonnet` for all three; resolution is `arg > config.models > 'sonnet'` (same precedence as `planAudit`); Theo/Nick are not overridable |
 | `stack` | target stack string handed to the plan auditor; empty → inferred from the worktree |
 | `preflight.envNote` | free-form operator note injected verbatim ahead of every preflight check, notably the HARD test-command check (see the trust warning below) |
@@ -211,7 +214,7 @@ treat as authoritative, with no quoting or validation, except `provision.extraLi
 validated in-code (the `safeLinkPath` traversal/metacharacter guard in
 `workflows/deliver-pipeline.js`). A pull request touching only `pipeline.config.json` is therefore
 a **code-review surface, not data**: review it with the same scrutiny as a change to the workflow
-script itself. See `SECURITY.md` for the full threat model.
+script itself. The `.claude/lgtmgate/*.md` files read from the base are an operator instruction channel (same trust as `commands.*`): they reach the agents as project rules. See `SECURITY.md` for the full threat model.
 
 </details>
 

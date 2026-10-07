@@ -1,0 +1,38 @@
+{
+  "name": "us-c9-digest-mismatch",
+  "note": "#265: one altered character of a role text no longer matches its digest: the run refuses before any agent call and nothing is injected",
+  "args": {
+    "pluginRoot": "/plugin",
+    "issue": 123,
+    "brief": "fix slugify accents",
+    "wtPath": "/wt/root/issue-123",
+    "config": {
+      "projectSpecifics": ".claude/lgtmgate"
+    },
+    "mode": "semi",
+    "projectSpecifics": {
+      "ref": "origin/main",
+      "refSha": "c0ffeec0ffeec0ffeec0ffeec0ffeec0ffeec0ff",
+      "shared": {
+        "text": "SHARED-MARK rule",
+        "digest": "aa73a5d3b5b73e286d3a1ca13789be8adaedfe738d1ca42d7831218261fd6783",
+        "bytes": 16,
+        "lanes": []
+      },
+      "roles": {
+        "Nick": {
+          "text": "NICK-MARK ruLe",
+          "digest": "a12338937fd587e743309bbb3cae7626e828108a6afce452f333902c061009a5",
+          "bytes": 14,
+          "lanes": []
+        }
+      },
+      "files": [],
+      "warnings": []
+    }
+  },
+  "calls": {},
+  "expect": {
+    "throws": "projectSpecifics: digest mismatch for"
+  }
+}
