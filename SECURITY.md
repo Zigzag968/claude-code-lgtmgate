@@ -10,8 +10,7 @@ public issue:
 3. Describe the issue, its impact, and steps to reproduce.
 
 This opens a private advisory visible only to the maintainer and you, so the issue isn't disclosed
-before a fix ships. If private reporting isn't enabled yet on this repository, open a regular issue
-with as few exploit details as possible and ask for a private channel.
+before a fix ships. Private vulnerability reporting is enabled on this repository.
 
 We don't currently have a bug bounty program. We'll credit reporters in the fix's release notes
 unless you ask not to be named.

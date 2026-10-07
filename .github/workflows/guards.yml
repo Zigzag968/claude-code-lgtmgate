@@ -1,8 +1,8 @@
 name: guards
 
-# Runs on every PR to main and reports (not a required check: this repo is private on a plan
-# without branch protection, so enforcement is the human acceptance gate, see
-# templates/test-canonical-guards.sh). Job `guards` runs, in order:
+# Runs on every PR to main. This repo is public and `guards` is a required status check of the
+# `main-protection` ruleset (see MAINTAINING.md section 5 and templates/test-canonical-guards.sh),
+# so a red `guards` blocks the merge. Job `guards` runs, in order:
 #   - templates/test-canonical-guards.sh : canonical guard net (invariants 2-22) plus
 #     scripts/guards.cjs (R1 ratchet vs origin/main, all-tests-wired, version floor)
 #   - scripts/run-flow-suite.cjs         : offline flow suite (templates/test-deliver-pipeline.js)
@@ -33,7 +33,7 @@ jobs:
   guards:
     # #254: this job used to target the human's private, always-on machine — any external PR would
     # execute arbitrary branch-authored code (see the pull_request_target note above) on that
-    # machine the moment this repo goes public. Tests are 100% offline/stdlib (no external
+    # machine now that this repo is public. Tests are 100% offline/stdlib (no external
     # deps), so ubuntu-latest has full parity with no coverage loss.
     runs-on: ubuntu-latest
     steps:

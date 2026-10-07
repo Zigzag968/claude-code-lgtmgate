@@ -63,7 +63,7 @@ reported to the community leaders responsible for enforcement via a private
 message to [@Zigzag968](https://github.com/Zigzag968) on GitHub.
 
 <!--
-TODO (maintainer, before this repo goes public): decide on a monitored contact
+TODO (maintainer): the repo is public; decide on a monitored contact
 address for Code of Conduct reports (see issue legacy#255 for the related open
 question about which address represents this project publicly) and replace
 the GitHub-DM instruction above with it if you'd rather not rely on GitHub DMs.
