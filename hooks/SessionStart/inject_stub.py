@@ -95,7 +95,7 @@ def build_stub() -> str:
         "exact resolution: `/lgtmgate:deliver` step 1).",
         "- Project config: `.claude/pipeline.config.json` "
         "(build/test/format commands, baseBranch, branchPrefix, worktreeRoot, "
-        "conventionsRule, ciChecks, GH Project).",
+        "ciChecks, GH Project).",
         "",
         "**In-flight run supervision.** On wake-up or between tasks: if pipeline runs are "
         "in flight (`.pipeline/**/*.json`, non-terminal status), do a guard round BEFORE "

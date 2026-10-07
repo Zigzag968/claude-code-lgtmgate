@@ -15,7 +15,6 @@
       "baseBranch": "_",
       "branchPrefix": "feat/",
       "worktreeRoot": "_",
-      "conventionsRule": "_",
       "commands": {
         "build": "_",
         "test": "bash templates/test-canonical-guards.sh && node scripts/run-flow-suite.cjs",

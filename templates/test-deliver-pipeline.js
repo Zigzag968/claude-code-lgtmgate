@@ -71,7 +71,6 @@ const CONFIG = {
   baseBranch: 'develop',
   branchPrefix: 'features/',
   worktreeRoot: '/tmp/lgtmgate-worktrees',
-  conventionsRule: '.claude/rules/conventions.md',
   commands: {
     build: 'echo build',
     test: 'echo test',
@@ -2130,53 +2129,47 @@ await testCase('T61c pipeline.config.json re-check returns ERROR sentinel → tr
   return (e1 || e2) ? (e1 || e2) : { ok: true }
 })
 
-// T105a (#139) — extends the reconcileStaleBranchPrefix principle above to baseBranch/
-// conventionsRule: on an entryStage:'dev' RESUME, the worktree's own pipeline.config.json
-// reports different values than the caller-supplied config → both fields reconciled.
-await testCase('T105a entryStage:dev resume / config baseBranch+conventionsRule stale → both reconciled (#139)', async () => {
+// T105a (#139) — extends the reconcileStaleBranchPrefix principle above to baseBranch:
+// on an entryStage:'dev' RESUME, the worktree's own pipeline.config.json reports a different
+// baseBranch than the caller-supplied config → reconciled.
+await testCase('T105a entryStage:dev resume / config baseBranch stale → reconciled (#139)', async () => {
   const r = await run({
     mode: 'auto',
     entryStage: 'dev',
     simulate: {
       sam: 'GO',
       morgan: [{ verdict: 'LGTM' }],
-      configProjectRecheckRaw: JSON.stringify({ baseBranch: 'main', conventionsRule: '.claude/rules/pr-acceptance.md' }),
+      configProjectRecheckRaw: JSON.stringify({ baseBranch: 'main' }),
     },
   })
   const e1 = eq('status', r.status, 'ready')
   const e2 = r.trace.includes('config-baseBranch-reconciled')
     ? null
     : { ok: false, msg: `trace must include config-baseBranch-reconciled, got ${JSON.stringify(r.trace)}` }
-  const e3 = r.trace.includes('config-conventionsRule-reconciled')
-    ? null
-    : { ok: false, msg: `trace must include config-conventionsRule-reconciled, got ${JSON.stringify(r.trace)}` }
-  return (e1 || e2 || e3) ? (e1 || e2 || e3) : { ok: true }
+  return (e1 || e2) ? (e1 || e2) : { ok: true }
 })
 
 // T105b (#139, cost-avoidance gate) — same configProjectRecheckRaw fixture but on a FRESH
 // dispatch (entryStage:'plan', the default): the recheck must never fire — no reconciled
-// markers in trace (mirrors the inverse fresh-vs-resume gate at the base-staleness preflight, T99/T100).
+// marker in trace (mirrors the inverse fresh-vs-resume gate at the base-staleness preflight, T99/T100).
 await testCase('T105b fresh dispatch (entryStage:plan) / configProjectRecheckRaw set → gate never fires, not reconciled (#139)', async () => {
   const r = await run({
     mode: 'auto',
     simulate: {
       sam: 'GO',
       morgan: [{ verdict: 'LGTM' }],
-      configProjectRecheckRaw: JSON.stringify({ baseBranch: 'main', conventionsRule: '.claude/rules/pr-acceptance.md' }),
+      configProjectRecheckRaw: JSON.stringify({ baseBranch: 'main' }),
     },
   })
   const e1 = eq('status', r.status, 'ready')
   const e2 = r.trace.includes('config-baseBranch-reconciled')
     ? { ok: false, msg: `trace must NOT include config-baseBranch-reconciled on a fresh dispatch, got ${JSON.stringify(r.trace)}` }
     : null
-  const e3 = r.trace.includes('config-conventionsRule-reconciled')
-    ? { ok: false, msg: `trace must NOT include config-conventionsRule-reconciled on a fresh dispatch, got ${JSON.stringify(r.trace)}` }
-    : null
-  return (e1 || e2 || e3) ? (e1 || e2 || e3) : { ok: true }
+  return (e1 || e2) ? (e1 || e2) : { ok: true }
 })
 
 // T105c (#139) — entryStage:'dev' resume, re-check returns the ERROR sentinel: treated as
-// unavailable, no throw, guard falls back to the caller-supplied baseBranch/conventionsRule
+// unavailable, no throw, guard falls back to the caller-supplied baseBranch
 // (pre-#139 behaviour) — mirrors T61c's ERROR-sentinel negative control.
 await testCase('T105c entryStage:dev resume / configProjectRecheckRaw ERROR sentinel → no throw, not reconciled (#139)', async () => {
   const r = await run({
@@ -2192,10 +2185,25 @@ await testCase('T105c entryStage:dev resume / configProjectRecheckRaw ERROR sent
   const e2 = r.trace.includes('config-baseBranch-reconciled')
     ? { ok: false, msg: `trace must NOT include config-baseBranch-reconciled, got ${JSON.stringify(r.trace)}` }
     : null
-  const e3 = r.trace.includes('config-conventionsRule-reconciled')
-    ? { ok: false, msg: `trace must NOT include config-conventionsRule-reconciled, got ${JSON.stringify(r.trace)}` }
-    : null
-  return (e1 || e2 || e3) ? (e1 || e2 || e3) : { ok: true }
+  return (e1 || e2) ? (e1 || e2) : { ok: true }
+})
+
+// T105d (#270) — review-stage resume (entryStage:'review'), the worktree's own baseBranch differs
+// from the launch config's: reconciled there too, and the run proceeds to ready.
+await testCase('T105d entryStage:review resume / project baseBranch differs → reconciled (#270)', async () => {
+  const r = await run({
+    entryStage: 'review',
+    prNumber: 267,
+    simulate: {
+      morgan: [{ verdict: 'LGTM' }],
+      configProjectRecheckRaw: JSON.stringify({ baseBranch: 'main' }),
+    },
+  })
+  const e1 = eq('status', r.status, 'ready')
+  const e2 = r.trace.includes('config-baseBranch-reconciled')
+    ? null
+    : { ok: false, msg: `trace must include config-baseBranch-reconciled, got ${JSON.stringify(r.trace)}` }
+  return (e1 || e2) ? (e1 || e2) : { ok: true }
 })
 
 // Repo-local mechanism, LOCAL —
@@ -4931,10 +4939,10 @@ await testCase('T130 run identity: first log is deliver #<issue>, Setup phase fi
   const iLog = idx('log(`deliver #${issue} — ')
   const iSetup = idx("phase('Setup')")
   const iRoot = idx('log(`worktreeRoot: ')
-  const iRecheck = idx('config-project-recheck-')
+  const iRecheck = idx("label: 'config-project-recheck'")
   const iProv = idx("label: 'provision'")
   const iDiag = idx("phase('Diagnose')")
-  const order = [['deliver log', iLog], ['phase(Setup)', iSetup], ['worktreeRoot log', iRoot], ['config-project-recheck-', iRecheck], ["label: 'provision'", iProv], ["phase('Diagnose')", iDiag]]
+  const order = [['deliver log', iLog], ['phase(Setup)', iSetup], ['worktreeRoot log', iRoot], ["label: 'config-project-recheck'", iRecheck], ["label: 'provision'", iProv], ["phase('Diagnose')", iDiag]]
   for (const [n, i] of order) if (i < 0) return { ok: false, msg: `${n} not found in pipeline source` }
   for (let k = 1; k < order.length; k++) {
     if (!(order[k - 1][1] < order[k][1])) return { ok: false, msg: `expected ${order[k - 1][0]} before ${order[k][0]}` }
