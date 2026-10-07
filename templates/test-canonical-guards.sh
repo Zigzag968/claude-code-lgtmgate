@@ -33,7 +33,7 @@
 # 16 backlog-bump-required, 17 backlog-marketplace-pin, 18 backlog-suite, 19 no-private-refs,
 # 20 reviewer-window-scan-bounded, 21 gitdir-probe-no-rm, 22 no-destructive-checkout,
 # 23 guards-cjs (scripts/guards.cjs: R1 ratchet, 25 all-tests-wired, 1-relaxed version floor,
-# sam-parity, doc-budgets, instructions-wired), 24 critical-paths-proven.
+# sam-parity, doc-budgets, instructions-wired), 24 critical-paths-proven, 26 stories-covered.
 #
 # Enforcement note (#54 MANDATORY 2, human decision 2026-08-23): this repo is PRIVATE on a
 # plan where branch protection and rulesets are both unavailable (verified this session:
@@ -886,6 +886,61 @@ if [ -f "$CP_FILE" ]; then
   fi
 else
   fail "critical-paths-proven" "$CP_FILE missing"
+fi
+
+# =============================================================================
+# Invariant 26 — stories-covered
+# =============================================================================
+# docs/specifics-stories.md (#262, epic #261): each story row (`| US-<x><n> | ... | <issue> | <proof> |`) is proven,
+# `doc`, or `pending: #N`. Proven = a fixture $SPECIFICS_FIXTURES_DIR/us-<lowercase id>-*.json, or the id spelled
+# (whole word) in a test file; the Proof column is never read as evidence. A fixture whose id has no row is a FAIL.
+# The `pending: #N` tolerance is temporary: #266 removes it. STORIES_FILE / SPECIFICS_FIXTURES_DIR are overrides used
+# only by negative tests on throwaway copies under .pipeline/. This file is in the grep target set: never spell a real
+# story id here, only the `US-<x><n>` placeholder.
+STORIES_FILE="${STORIES_FILE:-docs/specifics-stories.md}"
+SPECIFICS_FIXTURES_DIR="${SPECIFICS_FIXTURES_DIR:-fixtures/specifics}"
+if [ ! -f "$STORIES_FILE" ]; then
+  fail "stories-covered" "$STORIES_FILE missing"
+else
+  ST_COUNT=0
+  ST_MISSING=""
+  ST_IDS=" "
+  while IFS= read -r st_line; do
+    ST_COUNT=$((ST_COUNT + 1))
+    st_id="$(printf '%s\n' "$st_line" | awk -F'|' '{gsub(/^[ \t]+|[ \t]+$/, "", $2); print $2}')"
+    st_proof="$(printf '%s\n' "$st_line" | awk -F'|' '{gsub(/^[ \t]+|[ \t]+$/, "", $(NF-1)); print $(NF-1)}')"
+    ST_IDS="$ST_IDS$st_id "
+    if [ "$st_proof" = "doc" ]; then
+      continue
+    elif printf '%s\n' "$st_proof" | grep -qE '^pending: #[0-9]+$'; then
+      continue
+    fi
+    st_lower="$(printf '%s' "$st_id" | tr 'A-Z' 'a-z')"
+    if ls "$SPECIFICS_FIXTURES_DIR"/${st_lower}-*.json >/dev/null 2>&1; then
+      continue
+    elif grep -qEw -- "$st_id" scripts/test-*.sh templates/test-*.sh templates/test-*.js scripts/guards.cjs 2>/dev/null; then
+      continue
+    fi
+    ST_MISSING="$ST_MISSING $st_id"
+  done < <(grep -E '^\| US-[A-Z][0-9]+ \|' "$STORIES_FILE")
+  ST_ORPHAN=""
+  if [ -d "$SPECIFICS_FIXTURES_DIR" ]; then
+    for st_f in "$SPECIFICS_FIXTURES_DIR"/us-*.json; do
+      [ -e "$st_f" ] || continue
+      st_base="$(basename "$st_f")"
+      st_fid="$(printf '%s' "$st_base" | sed -E 's/^(us-[a-z][0-9]+)-.*/\1/' | tr 'a-z' 'A-Z')"
+      case "$ST_IDS" in *" $st_fid "*) ;; *) ST_ORPHAN="$ST_ORPHAN $st_fid($st_base)";; esac
+    done
+  fi
+  if [ "$ST_COUNT" -eq 0 ]; then
+    fail "stories-covered" "$STORIES_FILE has no story row"
+  elif [ -n "$ST_MISSING" ]; then
+    fail "stories-covered" "no proof and not pending/doc:$ST_MISSING"
+  elif [ -n "$ST_ORPHAN" ]; then
+    fail "stories-covered" "proof without a story:$ST_ORPHAN"
+  else
+    pass "stories-covered: $ST_COUNT stories, each proven, pending or doc"
+  fi
 fi
 
 # =============================================================================

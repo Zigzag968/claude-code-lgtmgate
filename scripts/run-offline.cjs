@@ -29,8 +29,15 @@
 //       "callLabels": ["probe-1-...", "..."], // optional: the ordered labels of the agent() calls, EXACT equality
 //       "logsInclude": ["..."],            // optional, each substring must appear in a log line
 //       "phases": ["Setup", "Dev"],        // optional: the ordered phase() titles of the run, EXACT equality
-//       "callLabelsAbsent": ["diagnose-"]  // optional: no agent() call label may start with any of these (a non-empty list of non-empty strings)
+//       "callLabelsAbsent": ["diagnose-"], // optional: no agent() call label may start with any of these (a non-empty list of non-empty strings)
+//       "promptIncludes": { "label": "<call label>", "nth": 0, "includes": ["..."] },
+//                                          // optional (object or non-empty array of them): the prompt of the nth (0-based, default 0)
+//                                          // call carrying that label must contain every string (non-empty list of non-empty strings)
+//       "promptOrder": { "label": "<call label>", "nth": 0, "order": ["a", "b"] }
+//                                          // optional (object or array): in that prompt the first occurrence of each string
+//                                          // (at least 2) must appear at strictly increasing offsets
 //     }
+//   Any other `expect` key is refused (the fixture fails), so a misspelled key cannot be dropped in silence.
 //   }
 // Multi-run format (#185), e.g. a relaunch: `runs` replaces the top-level args/calls/expect (mixing them is refused), at
 // least 2 entries, each run replayed against its OWN calls and expect (a run holds only args, calls, expect and carry; any
@@ -199,9 +206,69 @@ function findUnused(fixture, calls, cursors) {
   return unused
 }
 
+// Every key `expect` may carry. Any other key is refused (an ignored key is a silent non-proof, the defect #185 closed for run keys).
+const EXPECT_KEYS = ['status', 'throws', 'reason', 'trace', 'traceExact', 'callLabels', 'logsInclude', 'phases', 'callLabelsAbsent', 'promptIncludes', 'promptOrder']
+
+function expectKeyProblems(exp) {
+  if (exp === null || typeof exp !== 'object' || Array.isArray(exp)) return []
+  return Object.keys(exp)
+    .filter((k) => !EXPECT_KEYS.includes(k))
+    .map((k) => `unknown expect key "${k}" (allowed: ${EXPECT_KEYS.join(', ')})`)
+}
+
+const isNonEmptyString = (s) => typeof s === 'string' && s !== ''
+
+// promptIncludes / promptOrder: one entry object or a non-empty array of entries. A wrong shape or an unknown sub-key is a problem (fail closed).
+function promptProblems(exp, calls) {
+  const problems = []
+  if (exp === null || typeof exp !== 'object') return problems
+  const specs = [
+    { key: 'promptIncludes', field: 'includes', minLen: 1 },
+    { key: 'promptOrder', field: 'order', minLen: 2 },
+  ]
+  for (const { key, field, minLen } of specs) {
+    if (exp[key] === undefined) continue
+    const entries = Array.isArray(exp[key]) ? exp[key] : [exp[key]]
+    if (entries.length === 0) { problems.push(`${key}: must be an entry or a non-empty array of entries`); continue }
+    for (const e of entries) {
+      if (e === null || typeof e !== 'object' || Array.isArray(e)) { problems.push(`${key}: each entry must be an object`); continue }
+      const bad = Object.keys(e).find((k) => !['label', 'nth', field].includes(k))
+      if (bad !== undefined) { problems.push(`${key}: unknown entry key "${bad}" (allowed: label, nth, ${field})`); continue }
+      if (!isNonEmptyString(e.label)) { problems.push(`${key}: "label" must be a non-empty string`); continue }
+      if (e.nth !== undefined && !(Number.isInteger(e.nth) && e.nth >= 0)) { problems.push(`${key}: "nth" must be an integer >= 0`); continue }
+      if (!Array.isArray(e[field]) || e[field].length < minLen || e[field].some((s) => !isNonEmptyString(s))) {
+        problems.push(`${key}: "${field}" must be an array of at least ${minLen} non-empty string(s)`)
+        continue
+      }
+      const nth = e.nth === undefined ? 0 : e.nth
+      const target = calls.filter((c) => c.label === e.label)[nth]
+      if (target === undefined) {
+        problems.push(`${key}: no call nth ${nth} of label "${e.label}" (calls: ${calls.map((c) => c.label).join(', ')})`)
+        continue
+      }
+      const prompt = typeof target.prompt === 'string' ? target.prompt : ''
+      if (key === 'promptIncludes') {
+        for (const needle of e.includes) {
+          if (!prompt.includes(needle)) problems.push(`promptIncludes: "${e.label}"[${nth}] prompt lacks "${needle}"`)
+        }
+      } else {
+        let last = -1
+        for (const s of e.order) {
+          const at = prompt.indexOf(s)
+          if (at === -1) { problems.push(`promptOrder: "${e.label}"[${nth}] prompt lacks "${s}"`); break }
+          if (at <= last) { problems.push(`promptOrder: "${e.label}"[${nth}] "${s}" is not after the previous string`); break }
+          last = at
+        }
+      }
+    }
+  }
+  return problems
+}
+
 function check(fixture, result, logs, calls = [], phases = []) {
   const exp = fixture.expect || {}
   const problems = []
+  problems.push(...expectKeyProblems(exp), ...promptProblems(exp, calls))
   if (typeof exp.status !== 'string') {
     problems.push('expect.status is required (a fixture without an expected status proves nothing)')
   }
@@ -367,12 +434,12 @@ async function runSingle(fixture, fpSrcStripped) {
   }
   const run = buildPipelineRunner(fpSrcStripped)
   fixture = withEngineVersion(fixture, run.engineVersion)
-  const r = await replayFixture(fixture, run)
+  const r = await replayFixture(fixture, run, { prompts: true })
   const { logs, calls, missing, cursors } = r
   const expThrows = fixture.expect && fixture.expect.throws
   if (typeof expThrows === 'string') {
     const err = r.error
-    const problems = []
+    const problems = expectKeyProblems(fixture.expect)
     if (!err) problems.push(`throws: expected an error containing "${expThrows}", but the run did not throw`)
     else if (!String(err.message).includes(expThrows)) problems.push(`throws: expected message containing "${expThrows}", got "${err.message}"`)
     if (calls.length) problems.push(`throws: ${calls.length} agent() call(s) happened before the refusal (${calls.map((c) => c.label || c).join(', ')})`)
