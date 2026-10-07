@@ -27,6 +27,10 @@
 #      abort the merge and die. Exception: when only the version files (plugin.json, BUILD line)
 #      conflict (main bumped too), take main's copy; step 4 recomputes them. No `gh pr update-branch`:
 #      the local merge already makes the branch current, and bumping before it always conflicted.
+#   3b. project specifics visibility (#265): after the base is merged, the diff of `.claude/lgtmgate/` and the
+#      projectSpecifics / agentContext / baseBranch lines of `.claude/pipeline.config.json` against origin/main are printed under
+#      one `lead-merge: Project specifics changed` line when non-empty. Never blocks, no flag; a custom projectSpecifics folder
+#      is visible through the config-key diff only.
 #   4. bump from the merged tree: next version over max(branch, origin/main) (semver 2.0.0 precedence: X.Y.Z -> patch+1,
 #      X.Y.Z-beta.N -> X.Y.Z-beta.(N+1)) in .claude-plugin/plugin.json
 #      + BUILD line of workflows/deliver-pipeline.js (cutFrom = origin/main short sha), commit
@@ -446,6 +450,18 @@ if ! git merge --no-edit origin/main; then
     git merge --abort 2>/dev/null || true
     die "merging origin/main conflicts (${conflicts:-unknown}); resolve in the worktree, push, re-run. Nothing pushed."
   fi
+fi
+
+# --- 3b. project specifics visibility (#265; not blocking) ------------------------------------------------------
+# Every later run reads the specifics from the base, so a PR changing them changes every future prompt: show the diff of
+# .claude/lgtmgate/ and the projectSpecifics / agentContext / baseBranch lines of the config, print it, never refuse, no flag.
+# Only the default folder is judged; a custom projectSpecifics folder shows up through the config-key diff alone.
+spec_diff="$(git diff origin/main...HEAD -- .claude/lgtmgate/ 2>/dev/null || true)"
+spec_cfg="$(git diff -U0 origin/main...HEAD -- .claude/pipeline.config.json 2>/dev/null | grep -E '^[+-][^+-].*(projectSpecifics|agentContext|baseBranch)' || true)"
+if [ -n "$spec_diff" ] || [ -n "$spec_cfg" ]; then
+  echo "lead-merge: Project specifics changed (not blocking: every later run reads these rules from the base; review them before the merge lands)"
+  [ -n "$spec_cfg" ] && printf '%s\n' "$spec_cfg"
+  [ -n "$spec_diff" ] && printf '%s\n' "$spec_diff"
 fi
 
 ver_of() { python3 -c "import json,sys; print(json.load(sys.stdin).get('version',''))"; }

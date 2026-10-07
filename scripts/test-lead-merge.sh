@@ -1042,5 +1042,15 @@ D="$(setup hint-refused)"; run "$D" "$BASE/open.md"; rc=$?
 D="$(setup hint-ci)"; run "$D" "$BASE/good.md" 1; rc=$?
 [ "$rc" -ne 0 ] && [ "$(hint_lines)" = 0 ] && ok "plugin-update hint: a run whose checks fail (no merge) prints no hint" || bad "plugin-update hint failed checks (rc=$rc, lines=$(hint_lines)): $(tail -3 "$D/out")"
 
+# 23. project specifics visibility (#265): a section is printed (not blocking) when the PR changes the specifics folder; none otherwise
+D="$(setup spec-changed)"
+( cd "$D/work" && mkdir -p .claude/lgtmgate && echo "NICK-RULE use tabs" > .claude/lgtmgate/nick.md && git add -A && git commit -qm "specifics" && git push -q origin feat/x ) >/dev/null 2>&1
+run "$D" "$BASE/good.md"; rc=$?
+[ "$rc" -eq 0 ] && grep -qF 'lead-merge: Project specifics changed' "$D/out" && grep -qF 'NICK-RULE use tabs' "$D/out" && grep -q 'pr merge 7 -R o/r --merge' "$D/log" \
+  && ok "specifics-visibility: the section is printed with the diff and the merge still goes through" || bad "specifics-visibility changed (rc=$rc): $(tail -5 "$D/out")"
+D="$(setup spec-unchanged)"; run "$D" "$BASE/good.md"; rc=$?
+[ "$rc" -eq 0 ] && ! grep -qF 'Project specifics changed' "$D/out" && grep -q 'pr merge 7 -R o/r --merge' "$D/log" \
+  && ok "specifics-visibility: no section when nothing relevant changed" || bad "specifics-visibility unchanged (rc=$rc): $(tail -5 "$D/out")"
+
 echo "[lead-merge test] passed=$PASS failed=$FAIL"
 [ "$FAIL" -eq 0 ]
