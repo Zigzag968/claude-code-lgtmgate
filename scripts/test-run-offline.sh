@@ -341,6 +341,8 @@ h.replayFixture(fix, run, { prompts: true }).then((r) => {
   w('prompt-ok.json', { promptIncludes: { label: c.label, nth: 0, includes: [p.slice(0, 20)] }, promptOrder: { label: c.label, nth: 0, order: [p.slice(0, 12), p.slice(-12)] } })
   w('prompt-bad.json', { promptIncludes: { label: c.label, includes: ['zzz-not-in-any-prompt'] }, promptOrder: { label: c.label, order: [p.slice(-12), p.slice(0, 12)] } })
   w('expect-unknown.json', { bogusKey: 1 })
+  w('result-ok.json', { resultIncludes: { status: fix.expect.status } })
+  w('result-bad.json', { resultIncludes: { status: 'zzz-not-a-status' } })
 })
 JS
 node "$TMP/mkp.cjs" "$TMP"
@@ -350,6 +352,10 @@ out=$(node scripts/run-offline.cjs "$TMP/prompt-bad.json" 2>&1)
 case "$out" in *"FAIL:"*"promptIncludes:"*"promptOrder:"*) ok "a violated promptIncludes and promptOrder fail the fixture (#262)";; *) bad "violated prompt expectations not reported: $out";; esac
 out=$(node scripts/run-offline.cjs "$TMP/expect-unknown.json" 2>&1)
 case "$out" in *"FAIL:"*"unknown expect key \"bogusKey\""*) ok "an unknown expect key fails the fixture (#262)";; *) bad "unknown expect key not refused: $out";; esac
+
+outok=$(node scripts/run-offline.cjs "$TMP/result-ok.json" 2>&1)
+outbad=$(node scripts/run-offline.cjs "$TMP/result-bad.json" 2>&1)
+case "$outok|$outbad" in *"status=ok passed=1"*"|"*"FAIL:"*"resultIncludes: result.status"*) ok "a violated resultIncludes fails the fixture, a satisfied one passes (#270)";; *) bad "resultIncludes: ok=[$outok] bad=[$outbad]";; esac
 
 rm -rf "$TMP"
 STATUS=ok; [ "$FAIL" -gt 0 ] && STATUS=fail
