@@ -1,0 +1,5 @@
+package.json
+.nvmrc
+.github/dependabot.yml
+.github/workflows/ci.yml
+.claude/rules/code-style.md

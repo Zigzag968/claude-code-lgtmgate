@@ -61,9 +61,12 @@
 //      and none is a case-insensitive prefix of another (the view merges them into one box; the run-time
 //      numbered titles `Review 2`, `Plan 2` rely on this; titles are compared after trimming surrounding whitespace,
 //      as the viewer does). Only the meta block is read. A failure names the title.
+//   init-stubs (#267): the six stubs `/lgtmgate:init` creates under .claude/lgtmgate/ (STUBS of
+//      scripts/init-specifics.cjs) carry none of the engine vocabulary (ENGINE_WORDS_RE) and are empty once
+//      their comments are stripped (a stub injects nothing into an agent's prompt). A failure names the stub.
 //
 // Env (test seams, all optional)
-//   GUARDS_ONLY            comma list among r1,wired,version,parity,budgets,instructions,status,phases (default: all)
+//   GUARDS_ONLY            comma list among r1,wired,version,parity,budgets,instructions,status,phases,init-stubs (default: all)
 //   GUARDS_BASE_FILE       workflow file used as the base for R1 (default: git show origin/main:<file>)
 //   GUARDS_BRANCH_FILE     workflow file used as the branch for R1 (default: workflows/deliver-pipeline.js)
 //   GUARDS_BASE_MANIFEST   base plugin.json path for the version floor (default: git show origin/main:...)
@@ -75,6 +78,7 @@
 //   GUARDS_STATUS_JS_FILE  workflow file for status-table (default: workflows/deliver-pipeline.js)
 //   GUARDS_DELIVER_MD      Lead runbook for status-table (default: commands/deliver.md)
 //   GUARDS_PHASES_JS_FILE  workflow file for phase-titles (default: workflows/deliver-pipeline.js)
+//   GUARDS_INIT_STUBS      module exporting STUBS for init-stubs (default: scripts/init-specifics.cjs)
 //   GUARDS_ROOT            repo root (default: parent of scripts/)
 
 const fs = require('fs')
@@ -86,7 +90,7 @@ const WORKFLOW = 'workflows/deliver-pipeline.js'
 const MANIFEST = '.claude-plugin/plugin.json'
 const GUARDS_YML = '.github/workflows/guards.yml'
 const DELIVER_MD = 'commands/deliver.md'
-const ONLY = process.env.GUARDS_ONLY ? process.env.GUARDS_ONLY.split(',') : ['r1', 'wired', 'version', 'parity', 'budgets', 'instructions', 'status', 'phases']
+const ONLY = process.env.GUARDS_ONLY ? process.env.GUARDS_ONLY.split(',') : ['r1', 'wired', 'version', 'parity', 'budgets', 'instructions', 'status', 'phases', 'init-stubs']
 
 // Suites that are NOT named in guards.yml, each with its reason. Add a suite here only if it is
 // red on main (report it, do not wire it) or is run through another runner.
@@ -569,6 +573,30 @@ function checkPhaseTitles() {
   out(`PASS: phase-titles: ${titles.length} declared titles, longest ${Math.max(...titles.map((t) => [...t].length))}/${PHASE_TITLE_CAP} characters, none a prefix of another`)
 }
 
+function checkInitStubs() {
+  let stubs
+  try {
+    stubs = require(process.env.GUARDS_INIT_STUBS || path.join(ROOT, 'scripts/init-specifics.cjs')).STUBS
+  } catch (e) {
+    bad('FAIL: init-stubs: cannot load the stubs module')
+    return
+  }
+  const names = stubs && typeof stubs === 'object' ? Object.keys(stubs) : []
+  if (names.length === 0) { bad('FAIL: init-stubs: no stub exported'); return }
+  const problems = []
+  for (const n of names) {
+    const txt = String(stubs[n])
+    const w = ENGINE_WORDS_RE.exec(txt)
+    if (w) problems.push(`stub '${n}' carries the engine word '${w[0]}'`)
+    let prev
+    let cur = txt
+    do { prev = cur; cur = cur.replace(/<!--[\s\S]*?-->/g, '') } while (cur !== prev)
+    if (cur.trim() !== '') problems.push(`stub '${n}' is not empty once comments are stripped`)
+  }
+  if (problems.length) { for (const pr of problems) bad(`FAIL: init-stubs: ${pr}`); return }
+  out(`PASS: init-stubs: ${names.length} stubs, no engine vocabulary, empty once comments are stripped`)
+}
+
 if (ONLY.includes('r1')) checkR1()
 if (ONLY.includes('wired')) checkWired()
 if (ONLY.includes('version')) checkVersion()
@@ -577,4 +605,5 @@ if (ONLY.includes('budgets')) checkDocBudgets()
 if (ONLY.includes('instructions')) checkInstructionsWired()
 if (ONLY.includes('status')) checkStatusTable()
 if (ONLY.includes('phases')) checkPhaseTitles()
+if (ONLY.includes('init-stubs')) checkInitStubs()
 process.exit(failed ? 1 : 0)

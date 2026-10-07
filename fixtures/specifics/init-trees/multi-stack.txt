@@ -1,0 +1,4 @@
+package.json
+ios/App.xcodeproj/project.pbxproj
+services/api/pyproject.toml
+.github/workflows/ci.yml

@@ -15,6 +15,9 @@
 //       the acceptance block of preFile replaced by the rendered checklist in textFile with each box set by its
 //       `<!-- ac:N -->` id (#183): ids of tickCsv `[x]`, ids of keepCsv keep the state preFile has, the others open.
 //       Same exits as `splice acceptance` (3 = markers absent / empty checklist).
+//   node pr-body-splice.cjs tick-ids <preFile> <outFile> <idsCsv>
+//       (#257) only the boxes of idsCsv set `[x]` in the acceptance block of preFile, every other byte kept (no rendered text
+//       needed). Exits: 3 = markers absent, 5 = an id has no box, 6 = an id is a `[human-gate]` box, 2 = bad ids.
 //   node pr-body-splice.cjs checked <bodyFile|->
 //       prints the ids of the boxes ticked in the acceptance block (comma-separated, ascending; empty when none or no
 //       block); `-` reads the body from stdin. Exit 0.
@@ -275,8 +278,59 @@ function stripOneTrailingNewline(s) {
   return s.endsWith('\n') ? s.slice(0, -1) : s
 }
 
+// Ticks the boxes of `ids` in the acceptance block of `body` and nothing else (#257). Pure, outside the parity block. The
+// block is the one of the LAST unfenced marker pair; a box is an unfenced `- [ ]` / `- [x]` line with a well-formed
+// `<!-- ac:N -->` comment (as acceptanceBoxes). Returns { out } with only the character inside the brackets changed
+// (indentation, the "\r" of a CRLF body and every other byte kept; an already ticked box stays), or { code }: 3 = markers
+// absent, 5 = an id has no box in the block, 6 = an id is a `[human-gate]` box. Every id is validated before anything
+// is changed. String operations only.
+function tickIdsInBody(body, ids) {
+  const src = String(body ?? '')
+  const span = acceptanceSpan(src)
+  if (span === null) return { code: 3 }
+  const want = Array.isArray(ids) ? ids : []
+  const boxes = new Map()
+  let fence = ''
+  let pos = span.from
+  for (const raw of src.slice(span.from, span.to).split('\n')) {
+    const l = raw.endsWith('\r') ? raw.slice(0, -1) : raw
+    const next = fenceAfter(l, fence)
+    const fenced = fence !== '' || next !== ''
+    fence = next
+    const t = l.trimStart()
+    const head = t.slice(0, 5)
+    if (!fenced && (head === '- [x]' || head === '- [X]' || head === '- [ ]') && (t.length === 5 || t[5] === ' ' || t[5] === '\t')) {
+      const rest = t.slice(5).trimStart()
+      if (rest.startsWith('<!-- ac:')) {
+        const end = rest.indexOf('-->')
+        const digits = end > 0 ? rest.slice(8, end).trim() : ''
+        if (digits !== '' && [...digits].every((d) => d >= '0' && d <= '9')) {
+          const id = Number(digits)
+          const entry = { at: pos + (l.length - t.length) + 3, gate: rest.slice(end + 3).trimStart().startsWith('[human-gate]') }
+          boxes.set(id, [...(boxes.get(id) ?? []), entry])
+        }
+      }
+    }
+    pos += raw.length + 1
+  }
+  for (const id of want) if (!boxes.has(id)) return { code: 5 }
+  for (const id of want) if (boxes.get(id).some((b) => b.gate)) return { code: 6 }
+  const chars = src.split('')
+  for (const id of want) for (const b of boxes.get(id)) chars[b.at] = 'x'
+  return { out: chars.join('') }
+}
+
 function cli(argv) {
   const mode = argv[0]
+  if (mode === 'tick-ids') {
+    const pre = fs.readFileSync(argv[1], 'utf8')
+    const parts = String(argv[3] ?? '').split(',')
+    if (parts.length === 0 || parts.some((p) => p === '' || ![...p].every((d) => d >= '0' && d <= '9'))) return 2
+    const res = tickIdsInBody(pre, parts.map(Number))
+    if (res.code !== undefined) return res.code
+    fs.writeFileSync(argv[2], res.out)
+    return 0
+  }
   if (mode === 'splice') {
     const kind = argv[1]
     const pre = fs.readFileSync(argv[2], 'utf8')
@@ -326,4 +380,4 @@ if (require.main === module) {
   process.exit(rc)
 }
 
-module.exports = { decisionLogEntries, spliceDecisionLogBlock, spliceAcceptanceBlock, tickAcceptanceBlock, checkedAcceptanceIds, bodyWriteGuardOk, composeDecisionLogBlock, upsertDecisionLog }
+module.exports = { tickIdsInBody, decisionLogEntries, spliceDecisionLogBlock, spliceAcceptanceBlock, tickAcceptanceBlock, checkedAcceptanceIds, bodyWriteGuardOk, composeDecisionLogBlock, upsertDecisionLog }

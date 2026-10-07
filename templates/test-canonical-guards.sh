@@ -34,7 +34,7 @@
 # 20 reviewer-window-scan-bounded, 21 gitdir-probe-no-rm, 22 no-destructive-checkout,
 # 23 guards-cjs (scripts/guards.cjs: R1 ratchet, 25 all-tests-wired, 1-relaxed version floor,
 # sam-parity, doc-budgets, instructions-wired), 24 critical-paths-proven, 26 stories-covered,
-# 27 agent-neutrality, 28 project-specifics-slot.
+# 27 agent-neutrality, 28 project-specifics-slot, 29 no-plugin-copy-in-specifics.
 #
 # Enforcement note (#54 MANDATORY 2, human decision 2026-08-23): this repo is PRIVATE on a
 # plan where branch protection and rulesets are both unavailable (verified this session:
@@ -1011,6 +1011,38 @@ if [ -n "$PS_BAD" ]; then
   fail "project-specifics-slot" "slot declaration wrong in:$PS_BAD"
 else
   pass "project-specifics-slot: $PS_N agents declare the <project_specifics> slot before Hard rules"
+fi
+
+# =============================================================================
+# Invariant 29 — no-plugin-copy-in-specifics
+# =============================================================================
+# #267 (epic #261), story US-C8: the owner's folder .claude/lgtmgate/ holds the owner's rules, never a copy of a plugin
+# file (a copy drifts from the plugin). FAIL when a regular file there has the basename of a file under templates/ or
+# the same sha256 as one. SPECIFICS_DIR is an override used only by negative tests on throwaway copies. bash 3.2 floor.
+SPECIFICS_DIR="${SPECIFICS_DIR:-.claude/lgtmgate}"
+if [ ! -d "$SPECIFICS_DIR" ]; then
+  pass "no-plugin-copy-in-specifics: no $SPECIFICS_DIR folder"
+else
+  NP_SUMS="$(find templates -type f -exec shasum -a 256 {} + 2>/dev/null | awk '{print $1}')"
+  NP_NAMES="$(find templates -type f -exec basename {} \; 2>/dev/null)"
+  NP_N=0
+  NP_BAD=""
+  while IFS= read -r np_f; do
+    [ -n "$np_f" ] || continue
+    NP_N=$((NP_N + 1))
+    np_base="$(basename "$np_f")"
+    np_sum="$(shasum -a 256 "$np_f" | awk '{print $1}')"
+    if printf '%s\n' "$NP_NAMES" | grep -qxF -- "$np_base"; then
+      NP_BAD="$NP_BAD $np_base(name)"
+    elif printf '%s\n' "$NP_SUMS" | grep -qxF -- "$np_sum"; then
+      NP_BAD="$NP_BAD $np_base(content)"
+    fi
+  done < <(find "$SPECIFICS_DIR" -type f)
+  if [ -n "$NP_BAD" ]; then
+    fail "no-plugin-copy-in-specifics" "copy of a templates/ file under $SPECIFICS_DIR:$NP_BAD"
+  else
+    pass "no-plugin-copy-in-specifics: $NP_N files, none copied from templates/"
+  fi
 fi
 
 # =============================================================================
