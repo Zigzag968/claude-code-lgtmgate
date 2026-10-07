@@ -55,7 +55,7 @@ if [ "${UPDATE_GOLDEN:-}" = "1" ]; then
   echo "goldens rewritten: read them before committing"
 fi
 
-if diff "$TMP/table.txt" "$GOLD/print-table.txt" > "$TMP/d1" 2>&1; then ok "table (no role) equals golden"; else bad "table differs from golden"; cat "$TMP/d1"; fi
+if diff "$TMP/table.txt" "$GOLD/print-table.txt" > "$TMP/d1" 2>&1; then ok "US-C5: table (no role) equals golden"; else bad "table differs from golden"; cat "$TMP/d1"; fi
 if diff "$TMP/sam.txt" "$GOLD/print-sam.txt" > "$TMP/d2" 2>&1; then ok "--print Sam equals golden"; else bad "--print Sam differs from golden"; cat "$TMP/d2"; fi
 
 if diff "$TMP/sam-ios.txt" "$GOLD/print-sam-ios.txt" > "$TMP/d3" 2>&1; then ok "--print Sam --lane ios equals golden (lanes tree)"; else bad "--print Sam --lane ios differs from golden"; cat "$TMP/d3"; fi
