@@ -10,6 +10,7 @@ tools:
   - Edit
   - Write
   - WebSearch
+  - WebFetch
   - mcp__context7__resolve-library-id
   - mcp__context7__get-library-docs
 ---

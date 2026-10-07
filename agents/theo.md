@@ -7,6 +7,7 @@ tools:
   - Grep
   - Glob
   - Bash
+  - WebFetch
   - mcp__context7__resolve-library-id
   - mcp__context7__get-library-docs
 ---
