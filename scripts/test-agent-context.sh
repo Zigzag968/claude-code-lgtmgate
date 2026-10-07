@@ -62,7 +62,7 @@ run "$R"
 exit_is "ok-base" 0
 jtrue "ok-base: roles Nick Sam Morgan, shared set" 'j.shared!==null&&Object.keys(j.roles).sort().join()==="Morgan,Nick,Sam"&&/^[0-9a-f]{40}$/.test(j.refSha)'
 jtrue "order-shared-role-subjects-extra" '(()=>{const t=j.roles.Nick.text;const a=["NICK-MARK","NICK-ALPHA-MARK","NICK-TESTING-MARK","NICK-EXTRA-MARK"].map(m=>t.indexOf(m));return a.every((x,i)=>x>=0&&(i===0||x>a[i-1]))&&!t.includes("SHARED-MARK")&&j.shared.text.includes("SHARED-MARK")})()'
-jtrue "subject-not-lane: nick.testing.md (no frontmatter) is a subject, never a lane" 'j.roles.Nick.text.includes("NICK-TESTING-MARK")&&j.roles.Nick.lanes.length===0&&j.files.some(f=>f.path.endsWith("nick.testing.md")&&f.roles.includes("Nick"))'
+jtrue "US-C4: subject-not-lane: nick.testing.md (no frontmatter) is a subject, never a lane" 'j.roles.Nick.text.includes("NICK-TESTING-MARK")&&j.roles.Nick.lanes.length===0&&j.files.some(f=>f.path.endsWith("nick.testing.md")&&f.roles.includes("Nick"))'
 jtrue "role-without-source-absent: Theo has no block" '!("Theo" in j.roles)'
 jtrue "frontmatter-strip: Morgan keeps its base body, the lane (frontmatter stripped) is kept apart" '(()=>{const m=j.roles.Morgan;const l=m.lanes[0];return m.text.includes("MORGAN-MARK")&&!m.text.includes("MORGAN-REVIEW-MARK")&&!m.text.includes("lane:")&&m.lanes.length===1&&l.name==="review"&&l.persona==="reviewer"&&l.hint==="review lane"&&l.text.includes("MORGAN-REVIEW-MARK")&&!l.text.includes("persona")&&l.files.length===1&&l.files[0].endsWith("morgan.review.md")})()'
 jtrue "empty-stub-ignored: comment-only mia.md warns, exit 0, no Mia block" '!("Mia" in j.roles)&&j.warnings.some(w=>w.kind==="empty-ignored"&&w.path.endsWith("mia.md"))&&j.files.some(f=>f.path.endsWith("mia.md")&&f.empty===true)'

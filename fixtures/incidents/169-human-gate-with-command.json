@@ -26,7 +26,6 @@
       "confirmed": true,
       "evidence": "reproduced: the plan check accepts a human-gate item holding a node -e invocation",
       "actualCause": "plan check does not inspect human-gate item text",
-      "laneOk": true,
       "persistentStateSignal": false,
       "authSecurityBoundarySignal": false,
       "deployConfigSignal": false,

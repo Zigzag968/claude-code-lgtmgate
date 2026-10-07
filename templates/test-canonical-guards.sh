@@ -176,7 +176,7 @@ fi
 # =============================================================================
 if [ -f "$WORKFLOW_FILE" ]; then
   LOG_LINE="$(grep -n '^log(BUILD_STAMP)' "$WORKFLOW_FILE" | head -1 | cut -d: -f1)"
-  ARGS_LINE="$(grep -n '} = (typeof args === .string.' "$WORKFLOW_FILE" | head -1 | cut -d: -f1)"
+  ARGS_LINE="$(grep -n '^const argsIn = (typeof args === .string.' "$WORKFLOW_FILE" | head -1 | cut -d: -f1)"
   DRYRUN_LINE="$(grep -n '^if (dryRun) return' "$WORKFLOW_FILE" | head -1 | cut -d: -f1)"
   FINISH_PRESENT="$(grep -c 'const finish = ' "$WORKFLOW_FILE")"
   BARE_RETURNS="$(python3 -c "
@@ -893,9 +893,9 @@ fi
 # Invariant 26 — stories-covered
 # =============================================================================
 # docs/specifics-stories.md (#262, epic #261): each story row (`| US-<x><n> | ... | <issue> | <proof> |`) is proven,
-# `doc`, or `pending: #N`. Proven = a fixture $SPECIFICS_FIXTURES_DIR/us-<lowercase id>-*.json, or the id spelled
+# or `doc`. Proven = a fixture $SPECIFICS_FIXTURES_DIR/us-<lowercase id>-*.json, or the id spelled
 # (whole word) in a test file; the Proof column is never read as evidence. A fixture whose id has no row is a FAIL.
-# The `pending: #N` tolerance is temporary: #266 removes it. STORIES_FILE / SPECIFICS_FIXTURES_DIR are overrides used
+# STORIES_FILE / SPECIFICS_FIXTURES_DIR are overrides used
 # only by negative tests on throwaway copies under .pipeline/. This file is in the grep target set: never spell a real
 # story id here, only the `US-<x><n>` placeholder.
 STORIES_FILE="${STORIES_FILE:-docs/specifics-stories.md}"
@@ -912,8 +912,6 @@ else
     st_proof="$(printf '%s\n' "$st_line" | awk -F'|' '{gsub(/^[ \t]+|[ \t]+$/, "", $(NF-1)); print $(NF-1)}')"
     ST_IDS="$ST_IDS$st_id "
     if [ "$st_proof" = "doc" ]; then
-      continue
-    elif printf '%s\n' "$st_proof" | grep -qE '^pending: #[0-9]+$'; then
       continue
     fi
     st_lower="$(printf '%s' "$st_id" | tr 'A-Z' 'a-z')"
@@ -936,11 +934,11 @@ else
   if [ "$ST_COUNT" -eq 0 ]; then
     fail "stories-covered" "$STORIES_FILE has no story row"
   elif [ -n "$ST_MISSING" ]; then
-    fail "stories-covered" "no proof and not pending/doc:$ST_MISSING"
+    fail "stories-covered" "no proof and not doc:$ST_MISSING"
   elif [ -n "$ST_ORPHAN" ]; then
     fail "stories-covered" "proof without a story:$ST_ORPHAN"
   else
-    pass "stories-covered: $ST_COUNT stories, each proven, pending or doc"
+    pass "stories-covered: $ST_COUNT stories, each proven or doc"
   fi
 fi
 

@@ -15,7 +15,6 @@
       "confirmed": true,
       "evidence": "reproduced: the session table and the token check sit on an auth boundary",
       "actualCause": "no storage decision yet",
-      "laneOk": true,
       "persistentStateSignal": true,
       "authSecurityBoundarySignal": true,
       "deployConfigSignal": false,

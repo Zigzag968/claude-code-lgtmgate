@@ -212,7 +212,6 @@
       "confirmed": true,
       "evidence": "reproduced: `node -e` prints the wrong slug",
       "actualCause": "accent stripping",
-      "laneOk": true,
       "lanes": [],
       "laneEvidence": "the diff touches the screens",
       "persistentStateSignal": false,

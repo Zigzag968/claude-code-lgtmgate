@@ -1,0 +1,16 @@
+{
+  "name": "us-r1-scout-arg-removed",
+  "note": "#266 (US-R1): a launch that still passes the removed scout argument throws before any agent call; lanes replace it",
+  "args": {
+    "pluginRoot": "/plugin",
+    "issue": 123,
+    "brief": "fix slugify accents",
+    "wtPath": "/wt/root/issue-123",
+    "config": {},
+    "scoutAgent": "Ivy"
+  },
+  "calls": {},
+  "expect": {
+    "throws": "removed: declare lanes"
+  }
+}
