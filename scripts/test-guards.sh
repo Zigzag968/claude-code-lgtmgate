@@ -407,6 +407,15 @@ if [ "$RC1" -ne 0 ] && [ "$RC" -ne 0 ] && echo "$OUT1" | /usr/bin/grep -q "^FAIL
 printf "export const meta = {\n  name: 'x',\n}\n" > "$T/ph-none.js"; run_phases "$T/ph-none.js"
 if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: phase-titles: no '; then ok "phase-titles: a meta block without a phases list -> FAIL"; else ko "phase-titles no list (rc=$RC) $OUT"; fi
 
+# ---- init-stubs (#267) ----
+run_stubs() { OUT="$(GUARDS_ONLY=init-stubs GUARDS_INIT_STUBS="$1" node scripts/guards.cjs 2>&1)"; RC=$?; }
+run_stubs "$REPO_ROOT/scripts/init-specifics.cjs"
+if [ "$RC" -eq 0 ] && [ "$OUT" = "PASS: init-stubs: 6 stubs, no engine vocabulary, empty once comments are stripped" ]; then ok "init-stubs: the six real stubs -> PASS"; else ko "init-stubs real stubs (rc=$RC) $OUT"; fi
+printf "exports.STUBS = { sam: '<!-- run the simulate step -->' }\n" > "$T/stubs-bad.cjs"; run_stubs "$T/stubs-bad.cjs"
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q "^FAIL: init-stubs: stub 'sam' carries the engine word 'simulate'$"; then ok "init-stubs: a stub with an engine word -> FAIL naming the stub"; else ko "init-stubs engine word (rc=$RC) $OUT"; fi
+printf "exports.STUBS = { sam: 'a rule that injects text' }\n" > "$T/stubs-text.cjs"; run_stubs "$T/stubs-text.cjs"
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q "^FAIL: init-stubs: stub 'sam' is not empty once comments are stripped$"; then ok "init-stubs: a stub with text outside a comment -> FAIL"; else ko "init-stubs text (rc=$RC) $OUT"; fi
+
 STATUS=ok; [ "$FAIL_N" -eq 0 ] || STATUS=fail
 echo "[test-guards] status=${STATUS} passed=${PASS_N} failed=${FAIL_N}"
 [ "$FAIL_N" -eq 0 ]
