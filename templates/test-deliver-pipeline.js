@@ -1232,21 +1232,6 @@ await testCase('T119 planCheck orphan criterion → escalate, orphans in planChe
   return (e1 || e2 || e3) ? (e1 || e2 || e3) : { ok: true }
 })
 
-// 34. T120 (#14) — Theo lane-check: a user-visible issue on the mechanical ('Sam') lane →
-//     laneOk:false → status 'lane-refused', requiredScout surfaced, no Sam/Nick/Morgan spent.
-await testCase('T120 Theo laneOk:false → lane-refused, requiredScout surfaced', async () => {
-  const r = await run({
-    simulate: {
-      theo: { confirmed: true, laneOk: false, requiredScout: 'ScoutX', evidence: 'issue edits the /v/<id> route template — user-visible', actualCause: '' },
-      // sam/morgan absent — a lane-refused run must NOT reach Plan/Review.
-    },
-  })
-  const e1 = eq('status', r.status, 'lane-refused')
-  const e2 = eq('requiredScout', r.requiredScout, 'ScoutX')
-  const e3 = eq('trace', r.trace, ['Blocked'])
-  return (e1 || e2 || e3) ? (e1 || e2 || e3) : { ok: true }
-})
-
 // ---------------------------------------------------------------------------
 // Real-incident replay — PR comment hygiene (minimizeSupersededReviewComments)
 // ---------------------------------------------------------------------------
@@ -6839,6 +6824,23 @@ const t265Payload = (f) => {
   const mk = (key, text, lanes) => ({ text, digest: f.specificsDigest(f.sha256Hex, T265_REF, key, text, lanes), bytes: text.length, lanes })
   return { ref: 'origin/main', refSha: T265_REF, shared: mk('shared', 'SHARED-TEXT', []), roles: { Nick: mk('Nick', 'NICK-TEXT', []) }, files: [], warnings: [] }
 }
+// T120 (US-R2, #266) — the lane decision is Theo's, validated by the script against the lane files found:
+// a lane that is no lane found throws before Sam is spent; a lane found lets the run reach the plan.
+await testCase('T120 (US-R2) Theo lane validated against the lanes found', async () => {
+  const f = t265Block()
+  if (!f) { log('SKIP — T120: SUITE_ARGS.fpSource absent'); return { ok: true } }
+  const d = (key, text, lanes) => f.specificsDigest(f.sha256Hex, T265_REF, key, text, lanes)
+  const laneMeta = [{ name: 'ios', text: 'IOS-SAM', digest: d('Sam:ios', 'IOS-SAM', []) }]
+  const ps = { ...t265Payload(f), roles: { Sam: { text: '', digest: d('Sam', '', laneMeta), bytes: 0, lanes: laneMeta } } }
+  const base = { config: { ...CONFIG, projectSpecifics: '.claude/lgtmgate' }, projectSpecifics: ps, proceedThrough: 'plan' }
+  const msg = await run({ ...base, simulate: { theo: { confirmed: true, evidence: '(simulated)', actualCause: '', lanes: ['nope'], laneEvidence: 'x' }, sam: 'GO' } })
+    .then(() => null, (e) => String(e && e.message))
+  const e1 = (msg && msg.includes('not in the lanes found')) ? null : { ok: false, msg: `unknown lane must throw "not in the lanes found", got ${JSON.stringify(msg)}` }
+  const r = await run({ ...base, simulate: { theo: { confirmed: true, evidence: '(simulated)', actualCause: '', lanes: ['ios'], laneEvidence: 'x' }, sam: 'GO' } })
+  const e2 = eq('status with a lane found', r.status, 'plan-ready')
+  const e3 = eq('lanes reported', r.lanes, ['ios'])
+  return e1 || e2 || e3 || { ok: true }
+})
 await testCase('T265a composition order: persona, specifics, task, MANDATE', async () => {
   const f = t265Block()
   if (!f) { log('SKIP — T265a: SUITE_ARGS.fpSource absent'); return { ok: true } }

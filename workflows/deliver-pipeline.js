@@ -26,7 +26,6 @@ export const meta = {
 // | `configLocal` | parsed `.claude/pipeline.config.local.json`, supplied by the Lead (the workflow sandbox has no filesystem — see resolveWorktreeRoot below); only `worktreeRoot` is read today (#61). Gitignored, machine-local, never versioned. Absent/garbage -> {}. |
 // | `pmReview` | run Mia before Sam (default false) |
 // | `issueType` | the issue's type, from its `type:*` label (e.g. 'bug', 'feature', 'chore'); optional, absent = not a bug. With 'bug' AND a Sam target under `workflows/` AND config.engineRepo is true, the R2 fixture acceptance item is injected into Nick's prompt (#76, #163). A launch arg, not a simulate key. |
-// | `scoutAgent` | agent type for the scout/plan stage (default 'Sam'). Lets the consuming project route to a different scout than Sam — e.g. a domain-specific planner it registers itself — while keeping the same plan contract (artifact + SAM schema) whoever fills the slot. Any agent name outside the built-in set (Mia/Sam/Nick/Morgan) passes through normalizeAgentType unchanged, so the consuming project can supply an already-namespaced agentType or a custom agent it registered itself. |
 // | `branchOverride` | exact branch name used verbatim instead of <branchPrefix>issue-<N> (#232; rebase-without-force-push, numbered slices). Arg, else config.branchOverride. Empty = unset; chars limited to [A-Za-z0-9._/-]. Skips the config-prefix reconcile so a config-prefix branch is never accepted. |
 // | `branchPrefix` | top-level arg is IGNORED (config.branchPrefix wins); a differing value logs a warning + trace 'branch-prefix-arg-ignored' (#232). Use branchOverride to force a branch. config.branchPrefix absent/blank -> falls back to 'features/' and traces 'branch-prefix-fallback-default' (#267), so a caller that fails to thread the project's own branchPrefix through config is diagnosable, not silent. |
 // | `prNumber` | existing PR number; required when entryStage='review' |
@@ -188,7 +187,6 @@ const STATUS = Object.freeze({
   'already-done': { status: 'already-done' },
   'diagnose-died': { status: 'diagnose-died', resumable: true },
   'diagnosis-refuted': { status: 'diagnosis-refuted' },
-  'lane-refused': { status: 'lane-refused' },
   'design-step-required': { status: 'design-step-required' },
   'plan-died': { status: 'plan-died', resumable: true },
   'no-go': { status: 'no-go' },
@@ -216,9 +214,11 @@ const finish = (def, extra = {}) => ({ buildStamp: BUILD_STAMP, ...(simulate ? {
   ...(classifierOutageDeath && def.status.endsWith('-died')
     ? { reason: 'classifier-outage: resume with resumeFromRunId' } : {}), ...def, ...extra })
 
+const argsIn = (typeof args === 'string' ? JSON.parse(args) : args) || {}
+// The removed scout arg: refuse it before anything else (zero agent call), with the remedy in the message.
+if (argsIn.scoutAgent !== undefined) throw new Error('removed: declare lanes with a `lane:` frontmatter in `.claude/lgtmgate/<role>.<lane>.md`; start a fresh run at the wanted entryStage')
 const {
   issue, brief, pmReview = false, issueType = null, wtPath,
-  scoutAgent = 'Sam',
   config,
   configLocal = {},
   prNumber = null,
@@ -244,7 +244,7 @@ const {
   models = {},
   simulate = null,
   stamp = null,
-} = (typeof args === 'string' ? JSON.parse(args) : args) || {}
+} = argsIn
 
 if (!issue || !brief || !wtPath) throw new Error('Missing required args: issue, brief, wtPath')
 // #13/#12 — `config` is REQUIRED and must be an object: the workflow sandbox has no filesystem, so
@@ -1320,10 +1320,8 @@ const DIAGNOSIS = {
     confirmed: { type: 'boolean' },
     evidence: { type: 'string', description: 'Concrete repro (command run + observed output) proving or refuting the claimed cause' },
     actualCause: { type: 'string', description: 'If refuted, the real cause if found; else empty' },
-    laneOk: { type: 'boolean', description: 'False if the issue is on the WRONG scout lane (user-visible surface routed to the mechanical/backend scout) — see requiredScout' },
     lanes: { type: 'array', items: { type: 'string' }, description: 'The project lanes (project specifics) this issue touches, from the LANES list of the prompt only; at least one when the prompt lists lanes' },
     laneEvidence: { type: 'string', description: 'What was checked to choose the lanes' },
-    requiredScout: { type: 'string', description: 'When laneOk is false, the product scout the project should re-dispatch with (project-specific — e.g. a mobile or backend specialist)' },
     // Design-step-trigger signals — independently classified by Theo against the
     // REAL code/cited docs, never trusted from the issue's own self-declared risk tag (same
     // "never trust a self-report" principle as debtClass staying informative-only in the audit).
@@ -2885,10 +2883,6 @@ if (after('plan', entryStage)) {
       `a real run/test, never a code-reading guess — and confirm or refute the stated cause.\n` +
       `If this issue is a feature/chore ask with no claimed bug: sanity-check it's justified — not already done/shipped, not solving a problem that doesn't ` +
       `exist, coherent and buildable as scoped. Check the codebase/git history for evidence either way.\n` +
-      `LANE CHECK: the scout lane for this issue is '${scoutAgent}'. If the issue touches a USER-VISIBLE surface `+
-      `(routes, templates, redirects, copy, URL/slug shapes) AND '${scoutAgent}' is the mechanical/backend scout `+
-      `(e.g. 'Sam'), set laneOk=false and requiredScout to the product scout the project should use — `+
-      `a product change must not be planned on the mechanical lane. Otherwise laneOk=true.\n` +
       theoLanesSection(lanesFound) +
       `Do NOT propose a fix or implementation — that is Sam's job.\n` +
       `DESIGN-STEP-TRIGGER CLASSIFICATION: independently classify this issue's ACTUAL scope from the real code — never trust the issue's own stated risk tag, or its silence, as ground truth. Set each signal only on evidence you checked (same bar as confirmed/evidence): ` +
@@ -2899,7 +2893,7 @@ if (after('plan', entryStage)) {
       `BLAST-RADIUS: no destructive git (git clean, reset --hard, checkout -- <path>, forced -f/-D deletes) — you diagnose, you never reset the shared worktree's state. ` +
       `Never read/probe a real credential path (~/.ssh/*, ~/.aws/*, .env*, **/*secret*, keychains) — to verify a sandbox deny-rule empirically, create a SYNTHETIC file in $TMPDIR named after the pattern, never the real one. ` +
       `Stay inside the worktree "${wtPath}" plus $TMPDIR — no traversal to another worktree/repo/home.\n\n` +
-      `Return { confirmed: bool, evidence: string, actualCause: string|null, laneOk: bool, requiredScout: string|null, persistentStateSignal: bool, authSecurityBoundarySignal: bool, deployConfigSignal: bool, immatureVendorApiSignal: bool, designStepSignalEvidence: string, issueClassificationMismatch: bool${lanesFound.length > 0 ? ', lanes: string[], laneEvidence: string' : ''} }. confirmed=true means "proceed to Sam"; laneOk=false stops for a lane re-dispatch. evidence is what you checked and ` +
+      `Return { confirmed: bool, evidence: string, actualCause: string|null, persistentStateSignal: bool, authSecurityBoundarySignal: bool, deployConfigSignal: bool, immatureVendorApiSignal: bool, designStepSignalEvidence: string, issueClassificationMismatch: bool${lanesFound.length > 0 ? ', lanes: string[], laneEvidence: string' : ''} }. confirmed=true means "proceed to Sam". evidence is what you checked and ` +
       `found (command run + observed output, or the codebase check performed). actualCause is set only when a claimed cause was refuted and you found the real one.`,
     {
       agentType: 'Theo', phase: 'Diagnose', schema: DIAGNOSIS, label: `diagnose-issue-${issue}`, model: 'sonnet',
@@ -2918,12 +2912,6 @@ if (after('plan', entryStage)) {
     return finish(STATUS['diagnosis-refuted'], { evidence: diag.evidence, actualCause: diag.actualCause || null, issue, trace })
   }
   log(`Diagnosis confirmed: ${diag.evidence}`)
-
-  if (diag.laneOk === false) {
-    log(`Lane refused: user-visible issue on the '${scoutAgent}' lane — requires ${diag.requiredScout || 'the product scout'}`)
-    await updateStatus('Blocked')
-    return finish(STATUS['lane-refused'], { requiredScout: diag.requiredScout || null, evidence: diag.evidence, issue, trace })
-  }
 
   // #271: Theo's lanes, validated by the script (a name that is no lane found throws; absent or empty = base only).
   if (lanesFound.length > 0) {
@@ -3099,7 +3087,7 @@ if (after('plan', entryStage)) {
       sam = await callAgentSafe(
         'sam',
         samScoutPrompt({ fixBlock, auditFixBlock }),
-        { agentType: scoutAgent, phase: planPhase, schema: SAM, label: `scout-issue-${issue}-${planPass}`, model: scoutModel },
+        { agentType: 'Sam', phase: planPhase, schema: SAM, label: `scout-issue-${issue}-${planPass}`, model: scoutModel },
         planPass,
       )
       if (isAgentDeath(sam)) {
@@ -4553,7 +4541,7 @@ if (after('review', entryStage)) {
       const samAmend = await callAgentSafe(
         'sam',
         samScoutPrompt({ reviewFixBlock: composeReviewFixBlock(planRoutes) }),
-        { agentType: scoutAgent, phase: roundPhase, schema: SAM, label: `scout-amend-${issue}-r${round}`, model: scoutModel },
+        { agentType: 'Sam', phase: roundPhase, schema: SAM, label: `scout-amend-${issue}-r${round}`, model: scoutModel },
         round,
       )
       if (isAgentDeath(samAmend)) {

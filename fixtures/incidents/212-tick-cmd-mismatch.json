@@ -71,8 +71,6 @@
       "confirmed": true,
       "evidence": "_",
       "actualCause": "",
-      "laneOk": true,
-      "requiredScout": "",
       "persistentStateSignal": false,
       "authSecurityBoundarySignal": false,
       "deployConfigSignal": false,

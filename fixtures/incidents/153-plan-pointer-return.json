@@ -17,14 +17,12 @@
     "diagnose-issue-151": {
       "confirmed": true,
       "evidence": "Worktree at edd88e4 (main). The issue's four gaps are all present and not yet shipped. (1) templates/probe-run.cjs:195 emits `PROBE name= exit= sha= json=` with no `cmd=`; the engine PROBE_LINE regex at workflows/deliver-pipeline.js:1666 has no cmd field either. Grep for `cmd=` in templates, scripts and the workflow finds nothing relevant. (2) templates/pr-write.sh body-splice (lines ~130-142) runs a bare `gh pr edit --body-file` with no digest or stale-read check. It only restores the pre-body after a lossy post-write check, so an edit landing between read and write is overwritten. `grep stale-read` returns nothing. (3) pr-write.sh:71 reads markers with `gh \"$kind\" view --json comments`, which is limited to the first 100 comments. `grep paginate` returns nothing. (4) deliver-pipeline.js:1612 builds the status label with `name.split(' ').join('-')`, which only replaces spaces. SAFE_PROBE_TOKEN is `/^[A-Za-z0-9._-]+$/` (line 1668), so any other character fails isSafeProbeToken, which is the claimed silent throw. Baseline run: `bash templates/test-probe-run.sh` exits 0 (`[probe-run] status=ok passed=92 failed=0`), with none of the new cases (cmd=, cmd-mismatch, stale-read, 101-comment thread) present. The requested feature is coherent and buildable, and depends-on is none. Lane: purely engine/backend (templates and workflow), no user-visible surface, so Sam is the right lane. I did not run a live repro of the 101-comment or race behaviour. The checks above are a baseline test run plus greps. I did not post a design-step comment, since I found no classification mismatch.",
-      "laneOk": true,
       "persistentStateSignal": true,
       "authSecurityBoundarySignal": false,
       "deployConfigSignal": false,
       "immatureVendorApiSignal": false,
       "designStepSignalEvidence": "persistentStateSignal: templates/pr-write.sh:136 rewrites the PR body via `gh pr edit` (read-modify-write on GitHub PR and issue comment state), and the issue changes the PROBE line wire format that the engine parses (one-way door per the issue). Other signals are false. No auth boundary change, no deploy config, and `gh --paginate` REST is already used in this codebase.",
       "issueClassificationMismatch": false,
-      "requiredScout": "",
       "actualCause": ""
     },
     "scout-issue-151-1": {
