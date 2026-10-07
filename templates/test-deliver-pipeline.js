@@ -2768,8 +2768,8 @@ await testCase('T214e STRUCTURED_OUTPUT_MANDATE text + schema-gated finalPrompt 
     return { ok: true }
   }
   const e1 = includes('mandate sentinel', src, 'FINAL-OUTPUT MANDATE (hard):')
-  const e2 = includes('schema-gated finalPrompt', src,
-    'opts && opts.schema ? `${prompt}\\n\\n${STRUCTURED_OUTPUT_MANDATE}` : prompt')
+  const e2 = includes('schema-gated mandate in the composed prompt', src,
+    "mandate: opts && opts.schema ? STRUCTURED_OUTPUT_MANDATE : ''")
   return (e1 || e2) ? (e1 || e2) : { ok: true }
 })
 

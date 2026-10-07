@@ -38,6 +38,7 @@ export const meta = {
 // | `dryRun` | if true, validate args and return immediately (no agents spawned) |
 // | `probeOnly` | optional { name, cmd, label, round }: run ONE probe() (probe-run gate, #80) and return status 'dry-run-ok' reason 'probe-only'. Lets a run-offline fixture reach probe() while no engine call site is migrated yet. Not a simulate key. |
 // | `pluginRoot` | optional absolute path of the plugin root (#82). The Lead passes ${CLAUDE_PLUGIN_ROOT} for the plugin component and omits it for a local copy; the probe layer resolves templates/probe-run.cjs from it (the workflow has no filesystem or env). config.probeRunPath wins; fallback <wtPath>/templates/probe-run.cjs. When the templates come from pluginRoot (no config.probeRunPath), the manifest version of the root must equal this engine's BUILD.version, else the run escalates before provisioning (`plugin-version-skew` / `plugin-version-unreadable`, #195). |
+// | `projectSpecifics` | optional object: the verbatim stdout of `scripts/agent-context.cjs` (commands/deliver.md §3bis). Required when `config.projectSpecifics` or `config.agentContext` is set. Absent, malformed or a digest mismatch throws before any agent call; nothing is injected on a refusal. The per-role text is inserted in every prompt of that role; the fingerprint is returned as `specifics` and traced (#265). |
 // | `models` | optional per-role model override: { scout?, planAudit?, morgan? }. Resolution order per role is `models.<role> ?? config.models?.<role> ?? 'sonnet'` (same `??` idiom as planAudit above — arg wins per-run over the project default). Default is 'sonnet' for all three roles (lgtmgate#161: the plan-phase loop could spawn up to 4 opus scout attempts per issue with planAudit on, the dominant cost driver); pass e.g. `models: { scout: 'opus' }` per-run when an issue is dense/dangerous enough to warrant it — opus stays fully reachable, just no longer the default. Not a general cost-control knob: Theo and Nick are NOT overridable by this key, always 'sonnet' (out of scope per the issue — their calls are unconditional literals). |
 // | `maxPlanAttempts` | bound on the plan-verification gate loop between Sam and Nick (default 2; mirrors advisory.js's `maxAttempts = 2`). On the maxPlanAttempts-th NOT_CONFORMING verdict, escalate instead of looping again. |
 // | `planAudit` | optional, DEFAULT OFF: once Sam's plan clears the planCheck gate, run an independent, adversarial plan-soundness audit (persona-in-prompt, no agentType — independence holds by construction) before Dev ever starts. Resolved `planAudit ?? config.planAudit ?? false` — arg wins per-run over the project default, an explicit `false` beats a `true` config. Placement: Plan phase only — never re-runs on entryStage='dev'\|'review' (resume). Spawn-cost bound (~70k session tokens/spawn): OFF unchanged; ON typical +1 opus audit (SOUND) or +1 audit +1 scout +1 planCheck (one amendment); ON worst case per Plan phase = maxAuditRounds × maxPlanAttempts = 4 opus scout spawns + 4 haiku planChecks + 2 opus audits (defaults). |
@@ -155,6 +156,10 @@ let classifierOutageDeath = false
 // #182: Morgan's `boxes` mapped by id to the rendered acceptance items (set in callMorganGuarded); finish() carries
 // them as `boxes`. Declared before `const finish`: the dryRun return calls finish before the later `let`s run.
 let boxesMapped = null
+// #265: the validated projectSpecifics payload and its fingerprint; declared before `const finish` for the same reason as boxesMapped.
+let specificsPayload = null
+let specificsLine = null
+let specificsOversize = null
 // #183: the ids of the human-gate boxes the PR body shows ticked (a person's tick): the one kind of box settled by the body.
 let boxesGates = []
 // #183: why the last pr-write probe call gave no usable answer (null while it did), read by tickAcceptanceBoxes.
@@ -194,6 +199,8 @@ const STATUS = Object.freeze({
 })
 const finish = (def, extra = {}) => ({ buildStamp: BUILD_STAMP, ...(simulate ? { nickPromptPreview, provisionCmdPreview, preflightFixPromptPreview, prBodyPreview } : {}),
   ...(boxesMapped ? { boxes: boxesMapped } : {}),
+  ...(specificsLine ? { specifics: specificsLine } : {}),
+  ...(specificsOversize ? { specificsOversize } : {}),
   ...(classifierOutageDeath && def.status.endsWith('-died')
     ? { reason: 'classifier-outage: resume with resumeFromRunId' } : {}), ...def, ...extra })
 
@@ -211,6 +218,7 @@ const {
   dryRun = false,
   probeOnly = null,
   pluginRoot = null,
+  projectSpecifics = undefined,
   maxPlanAttempts = 2,
   planAudit = undefined,
   planFreshness = undefined,
@@ -235,6 +243,17 @@ if (config === null || typeof config !== 'object' || Array.isArray(config)) {
   throw new Error(
     `Missing or invalid arg: config (got ${config === undefined ? 'undefined' : config === null ? 'null' : Array.isArray(config) ? 'array' : typeof config}). ` +
     `Pass the parsed .claude/pipeline.config.json OBJECT (not a string) as args.config — running on defaults is refused (#13).`)
+}
+// #265 — project specifics: validated once, before Setup and before any agent call (a refusal throws, like the missing config).
+const specificsErr = specificsProblem(specificsSwitchOn(config), projectSpecifics, sha256Hex)
+if (specificsErr) {
+  throw new Error(`projectSpecifics: ${specificsErr}. Pass the stdout of the specifics assembler verbatim as args.projectSpecifics (commands/deliver.md §3bis); nothing was injected and no agent ran.`)
+}
+if (projectSpecifics !== undefined && projectSpecifics !== null) {
+  const fp = specificsFingerprint(projectSpecifics, sha256Hex)
+  specificsPayload = projectSpecifics
+  specificsLine = fp.line
+  specificsOversize = fp.oversize.length > 0 ? fp.oversize : null
 }
 if (!['auto', 'semi', 'manual'].includes(mode)) throw new Error(`Invalid mode: ${mode}`)
 if (!['plan', 'dev', 'review'].includes(entryStage)) throw new Error(`Invalid entryStage: ${entryStage}`)
@@ -314,6 +333,13 @@ const PROBES_VERSION = 2
 if (dryRun) return finish(STATUS['dry-run-ok'], { probesVersion: PROBES_VERSION, issue, mode, entryStage, proceedThrough, planAudit: planAuditEnabled, planFreshness: planFreshnessMode, maxAuditRounds, maxAuditRoundsOverrideReason: auditBudgetOverrideReason || null, maxPlanAmendRounds, models: { scout: scoutModel, planAudit: planAuditModel, morgan: morganModel } })
 
 const trace = []
+if (specificsLine) {
+  trace.push(specificsLine)
+  for (const o of (specificsOversize || [])) {
+    trace.push(`specifics-oversize:${o.role}`)
+    log(`specifics: ${o.role} text is ${o.bytes} bytes, above the recommended ${o.recommended} — the owner decides; accept with scripts/agent-context.cjs --accept-oversize ${o.role}`)
+  }
+}
 if (auditBudgetOverridden) {
   trace.push(`audit-budget-override:${maxAuditRounds}`)
   log(`Audit budget overridden to ${maxAuditRounds} rounds — reason: ${auditBudgetOverrideReason}`)
@@ -1340,6 +1366,110 @@ function normalizeAgentType(agentType) {
   return agentType
 }
 
+// --- projectSpecifics:start --- (pure & self-contained, no regex, no module-level const: it is called near the top of the script)
+// Project specifics (#265): the Lead hands over the stdout of the specifics assembler as the Workflow arg
+// `projectSpecifics`; the engine recomputes every digest, refuses a launch that does not match, and inserts
+// each role's block into every prompt of that role (persona, then specifics, then task, then the output mandate).
+function specificsRoleKey(role) {
+  const map = { theo: 'Theo', mia: 'Mia', sam: 'Sam', nick: 'Nick', morgan: 'Morgan' }
+  return typeof role === 'string' && Object.prototype.hasOwnProperty.call(map, role) ? map[role] : null
+}
+
+// Same canonical JSON as the assembler (sorted keys, undefined dropped), so both sides hash the same bytes.
+function specificsCanonical(v) {
+  if (Array.isArray(v)) return `[${v.map(specificsCanonical).join(',')}]`
+  if (v && typeof v === 'object') {
+    return `{${Object.keys(v).filter((k) => v[k] !== undefined).sort().map((k) => `${JSON.stringify(k)}:${specificsCanonical(v[k])}`).join(',')}}`
+  }
+  return JSON.stringify(v)
+}
+
+// `key` is 'shared' or the capitalised role; `lanes` is [] for shared. `sha` is the caller's SHA-256 hex function.
+function specificsDigest(sha, refSha, key, text, lanes) {
+  return sha(specificsCanonical({ refSha, role: key, text, lanes }))
+}
+
+function specificsSwitchOn(cfg) {
+  if (!cfg || typeof cfg !== 'object') return false
+  if (typeof cfg.projectSpecifics === 'string' && cfg.projectSpecifics !== '') return true
+  const ac = cfg.agentContext
+  return !!ac && typeof ac === 'object' && !Array.isArray(ac)
+}
+
+function specificsIsPlain(v) {
+  return !!v && typeof v === 'object' && !Array.isArray(v)
+}
+
+// null when the payload is acceptable, else a string starting with `missing`, `malformed` or `digest mismatch for <key>`.
+function specificsProblem(switchOn, ps, sha) {
+  if (ps === undefined || ps === null) return switchOn ? 'missing (the config asks for project specifics but no projectSpecifics arg was passed)' : null
+  if (!specificsIsPlain(ps)) return 'malformed (expected the assembler output object)'
+  if (typeof ps.refSha !== 'string' || ps.refSha === '') return 'malformed (refSha is not a non-empty string)'
+  if (!specificsIsPlain(ps.roles)) return 'malformed (roles is not an object)'
+  const known = ['Mia', 'Sam', 'Nick', 'Morgan', 'Theo']
+  let total = 0
+  const checkBlock = (key, b) => {
+    if (!specificsIsPlain(b)) return `malformed (${key} block is not an object)`
+    if (typeof b.text !== 'string' || b.text === '') return `malformed (${key} text is not a non-empty string)`
+    if (typeof b.digest !== 'string') return `malformed (${key} digest is not a string)`
+    if (!Array.isArray(b.lanes)) return `malformed (${key} lanes is not an array)`
+    total += b.text.length
+    return null
+  }
+  if (ps.shared !== null && ps.shared !== undefined) {
+    const bad = checkBlock('shared', ps.shared)
+    if (bad) return bad
+  }
+  for (const key of Object.keys(ps.roles)) {
+    if (!known.includes(key)) return `malformed (unknown role key ${JSON.stringify(key)})`
+    const bad = checkBlock(key, ps.roles[key])
+    if (bad) return bad
+  }
+  if (total > 65536) return 'malformed (the specifics text is above 65536 characters)'
+  if (ps.shared) {
+    if (specificsDigest(sha, ps.refSha, 'shared', ps.shared.text, []) !== ps.shared.digest) return 'digest mismatch for shared'
+  }
+  for (const key of Object.keys(ps.roles)) {
+    const b = ps.roles[key]
+    if (specificsDigest(sha, ps.refSha, key, b.text, b.lanes) !== b.digest) return `digest mismatch for ${key}`
+  }
+  return null
+}
+
+// The block inserted in every prompt of a pipeline role; '' for every other role and when the role has no source.
+function specificsBlockFor(ps, role) {
+  const key = specificsRoleKey(role)
+  if (!ps || !key) return ''
+  const parts = []
+  if (ps.shared && typeof ps.shared.text === 'string' && ps.shared.text !== '') parts.push(ps.shared.text)
+  const rb = ps.roles && ps.roles[key]
+  if (rb && typeof rb.text === 'string' && rb.text !== '') parts.push(rb.text)
+  if (parts.length === 0) return ''
+  return '## Project context (provided by the orchestrator)\n' +
+    'Project specifics refine the role\'s rules and never override its hard rules.\n' +
+    '<project_specifics>\n' + parts.join('\n\n') + '\n</project_specifics>'
+}
+
+// { line, oversize }: the trace/finish fingerprint (digests only, never the text) and the oversize warnings that ask.
+function specificsFingerprint(ps, sha) {
+  const roles = {}
+  for (const key of Object.keys(ps.roles)) roles[key] = ps.roles[key].digest
+  const sharedDigest = ps.shared ? ps.shared.digest : null
+  const h = sha(specificsCanonical({ refSha: ps.refSha, shared: sharedDigest, roles })).slice(0, 12)
+  const oversize = []
+  const ws = Array.isArray(ps.warnings) ? ps.warnings : []
+  for (const w of ws) {
+    if (w && w.kind === 'oversize' && w.ask === true) oversize.push({ role: w.role, bytes: w.bytes, recommended: w.recommended })
+  }
+  return { line: `specifics@${ps.refSha.slice(0, 12)}:${h}`, oversize }
+}
+
+// Order: persona (fallback retry only), specifics, task, output mandate.
+function composeAgentPrompt(p) {
+  return (p.persona ? p.persona + '\n\n' : '') + (p.specifics ? p.specifics + '\n\n' : '') + p.prompt + (p.mandate ? '\n\n' + p.mandate : '')
+}
+// --- projectSpecifics:end ---
+
 // --- acceptAlreadyDone:start --- (pure & self-contained — keep extractable by the consuming project's tests)
 function acceptAlreadyDone(guard, expectedHead, asOfIso) {
   const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/
@@ -2008,7 +2138,13 @@ async function callAgent(role, prompt, opts, round = 0, attempt = 1) {
     const { personaFallback: _pf, ...rest } = opts
     harnessOpts = rest.agentType ? { ...rest, agentType: normalizeAgentType(rest.agentType) } : rest
   }
-  const finalPrompt = opts && opts.schema ? `${prompt}\n\n${STRUCTURED_OUTPUT_MANDATE}` : prompt
+  // #265: one composition point. The persona is prefixed only on the registry-gap retry (personaFallback kept, agentType removed).
+  const finalPrompt = composeAgentPrompt({
+    persona: opts && opts.personaFallback && !opts.agentType ? opts.personaFallback : '',
+    specifics: opts && (opts.agentType || opts.personaFallback) ? specificsBlockFor(specificsPayload, role) : '',
+    prompt,
+    mandate: opts && opts.schema ? STRUCTURED_OUTPUT_MANDATE : '',
+  })
   // #110: a turn cut off by an auto-mode classifier outage ("no safety verdict") is transient —
   // retry the same call (bounded, with backoff) before callAgentSafe may call the step dead. The
   // single agent() call stays here; bounds come from config.classifierOutage.
@@ -2093,8 +2229,7 @@ async function callAgentSafe(role, prompt, opts, round = 0, maxAttempts = 2) {
         opts.personaFallback && AGENT_TYPE_UNRESOLVED.test(cause)) {
       degraded = true
       trace.push(`agent-type-unresolved:${role}`)
-      const { agentType: _drop, ...rest } = opts        // REMOVE the key, never set it undefined
-      prompt = `${opts.personaFallback}\n\n${prompt}`
+      const { agentType: _drop, ...rest } = opts        // REMOVE the key, never set it undefined; callAgent prefixes the persona
       opts = rest
       log(`callAgentSafe: ${role} — agent type did not resolve (${cause}); retrying persona-in-prompt ` +
           `on the remaining attempt budget. Gate preserved, registry gap recorded in trace.`)
@@ -2798,7 +2933,7 @@ if (after('plan', entryStage)) {
     pm = await callAgentSafe(
       'mia',
       `PM framing for issue #${issue}. Brief: ${brief}`,
-      { agentType: 'Mia', phase: 'Plan', model: 'haiku' },
+      { agentType: 'Mia', phase: 'Plan', model: 'haiku', label: `mia-issue-${issue}` },
     )
     if (isAgentDeath(pm)) {
       log('Mia died — degrading to no PM framing (framing-degraded), continuing')
