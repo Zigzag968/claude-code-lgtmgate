@@ -15,7 +15,6 @@
       "baseBranch": "main",
       "branchPrefix": "feat/",
       "worktreeRoot": "../worktrees/lgtmgate",
-      "conventionsRule": ".claude/rules/pr-acceptance.md",
       "commands": {
         "build": "echo 'no build step (agent/command/hook definitions + JS/shell templates, no compiled artifact)'",
         "test": "bash templates/test-canonical-guards.sh && node scripts/run-flow-suite.cjs",

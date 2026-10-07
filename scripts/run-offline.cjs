@@ -30,6 +30,7 @@
 //       "logsInclude": ["..."],            // optional, each substring must appear in a log line
 //       "phases": ["Setup", "Dev"],        // optional: the ordered phase() titles of the run, EXACT equality
 //       "callLabelsAbsent": ["diagnose-"], // optional: no agent() call label may start with any of these (a non-empty list of non-empty strings)
+//       "resultIncludes": { "retiredKeyPath": "x" }, // optional: a non-empty object; every key of the run result must equal its value (JSON string compare)
 //       "promptIncludes": { "label": "<call label>", "nth": 0, "includes": ["..."] },
 //                                          // optional (object or non-empty array of them): the prompt of the nth (0-based, default 0)
 //                                          // call carrying that label must contain every string (non-empty list of non-empty strings)
@@ -207,7 +208,7 @@ function findUnused(fixture, calls, cursors) {
 }
 
 // Every key `expect` may carry. Any other key is refused (an ignored key is a silent non-proof, the defect #185 closed for run keys).
-const EXPECT_KEYS = ['status', 'throws', 'reason', 'trace', 'traceExact', 'callLabels', 'logsInclude', 'phases', 'callLabelsAbsent', 'promptIncludes', 'promptOrder']
+const EXPECT_KEYS = ['status', 'throws', 'reason', 'trace', 'traceExact', 'callLabels', 'logsInclude', 'phases', 'callLabelsAbsent', 'promptIncludes', 'promptOrder', 'resultIncludes']
 
 function expectKeyProblems(exp) {
   if (exp === null || typeof exp !== 'object' || Array.isArray(exp)) return []
@@ -308,6 +309,18 @@ function check(fixture, result, logs, calls = [], phases = []) {
     if (!Array.isArray(exp.phases)) problems.push('phases: must be an array')
     else if (phases.length !== exp.phases.length || phases.some((p, i) => p !== exp.phases[i])) {
       problems.push(`phases: expected ${JSON.stringify(exp.phases)}, got ${JSON.stringify(phases)}`)
+    }
+  }
+  if (exp.resultIncludes !== undefined) {
+    const ri = exp.resultIncludes
+    if (ri === null || typeof ri !== 'object' || Array.isArray(ri) || Object.keys(ri).length === 0) {
+      problems.push('resultIncludes: must be a non-empty object')
+    } else {
+      for (const k of Object.keys(ri)) {
+        if (JSON.stringify(result[k]) !== JSON.stringify(ri[k])) {
+          problems.push(`resultIncludes: result.${k} expected ${JSON.stringify(ri[k])}, got ${JSON.stringify(result[k])}`)
+        }
+      }
     }
   }
   if (exp.callLabelsAbsent !== undefined) {

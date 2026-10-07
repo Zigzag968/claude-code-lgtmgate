@@ -108,7 +108,10 @@
           "line": "PROBE name=preflight exit=0 sha=5fbfdf840750936170ea0caa2986e56765751306cca75f230cff37f141b42cdc cmd=874136047142387c5b6bcbcfedfb7409c9281ae2d4ac8c60d8821a85d66f30be json={\"mode\":\"branch\",\"headRef\":\"features/issue-123\",\"branchPrefix\":\"\"}",
           "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=5fbfdf840750936170ea0caa2986e56765751306cca75f230cff37f141b42cdc cmd=874136047142387c5b6bcbcfedfb7409c9281ae2d4ac8c60d8821a85d66f30be json={\"mode\":\"branch\",\"headRef\":\"features/issue-123\",\"branchPrefix\":\"\"}"
         },
-        "config-project-recheck-123": "{\"baseBranch\":\"develop\",\"conventionsRule\":\".claude/rules/conventions.md\"}",
+        "probe-123-lines-config-project-recheck-r0": {
+          "line": "PROBE name=lines exit=0 sha=da14e2853923ece193a3486a739f1f8c976028ca04facc681b98671e83078760 cmd=c5c02b6f6ba24a10fca25807cc8074aaf1416abf9363a69e1e7c13f8f206e222 json={\"lines\":[\"{\\\"baseBranch\\\":\\\"develop\\\"}\"]}",
+          "verify": "VERIFY ok line=PROBE name=lines exit=0 sha=da14e2853923ece193a3486a739f1f8c976028ca04facc681b98671e83078760 cmd=c5c02b6f6ba24a10fca25807cc8074aaf1416abf9363a69e1e7c13f8f206e222 json={\"lines\":[\"{\\\"baseBranch\\\":\\\"develop\\\"}\"]}"
+        },
         "already-done-check-123": {
           "isAlreadyDone": false,
           "isIssueClosed": false,
@@ -124,6 +127,7 @@
         "status": "dev-done",
         "trace": [
           "branch-prefix-fallback-default",
+          "probe:lines:haiku",
           "probe:lines:haiku",
           "probe:provision:haiku",
           "probe:preflight:haiku"

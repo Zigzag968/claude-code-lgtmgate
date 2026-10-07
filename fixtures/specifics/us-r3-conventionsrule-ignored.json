@@ -1,12 +1,15 @@
 {
-  "name": "239-early-read-check",
-  "note": "Synthetic shape built from issue 239 (the raw capture stays private, repository capture policy). A review-stage start (entryStage review) whose PR read fails under the agents' sandbox with a TLS certificate error: the branch probe names the cause (`readFailed`), the run escalates at once with the cause in the reason, and no reviewer is spawned. callLabelsAbsent proves that nothing was spent after the check.",
+  "name": "us-r3-conventionsrule-ignored",
+  "note": "Synthetic shape of #270 (US-R3). A review-stage start whose config still carries the retired convention-rule key: the engine ignores it, traces conventionsRule-ignored:<path> and returns the path as retiredKeyPath in the payload. The baseBranch recheck now goes through a probe (no config-project-recheck- agent call) and reconciles the launch default (develop) to the worktree's main.",
   "args": {
     "pluginRoot": "/plugin",
     "issue": 123,
     "brief": "fix slugify accents",
     "wtPath": "/wt/root/issue-123",
-    "config": {},
+    "config": {
+      "conventionsRule": ".claude/rules/conventions.md",
+      "branchPrefix": "feat/"
+    },
     "mode": "semi",
     "entryStage": "review",
     "prNumber": 42,
@@ -26,8 +29,8 @@
       "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=afc7ba296251e17bc8225ea374288891c4f3ca5d9be5df570ba83f9e2145a676 cmd=874136047142387c5b6bcbcfedfb7409c9281ae2d4ac8c60d8821a85d66f30be json={\"mode\":\"branch\",\"headRef\":null,\"branchPrefix\":\"\",\"readFailed\":\"tls\"}"
     },
     "probe-123-lines-config-project-recheck-r0": {
-      "line": "PROBE name=lines exit=1 sha=da14e2853923ece193a3486a739f1f8c976028ca04facc681b98671e83078760 cmd=c5c02b6f6ba24a10fca25807cc8074aaf1416abf9363a69e1e7c13f8f206e222 json={\"lines\":[]}",
-      "verify": "VERIFY ok line=PROBE name=lines exit=1 sha=da14e2853923ece193a3486a739f1f8c976028ca04facc681b98671e83078760 cmd=c5c02b6f6ba24a10fca25807cc8074aaf1416abf9363a69e1e7c13f8f206e222 json={\"lines\":[]}"
+      "line": "PROBE name=lines exit=0 sha=da14e2853923ece193a3486a739f1f8c976028ca04facc681b98671e83078760 cmd=c5c02b6f6ba24a10fca25807cc8074aaf1416abf9363a69e1e7c13f8f206e222 json={\"lines\":[\"{\\\"baseBranch\\\":\\\"main\\\"}\"]}",
+      "verify": "VERIFY ok line=PROBE name=lines exit=0 sha=da14e2853923ece193a3486a739f1f8c976028ca04facc681b98671e83078760 cmd=c5c02b6f6ba24a10fca25807cc8074aaf1416abf9363a69e1e7c13f8f206e222 json={\"lines\":[\"{\\\"baseBranch\\\":\\\"main\\\"}\"]}"
     },
     "already-done-check-123": {
       "isAlreadyDone": false,
@@ -43,9 +46,17 @@
   "expect": {
     "status": "escalate",
     "reason": "pr-read-failed:tls",
+    "trace": [
+      "conventionsRule-ignored:.claude/rules/conventions.md",
+      "probe:lines:haiku",
+      "probe:lines:haiku",
+      "config-baseBranch-reconciled"
+    ],
     "callLabelsAbsent": [
-      "morgan-",
-      "preflight-123-"
-    ]
+      "config-project-recheck-"
+    ],
+    "resultIncludes": {
+      "retiredKeyPath": ".claude/rules/conventions.md"
+    }
   }
 }
