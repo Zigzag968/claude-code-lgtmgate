@@ -21,11 +21,11 @@
 
 const fs = require('fs')
 
+const { SECRET_REWRITES, PEM_RULE } = require('./lib/secret-rules.cjs')
+
 const RULES = [
-  // GitHub tokens (classic, fine-grained, app), API keys (base64url: `_` included)
-  { id: 'github-token', kind: 'rewrite', re: /\bgh[pousr]_[A-Za-z0-9]{20,}\b/g, to: 'gh*_REDACTED' },
-  { id: 'github-pat', kind: 'rewrite', re: /\bgithub_pat_[A-Za-z0-9_]{20,}\b/g, to: 'github_pat_REDACTED' },
-  { id: 'sk-rk-key', kind: 'rewrite', re: /\b(sk|rk)-[A-Za-z0-9_-]{20,}\b/g, to: '$1-REDACTED' },
+  // GitHub tokens, API keys (shared with scripts/agent-context.cjs: scripts/lib/secret-rules.cjs)
+  ...SECRET_REWRITES,
   // temp directories: the whole path goes (uid, project directory and run id are all session-private);
   // `/var/folders` may carry the `/private` of its real path
   { id: 'temp-private-tmp', kind: 'rewrite', re: /\/private\/tmp\/[^\s"'`\\]*/g, to: '/tmp/redacted' },
@@ -46,8 +46,7 @@ const RULES = [
   { id: 'signed-url', kind: 'rewrite', re: /([?&](?:token|sig|signature|X-Amz-Signature|access_token)=)[^&\s"'`\\]+/gi, to: '$1REDACTED' },
   // the string value of a secret-named JSON key (whole name, any case): `authSecurityBoundarySignal` is not one
   { id: 'secret-key-value', kind: 'json-key', names: ['apiKey', 'api_key', 'secret', 'password', 'passwd', 'token', 'access_token', 'refresh_token', 'client_secret', 'private_key', 'authorization'], to: 'REDACTED' },
-  // a PEM private-key header (RSA, EC, OPENSSH, ENCRYPTED...): no safe rewrite, the run refuses
-  { id: 'pem-private-key', kind: 'refuse', re: /-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----/ },
+  PEM_RULE,
 ]
 // A json-key rule compiles once: `key` for a parsed key (whole name), `plain` and `head` for the text form. A pair is
 // the whole key name between quotes, a colon, then a non-empty string value: plain (`"k":"v"`, value up to the

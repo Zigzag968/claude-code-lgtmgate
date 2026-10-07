@@ -39,5 +39,8 @@
   },
   "planAudit": false,
   "planFreshness": "advisory",
-  "stack": ""
+  "stack": "",
+  "projectSpecifics": "",
+  "agentContext": { "*": [] },
+  "specifics": { "acceptOversize": {} }
 }
