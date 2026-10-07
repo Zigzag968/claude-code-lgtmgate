@@ -66,9 +66,14 @@
 //      their comments are stripped (a stub injects nothing into an agent's prompt). Since #271 the lane stub
 //      (laneStub of the same module, frontmatter and comments stripped) and the persona sentence
 //      (laneSentence of scripts/agent-context.cjs) are held to the same vocabulary rule. A failure names the stub.
+//   audit (#289): the code-quality ratchet. Rule 2 first (cheap): scripts/audit-baseline.json may never raise a
+//      (file, rule) count above `git show origin/main:scripts/audit-baseline.json` (absent = 0); with no base baseline
+//      (bootstrap) it prints `SKIP: baseline-vs-origin (no base baseline)`, and with an unresolvable origin/main it FAILS
+//      like R1. Rule 1: `node scripts/audit.cjs --check` (size, naming, lint against that baseline); its lines are
+//      printed verbatim and a nonzero exit fails. A missing baseline FAILS. Needs `npm ci` and the pinned ruff.
 //
 // Env (test seams, all optional)
-//   GUARDS_ONLY            comma list among r1,wired,version,parity,budgets,instructions,status,phases,init-stubs (default: all)
+//   GUARDS_ONLY            comma list among r1,wired,version,parity,budgets,instructions,status,phases,init-stubs,audit (default: all)
 //   GUARDS_BASE_FILE       workflow file used as the base for R1 (default: git show origin/main:<file>)
 //   GUARDS_BRANCH_FILE     workflow file used as the branch for R1 (default: workflows/deliver-pipeline.js)
 //   GUARDS_BASE_MANIFEST   base plugin.json path for the version floor (default: git show origin/main:...)
@@ -92,7 +97,7 @@ const WORKFLOW = 'workflows/deliver-pipeline.js'
 const MANIFEST = '.claude-plugin/plugin.json'
 const GUARDS_YML = '.github/workflows/guards.yml'
 const DELIVER_MD = 'commands/deliver.md'
-const ONLY = process.env.GUARDS_ONLY ? process.env.GUARDS_ONLY.split(',') : ['r1', 'wired', 'version', 'parity', 'budgets', 'instructions', 'status', 'phases', 'init-stubs']
+const ONLY = process.env.GUARDS_ONLY ? process.env.GUARDS_ONLY.split(',') : ['r1', 'wired', 'version', 'parity', 'budgets', 'instructions', 'status', 'phases', 'init-stubs', 'audit']
 
 // Suites that are NOT named in guards.yml, each with its reason. Add a suite here only if it is
 // red on main (report it, do not wire it) or is run through another runner.
@@ -623,6 +628,54 @@ function checkInitStubs() {
   out(`PASS: init-stubs: ${names.length} stubs, ${laneStubs} lane stub, ${laneSentences} lane sentence, no engine vocabulary, empty once comments are stripped`)
 }
 
+// ---- audit (#289) -------------------------------------------------------------------------------
+const AUDIT_BASELINE = 'scripts/audit-baseline.json'
+function parseJsonOr(text) {
+  try { return JSON.parse(text) } catch (_) { return null }
+}
+function originResolves() {
+  try {
+    execFileSync('git', ['rev-parse', '--verify', '--quiet', 'origin/main'], { cwd: ROOT, stdio: 'ignore' })
+    return true
+  } catch (_) {
+    return false
+  }
+}
+// Rule 2: the baseline only goes down. Returns false (after printing the named reds) when it was raised vs origin/main.
+function auditBaselineHolds(branchText) {
+  const branchBaseline = parseJsonOr(branchText)
+  if (branchBaseline === null || typeof branchBaseline !== 'object') { bad(`FAIL: audit: ${AUDIT_BASELINE} missing or invalid`); return false }
+  const originText = gitShow(AUDIT_BASELINE)
+  if (originText === null) {
+    if (!originResolves()) { bad(`FAIL: audit: baseline-vs-origin: cannot read base ${AUDIT_BASELINE} (origin/main not resolvable) — run 'git fetch origin main' first`); return false }
+    out('SKIP: baseline-vs-origin (no base baseline)')
+    return true
+  }
+  const originBaseline = parseJsonOr(originText) || {}
+  let held = true
+  for (const [file, rules] of Object.entries(branchBaseline)) {
+    for (const [rule, count] of Object.entries(rules)) {
+      const allowed = (originBaseline[file] && originBaseline[file][rule]) || 0
+      if (count > allowed) { bad(`FAIL: audit: baseline-vs-origin ${file} ${rule} ${count} > origin/main ${allowed}`); held = false }
+    }
+  }
+  return held
+}
+// Rule 1: the audit ratchet (size, naming, lint) of scripts/audit.cjs, run as the CI and the pre-commit run it.
+function checkAudit() {
+  const branchText = readOr(path.join(ROOT, AUDIT_BASELINE))
+  if (branchText === null) { bad(`FAIL: audit: ${AUDIT_BASELINE} missing`); return }
+  if (!auditBaselineHolds(branchText)) return
+  const printLines = (text) => { for (const line of String(text || '').split('\n')) if (line !== '') out(line) }
+  try {
+    printLines(execFileSync(process.execPath, [path.join(__dirname, 'audit.cjs'), '--check'], { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }))
+  } catch (failure) {
+    failed++
+    printLines(failure.stdout)
+    printLines(failure.stderr)
+  }
+}
+
 if (ONLY.includes('r1')) checkR1()
 if (ONLY.includes('wired')) checkWired()
 if (ONLY.includes('version')) checkVersion()
@@ -632,4 +685,5 @@ if (ONLY.includes('instructions')) checkInstructionsWired()
 if (ONLY.includes('status')) checkStatusTable()
 if (ONLY.includes('phases')) checkPhaseTitles()
 if (ONLY.includes('init-stubs')) checkInitStubs()
+if (ONLY.includes('audit')) checkAudit()
 process.exit(failed ? 1 : 0)

@@ -1,0 +1,17 @@
+{
+  "name": "lgtmgate-dev-tooling",
+  "private": true,
+  "description": "Dev tooling of this repository only; not shipped to consumers",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "devDependencies": {
+    "@ls-lint/ls-lint": "2.3.1",
+    "eslint": "10.12.0",
+    "eslint-plugin-unicorn": "77.0.0",
+    "shellcheck": "4.1.0"
+  },
+  "scripts": {
+    "lint": "node scripts/audit.cjs --check"
+  }
+}
