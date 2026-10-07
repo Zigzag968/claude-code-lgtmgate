@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Self-test of scripts/agent-context.cjs (#264): per-role specifics assembled from the base ref of a
-# synthetic git repo built in $TMPDIR from testdata-agent-context/base. Covers the source order, the
+# synthetic git repo built in $TMPDIR from fixtures/agent-context/base. Covers the source order, the
 # `*`/role lists, dedup, the file-level refusals (exit 3), the frontmatter schema (exit 2), the caps
 # (warning at the recommended size, exit 4 at the hard ceiling), the digest (recomputed independently),
 # the base-ref-only config read and --accept-oversize.
@@ -11,7 +11,7 @@ set -u
 cd "$(dirname "$0")/.."
 ROOT=$(pwd)
 AC="$ROOT/scripts/agent-context.cjs"
-BASE="$ROOT/testdata-agent-context/base"
+BASE="$ROOT/fixtures/agent-context/base"
 PASS=0; FAIL=0
 ok()  { PASS=$((PASS+1)); echo "ok: $1"; }
 bad() { FAIL=$((FAIL+1)); echo "FAIL: $1"; }
@@ -27,6 +27,8 @@ new_repo() {
   git -C "$1" config commit.gpgsign false
   git -C "$1" config core.hooksPath /dev/null
   cp -R "$BASE/." "$1/"
+  # the config fixture is stored as .json.in so the recursive *.json replay collector ignores it
+  mv "$1/.claude/pipeline.config.json.in" "$1/.claude/pipeline.config.json"
 }
 stage() { git -C "$1" add -A; }
 commit_ref() {
