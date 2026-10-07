@@ -1,0 +1,114 @@
+{
+  "name": "us-c7-oversize-accepted",
+  "note": "#265: an oversize warning that asks is traced and returned (run 1); once the owner accepted the size the assembler no longer warns and the same text runs with no oversize entry (run 2)",
+  "runs": [
+    {
+      "args": {
+        "pluginRoot": "/plugin",
+        "issue": 80,
+        "brief": "probe foundation",
+        "wtPath": "/wt/root/issue-80",
+        "config": {
+          "branchPrefix": "features/",
+          "projectSpecifics": ".claude/lgtmgate"
+        },
+        "mode": "auto",
+        "probeOnly": {
+          "name": "lines",
+          "cmd": "printf 'hi\\n'",
+          "label": "selftest",
+          "round": 0
+        },
+        "projectSpecifics": {
+          "ref": "origin/main",
+          "refSha": "c0ffeec0ffeec0ffeec0ffeec0ffeec0ffeec0ff",
+          "shared": null,
+          "roles": {
+            "Nick": {
+              "text": "NICK-MARK long rule",
+              "digest": "5580bd3cce13d8776f99b47cd9b4cf6999a80bac02ae064c0799efe42e80d9a3",
+              "bytes": 19,
+              "lanes": []
+            }
+          },
+          "files": [],
+          "warnings": [
+            {
+              "kind": "oversize",
+              "role": "Nick",
+              "bytes": 9000,
+              "recommended": 6144,
+              "accepted": null,
+              "ask": true
+            }
+          ]
+        }
+      },
+      "calls": {
+        "probe-80-lines-selftest-r0": {
+          "line": "PROBE name=lines exit=0 sha=98ea6e4f216f2fb4b69fff9b3a44842c38686ca685f3f55dc48c5d3fb1107be4 cmd=05cabbde9ed45f71fc2d5268d563df5d2498c0f21cfdd4462924b1836c043364 json={\"lines\":[\"hi\"]}",
+          "verify": "VERIFY ok line=PROBE name=lines exit=0 sha=98ea6e4f216f2fb4b69fff9b3a44842c38686ca685f3f55dc48c5d3fb1107be4 cmd=05cabbde9ed45f71fc2d5268d563df5d2498c0f21cfdd4462924b1836c043364 json={\"lines\":[\"hi\"]}"
+        }
+      },
+      "expect": {
+        "status": "dry-run-ok",
+        "reason": "probe-only",
+        "trace": [
+          "specifics@c0ffeec0ffee:2abc39b07156",
+          "specifics-oversize:Nick",
+          "probe:lines:haiku"
+        ],
+        "traceExact": true
+      }
+    },
+    {
+      "args": {
+        "pluginRoot": "/plugin",
+        "issue": 80,
+        "brief": "probe foundation",
+        "wtPath": "/wt/root/issue-80",
+        "config": {
+          "branchPrefix": "features/",
+          "projectSpecifics": ".claude/lgtmgate"
+        },
+        "mode": "auto",
+        "probeOnly": {
+          "name": "lines",
+          "cmd": "printf 'hi\\n'",
+          "label": "selftest",
+          "round": 0
+        },
+        "projectSpecifics": {
+          "ref": "origin/main",
+          "refSha": "c0ffeec0ffeec0ffeec0ffeec0ffeec0ffeec0ff",
+          "shared": null,
+          "roles": {
+            "Nick": {
+              "text": "NICK-MARK long rule",
+              "digest": "5580bd3cce13d8776f99b47cd9b4cf6999a80bac02ae064c0799efe42e80d9a3",
+              "bytes": 19,
+              "lanes": []
+            }
+          },
+          "files": [],
+          "warnings": []
+        }
+      },
+      "calls": {
+        "probe-80-lines-selftest-r0": {
+          "line": "PROBE name=lines exit=0 sha=98ea6e4f216f2fb4b69fff9b3a44842c38686ca685f3f55dc48c5d3fb1107be4 cmd=05cabbde9ed45f71fc2d5268d563df5d2498c0f21cfdd4462924b1836c043364 json={\"lines\":[\"hi\"]}",
+          "verify": "VERIFY ok line=PROBE name=lines exit=0 sha=98ea6e4f216f2fb4b69fff9b3a44842c38686ca685f3f55dc48c5d3fb1107be4 cmd=05cabbde9ed45f71fc2d5268d563df5d2498c0f21cfdd4462924b1836c043364 json={\"lines\":[\"hi\"]}"
+        }
+      },
+      "expect": {
+        "status": "dry-run-ok",
+        "reason": "probe-only",
+        "trace": [
+          "specifics@c0ffeec0ffee:2abc39b07156",
+          "probe:lines:haiku"
+        ],
+        "traceExact": true
+      }
+    }
+  ]
+}

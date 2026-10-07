@@ -1,0 +1,679 @@
+{
+  "name": "us-c2-redispatch",
+  "note": "#265: the specifics also reach the prompts of the later dispatches of a role: the preflight fix, the fix round after a review, the pre-handoff squash (and, in run 3, the plan amendment round)",
+  "runs": [
+    {
+      "args": {
+        "issue": 185,
+        "brief": "_",
+        "wtPath": "_",
+        "mode": "auto",
+        "pmReview": false,
+        "config": {
+          "ghProject": {
+            "owner": "_",
+            "projectNumber": 1
+          },
+          "repo": "_",
+          "baseBranch": "_",
+          "branchPrefix": "feat/",
+          "worktreeRoot": "_",
+          "conventionsRule": "_",
+          "commands": {
+            "build": "_",
+            "test": "bash templates/test-canonical-guards.sh && node scripts/run-flow-suite.cjs",
+            "format": "_"
+          },
+          "ciChecks": [
+            "_",
+            "_"
+          ],
+          "oneWayDoorKinds": [
+            "status",
+            "agent",
+            "hook",
+            "seam"
+          ],
+          "engineRepo": true,
+          "oneWayDoorPaths": [
+            "hooks/**",
+            "!hooks/test-*",
+            "docs/critical-paths.md"
+          ],
+          "provision": {
+            "extraLinks": []
+          },
+          "preflight": {
+            "canonicalStringBan": [],
+            "envSymlink": "ignore"
+          },
+          "regressionGuard": {
+            "testGlob": "",
+            "testFnPattern": "",
+            "baselineCmd": ""
+          },
+          "projectSpecifics": ".claude/lgtmgate"
+        },
+        "configLocal": {
+          "worktreeRoot": "_"
+        },
+        "pluginRoot": "_",
+        "projectSpecifics": {
+          "ref": "origin/main",
+          "refSha": "c0ffeec0ffeec0ffeec0ffeec0ffeec0ffeec0ff",
+          "shared": {
+            "text": "SHARED-MARK rule for every role",
+            "digest": "8c918c0fc8685a299b17e217a714d5ba300ca5e57741fa3603bb6a56fad7e950",
+            "bytes": 31,
+            "lanes": []
+          },
+          "roles": {
+            "Sam": {
+              "text": "SAM-MARK rule",
+              "digest": "4c036a6d0ffdfcc48af64555a91f27b3edfa093d7d5c908ff1631bb661145984",
+              "bytes": 13,
+              "lanes": []
+            },
+            "Nick": {
+              "text": "NICK-MARK rule",
+              "digest": "a12338937fd587e743309bbb3cae7626e828108a6afce452f333902c061009a5",
+              "bytes": 14,
+              "lanes": []
+            },
+            "Morgan": {
+              "text": "MORGAN-MARK rule",
+              "digest": "b8bffd2909d79048ffbd18c3b2e0286be240ae7cd222e79550cf85d4e52195c7",
+              "bytes": 16,
+              "lanes": []
+            }
+          },
+          "files": [],
+          "warnings": []
+        }
+      },
+      "calls": {
+        "probe-185-lines-plugin-version-r0": {
+          "line": "PROBE name=lines exit=0 sha=0710ad5aeed8f41c78c28bb67822cc6d938912af28e0368e7a1b2bf6d670b99f cmd=faa7a8a1c26ebb071130b90d20d883cda8f6acb6cc149d06b15e3e1684c3ecfa json={\"lines\":[\"PLUGIN-VERSION:@@ENGINE_VERSION@@\"]}",
+          "verify": "VERIFY ok line=PROBE name=lines exit=0 sha=0710ad5aeed8f41c78c28bb67822cc6d938912af28e0368e7a1b2bf6d670b99f cmd=faa7a8a1c26ebb071130b90d20d883cda8f6acb6cc149d06b15e3e1684c3ecfa json={\"lines\":[\"PLUGIN-VERSION:@@ENGINE_VERSION@@\"]}"
+        },
+        "probe-185-provision-provision-r0": {
+          "line": "PROBE name=provision exit=0 sha=0a0001500e6f649a575d2515664fed6807d2e283f35ade49abafa5cfd5ddcda7 cmd=d34e45906d4eb0322470588a0096cdc73ddbc76d9af4e28d5166c17de634a97d json={\"version\":2,\"linked\":[],\"missing\":[],\"skipped\":false}",
+          "verify": "VERIFY ok line=PROBE name=provision exit=0 sha=0a0001500e6f649a575d2515664fed6807d2e283f35ade49abafa5cfd5ddcda7 cmd=d34e45906d4eb0322470588a0096cdc73ddbc76d9af4e28d5166c17de634a97d json={\"version\":2,\"linked\":[],\"missing\":[],\"skipped\":false}"
+        },
+        "probe-185-provision-freshness-provision-freshness-r0": {
+          "line": "PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b cmd=5430d2285cdf1982f619b08cf794226d4a3e082cac2ffdb9d7944e1ef1cbccc9 json={\"state\":\"fresh\",\"behind\":0,\"own\":0}",
+          "verify": "VERIFY ok line=PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b cmd=5430d2285cdf1982f619b08cf794226d4a3e082cac2ffdb9d7944e1ef1cbccc9 json={\"state\":\"fresh\",\"behind\":0,\"own\":0}"
+        },
+        "diagnose-issue-185": {
+          "confirmed": true,
+          "evidence": "_",
+          "actualCause": "",
+          "laneOk": true,
+          "requiredScout": "",
+          "persistentStateSignal": false,
+          "authSecurityBoundarySignal": false,
+          "deployConfigSignal": false,
+          "immatureVendorApiSignal": false,
+          "designStepSignalEvidence": "_",
+          "issueClassificationMismatch": false
+        },
+        "scout-issue-185-1": {
+          "decision": "_",
+          "planPath": "_",
+          "targetFiles": [
+            "_",
+            "_",
+            "_",
+            "_"
+          ],
+          "rationale": "_",
+          "acceptanceItems": [
+            {
+              "text": "`node scripts/run-offline.cjs fixtures/relaunch/dev-after-plan.json | tail -n 1` prints `[offline] status=ok passed=1 failed=0`; that fixture's second run (entryStage dev, plan carried from run 1) asserts phases exactly Setup,Dev, a trace with no provision-freshness probe, and no call label starting diagnose-, scout-, plan-check- or plan-audit-",
+              "humanGate": false,
+              "command": "_"
+            },
+            {
+              "text": "`bash scripts/test-run-offline.sh | grep -c '^ok: two-run'` prints `2` (the new two-run cases)",
+              "humanGate": false,
+              "command": "_"
+            },
+            {
+              "text": "`bash scripts/test-run-offline.sh > /dev/null; echo $?` prints `0` as its last line",
+              "humanGate": false,
+              "command": "_"
+            },
+            {
+              "text": "`OFFLINE_STRICT=1 node scripts/run-offline.cjs --all fixtures > /dev/null; echo $?` prints `0` as its last line",
+              "humanGate": false,
+              "command": "_"
+            },
+            {
+              "text": "`node scripts/guards.cjs; echo $?` prints `0` as its last line, so no R1 counter is above the base",
+              "humanGate": false,
+              "command": "_"
+            },
+            {
+              "text": "`git diff --name-only origin/main...HEAD -- workflows/deliver-pipeline.js | wc -l | tr -d ' '` prints `0` (the engine file is untouched)",
+              "humanGate": false,
+              "command": "_"
+            }
+          ],
+          "plan": "_\n\n_\n\n_\n\n_\n\n_\n_\n\n_\n\n_\n\n_\n_\n_\n\n_\n\n_\n_\n_\n_\n_\n_\n\n_\n\n_\n_\n_\n_\n_\n_\n_\n\n_\n\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n\n- [ ] <!-- ac:1 --> `node scripts/run-offline.cjs fixtures/relaunch/dev-after-plan.json | tail -n 1` prints `[offline] status=ok passed=1 failed=0`; that fixture's second run (entryStage dev, plan carried from run 1) asserts phases exactly Setup,Dev, a trace with no provision-freshness probe, and no call label starting diagnose-, scout-, plan-check- or plan-audit-\n- [ ] <!-- ac:2 --> `bash scripts/test-run-offline.sh | grep -c '^ok: two-run'` prints `2` (the new two-run cases)\n- [ ] <!-- ac:3 --> `bash scripts/test-run-offline.sh > /dev/null; echo $?` prints `0` as its last line\n- [ ] <!-- ac:4 --> `OFFLINE_STRICT=1 node scripts/run-offline.cjs --all fixtures > /dev/null; echo $?` prints `0` as its last line\n- [ ] <!-- ac:5 --> `node scripts/guards.cjs; echo $?` prints `0` as its last line, so no R1 counter is above the base\n- [ ] <!-- ac:6 --> `git diff --name-only origin/main...HEAD -- workflows/deliver-pipeline.js | wc -l | tr -d ' '` prints `0` (the engine file is untouched)\n\n_\n\n_\n\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n"
+        },
+        "plan-check-185-1": {
+          "verdict": "CONFORMING",
+          "issues": []
+        },
+        "probe-185-preflight-dev-r0": {
+          "line": "PROBE name=preflight exit=0 sha=5cb984bc5618fc5f042965705e1dac42914fd6aedfdac92d26681085dc782d45 cmd=9675d9ef114afdb7f56c978ee0ec32c198204ec50ff51e562f8d60599e4825c9 json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/Volumes/<disk>/Dev/Apps/claude-code-lgtmgate/.git/worktrees/issue-185\",\"writable\":true}",
+          "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=5cb984bc5618fc5f042965705e1dac42914fd6aedfdac92d26681085dc782d45 cmd=9675d9ef114afdb7f56c978ee0ec32c198204ec50ff51e562f8d60599e4825c9 json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/Volumes/<disk>/Dev/Apps/claude-code-lgtmgate/.git/worktrees/issue-185\",\"writable\":true}"
+        },
+        "nick-issue-185": {
+          "prNumber": 206,
+          "branch": "_",
+          "testsPass": true,
+          "summary": "_"
+        },
+        "probe-185-preflight-branch-r0": {
+          "line": "PROBE name=preflight exit=0 sha=dc2761f983d4c5e0ab724aa755bdae3d1f5d7e5455028105001fac0e9f3807af cmd=4576e0d85c4dedff3b6e1a3a44fa90be457627660549c4f3886d8d598faf1fa8 json={\"mode\":\"branch\",\"headRef\":\"feat/issue-185\",\"branchPrefix\":\"feat/\"}",
+          "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=dc2761f983d4c5e0ab724aa755bdae3d1f5d7e5455028105001fac0e9f3807af cmd=4576e0d85c4dedff3b6e1a3a44fa90be457627660549c4f3886d8d598faf1fa8 json={\"mode\":\"branch\",\"headRef\":\"feat/issue-185\",\"branchPrefix\":\"feat/\"}"
+        },
+        "probe-185-git-rev-list-count-worktree-behind-206-r0": {
+          "line": "_",
+          "verify": "_"
+        },
+        "preflight-185-206-0": {
+          "pass": false,
+          "testCommandRun": "cd \"/Volumes/<disk>/Dev/Worktrees/claude-code-lgtmgate/issue-185\" && bash templates/test-canonical-guards.sh && node scripts/run-flow-suite.cjs",
+          "issues": [
+            "_",
+            "_"
+          ],
+          "failedChecks": []
+        },
+        "nick-preflight-fix-185-206": "_",
+        "preflight-185-206-1": {
+          "pass": true,
+          "issues": [],
+          "testCommandRun": "cd \"/Volumes/<disk>/Dev/Worktrees/claude-code-lgtmgate/issue-185\" && bash templates/test-canonical-guards.sh && node scripts/run-flow-suite.cjs"
+        },
+        "probe-185-pr-state-window-start-r0": {
+          "line": "PROBE name=pr-state exit=0 sha=ce2e8943f842dd7d2bed076a624f8e9c732727557397ee99985a198c021b587d cmd=3acd9e3d494a7fbaca683f40c7e506bc80ced9a2fd0f53f9425733d199d985b9 json={\"now\":\"2026-10-03T17:39:56Z\",\"headRefName\":\"feat/issue-185\",\"headRefOid\":\"a996535df7d4c4b7b66f0ffa37c7a503c78b5990\",\"bodyDigest\":\"5a0fdef5ceaa\",\"acceptanceChecked\":[],\"decisionLog\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-10-03T17:29:04Z\",\"commitCount\":2,\"reviewCommentIds\":[],\"openIssues\":null,\"openIssuesTruncated\":false}",
+          "verify": "VERIFY ok line=PROBE name=pr-state exit=0 sha=ce2e8943f842dd7d2bed076a624f8e9c732727557397ee99985a198c021b587d cmd=3acd9e3d494a7fbaca683f40c7e506bc80ced9a2fd0f53f9425733d199d985b9 json={\"now\":\"2026-10-03T17:39:56Z\",\"headRefName\":\"feat/issue-185\",\"headRefOid\":\"a996535df7d4c4b7b66f0ffa37c7a503c78b5990\",\"bodyDigest\":\"5a0fdef5ceaa\",\"acceptanceChecked\":[],\"decisionLog\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-10-03T17:29:04Z\",\"commitCount\":2,\"reviewCommentIds\":[],\"openIssues\":null,\"openIssuesTruncated\":false}"
+        },
+        "morgan-pr-185-206-r0": {
+          "verdict": "LGTM",
+          "ciGreen": true,
+          "items": [],
+          "boxes": [
+            {
+              "id": 1,
+              "proven": true,
+              "proof": "_"
+            },
+            {
+              "id": 2,
+              "proven": true,
+              "proof": "_"
+            },
+            {
+              "id": 3,
+              "proven": true,
+              "proof": "_"
+            },
+            {
+              "id": 4,
+              "proven": true,
+              "proof": "_"
+            },
+            {
+              "id": 5,
+              "proven": true,
+              "proof": "_"
+            },
+            {
+              "id": 6,
+              "proven": true,
+              "proof": "_"
+            }
+          ]
+        },
+        "probe-185-pr-state-window-end-r0": {
+          "line": "PROBE name=pr-state exit=0 sha=ef588e8a052fe426c596adf12f33c625c9966b19848adb1c9578281ac7573f02 cmd=d03155f2bcc4cc1198bed2e4cc8cde68562ea2d70fb8d245166684e29bb5cab5 json={\"now\":\"2026-10-03T17:42:40Z\",\"headRefName\":\"feat/issue-185\",\"headRefOid\":\"a996535df7d4c4b7b66f0ffa37c7a503c78b5990\",\"bodyDigest\":\"5a0fdef5ceaa\",\"acceptanceChecked\":[],\"decisionLog\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-10-03T17:29:04Z\",\"commitCount\":2,\"reviewCommentIds\":[\"IC_kwDOUzMNuc8AAAABY_IDVQ\"],\"openIssues\":[],\"openIssuesTruncated\":false}",
+          "verify": "VERIFY ok line=PROBE name=pr-state exit=0 sha=ef588e8a052fe426c596adf12f33c625c9966b19848adb1c9578281ac7573f02 cmd=d03155f2bcc4cc1198bed2e4cc8cde68562ea2d70fb8d245166684e29bb5cab5 json={\"now\":\"2026-10-03T17:42:40Z\",\"headRefName\":\"feat/issue-185\",\"headRefOid\":\"a996535df7d4c4b7b66f0ffa37c7a503c78b5990\",\"bodyDigest\":\"5a0fdef5ceaa\",\"acceptanceChecked\":[],\"decisionLog\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-10-03T17:29:04Z\",\"commitCount\":2,\"reviewCommentIds\":[\"IC_kwDOUzMNuc8AAAABY_IDVQ\"],\"openIssues\":[],\"openIssuesTruncated\":false}"
+        },
+        "probe-185-pr-write-acceptance-tick-r0": {
+          "line": "PROBE name=pr-write exit=0 sha=db2f30184e8065f3d07db54de61195197fdc381c47b9ebb2b27e38b0c62b0499 cmd=2802f2e66e6820d276fa8b9e471b189c60a0a00507f49549c93069a2ce354d60 json={\"op\":\"body-splice\",\"result\":\"written\",\"reason\":null,\"bytes\":3728}",
+          "verify": "_"
+        },
+        "probe-185-pr-write-acceptance-tick-retry-r0": {
+          "line": "PROBE name=pr-write exit=0 sha=db2f30184e8065f3d07db54de61195197fdc381c47b9ebb2b27e38b0c62b0499 cmd=47f1a27aa34ac763dfe5be4d4e728bd81421cfac200fc91d96e066f879b54d56 json={\"op\":\"body-splice\",\"result\":\"written\",\"reason\":null,\"bytes\":3728}",
+          "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=db2f30184e8065f3d07db54de61195197fdc381c47b9ebb2b27e38b0c62b0499 cmd=47f1a27aa34ac763dfe5be4d4e728bd81421cfac200fc91d96e066f879b54d56 json={\"op\":\"body-splice\",\"result\":\"written\",\"reason\":null,\"bytes\":3728}"
+        },
+        "probe-185-pr-write-decision-log-r0": {
+          "line": "_",
+          "verify": "_"
+        },
+        "probe-185-pr-state-merge-r0": {
+          "line": "PROBE name=pr-state exit=0 sha=3767a6d729c9d3d60c65241e1b8663b1233e7935733b50fc82254f383329cd72 cmd=3acd9e3d494a7fbaca683f40c7e506bc80ced9a2fd0f53f9425733d199d985b9 json={\"now\":\"2026-10-03T17:42:40Z\",\"headRefName\":\"feat/issue-185\",\"headRefOid\":\"a996535df7d4c4b7b66f0ffa37c7a503c78b5990\",\"bodyDigest\":\"5a0fdef5ceaa\",\"acceptanceChecked\":[1,2,3,4,5,6],\"decisionLog\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-10-03T17:29:04Z\",\"commitCount\":2,\"reviewCommentIds\":[\"IC_kwDOUzMNuc8AAAABY_IDVQ\"],\"openIssues\":[],\"openIssuesTruncated\":false}",
+          "verify": "VERIFY ok line=PROBE name=pr-state exit=0 sha=3767a6d729c9d3d60c65241e1b8663b1233e7935733b50fc82254f383329cd72 cmd=3acd9e3d494a7fbaca683f40c7e506bc80ced9a2fd0f53f9425733d199d985b9 json={\"now\":\"2026-10-03T17:42:40Z\",\"headRefName\":\"feat/issue-185\",\"headRefOid\":\"a996535df7d4c4b7b66f0ffa37c7a503c78b5990\",\"bodyDigest\":\"5a0fdef5ceaa\",\"acceptanceChecked\":[1,2,3,4,5,6],\"decisionLog\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-10-03T17:29:04Z\",\"commitCount\":2,\"reviewCommentIds\":[\"IC_kwDOUzMNuc8AAAABY_IDVQ\"],\"openIssues\":[],\"openIssuesTruncated\":false}"
+        }
+      },
+      "expect": {
+        "status": "ready",
+        "promptIncludes": [
+          {
+            "label": "nick-preflight-fix-185-206",
+            "includes": [
+              "## Project context (provided by the orchestrator)",
+              "<project_specifics>",
+              "SHARED-MARK",
+              "NICK-MARK"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "args": {
+        "pluginRoot": "/plugin",
+        "issue": 123,
+        "brief": "fix slugify accents",
+        "wtPath": "/wt/root/issue-123",
+        "config": {
+          "projectSpecifics": ".claude/lgtmgate",
+          "commitHygiene": {
+            "squashBeforeHandoff": true,
+            "maxCommits": 3
+          }
+        },
+        "mode": "auto",
+        "projectSpecifics": {
+          "ref": "origin/main",
+          "refSha": "c0ffeec0ffeec0ffeec0ffeec0ffeec0ffeec0ff",
+          "shared": {
+            "text": "SHARED-MARK rule for every role",
+            "digest": "8c918c0fc8685a299b17e217a714d5ba300ca5e57741fa3603bb6a56fad7e950",
+            "bytes": 31,
+            "lanes": []
+          },
+          "roles": {
+            "Sam": {
+              "text": "SAM-MARK rule",
+              "digest": "4c036a6d0ffdfcc48af64555a91f27b3edfa093d7d5c908ff1631bb661145984",
+              "bytes": 13,
+              "lanes": []
+            },
+            "Nick": {
+              "text": "NICK-MARK rule",
+              "digest": "a12338937fd587e743309bbb3cae7626e828108a6afce452f333902c061009a5",
+              "bytes": 14,
+              "lanes": []
+            },
+            "Morgan": {
+              "text": "MORGAN-MARK rule",
+              "digest": "b8bffd2909d79048ffbd18c3b2e0286be240ae7cd222e79550cf85d4e52195c7",
+              "bytes": 16,
+              "lanes": []
+            }
+          },
+          "files": [],
+          "warnings": []
+        }
+      },
+      "calls": {
+        "probe-123-lines-plugin-version-r0": {
+          "line": "PROBE name=lines exit=0 sha=4b0b2f33b20b777393f4cb55ea1d47c45786b52ad36822582a5ed67647e54ed5 cmd=2af1fd58e4141ac8977c54e48900baf5a81f43c1be46d2a1c6f38830f7582ec8 json={\"lines\":[\"PLUGIN-VERSION:@@ENGINE_VERSION@@\"]}",
+          "verify": "VERIFY ok line=PROBE name=lines exit=0 sha=4b0b2f33b20b777393f4cb55ea1d47c45786b52ad36822582a5ed67647e54ed5 cmd=2af1fd58e4141ac8977c54e48900baf5a81f43c1be46d2a1c6f38830f7582ec8 json={\"lines\":[\"PLUGIN-VERSION:@@ENGINE_VERSION@@\"]}"
+        },
+        "probe-123-provision-provision-r0": {
+          "line": "PROBE name=provision exit=0 sha=30ad404e7bf922808eeb13427c66400303e810a9392f80082fb0abe2fc6fc271 cmd=cb49d972cd5e77c121dac04294f3d1fa6a3363d2451bd60461ad1c814588897a json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}",
+          "verify": "VERIFY ok line=PROBE name=provision exit=0 sha=30ad404e7bf922808eeb13427c66400303e810a9392f80082fb0abe2fc6fc271 cmd=cb49d972cd5e77c121dac04294f3d1fa6a3363d2451bd60461ad1c814588897a json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}"
+        },
+        "probe-123-provision-freshness-provision-freshness-r0": {
+          "line": "PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b cmd=f7148584e77c9da7779115228bbfa0f4223ff89ed5d3031f3e51605249a7eaa7 json={\"state\":\"fresh\",\"behind\":0,\"own\":0}",
+          "verify": "VERIFY ok line=PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b cmd=f7148584e77c9da7779115228bbfa0f4223ff89ed5d3031f3e51605249a7eaa7 json={\"state\":\"fresh\",\"behind\":0,\"own\":0}"
+        },
+        "diagnose-issue-123": {
+          "confirmed": true,
+          "evidence": "reproduced: `node -e` prints the wrong slug",
+          "actualCause": "accent stripping",
+          "laneOk": true,
+          "persistentStateSignal": false,
+          "authSecurityBoundarySignal": false,
+          "deployConfigSignal": false,
+          "immatureVendorApiSignal": false
+        },
+        "scout-issue-123-1": {
+          "decision": "GO",
+          "plan": "## Plan\n1. src/slugify.js: transliterate before stripping\n\n## Acceptance checklist\n- [ ] `npm test` passes",
+          "rationale": "",
+          "targetFiles": [
+            "src/slugify.js"
+          ],
+          "absorbedIssues": [],
+          "acceptanceChecklist": "- [ ] `npm test` passes"
+        },
+        "plan-check-123-1": {
+          "verdict": "CONFORMING",
+          "issues": []
+        },
+        "probe-123-preflight-dev-r0": {
+          "line": "PROBE name=preflight exit=0 sha=0acd6243a89b98b4bb2d70cb70c8f020921b3ba8feae419783c1e32c54be75dd cmd=61f2760483151fb3cb232c269b86e8edf8e5d96659e23745f2384bd22c46be69 json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/wt/root/.git/worktrees/issue-123\",\"writable\":true}",
+          "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=0acd6243a89b98b4bb2d70cb70c8f020921b3ba8feae419783c1e32c54be75dd cmd=61f2760483151fb3cb232c269b86e8edf8e5d96659e23745f2384bd22c46be69 json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/wt/root/.git/worktrees/issue-123\",\"writable\":true}"
+        },
+        "nick-issue-123": {
+          "prNumber": 42,
+          "branch": "features/issue-123",
+          "testsPass": true,
+          "summary": "opened PR #42"
+        },
+        "probe-123-preflight-branch-r0": {
+          "line": "PROBE name=preflight exit=0 sha=5fbfdf840750936170ea0caa2986e56765751306cca75f230cff37f141b42cdc cmd=874136047142387c5b6bcbcfedfb7409c9281ae2d4ac8c60d8821a85d66f30be json={\"mode\":\"branch\",\"headRef\":\"features/issue-123\",\"branchPrefix\":\"\"}",
+          "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=5fbfdf840750936170ea0caa2986e56765751306cca75f230cff37f141b42cdc cmd=874136047142387c5b6bcbcfedfb7409c9281ae2d4ac8c60d8821a85d66f30be json={\"mode\":\"branch\",\"headRef\":\"features/issue-123\",\"branchPrefix\":\"\"}"
+        },
+        "probe-123-git-rev-list-count-worktree-behind-42-r0": {
+          "line": "PROBE name=git-rev-list-count exit=0 sha=9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa cmd=d1ca345e79cacf118e64a5df40a87ec31be05bea90c48c93931f5e6436b558e0 json={\"count\":0}",
+          "verify": "VERIFY ok line=PROBE name=git-rev-list-count exit=0 sha=9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa cmd=d1ca345e79cacf118e64a5df40a87ec31be05bea90c48c93931f5e6436b558e0 json={\"count\":0}"
+        },
+        "preflight-123-42-0": {
+          "pass": true,
+          "issues": [],
+          "testCommandRun": "run the unit tests"
+        },
+        "probe-123-pr-state-window-start-r0": {
+          "line": "PROBE name=pr-state exit=0 sha=3db97813d3f35e5488d7bd0a4df525f2043fbb38bec5e1283d69931d12b70ced cmd=a6068f1217b0ad386dd338d47c4801b97bb7ca8a67ef63eb999ea9f1b34d5c8d json={\"now\":\"2026-01-01T00:00:00Z\",\"headRefName\":\"features/issue-123\",\"headRefOid\":\"abc123def456\",\"bodyDigest\":\"0123456789ab\",\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-01-01T00:30:00Z\",\"commitCount\":1,\"reviewCommentIds\":[],\"openIssues\":null,\"openIssuesTruncated\":false}",
+          "verify": "VERIFY ok line=PROBE name=pr-state exit=0 sha=3db97813d3f35e5488d7bd0a4df525f2043fbb38bec5e1283d69931d12b70ced cmd=a6068f1217b0ad386dd338d47c4801b97bb7ca8a67ef63eb999ea9f1b34d5c8d json={\"now\":\"2026-01-01T00:00:00Z\",\"headRefName\":\"features/issue-123\",\"headRefOid\":\"abc123def456\",\"bodyDigest\":\"0123456789ab\",\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-01-01T00:30:00Z\",\"commitCount\":1,\"reviewCommentIds\":[],\"openIssues\":null,\"openIssuesTruncated\":false}"
+        },
+        "morgan-pr-123-42-r0": {
+          "verdict": "REQUIRED_CHANGES",
+          "items": [
+            "- [ ] `npm test` passes"
+          ],
+          "ciGreen": true,
+          "artifactProofs": [],
+          "itemOwners": [
+            {
+              "item": "- [ ] `npm test` passes",
+              "itemOwner": "code-defect",
+              "proof": ""
+            }
+          ]
+        },
+        "probe-123-pr-state-window-end-r0": {
+          "line": "PROBE name=pr-state exit=0 sha=a2ecf0cc9d123582b92813d2aaafa231fa1201ab8e083ba1ff8d690d08376805 cmd=731942dac290e94f31001933fe1e165779b8d4260dc3372bb918b7e1a6c65125 json={\"now\":\"2026-01-01T01:00:00Z\",\"headRefName\":\"features/issue-123\",\"headRefOid\":\"abc123def456\",\"bodyDigest\":\"0123456789ab\",\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-01-01T00:30:00Z\",\"commitCount\":1,\"reviewCommentIds\":[],\"openIssues\":[],\"openIssuesTruncated\":false}",
+          "verify": "VERIFY ok line=PROBE name=pr-state exit=0 sha=a2ecf0cc9d123582b92813d2aaafa231fa1201ab8e083ba1ff8d690d08376805 cmd=731942dac290e94f31001933fe1e165779b8d4260dc3372bb918b7e1a6c65125 json={\"now\":\"2026-01-01T01:00:00Z\",\"headRefName\":\"features/issue-123\",\"headRefOid\":\"abc123def456\",\"bodyDigest\":\"0123456789ab\",\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-01-01T00:30:00Z\",\"commitCount\":1,\"reviewCommentIds\":[],\"openIssues\":[],\"openIssuesTruncated\":false}"
+        },
+        "probe-123-pr-write-decision-log-r0": {
+          "line": "PROBE name=pr-write exit=0 sha=0774fad4714f3978deed785c2de6fd25ce5cf3d7d8c46b32d362616459f0cde0 cmd=f376e3fdb86b7d91e48693d506c2c881a7bb80543454bc86e5ab42208bf8a06a json={\"op\":\"body-splice\",\"result\":\"written\",\"reason\":null,\"bytes\":1234}",
+          "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=0774fad4714f3978deed785c2de6fd25ce5cf3d7d8c46b32d362616459f0cde0 cmd=f376e3fdb86b7d91e48693d506c2c881a7bb80543454bc86e5ab42208bf8a06a json={\"op\":\"body-splice\",\"result\":\"written\",\"reason\":null,\"bytes\":1234}"
+        },
+        "probe-123-pr-state-sig-before-r1": {
+          "line": "PROBE name=pr-state exit=0 sha=3db97813d3f35e5488d7bd0a4df525f2043fbb38bec5e1283d69931d12b70ced cmd=a6068f1217b0ad386dd338d47c4801b97bb7ca8a67ef63eb999ea9f1b34d5c8d json={\"now\":\"2026-01-01T00:00:00Z\",\"headRefName\":\"features/issue-123\",\"headRefOid\":\"abc123def456\",\"bodyDigest\":\"0123456789ab\",\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-01-01T00:30:00Z\",\"commitCount\":1,\"reviewCommentIds\":[],\"openIssues\":null,\"openIssuesTruncated\":false}",
+          "verify": "VERIFY ok line=PROBE name=pr-state exit=0 sha=3db97813d3f35e5488d7bd0a4df525f2043fbb38bec5e1283d69931d12b70ced cmd=a6068f1217b0ad386dd338d47c4801b97bb7ca8a67ef63eb999ea9f1b34d5c8d json={\"now\":\"2026-01-01T00:00:00Z\",\"headRefName\":\"features/issue-123\",\"headRefOid\":\"abc123def456\",\"bodyDigest\":\"0123456789ab\",\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-01-01T00:30:00Z\",\"commitCount\":1,\"reviewCommentIds\":[],\"openIssues\":null,\"openIssuesTruncated\":false}"
+        },
+        "nick-pr-123-42": {
+          "prNumber": 42,
+          "branch": "features/issue-123",
+          "testsPass": true,
+          "summary": "fixed"
+        },
+        "probe-123-pr-state-sig-after-r1": {
+          "line": "PROBE name=pr-state exit=0 sha=03f0ef7049acd2b385b2fd54f3cc6c6e70d7987f4e59a7016ef728542feffef6 cmd=a6068f1217b0ad386dd338d47c4801b97bb7ca8a67ef63eb999ea9f1b34d5c8d json={\"now\":\"2026-01-01T00:00:00Z\",\"headRefName\":\"features/issue-123\",\"headRefOid\":\"abc123def456\",\"bodyDigest\":\"fedcba987654\",\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-01-01T00:30:00Z\",\"commitCount\":1,\"reviewCommentIds\":[],\"openIssues\":null,\"openIssuesTruncated\":false}",
+          "verify": "VERIFY ok line=PROBE name=pr-state exit=0 sha=03f0ef7049acd2b385b2fd54f3cc6c6e70d7987f4e59a7016ef728542feffef6 cmd=a6068f1217b0ad386dd338d47c4801b97bb7ca8a67ef63eb999ea9f1b34d5c8d json={\"now\":\"2026-01-01T00:00:00Z\",\"headRefName\":\"features/issue-123\",\"headRefOid\":\"abc123def456\",\"bodyDigest\":\"fedcba987654\",\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-01-01T00:30:00Z\",\"commitCount\":1,\"reviewCommentIds\":[],\"openIssues\":null,\"openIssuesTruncated\":false}"
+        },
+        "preflight-123-42-1": {
+          "pass": true,
+          "issues": [],
+          "testCommandRun": "run the unit tests"
+        },
+        "probe-123-pr-state-window-start-r1": {
+          "line": "PROBE name=pr-state exit=0 sha=874d9d7c6c843e4a962949160a663c7d1ecbef417aeb9dc6f554a4e254b31fbe cmd=a6068f1217b0ad386dd338d47c4801b97bb7ca8a67ef63eb999ea9f1b34d5c8d json={\"now\":\"2026-01-01T01:10:00Z\",\"headRefName\":\"features/issue-123\",\"headRefOid\":\"abc123def456\",\"bodyDigest\":\"0123456789ab\",\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-01-01T00:30:00Z\",\"commitCount\":1,\"reviewCommentIds\":[],\"openIssues\":null,\"openIssuesTruncated\":false}",
+          "verify": "VERIFY ok line=PROBE name=pr-state exit=0 sha=874d9d7c6c843e4a962949160a663c7d1ecbef417aeb9dc6f554a4e254b31fbe cmd=a6068f1217b0ad386dd338d47c4801b97bb7ca8a67ef63eb999ea9f1b34d5c8d json={\"now\":\"2026-01-01T01:10:00Z\",\"headRefName\":\"features/issue-123\",\"headRefOid\":\"abc123def456\",\"bodyDigest\":\"0123456789ab\",\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-01-01T00:30:00Z\",\"commitCount\":1,\"reviewCommentIds\":[],\"openIssues\":null,\"openIssuesTruncated\":false}"
+        },
+        "morgan-pr-123-42-r1": {
+          "verdict": "LGTM",
+          "items": [],
+          "ciGreen": true,
+          "artifactProofs": [],
+          "itemOwners": []
+        },
+        "probe-123-pr-state-window-end-r1": {
+          "line": "PROBE name=pr-state exit=0 sha=a2fadbb02de728c6ba08124ae9d2352d2bfb74c998ce0ce68a1771a708ba25b7 cmd=c476ef37403f5dd10be18f846f23fd82abf0d6f28bfc4cace4ea43fce9c41112 json={\"now\":\"2026-01-01T01:20:00Z\",\"headRefName\":\"features/issue-123\",\"headRefOid\":\"abc123def456\",\"bodyDigest\":\"0123456789ab\",\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-01-01T00:30:00Z\",\"commitCount\":1,\"reviewCommentIds\":[],\"openIssues\":[],\"openIssuesTruncated\":false}",
+          "verify": "VERIFY ok line=PROBE name=pr-state exit=0 sha=a2fadbb02de728c6ba08124ae9d2352d2bfb74c998ce0ce68a1771a708ba25b7 cmd=c476ef37403f5dd10be18f846f23fd82abf0d6f28bfc4cace4ea43fce9c41112 json={\"now\":\"2026-01-01T01:20:00Z\",\"headRefName\":\"features/issue-123\",\"headRefOid\":\"abc123def456\",\"bodyDigest\":\"0123456789ab\",\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-01-01T00:30:00Z\",\"commitCount\":1,\"reviewCommentIds\":[],\"openIssues\":[],\"openIssuesTruncated\":false}"
+        },
+        "probe-123-pr-write-decision-log-r1": {
+          "line": "PROBE name=pr-write exit=0 sha=936ff3e1bd5e22063fab9a4ce0ec7693d03831ffdcebd126f4ed348300d1e1cf cmd=19b3d0be08ddd3f3c02ed738682be964e0547deea459692647f3e4bc638f509a json={\"op\":\"body-splice\",\"result\":\"written\",\"reason\":null,\"bytes\":1300}",
+          "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=936ff3e1bd5e22063fab9a4ce0ec7693d03831ffdcebd126f4ed348300d1e1cf cmd=19b3d0be08ddd3f3c02ed738682be964e0547deea459692647f3e4bc638f509a json={\"op\":\"body-splice\",\"result\":\"written\",\"reason\":null,\"bytes\":1300}"
+        },
+        "probe-123-pr-state-merge-r1": {
+          "line": "PROBE name=pr-state exit=0 sha=388264433f2680d2c6a9fa539d41404a48e4159e0b55f435c6368e075a2826bf cmd=a6068f1217b0ad386dd338d47c4801b97bb7ca8a67ef63eb999ea9f1b34d5c8d json={\"now\":\"2026-01-01T01:20:00Z\",\"headRefName\":\"features/issue-123\",\"headRefOid\":\"abc123def456\",\"bodyDigest\":\"0123456789ab\",\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-01-01T00:30:00Z\",\"commitCount\":1,\"reviewCommentIds\":[],\"openIssues\":null,\"openIssuesTruncated\":false}",
+          "verify": "VERIFY ok line=PROBE name=pr-state exit=0 sha=388264433f2680d2c6a9fa539d41404a48e4159e0b55f435c6368e075a2826bf cmd=a6068f1217b0ad386dd338d47c4801b97bb7ca8a67ef63eb999ea9f1b34d5c8d json={\"now\":\"2026-01-01T01:20:00Z\",\"headRefName\":\"features/issue-123\",\"headRefOid\":\"abc123def456\",\"bodyDigest\":\"0123456789ab\",\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-01-01T00:30:00Z\",\"commitCount\":1,\"reviewCommentIds\":[],\"openIssues\":null,\"openIssuesTruncated\":false}"
+        },
+        "probe-123-pr-state-squash-r1": {
+          "line": "PROBE name=pr-state exit=0 sha=f5c9863d895601a5c8f64a52f84c11b83102f7583ef7de5ad3ae7b41402f0ebe cmd=a6068f1217b0ad386dd338d47c4801b97bb7ca8a67ef63eb999ea9f1b34d5c8d json={\"now\":\"2026-01-01T01:20:00Z\",\"headRefName\":\"features/issue-123\",\"headRefOid\":\"abc123def456\",\"bodyDigest\":\"0123456789ab\",\"acceptanceChecked\":null,\"decisionLog\":null,\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-01-01T00:30:00Z\",\"commitCount\":6,\"ciState\":null,\"ciChecks\":null,\"reviewCommentIds\":[],\"openIssues\":null,\"openIssuesTruncated\":false}",
+          "verify": "VERIFY ok line=PROBE name=pr-state exit=0 sha=f5c9863d895601a5c8f64a52f84c11b83102f7583ef7de5ad3ae7b41402f0ebe cmd=a6068f1217b0ad386dd338d47c4801b97bb7ca8a67ef63eb999ea9f1b34d5c8d json={\"now\":\"2026-01-01T01:20:00Z\",\"headRefName\":\"features/issue-123\",\"headRefOid\":\"abc123def456\",\"bodyDigest\":\"0123456789ab\",\"acceptanceChecked\":null,\"decisionLog\":null,\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-01-01T00:30:00Z\",\"commitCount\":6,\"ciState\":null,\"ciChecks\":null,\"reviewCommentIds\":[],\"openIssues\":null,\"openIssuesTruncated\":false}"
+        },
+        "nick-squash-123-42": {
+          "prNumber": 42,
+          "branch": "features/issue-123",
+          "testsPass": true,
+          "summary": "squashed"
+        }
+      },
+      "expect": {
+        "status": "ready",
+        "promptIncludes": [
+          {
+            "label": "nick-pr-123-42",
+            "includes": [
+              "## Project context (provided by the orchestrator)",
+              "<project_specifics>",
+              "SHARED-MARK",
+              "NICK-MARK"
+            ]
+          },
+          {
+            "label": "nick-squash-123-42",
+            "includes": [
+              "## Project context (provided by the orchestrator)",
+              "<project_specifics>",
+              "SHARED-MARK",
+              "NICK-MARK"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "args": {
+        "pluginRoot": "/plugin",
+        "issue": 123,
+        "brief": "fix slugify accents",
+        "wtPath": "/wt/root/issue-123",
+        "config": {
+          "projectSpecifics": ".claude/lgtmgate"
+        },
+        "mode": "auto",
+        "maxPlanAmendRounds": 1,
+        "projectSpecifics": {
+          "ref": "origin/main",
+          "refSha": "c0ffeec0ffeec0ffeec0ffeec0ffeec0ffeec0ff",
+          "shared": {
+            "text": "SHARED-MARK rule for every role",
+            "digest": "8c918c0fc8685a299b17e217a714d5ba300ca5e57741fa3603bb6a56fad7e950",
+            "bytes": 31,
+            "lanes": []
+          },
+          "roles": {
+            "Sam": {
+              "text": "SAM-MARK rule",
+              "digest": "4c036a6d0ffdfcc48af64555a91f27b3edfa093d7d5c908ff1631bb661145984",
+              "bytes": 13,
+              "lanes": []
+            },
+            "Nick": {
+              "text": "NICK-MARK rule",
+              "digest": "a12338937fd587e743309bbb3cae7626e828108a6afce452f333902c061009a5",
+              "bytes": 14,
+              "lanes": []
+            },
+            "Morgan": {
+              "text": "MORGAN-MARK rule",
+              "digest": "b8bffd2909d79048ffbd18c3b2e0286be240ae7cd222e79550cf85d4e52195c7",
+              "bytes": 16,
+              "lanes": []
+            }
+          },
+          "files": [],
+          "warnings": []
+        }
+      },
+      "calls": {
+        "probe-123-lines-plugin-version-r0": {
+          "line": "PROBE name=lines exit=0 sha=4b0b2f33b20b777393f4cb55ea1d47c45786b52ad36822582a5ed67647e54ed5 cmd=2af1fd58e4141ac8977c54e48900baf5a81f43c1be46d2a1c6f38830f7582ec8 json={\"lines\":[\"PLUGIN-VERSION:@@ENGINE_VERSION@@\"]}",
+          "verify": "VERIFY ok line=PROBE name=lines exit=0 sha=4b0b2f33b20b777393f4cb55ea1d47c45786b52ad36822582a5ed67647e54ed5 cmd=2af1fd58e4141ac8977c54e48900baf5a81f43c1be46d2a1c6f38830f7582ec8 json={\"lines\":[\"PLUGIN-VERSION:@@ENGINE_VERSION@@\"]}"
+        },
+        "probe-123-provision-provision-r0": {
+          "line": "PROBE name=provision exit=0 sha=30ad404e7bf922808eeb13427c66400303e810a9392f80082fb0abe2fc6fc271 cmd=cb49d972cd5e77c121dac04294f3d1fa6a3363d2451bd60461ad1c814588897a json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}",
+          "verify": "VERIFY ok line=PROBE name=provision exit=0 sha=30ad404e7bf922808eeb13427c66400303e810a9392f80082fb0abe2fc6fc271 cmd=cb49d972cd5e77c121dac04294f3d1fa6a3363d2451bd60461ad1c814588897a json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}"
+        },
+        "probe-123-provision-freshness-provision-freshness-r0": {
+          "line": "PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b cmd=f7148584e77c9da7779115228bbfa0f4223ff89ed5d3031f3e51605249a7eaa7 json={\"state\":\"fresh\",\"behind\":0,\"own\":0}",
+          "verify": "VERIFY ok line=PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b cmd=f7148584e77c9da7779115228bbfa0f4223ff89ed5d3031f3e51605249a7eaa7 json={\"state\":\"fresh\",\"behind\":0,\"own\":0}"
+        },
+        "diagnose-issue-123": {
+          "confirmed": true,
+          "evidence": "reproduced: `node -e` prints the wrong slug",
+          "actualCause": "accent stripping",
+          "laneOk": true,
+          "persistentStateSignal": false,
+          "authSecurityBoundarySignal": false,
+          "deployConfigSignal": false,
+          "immatureVendorApiSignal": false
+        },
+        "scout-issue-123-1": {
+          "decision": "GO",
+          "plan": "## Plan\n1. src/slugify.js: transliterate before stripping\n\n## Acceptance checklist\n- [ ] `npm test` passes",
+          "rationale": "",
+          "targetFiles": [
+            "src/slugify.js"
+          ],
+          "absorbedIssues": [],
+          "acceptanceChecklist": "- [ ] `npm test` passes"
+        },
+        "plan-check-123-1": {
+          "verdict": "CONFORMING",
+          "issues": []
+        },
+        "probe-123-preflight-dev-r0": {
+          "line": "PROBE name=preflight exit=0 sha=0acd6243a89b98b4bb2d70cb70c8f020921b3ba8feae419783c1e32c54be75dd cmd=61f2760483151fb3cb232c269b86e8edf8e5d96659e23745f2384bd22c46be69 json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/wt/root/.git/worktrees/issue-123\",\"writable\":true}",
+          "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=0acd6243a89b98b4bb2d70cb70c8f020921b3ba8feae419783c1e32c54be75dd cmd=61f2760483151fb3cb232c269b86e8edf8e5d96659e23745f2384bd22c46be69 json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/wt/root/.git/worktrees/issue-123\",\"writable\":true}"
+        },
+        "nick-issue-123": {
+          "prNumber": 42,
+          "branch": "features/issue-123",
+          "testsPass": true,
+          "summary": "opened PR #42"
+        },
+        "probe-123-preflight-branch-r0": {
+          "line": "PROBE name=preflight exit=0 sha=5fbfdf840750936170ea0caa2986e56765751306cca75f230cff37f141b42cdc cmd=874136047142387c5b6bcbcfedfb7409c9281ae2d4ac8c60d8821a85d66f30be json={\"mode\":\"branch\",\"headRef\":\"features/issue-123\",\"branchPrefix\":\"\"}",
+          "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=5fbfdf840750936170ea0caa2986e56765751306cca75f230cff37f141b42cdc cmd=874136047142387c5b6bcbcfedfb7409c9281ae2d4ac8c60d8821a85d66f30be json={\"mode\":\"branch\",\"headRef\":\"features/issue-123\",\"branchPrefix\":\"\"}"
+        },
+        "probe-123-git-rev-list-count-worktree-behind-42-r0": {
+          "line": "PROBE name=git-rev-list-count exit=0 sha=9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa cmd=d1ca345e79cacf118e64a5df40a87ec31be05bea90c48c93931f5e6436b558e0 json={\"count\":0}",
+          "verify": "VERIFY ok line=PROBE name=git-rev-list-count exit=0 sha=9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa cmd=d1ca345e79cacf118e64a5df40a87ec31be05bea90c48c93931f5e6436b558e0 json={\"count\":0}"
+        },
+        "preflight-123-42-0": {
+          "pass": true,
+          "issues": [],
+          "testCommandRun": "run the unit tests"
+        },
+        "probe-123-pr-state-window-start-r0": {
+          "line": "PROBE name=pr-state exit=0 sha=3db97813d3f35e5488d7bd0a4df525f2043fbb38bec5e1283d69931d12b70ced cmd=a6068f1217b0ad386dd338d47c4801b97bb7ca8a67ef63eb999ea9f1b34d5c8d json={\"now\":\"2026-01-01T00:00:00Z\",\"headRefName\":\"features/issue-123\",\"headRefOid\":\"abc123def456\",\"bodyDigest\":\"0123456789ab\",\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-01-01T00:30:00Z\",\"commitCount\":1,\"reviewCommentIds\":[],\"openIssues\":null,\"openIssuesTruncated\":false}",
+          "verify": "VERIFY ok line=PROBE name=pr-state exit=0 sha=3db97813d3f35e5488d7bd0a4df525f2043fbb38bec5e1283d69931d12b70ced cmd=a6068f1217b0ad386dd338d47c4801b97bb7ca8a67ef63eb999ea9f1b34d5c8d json={\"now\":\"2026-01-01T00:00:00Z\",\"headRefName\":\"features/issue-123\",\"headRefOid\":\"abc123def456\",\"bodyDigest\":\"0123456789ab\",\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-01-01T00:30:00Z\",\"commitCount\":1,\"reviewCommentIds\":[],\"openIssues\":null,\"openIssuesTruncated\":false}"
+        },
+        "morgan-pr-123-42-r0": {
+          "verdict": "REQUIRED_CHANGES",
+          "items": [
+            "- [ ] `npm test` passes"
+          ],
+          "ciGreen": true,
+          "artifactProofs": [],
+          "itemOwners": [
+            {
+              "item": "- [ ] `npm test` passes",
+              "itemOwner": "plan-defect",
+              "proof": "the plan names a test command the repo does not have"
+            }
+          ]
+        },
+        "probe-123-pr-state-window-end-r0": {
+          "line": "PROBE name=pr-state exit=0 sha=a2ecf0cc9d123582b92813d2aaafa231fa1201ab8e083ba1ff8d690d08376805 cmd=731942dac290e94f31001933fe1e165779b8d4260dc3372bb918b7e1a6c65125 json={\"now\":\"2026-01-01T01:00:00Z\",\"headRefName\":\"features/issue-123\",\"headRefOid\":\"abc123def456\",\"bodyDigest\":\"0123456789ab\",\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-01-01T00:30:00Z\",\"commitCount\":1,\"reviewCommentIds\":[],\"openIssues\":[],\"openIssuesTruncated\":false}",
+          "verify": "VERIFY ok line=PROBE name=pr-state exit=0 sha=a2ecf0cc9d123582b92813d2aaafa231fa1201ab8e083ba1ff8d690d08376805 cmd=731942dac290e94f31001933fe1e165779b8d4260dc3372bb918b7e1a6c65125 json={\"now\":\"2026-01-01T01:00:00Z\",\"headRefName\":\"features/issue-123\",\"headRefOid\":\"abc123def456\",\"bodyDigest\":\"0123456789ab\",\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-01-01T00:30:00Z\",\"commitCount\":1,\"reviewCommentIds\":[],\"openIssues\":[],\"openIssuesTruncated\":false}"
+        },
+        "probe-123-pr-write-decision-log-r0": {
+          "line": "PROBE name=pr-write exit=0 sha=0774fad4714f3978deed785c2de6fd25ce5cf3d7d8c46b32d362616459f0cde0 cmd=f376e3fdb86b7d91e48693d506c2c881a7bb80543454bc86e5ab42208bf8a06a json={\"op\":\"body-splice\",\"result\":\"written\",\"reason\":null,\"bytes\":1234}",
+          "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=0774fad4714f3978deed785c2de6fd25ce5cf3d7d8c46b32d362616459f0cde0 cmd=f376e3fdb86b7d91e48693d506c2c881a7bb80543454bc86e5ab42208bf8a06a json={\"op\":\"body-splice\",\"result\":\"written\",\"reason\":null,\"bytes\":1234}"
+        },
+        "preflight-123-42-1": {
+          "pass": true,
+          "issues": [],
+          "testCommandRun": "run the unit tests"
+        },
+        "probe-123-pr-state-window-start-r1": {
+          "line": "PROBE name=pr-state exit=0 sha=874d9d7c6c843e4a962949160a663c7d1ecbef417aeb9dc6f554a4e254b31fbe cmd=a6068f1217b0ad386dd338d47c4801b97bb7ca8a67ef63eb999ea9f1b34d5c8d json={\"now\":\"2026-01-01T01:10:00Z\",\"headRefName\":\"features/issue-123\",\"headRefOid\":\"abc123def456\",\"bodyDigest\":\"0123456789ab\",\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-01-01T00:30:00Z\",\"commitCount\":1,\"reviewCommentIds\":[],\"openIssues\":null,\"openIssuesTruncated\":false}",
+          "verify": "VERIFY ok line=PROBE name=pr-state exit=0 sha=874d9d7c6c843e4a962949160a663c7d1ecbef417aeb9dc6f554a4e254b31fbe cmd=a6068f1217b0ad386dd338d47c4801b97bb7ca8a67ef63eb999ea9f1b34d5c8d json={\"now\":\"2026-01-01T01:10:00Z\",\"headRefName\":\"features/issue-123\",\"headRefOid\":\"abc123def456\",\"bodyDigest\":\"0123456789ab\",\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-01-01T00:30:00Z\",\"commitCount\":1,\"reviewCommentIds\":[],\"openIssues\":null,\"openIssuesTruncated\":false}"
+        },
+        "morgan-pr-123-42-r1": {
+          "verdict": "LGTM",
+          "items": [],
+          "ciGreen": true,
+          "artifactProofs": [],
+          "itemOwners": []
+        },
+        "probe-123-pr-state-window-end-r1": {
+          "line": "PROBE name=pr-state exit=0 sha=a2fadbb02de728c6ba08124ae9d2352d2bfb74c998ce0ce68a1771a708ba25b7 cmd=c476ef37403f5dd10be18f846f23fd82abf0d6f28bfc4cace4ea43fce9c41112 json={\"now\":\"2026-01-01T01:20:00Z\",\"headRefName\":\"features/issue-123\",\"headRefOid\":\"abc123def456\",\"bodyDigest\":\"0123456789ab\",\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-01-01T00:30:00Z\",\"commitCount\":1,\"reviewCommentIds\":[],\"openIssues\":[],\"openIssuesTruncated\":false}",
+          "verify": "VERIFY ok line=PROBE name=pr-state exit=0 sha=a2fadbb02de728c6ba08124ae9d2352d2bfb74c998ce0ce68a1771a708ba25b7 cmd=c476ef37403f5dd10be18f846f23fd82abf0d6f28bfc4cace4ea43fce9c41112 json={\"now\":\"2026-01-01T01:20:00Z\",\"headRefName\":\"features/issue-123\",\"headRefOid\":\"abc123def456\",\"bodyDigest\":\"0123456789ab\",\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-01-01T00:30:00Z\",\"commitCount\":1,\"reviewCommentIds\":[],\"openIssues\":[],\"openIssuesTruncated\":false}"
+        },
+        "probe-123-pr-write-decision-log-r1": {
+          "line": "PROBE name=pr-write exit=0 sha=936ff3e1bd5e22063fab9a4ce0ec7693d03831ffdcebd126f4ed348300d1e1cf cmd=19b3d0be08ddd3f3c02ed738682be964e0547deea459692647f3e4bc638f509a json={\"op\":\"body-splice\",\"result\":\"written\",\"reason\":null,\"bytes\":1300}",
+          "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=936ff3e1bd5e22063fab9a4ce0ec7693d03831ffdcebd126f4ed348300d1e1cf cmd=19b3d0be08ddd3f3c02ed738682be964e0547deea459692647f3e4bc638f509a json={\"op\":\"body-splice\",\"result\":\"written\",\"reason\":null,\"bytes\":1300}"
+        },
+        "probe-123-pr-state-merge-r1": {
+          "line": "PROBE name=pr-state exit=0 sha=388264433f2680d2c6a9fa539d41404a48e4159e0b55f435c6368e075a2826bf cmd=a6068f1217b0ad386dd338d47c4801b97bb7ca8a67ef63eb999ea9f1b34d5c8d json={\"now\":\"2026-01-01T01:20:00Z\",\"headRefName\":\"features/issue-123\",\"headRefOid\":\"abc123def456\",\"bodyDigest\":\"0123456789ab\",\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-01-01T00:30:00Z\",\"commitCount\":1,\"reviewCommentIds\":[],\"openIssues\":null,\"openIssuesTruncated\":false}",
+          "verify": "VERIFY ok line=PROBE name=pr-state exit=0 sha=388264433f2680d2c6a9fa539d41404a48e4159e0b55f435c6368e075a2826bf cmd=a6068f1217b0ad386dd338d47c4801b97bb7ca8a67ef63eb999ea9f1b34d5c8d json={\"now\":\"2026-01-01T01:20:00Z\",\"headRefName\":\"features/issue-123\",\"headRefOid\":\"abc123def456\",\"bodyDigest\":\"0123456789ab\",\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-01-01T00:30:00Z\",\"commitCount\":1,\"reviewCommentIds\":[],\"openIssues\":null,\"openIssuesTruncated\":false}"
+        },
+        "scout-amend-123-r1": {
+          "decision": "GO",
+          "plan": "## Plan\n1. src/slugify.js: transliterate before stripping\n\n## Acceptance checklist\n- [ ] `node --test` passes",
+          "rationale": "",
+          "targetFiles": [
+            "src/slugify.js"
+          ],
+          "absorbedIssues": [],
+          "acceptanceChecklist": "- [ ] `node --test` passes"
+        },
+        "probe-123-pr-write-acceptance-sync-r1": {
+          "line": "PROBE name=pr-write exit=0 sha=0774fad4714f3978deed785c2de6fd25ce5cf3d7d8c46b32d362616459f0cde0 cmd=5123760fa439be9dd74738fde0cafb5e4f9138ef74cd1ff860235d76ee0ce1c0 json={\"op\":\"body-splice\",\"result\":\"written\",\"reason\":null,\"bytes\":1234}",
+          "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=0774fad4714f3978deed785c2de6fd25ce5cf3d7d8c46b32d362616459f0cde0 cmd=5123760fa439be9dd74738fde0cafb5e4f9138ef74cd1ff860235d76ee0ce1c0 json={\"op\":\"body-splice\",\"result\":\"written\",\"reason\":null,\"bytes\":1234}"
+        }
+      },
+      "expect": {
+        "status": "ready",
+        "promptIncludes": [
+          {
+            "label": "scout-amend-123-r1",
+            "includes": [
+              "## Project context (provided by the orchestrator)",
+              "<project_specifics>",
+              "SHARED-MARK",
+              "SAM-MARK"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

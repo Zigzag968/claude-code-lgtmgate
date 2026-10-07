@@ -1,0 +1,140 @@
+{
+  "name": "us-c3-agentcontext",
+  "note": "#265: a payload produced by the assembler from agentContext alone (\"*\" file for every role, one file for Nick); the \"*\" text reaches the diagnose and scout prompts. The payload is the assembler stdout over fixtures/agent-context/base, copied.",
+  "args": {
+    "pluginRoot": "/plugin",
+    "issue": 123,
+    "brief": "fix slugify accents",
+    "wtPath": "/wt/root/issue-123",
+    "config": {
+      "agentContext": {
+        "*": [
+          "docs/extra-all.md"
+        ],
+        "Nick": [
+          "docs/extra-nick.md"
+        ]
+      }
+    },
+    "mode": "semi",
+    "projectSpecifics": {
+      "ref": "origin/main",
+      "refSha": "703bf914eded3a96918a907513f42ffb72b42782",
+      "shared": null,
+      "roles": {
+        "Mia": {
+          "text": "ALL-EXTRA-MARK extra file for every role.",
+          "digest": "06b664c0831d553dd077fb0d15b4f8eede203c9d44810aa7ba2f914226dceb0c",
+          "bytes": 41,
+          "lanes": []
+        },
+        "Sam": {
+          "text": "ALL-EXTRA-MARK extra file for every role.",
+          "digest": "53526bdb3c81d452b27756df3c87935ed8326c797d53fc29c336cbcb4f478d8a",
+          "bytes": 41,
+          "lanes": []
+        },
+        "Nick": {
+          "text": "ALL-EXTRA-MARK extra file for every role.\n\nNICK-EXTRA-MARK extra file for Nick.",
+          "digest": "13216d054f3a4c50876aa3119cc577e2304beab0398491b9f5745f606e16856b",
+          "bytes": 79,
+          "lanes": []
+        },
+        "Morgan": {
+          "text": "ALL-EXTRA-MARK extra file for every role.",
+          "digest": "cf7b45c989a38232243e35cb6b4cf8d73754382b44da7aee99c136493fa5c783",
+          "bytes": 41,
+          "lanes": []
+        },
+        "Theo": {
+          "text": "ALL-EXTRA-MARK extra file for every role.",
+          "digest": "48799b629530c537e4ce3dabec6f24517f30b49d01502220bd291f108a382e9c",
+          "bytes": 41,
+          "lanes": []
+        }
+      },
+      "files": [
+        {
+          "path": "docs/extra-all.md",
+          "oid": "5212e80f73692131702b5b87646a04ebbe4a1495",
+          "bytes": 42,
+          "roles": [
+            "Mia",
+            "Sam",
+            "Nick",
+            "Morgan",
+            "Theo"
+          ]
+        },
+        {
+          "path": "docs/extra-nick.md",
+          "oid": "3b66c19a1eec7f20231a7b3ba96f1668b4ffaf95",
+          "bytes": 37,
+          "roles": [
+            "Nick"
+          ]
+        }
+      ],
+      "warnings": []
+    }
+  },
+  "calls": {
+    "probe-123-lines-plugin-version-r0": {
+      "line": "PROBE name=lines exit=0 sha=4b0b2f33b20b777393f4cb55ea1d47c45786b52ad36822582a5ed67647e54ed5 cmd=2af1fd58e4141ac8977c54e48900baf5a81f43c1be46d2a1c6f38830f7582ec8 json={\"lines\":[\"PLUGIN-VERSION:@@ENGINE_VERSION@@\"]}",
+      "verify": "VERIFY ok line=PROBE name=lines exit=0 sha=4b0b2f33b20b777393f4cb55ea1d47c45786b52ad36822582a5ed67647e54ed5 cmd=2af1fd58e4141ac8977c54e48900baf5a81f43c1be46d2a1c6f38830f7582ec8 json={\"lines\":[\"PLUGIN-VERSION:@@ENGINE_VERSION@@\"]}"
+    },
+    "probe-123-provision-provision-r0": {
+      "line": "PROBE name=provision exit=0 sha=30ad404e7bf922808eeb13427c66400303e810a9392f80082fb0abe2fc6fc271 cmd=cb49d972cd5e77c121dac04294f3d1fa6a3363d2451bd60461ad1c814588897a json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}",
+      "verify": "VERIFY ok line=PROBE name=provision exit=0 sha=30ad404e7bf922808eeb13427c66400303e810a9392f80082fb0abe2fc6fc271 cmd=cb49d972cd5e77c121dac04294f3d1fa6a3363d2451bd60461ad1c814588897a json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}"
+    },
+    "probe-123-provision-freshness-provision-freshness-r0": {
+      "line": "PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b cmd=f7148584e77c9da7779115228bbfa0f4223ff89ed5d3031f3e51605249a7eaa7 json={\"state\":\"fresh\",\"behind\":0,\"own\":0}",
+      "verify": "VERIFY ok line=PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b cmd=f7148584e77c9da7779115228bbfa0f4223ff89ed5d3031f3e51605249a7eaa7 json={\"state\":\"fresh\",\"behind\":0,\"own\":0}"
+    },
+    "diagnose-issue-123": {
+      "confirmed": true,
+      "evidence": "reproduced: `node -e` prints the wrong slug",
+      "actualCause": "accent stripping",
+      "laneOk": true,
+      "persistentStateSignal": false,
+      "authSecurityBoundarySignal": false,
+      "deployConfigSignal": false,
+      "immatureVendorApiSignal": false
+    },
+    "scout-issue-123-1": {
+      "decision": "GO",
+      "plan": "## Plan\n1. src/slugify.js: transliterate before stripping\n\n## Acceptance checklist\n- [ ] `npm test` passes",
+      "rationale": "",
+      "targetFiles": [
+        "src/slugify.js"
+      ],
+      "absorbedIssues": [],
+      "acceptanceChecklist": "- [ ] `npm test` passes"
+    },
+    "plan-check-123-1": {
+      "verdict": "CONFORMING",
+      "issues": []
+    }
+  },
+  "expect": {
+    "status": "plan-ready",
+    "promptIncludes": [
+      {
+        "label": "diagnose-issue-123",
+        "includes": [
+          "## Project context (provided by the orchestrator)",
+          "<project_specifics>",
+          "ALL-EXTRA-MARK"
+        ]
+      },
+      {
+        "label": "scout-issue-123-1",
+        "includes": [
+          "## Project context (provided by the orchestrator)",
+          "<project_specifics>",
+          "ALL-EXTRA-MARK"
+        ]
+      }
+    ]
+  }
+}

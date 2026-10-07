@@ -1,0 +1,19 @@
+{
+  "name": "us-c9-folder-missing",
+  "note": "#265: the assembler exits 3 when the folder is absent and prints nothing; a Lead pasting that empty stdout hands over an empty string: the run refuses before any agent call",
+  "args": {
+    "pluginRoot": "/plugin",
+    "issue": 123,
+    "brief": "fix slugify accents",
+    "wtPath": "/wt/root/issue-123",
+    "config": {
+      "projectSpecifics": ".claude/lgtmgate"
+    },
+    "mode": "semi",
+    "projectSpecifics": ""
+  },
+  "calls": {},
+  "expect": {
+    "throws": "projectSpecifics: malformed"
+  }
+}
