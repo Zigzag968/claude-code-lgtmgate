@@ -33,7 +33,8 @@
 # 16 backlog-bump-required, 17 backlog-marketplace-pin, 18 backlog-suite, 19 no-private-refs,
 # 20 reviewer-window-scan-bounded, 21 gitdir-probe-no-rm, 22 no-destructive-checkout,
 # 23 guards-cjs (scripts/guards.cjs: R1 ratchet, 25 all-tests-wired, 1-relaxed version floor,
-# sam-parity, doc-budgets, instructions-wired), 24 critical-paths-proven, 26 stories-covered.
+# sam-parity, doc-budgets, instructions-wired), 24 critical-paths-proven, 26 stories-covered,
+# 27 agent-neutrality, 28 project-specifics-slot.
 #
 # Enforcement note (#54 MANDATORY 2, human decision 2026-08-23): this repo is PRIVATE on a
 # plan where branch protection and rulesets are both unavailable (verified this session:
@@ -941,6 +942,75 @@ else
   else
     pass "stories-covered: $ST_COUNT stories, each proven, pending or doc"
   fi
+fi
+
+# =============================================================================
+# Invariant 27 — agent-neutrality
+# =============================================================================
+# #263 (epic #261), stories US-C10 and US-R4: the plugin agents carry no pointer to one maintainer's rule files and no
+# stack-specific text. The bare word "tracking" and references to pr-acceptance.md stay allowed. AGENTS_DIR is an
+# override used only by negative tests on throwaway copies under .pipeline/.
+AGENTS_DIR="${AGENTS_DIR:-agents}"
+AGENT_NEUTRALITY_RE='\.claude/rules/(external-sources|git-workflow|tracking-obligatoire|concision|code-review-impartial|verification-ci-results)|verification-ci-results\.md|Tracking section|tracking emission|force unwrap|[Ss]wift|[Ss]imulator|codebase index'
+AN_FILES=0
+AN_HITS=""
+for an_f in "$AGENTS_DIR"/*.md; do
+  [ -f "$an_f" ] || continue
+  AN_FILES=$((AN_FILES + 1))
+  an_hit="$(grep -nE "$AGENT_NEUTRALITY_RE" "$an_f" 2>/dev/null | head -n 1 | cut -c1-80)"
+  if [ -n "$an_hit" ]; then
+    AN_HITS="$AN_HITS $(basename "$an_f"): $an_hit;"
+  fi
+done
+if [ "$AN_FILES" -eq 0 ]; then
+  fail "agent-neutrality" "no agent file found in $AGENTS_DIR"
+elif [ -n "$AN_HITS" ]; then
+  fail "agent-neutrality" "stack or private-rule text in agents:$AN_HITS"
+else
+  pass "agent-neutrality: $AN_FILES agent files carry no stack or private-rule text"
+fi
+
+# =============================================================================
+# Invariant 28 — project-specifics-slot
+# =============================================================================
+# #263: each of the five agents declares the <project_specifics> slot in one sentence, as part of its
+# "Project context (provided by the orchestrator)" section, whose next `## ` header is "## Hard rules". The slot line
+# carries no engine word (mirror of ENGINE_WORDS_RE, scripts/guards.cjs, keep in sync).
+PS_BAD=""
+PS_N=0
+for ps_a in mia sam nick morgan theo; do
+  ps_f="$AGENTS_DIR/$ps_a.md"
+  if [ ! -f "$ps_f" ]; then
+    PS_BAD="$PS_BAD $ps_a(missing)"
+    continue
+  fi
+  PS_N=$((PS_N + 1))
+  ps_res="$(awk '
+    BEGIN { fm = 0; role = 0; ctx = 0; slot = 0; nctx = 0; nxt = "" }
+    NR == 1 && $0 == "---" { fm = 1; next }
+    fm == 1 { if ($0 == "---") fm = 2; next }
+    {
+      if (ctx == 0 && role == 0 && $0 !~ /^## / && $0 ~ /[^ \t]/) role = 1
+      if ($0 == "## Project context (provided by the orchestrator)") { nctx++; if (nctx == 1 && role == 1) ctx = 1; next }
+      if (ctx == 1 && $0 ~ /^## /) { nxt = $0; ctx = 2; next }
+      if (ctx == 1 && slot == 0 && index($0, "<project_specifics>") > 0) { slot = 1; slotline = $0 }
+    }
+    END {
+      if (nctx != 1) { print "context-header"; exit }
+      if (ctx == 0) { print "no-role-line-before-context"; exit }
+      if (slot == 0) { print "no-slot-line"; exit }
+      if (nxt != "## Hard rules") { print "next-header"; exit }
+      if (slotline ~ /(^|[^A-Za-z0-9_])(simulate|seam)([^A-Za-z0-9_]|$)/ || index(slotline, "agent()") > 0 || index(slotline, "fixtures/incidents") > 0) { print "engine-word"; exit }
+      print "ok"
+    }' "$ps_f")"
+  if [ "$ps_res" != "ok" ]; then
+    PS_BAD="$PS_BAD $ps_a($ps_res)"
+  fi
+done
+if [ -n "$PS_BAD" ]; then
+  fail "project-specifics-slot" "slot declaration wrong in:$PS_BAD"
+else
+  pass "project-specifics-slot: $PS_N agents declare the <project_specifics> slot before Hard rules"
 fi
 
 # =============================================================================
