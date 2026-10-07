@@ -1,0 +1,16 @@
+ref origin/main @ 7e56d678d408
+refused (exit 3 if present): project_specifics tag, acceptance/ac/pipeline/decision-log markers, one-way-door: lines, line-start @, secret forms, invisible chars
+| role | bytes | cap | files | digest | refused literals |
+|---|---|---|---|---|---|
+| shared | 71 | 2048 | 1 | decd858c632b | 0 |
+| Sam | 91 | 6144 | 3 | 47bfc893dff2 | 0 |
+| Nick | 158 | 6144 | 3 | 98d8af7b5483 | 0 |
+| Morgan | 117 | 6144 | 2 | 524fa0ad90b7 | 0 |
+no specifics: Mia, Theo
+total (shared + largest role): 229 of 8192 bytes
+| lane | role | persona | paths | files |
+|---|---|---|---|---|
+| ios | Sam | Ivy | ios/** | 1 |
+| ios | Nick | Nora | - | 2 |
+| ios | Morgan | Milo | - | 1 |
+| web | Sam | - | web/** | 1 |

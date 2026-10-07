@@ -64,7 +64,7 @@ jtrue "ok-base: roles Nick Sam Morgan, shared set" 'j.shared!==null&&Object.keys
 jtrue "order-shared-role-subjects-extra" '(()=>{const t=j.roles.Nick.text;const a=["NICK-MARK","NICK-ALPHA-MARK","NICK-TESTING-MARK","NICK-EXTRA-MARK"].map(m=>t.indexOf(m));return a.every((x,i)=>x>=0&&(i===0||x>a[i-1]))&&!t.includes("SHARED-MARK")&&j.shared.text.includes("SHARED-MARK")})()'
 jtrue "subject-not-lane: nick.testing.md (no frontmatter) is a subject, never a lane" 'j.roles.Nick.text.includes("NICK-TESTING-MARK")&&j.roles.Nick.lanes.length===0&&j.files.some(f=>f.path.endsWith("nick.testing.md")&&f.roles.includes("Nick"))'
 jtrue "role-without-source-absent: Theo has no block" '!("Theo" in j.roles)'
-jtrue "frontmatter-strip: Morgan keeps its body, the lane is recorded" '(()=>{const m=j.roles.Morgan;return m.text.includes("MORGAN-MARK")&&!m.text.includes("lane:")&&!m.text.includes("persona")&&m.lanes.length===1&&m.lanes[0].lane==="review"&&m.lanes[0].file.endsWith("morgan.md")})()'
+jtrue "frontmatter-strip: Morgan keeps its base body, the lane (frontmatter stripped) is kept apart" '(()=>{const m=j.roles.Morgan;const l=m.lanes[0];return m.text.includes("MORGAN-MARK")&&!m.text.includes("MORGAN-REVIEW-MARK")&&!m.text.includes("lane:")&&m.lanes.length===1&&l.name==="review"&&l.persona==="reviewer"&&l.hint==="review lane"&&l.text.includes("MORGAN-REVIEW-MARK")&&!l.text.includes("persona")&&l.files.length===1&&l.files[0].endsWith("morgan.review.md")})()'
 jtrue "empty-stub-ignored: comment-only mia.md warns, exit 0, no Mia block" '!("Mia" in j.roles)&&j.warnings.some(w=>w.kind==="empty-ignored"&&w.path.endsWith("mia.md"))&&j.files.some(f=>f.path.endsWith("mia.md")&&f.empty===true)'
 
 # ---- digest, recomputed independently ---------------------------------------------------------
@@ -200,6 +200,108 @@ run "$R3"
 jtrue "accept-oversize-asks-again: above +25 % it asks again" 'j.warnings.some(w=>w.kind==="oversize"&&w.role==="Nick"&&w.ask===true&&w.accepted===+"'"$NB"'")'
 R4="$TMP/acc4"; new_repo "$R4"; seal "$R4"
 run "$R4" --accept-oversize Nick; exit_is "accept-oversize-nothing-exit2: a role within the cap has nothing to accept" 2
+
+# ---- lanes (#271) -------------------------------------------------------------------------------------
+# lane_repo <dir>: the base fixture plus sam.ios.md (lane ios, persona Ivy, paths) and sam.web.md; nothing sealed yet
+lane_repo() {
+  new_repo "$1"
+  printf -- '---\nlane: ios\npersona: Ivy\nhint: a senior iOS planner\npaths: ["ios/**", "!ios/Generated/**"]\n---\nIOS-SAM-MARK plans screens.\n' > "$1/.claude/lgtmgate/sam.ios.md"
+  printf -- '---\nlane: web\n---\nWEB-SAM-MARK plans routes.\n' > "$1/.claude/lgtmgate/sam.web.md"
+}
+R="$TMP/lane1"; lane_repo "$R"; seal "$R"
+run "$R"
+exit_is "lane-valid-frontmatter: exit 0" 0
+jtrue "lane-output-shape: base text kept apart, lanes array sorted with metadata, files and a digest each" '(()=>{const s=j.roles.Sam;const [a,b]=s.lanes;return s.text.includes("SAM-MARK")&&!s.text.includes("IOS-SAM-MARK")&&!s.text.includes("WEB-SAM-MARK")&&s.lanes.length===2&&a.name==="ios"&&b.name==="web"&&a.persona==="Ivy"&&a.hint==="a senior iOS planner"&&a.paths.length===2&&b.persona===undefined&&a.files.length===1&&a.text==="IOS-SAM-MARK plans screens."&&/^[0-9a-f]{64}$/.test(a.digest)&&a.bytes===a.text.length&&s.bytes===s.text.length+Math.max(a.bytes,b.bytes)})()'
+jtrue "lane-display-list: top-level lanes lists each lane once with its roles" '(()=>{const a=j.lanes.find(l=>l.name==="ios");return j.lanes.length===3&&j.lanes.map(l=>l.name).join()==="ios,review,web"&&a.roles.join()==="Sam"&&a.persona==="Ivy"})()'
+SHA=$(jx 'j.refSha'); LDIG=$(jx 'j.roles.Sam.lanes[0].digest'); RDIG=$(jx 'j.roles.Sam.digest')
+WANT=$(printf '{"lanes":[],"refSha":"%s","role":"Sam:ios","text":"IOS-SAM-MARK plans screens."}' "$SHA" | shasum -a 256 | cut -d' ' -f1)
+if [ -n "$LDIG" ] && [ "$LDIG" = "$WANT" ]; then ok "lane-digest-independent: sha256 of {lanes,refSha,role Sam:ios,text} matches"; else bad "lane-digest-independent: got [$LDIG] wanted [$WANT]"; fi
+WANTR=$(node -e 'const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));const c=require("crypto");const {canonicalJson}=require(process.argv[2]);process.stdout.write(c.createHash("sha256").update(canonicalJson({refSha:j.refSha,role:"Sam",text:j.roles.Sam.text,lanes:j.roles.Sam.lanes}),"utf8").digest("hex"))' "$OUT" "$AC")
+if [ "$RDIG" = "$WANTR" ]; then ok "lane-digest-role-covers-lanes: the role digest hashes the lane entries"; else bad "lane-digest-role-covers-lanes: got [$RDIG] wanted [$WANTR]"; fi
+cp "$OUT" "$TMP/lane1.json"
+
+R="$TMP/lane2"; lane_repo "$R"; printf -- '---\nlane: web\n---\nbody\n' > "$R/.claude/lgtmgate/sam.ios.md"; seal "$R"
+run "$R"; exit_is "lane-name-differs-from-file-name-exit2" 2
+err_has "lane-name-differs-from-file-name-exit2: names the rule" "frontmatter-lane-mismatch"
+R="$TMP/lane3"; lane_repo "$R"; printf -- '---\nlane: ios\n---\nbody\n' > "$R/.claude/lgtmgate/sam.md"; seal "$R"
+run "$R"; exit_is "lane-frontmatter-on-role-file-exit2" 2
+R="$TMP/lane4"; lane_repo "$R"; printf -- '---\nlane: ios\ncolor: red\n---\nbody\n' > "$R/.claude/lgtmgate/sam.ios.md"; seal "$R"
+run "$R"; exit_is "lane-unknown-field-exit2" 2
+R="$TMP/lane5"; lane_repo "$R"; printf -- '---\nlane: iOS_App\n---\nbody\n' > "$R/.claude/lgtmgate/sam.ios.md"; seal "$R"
+run "$R"; exit_is "lane-name-regex-exit2" 2
+LONG80=$(node -e 'process.stdout.write("p".repeat(81))'); LONG120=$(node -e 'process.stdout.write("h".repeat(121))')
+R="$TMP/lane6"; lane_repo "$R"; printf -- '---\nlane: ios\npersona: %s\n---\nbody\n' "$LONG80" > "$R/.claude/lgtmgate/sam.ios.md"; seal "$R"
+run "$R"; exit_is "lane-persona-over-80-exit2" 2
+R="$TMP/lane6b"; lane_repo "$R"; printf -- '---\nlane: ios\npersona: Two Words\n---\nbody\n' > "$R/.claude/lgtmgate/sam.ios.md"; seal "$R"
+run "$R"; exit_is "lane-persona-two-tokens-exit2" 2
+R="$TMP/lane7"; lane_repo "$R"; printf -- '---\nlane: ios\nhint: %s\n---\nbody\n' "$LONG120" > "$R/.claude/lgtmgate/sam.ios.md"; seal "$R"
+run "$R"; exit_is "lane-hint-over-120-exit2" 2
+R="$TMP/lane8"; lane_repo "$R"; printf -- '---\nlane: ios\npaths: ["a","b","c","d","e","f","g","h","i"]\n---\nbody\n' > "$R/.claude/lgtmgate/sam.ios.md"; seal "$R"
+run "$R"; exit_is "lane-paths-over-8-entries-exit2" 2
+R="$TMP/lane9"; lane_repo "$R"; printf -- '---\nlane: ios\npaths: ["%s"]\n---\nbody\n' "$LONG80" > "$R/.claude/lgtmgate/sam.ios.md"; seal "$R"
+run "$R"; exit_is "lane-path-entry-over-80-exit2" 2
+R="$TMP/lane10"; lane_repo "$R"; printf -- '---\nlane: ios\npersona: ivy\n---\nIOS-NICK-MARK\n' > "$R/.claude/lgtmgate/nick.ios.md"; seal "$R"
+run "$R"; exit_is "lane-persona-duplicated-exit2 (case-insensitive, across roles)" 2
+err_has "lane-persona-duplicated-exit2: names the rule" "frontmatter-persona-duplicate"
+R="$TMP/lane11"; lane_repo "$R"; printf -- '---\nlane: ios\npersona: sam\n---\nbody\n' > "$R/.claude/lgtmgate/sam.ios.md"; seal "$R"
+run "$R"; exit_is "lane-persona-equal-to-role-name-exit2" 2
+R="$TMP/lane12"; lane_repo "$R"; printf -- '---\npersona: Other\n---\nIOS-SAM-MORE-MARK\n' > "$R/.claude/lgtmgate/sam.ios.testing.md"; seal "$R"
+run "$R"; exit_is "lane-metadata-contradiction-in-a-pair-exit2" 2
+R="$TMP/lane13"; lane_repo "$R"; printf 'IOS-SAM-EXTRA-MARK from a file without frontmatter.\n' > "$R/.claude/lgtmgate/sam.ios.testing.md"; seal "$R"
+run "$R"
+jtrue "lane-deduced-from-file-name: a sibling without frontmatter joins the declared lane" '(()=>{const s=j.roles.Sam;const a=s.lanes.find(l=>l.name==="ios");return a.files.length===2&&a.text.includes("IOS-SAM-EXTRA-MARK")&&a.persona==="Ivy"&&!s.text.includes("IOS-SAM-EXTRA-MARK")})()'
+R="$TMP/lane14"; lane_repo "$R"; printf 'SAM-SUBJECT-MARK no lane declares this segment.\n' > "$R/.claude/lgtmgate/sam.extra.md"; seal "$R"
+run "$R"
+jtrue "lane-subject-when-undeclared: a segment no file declares stays a subject of the base" '(()=>{const s=j.roles.Sam;return s.text.includes("SAM-SUBJECT-MARK")&&s.lanes.length===2&&!s.lanes.some(l=>l.name==="extra")})()'
+R="$TMP/lane15"; lane_repo "$R"; printf -- '---\nlane: ios\n---\nbody\n' > "$R/docs/extra-all.md"
+setcfg "$R" '{"baseBranch":"main","projectSpecifics":".claude/lgtmgate","agentContext":{"*":["docs/extra-all.md"]}}'; seal "$R"
+run "$R"; exit_is "lane-frontmatter-on-agentcontext-file-exit2" 2
+R="$TMP/lane16"; lane_repo "$R"; printf -- '---\nlane: ios\npersona: Nora\n---\n<!-- to be completed -->\n' > "$R/.claude/lgtmgate/nick.ios.md"; seal "$R"
+run "$R"
+exit_is "lane-empty-file-is-ignored: a comment-only lane file warns, exit 0" 0
+jtrue "lane-empty-file-is-ignored: no Nick lane block, empty-ignored warning" '!("Nick" in j.roles&&j.roles.Nick.lanes.some(l=>l.name==="ios"))&&j.warnings.some(w=>w.kind==="empty-ignored"&&w.path.endsWith("nick.ios.md"))'
+R="$TMP/lane17"; new_repo "$R"; rm "$R/.claude/lgtmgate/nick.md" "$R/.claude/lgtmgate/nick.alpha.md" "$R/.claude/lgtmgate/nick.testing.md"
+printf -- '---\nlane: ios\n---\nIOS-NICK-ONLY-MARK\n' > "$R/.claude/lgtmgate/nick.ios.md"
+setcfg "$R" '{"baseBranch":"main","projectSpecifics":".claude/lgtmgate"}'; seal "$R"
+run "$R"
+jtrue "lane-role-with-lanes-but-no-base: text is empty, the lane carries the content" 'j.roles.Nick.text===""&&j.roles.Nick.lanes.length===1&&j.roles.Nick.bytes===j.roles.Nick.lanes[0].bytes'
+
+# ---- engine helpers, extracted from the workflow like the digest parity block ------------------------------------
+SAFE_BLK="$(sed -n '/^\/\/ --- safePlanTargets:start ---/,/^\/\/ --- safePlanTargets:end ---/p' "$ROOT/workflows/deliver-pipeline.js")"
+OWD_BLK="$(sed -n '/^\/\/ --- oneWayDoor:start ---/,/^\/\/ --- oneWayDoor:end ---/p' "$ROOT/workflows/deliver-pipeline.js")"
+cat > "$TMP/eng.cjs" <<'JS'
+const fs = require('fs')
+const [shaB, psB, safeB, owdB, payloadFile, acPath] = process.argv.slice(2)
+const f = new Function(shaB + '\n' + psB + '\n' + safeB + '\n' + owdB + '\nreturn { sha256Hex, specificsDigest, specificsProblem, specificsBlockFor, specificsLanesFound, resolveTheoLanes, lanesFromPlanText, appendLanesLine, lanePathHits, laneSentence, theoLanesSection }')()
+const ps = JSON.parse(fs.readFileSync(payloadFile, 'utf8'))
+const ac = require(acPath)
+const out = {}
+out.problem = String(f.specificsProblem(true, ps, f.sha256Hex))
+out.accepts = f.specificsProblem(true, ps, f.sha256Hex) === null
+const bad = JSON.parse(JSON.stringify(ps)); bad.roles.Sam.lanes[0].text += ' tampered'
+const roleOnly = String(f.specificsProblem(true, bad, f.sha256Hex)).startsWith('digest mismatch for Sam')
+bad.roles.Sam.digest = f.specificsDigest(f.sha256Hex, bad.refSha, 'Sam', bad.roles.Sam.text, bad.roles.Sam.lanes)
+out.rejectsTamper = roleOnly && String(f.specificsProblem(true, bad, f.sha256Hex)).startsWith('digest mismatch for Sam:ios')
+const found = f.specificsLanesFound(ps)
+out.found = found.map((l) => l.name).join() === 'ios,review,web' && found[0].persona === 'Ivy'
+const blk = f.specificsBlockFor(ps, 'sam', ['ios'])
+out.blockIos = blk.indexOf('In this lane you act as Ivy, a senior iOS planner.') > blk.indexOf('<project_specifics>') && blk.indexOf('In this lane you act as Ivy') < blk.indexOf('SAM-MARK') && blk.includes('IOS-SAM-MARK') && !blk.includes('WEB-SAM-MARK')
+out.blockNone = !f.specificsBlockFor(ps, 'sam', []).includes('IOS-SAM-MARK') && f.specificsBlockFor(ps, 'sam') === f.specificsBlockFor(ps, 'sam', [])
+out.blockSkipsMissing = !f.specificsBlockFor(ps, 'morgan', ['ios']).includes('IOS-SAM-MARK')
+const r = (a) => JSON.stringify(f.resolveTheoLanes(found, a))
+out.resolve = r(['ios']) === '{"lanes":["ios"],"unresolved":false,"unknown":[]}' && JSON.parse(r([])).unresolved === true && JSON.parse(r(undefined)).unresolved === true && JSON.parse(r('ios')).unresolved === true && JSON.parse(r(['ios', 3])).unresolved === true && JSON.parse(r(['ios', 'mars'])).unknown.join() === 'mars'
+const plan = f.appendLanesLine('plan body\n\n', ['ios', 'web'])
+out.roundTrip = plan === 'plan body\nlanes: ios,web' && f.lanesFromPlanText(plan).join() === 'ios,web' && f.lanesFromPlanText('no line').length === 0 && f.lanesFromPlanText('lanes: IOS').length === 0 && f.lanesFromPlanText('lanes: ios,').length === 0 && f.appendLanesLine('p', []) === 'p'
+out.pathHits = f.lanePathHits(found, ['ios/App.swift']).join() === 'ios' && f.lanePathHits(found, ['ios/Generated/X.swift']).length === 0 && f.lanePathHits(found, ['docs/a.md']).length === 0 && f.lanePathHits(found, ['ios/App.swift', 'web/a.js']).join() === 'ios'
+out.sentence = [['Ivy', 'a senior iOS planner'], ['Ivy', undefined], [undefined, 'x'], ['', 'x']].every(([p, h]) => f.laneSentence(p, h) === ac.laneSentence(p, h))
+out.theoSection = f.theoLanesSection([]) === '' && f.theoLanesSection(found).startsWith('LANES:') && f.theoLanesSection(found).includes('ios (persona Ivy')
+process.stdout.write(JSON.stringify(out))
+JS
+node "$TMP/eng.cjs" "$SHA_BLK" "$PS_BLK" "$SAFE_BLK" "$OWD_BLK" "$TMP/lane1.json" "$AC" > "$TMP/eng.out" 2> "$TMP/eng.err"
+eng() { node -e 'const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(String(j[process.argv[2]]))' "$TMP/eng.out" "$1" 2>/dev/null; }
+for k in accepts rejectsTamper found blockIos blockNone blockSkipsMissing resolve roundTrip pathHits sentence theoSection; do
+  if [ "$(eng $k)" = "true" ]; then ok "lane-engine-$k"; else bad "lane-engine-$k: $(head -c 300 "$TMP/eng.err") $(eng problem)"; fi
+done
 
 rm -rf "$TMP"
 STATUS=ok; [ "$FAIL" -gt 0 ] && STATUS=fail

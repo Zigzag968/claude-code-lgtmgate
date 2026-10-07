@@ -411,7 +411,7 @@ function assemble(opts) {
   let shared = null
   if (sharedPath && !done.get(sharedPath).empty) {
     const text = done.get(sharedPath).body
-    shared = { text, digest: digestOf(sha, 'shared', text, []), bytes: Buffer.byteLength(text, 'utf8') }
+    shared = { text, digest: digestOf(sha, 'shared', text, []), bytes: Buffer.byteLength(text, 'utf8'), lanes: [] }
     info.get(sharedPath).roles.push('shared')
     if (shared.bytes > CAP_SHARED) warnings.push({ kind: 'shared-oversize', bytes: shared.bytes, recommended: CAP_SHARED })
   }
