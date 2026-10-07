@@ -37,6 +37,7 @@ export const meta = {
 // | `dryRun` | if true, validate args and return immediately (no agents spawned) |
 // | `probeOnly` | optional { name, cmd, label, round }: run ONE probe() (probe-run gate, #80) and return status 'dry-run-ok' reason 'probe-only'. Lets a run-offline fixture reach probe() while no engine call site is migrated yet. Not a simulate key. |
 // | `pluginRoot` | optional absolute path of the plugin root (#82). The Lead passes ${CLAUDE_PLUGIN_ROOT} for the plugin component and omits it for a local copy; the probe layer resolves templates/probe-run.cjs from it (the workflow has no filesystem or env). config.probeRunPath wins; fallback <wtPath>/templates/probe-run.cjs. When the templates come from pluginRoot (no config.probeRunPath), the manifest version of the root must equal this engine's BUILD.version, else the run escalates before provisioning (`plugin-version-skew` / `plugin-version-unreadable`, #195). |
+// | `sessionRoot` | optional absolute path of the Lead session's project root (the workflow has no env). When given and not simulate, its git common dir must equal wtPath's, else the run escalates `session-root-mismatch` before provisioning (#177): agents get the launching session's instruction files. Omitted: the check is skipped with a log line. |
 // | `projectSpecifics` | optional object: the verbatim stdout of `scripts/agent-context.cjs` (commands/deliver.md §3bis). Required when `config.projectSpecifics` or `config.agentContext` is set. Absent, malformed or a digest mismatch throws before any agent call; nothing is injected on a refusal. The per-role text is inserted in every prompt of that role; the fingerprint is returned as `specifics` and traced (#265). Lanes (#271): a role block may carry `lanes:[{name, persona?, paths?, hint?, files, text, digest, bytes}]`; each lane digest is verified too; only the lanes chosen for the run are injected (see `lanes`). |
 // | `lanes` | optional array of lane names: the `lanes` of the previous result, carried by the Lead on every `entryStage` dev\|review relaunch (else the `lanes:` line of `planText` is read). A name that is no lane of `projectSpecifics` throws. A plan run asks Theo for the lanes (only when lane files exist), validates them, adds the lanes whose `paths` hit Sam's `targetFiles` for Nick and Morgan, appends `lanes: a,b` to the plan it returns, and reports `lanes` (and `lanesUnresolved:true` when Theo gave none) on `finish()`. |
 // | `models` | optional per-role model override: { scout?, planAudit?, morgan? }. Resolution order per role is `models.<role> ?? config.models?.<role> ?? 'sonnet'` (same `??` idiom as planAudit above — arg wins per-run over the project default). Default is 'sonnet' for all three roles (lgtmgate#161: the plan-phase loop could spawn up to 4 opus scout attempts per issue with planAudit on, the dominant cost driver); pass e.g. `models: { scout: 'opus' }` per-run when an issue is dense/dangerous enough to warrant it — opus stays fully reachable, just no longer the default. Not a general cost-control knob: Theo and Nick are NOT overridable by this key, always 'sonnet' (out of scope per the issue — their calls are unconditional literals). |
@@ -132,7 +133,7 @@ export const meta = {
 // `version`, checked against plugin.json by templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '1.1.0-beta.12', cutFrom: '3d6a603' }
+const BUILD = { plugin: 'lgtmgate', version: '1.1.0-beta.13', cutFrom: '8a37ef8' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -230,6 +231,7 @@ const {
   dryRun = false,
   probeOnly = null,
   pluginRoot = null,
+  sessionRoot = null,
   projectSpecifics = undefined,
   lanes: lanesArg = undefined,
   maxPlanAttempts = 2,
@@ -2591,6 +2593,37 @@ function minPluginVersionVerdict({ engineVersion, minVersion, plugin }) {
 }
 // --- pluginVersion:end ---
 
+// --- sessionRoot:start --- (pure & self-contained — keep extractable by the flow suite)
+// #177: agents get the instruction snapshot of the session that launches them (anthropics/claude-code#88886), so a run
+// on another repository than the Lead session's would run under the wrong rules. A script compares the git common dir
+// of the Lead's session root with the run's worktree; the command prints exactly one line, read by the `lines` probe.
+// No model judges. The reason never holds a path (the scrub hook refuses local paths in GitHub text).
+function sessionRootCmd(sessionRoot, wtPath) {
+  const q = (x) => `'${String(x).split("'").join("'\\''")}'`
+  const js = 'try{const cp=require("child_process"),fs=require("fs");' +
+    'const d=(p)=>fs.realpathSync(cp.execFileSync("git",["-C",p,"rev-parse","--path-format=absolute","--git-common-dir"],{encoding:"utf8",stdio:["ignore","pipe","ignore"]}).trim());' +
+    'console.log(d(process.argv[1])===d(process.argv[2])?"SESSION-ROOT:same":"SESSION-ROOT:differs")}' +
+    'catch(e){console.log("SESSION-ROOT-ERROR:unreadable")}'
+  return `node -e ${q(js)} ${q(sessionRoot)} ${q(wtPath)}`
+}
+// -> null when the session root is the repository of the worktree, else { code, reason }; fails closed on anything else.
+function sessionRootVerdict({ probeFailed, exit, lines }) {
+  if (probeFailed) return { code: 'provision-failed', reason: 'provision-failed' }
+  const one = exit === 0 && Array.isArray(lines) && lines.length === 1 && typeof lines[0] === 'string' ? lines[0] : ''
+  if (one === 'SESSION-ROOT:same') return null
+  if (one === 'SESSION-ROOT:differs') {
+    return {
+      code: 'session-root-mismatch',
+      reason: "session-root-mismatch: the session root is not the repository of the run's worktree; agents would receive this session's instruction files instead of the target repository's; drive this repository from a session opened in it (restart the session after any instruction files change), then relaunch; nothing ran",
+    }
+  }
+  return {
+    code: 'session-root-unreadable',
+    reason: "session-root-unreadable: cannot tell whether the session root is the repository of the run's worktree (the git common dir of one of them is unreadable, or the check gave no usable answer); pass sessionRoot as the absolute root of a session opened in the target repository, then relaunch; nothing ran",
+  }
+}
+// --- sessionRoot:end ---
+
 async function probe(name, cmd, { label, round = 0, onFail, noReuse = false, gateCmd = false } = {}) {
   if (!isSafeProbeToken(name) || !isSafeProbeToken(label)) {
     throw new Error(`probe: unsafe name/label (${JSON.stringify(name)} / ${JSON.stringify(label)})`)
@@ -2704,6 +2737,26 @@ if (!simulate && pluginRoot && !config.probeRunPath) {
     return finish(STATUS['escalate'], { reason: skew.reason, issue, pluginRoot, trace })
   }
   log(`Plugin version: pluginRoot holds ${BUILD.version}, same as the engine`)
+}
+
+// #177: a run is driven from a session opened in the target repository (agents get the launching session's
+// instructions). The Lead passes its session root; same git common dir as the worktree, else escalate before
+// provisioning. A reason on the existing escalate: no new status, agent or seam, no label written.
+if (!simulate && sessionRoot) {
+  const sr = await probe('lines', sessionRootCmd(sessionRoot, wtPath), { label: 'session-root', noReuse: true, onFail: (reason) => ({ probeFailed: reason }) })
+  if (sr.probeFailed === 'agent-death') return finish(STATUS['provision-died'], { issue, trace })
+  const srv = sessionRootVerdict({ probeFailed: sr.probeFailed, exit: sr.exit, lines: sr.json && sr.json.lines })
+  if (srv && sr.probeFailed) {
+    log(`Session root probe failed (${sr.probeFailed}) — failing closed` + (PROBE_REASON_HINTS[sr.probeFailed] ? `: ${PROBE_REASON_HINTS[sr.probeFailed]}` : ''))
+    return finish(STATUS['escalate'], { reason: 'provision-failed', issue, missing: [], exitCode: null, probeReason: sr.probeFailed, probeHint: PROBE_REASON_HINTS[sr.probeFailed] || null, trace })
+  }
+  if (srv) {
+    log(`Session root check failed — ${srv.reason}`)
+    return finish(STATUS['escalate'], { reason: srv.reason, issue, sessionRoot, wtPath, trace })
+  }
+  log("Session root: same repository as the run's worktree")
+} else if (!simulate) {
+  log('Session root check skipped: no sessionRoot arg')
 }
 
 // lgtmgate#139 / #253: on a crash-resume ('dev'/'review' entry) re-verify baseBranch against the
