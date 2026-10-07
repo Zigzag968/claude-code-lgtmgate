@@ -737,7 +737,7 @@ const t182Block = () => {
   const block = extractBetween(src, '// --- acceptanceItems:start ---', '// --- acceptanceItems:end ---')
   if (!block) throw new Error('acceptanceItems:start/:end markers not found in the pipeline source')
   // eslint-disable-next-line no-new-func
-  return new Function(block + '\nreturn { numberItems, renderLine, renderChecklist, parseChecklist, itemsFromPlan, validateAcceptanceItems, planLacksItems, mapBoxes, nickBlockNote, morganBoxesNote, boxLineId, lineKey, humanGateLine, onlyHumanGateLines, parkUntickable, morganItemsRule, reviewProgress, ciScope, ciAbsent, ciBlocker, verdictProblem }')()
+  return new Function(block + '\nreturn { tickIdsArgv, numberItems, renderLine, renderChecklist, parseChecklist, itemsFromPlan, validateAcceptanceItems, planLacksItems, mapBoxes, nickBlockNote, morganBoxesNote, boxLineId, lineKey, humanGateLine, onlyHumanGateLines, parkUntickable, morganItemsRule, reviewProgress, ciScope, ciAbsent, ciBlocker, verdictProblem }')()
 }
 const T182_ITEMS = [
   { text: '`node scripts/guards.cjs; echo $?` prints `0` as its last line', humanGate: false },
@@ -2419,7 +2419,8 @@ await testCase('T272 probeCommands() extracted from source markers (#82)', async
         eq('expectCmd never reaches the verify command', gated.verify.includes('--expect-cmd'), false),
         eq('the default run has no --expect-cmd', withRoot.run.includes('--expect-cmd'), false),
         eq('prWrite gates the command (gateCmd: true)', /async function prWrite[\s\S]*?probe\('pr-write', cmd, \{[\s\S]*?gateCmd: true/.test(src), true),
-        eq('the tick sends the block as --text-b64 base64Utf8(rendered)', src.includes("'--text-b64', base64Utf8(rendered)"), true),
+        eq('a non-empty tick sends the short command tickIdsArgv(pr, tickIds) (#257)', src.includes('tickIdsArgv(pr, tickIds)'), true),
+        eq('the empty tick keeps the text mode: the block as --text-b64 base64Utf8(rendered)', src.includes("'--text-b64', base64Utf8(rendered)"), true),
         eq('the tick no longer sends the block as --text', src.includes("'--mode', 'tick', '--text', rendered"), false),
         eq('the plugin-version probe does not gate its command (a stale root must still answer)', src.split('\n').filter((l) => l.includes("probe('lines', pluginVersionCmd(pluginRoot)")).every((l) => !l.includes('gateCmd')), true),
         eq('preflightProbe does not gate its command', src.slice(src.indexOf('async function preflightProbe'), src.indexOf('async function prWrite')).includes('gateCmd'), false),
@@ -2427,6 +2428,21 @@ await testCase('T272 probeCommands() extracted from source markers (#82)', async
     })(),
   ]
   return checks.find(c => c) || { ok: true }
+})
+
+// T257 (#257) — the tick of a 14-box checklist is a short command: the ids, no checklist text.
+await testCase('T257 tick-ids argv for a 14-box checklist carries the ids and no checklist text (#257)', async () => {
+  const fns = t182Block()
+  if (!fns) return t182Skip('T257')
+  const items = Array.from({ length: 14 }, (_, i) => ({ text: `\`bash check-${i + 1}.sh </dev/null | tail -n 1\` ends with \`failed=0\` (a long criterion that makes the rendered block big)`, humanGate: i === 4 }))
+  const rendered = fns.renderChecklist(fns.numberItems(items))
+  const argv = fns.tickIdsArgv(9, [1, 3, 14])
+  const joined = argv.join(' ')
+  return eq('argv', argv, ['--pr', 9, '--mode', 'tick-ids', '--ids', '1,3,14']) ||
+    eq('the rendered block is long (the old command carried all of it)', rendered.length > 1000, true) ||
+    eq('no checklist text in the argv', joined.includes('ac:') || joined.includes('- [ ]') || joined.includes('text'), false) ||
+    eq('the joined argv is under 120 characters', joined.length < 120, true) ||
+    { ok: true }
 })
 
 // T273 (#82) — the probe role has the same persona-in-prompt fallback as Theo, and the two fail-closed

@@ -1086,6 +1086,11 @@ function morganItemsRule(block) {
   }
   return 'For each remaining unticked acceptance box, put in `items` the **verbatim checklist line** it blocks on (copy the box text exactly — do NOT paraphrase — so a persistent blocker reads identically across rounds). Any box whose line contains the tag `[human-gate]` is a **human-only** item: you cannot verify it and MUST NOT tick it or ask Nick to fix it — copy its line verbatim into `items` (tag preserved) and treat it as a human gate, not a code defect. Emit `REQUIRED_CHANGES` whenever any box is unticked (human-gate or not). '
 }
+// #257: the argv of the short tick, `--mode tick-ids`: only the PR number and the ids travel, the script reads the body
+// itself. Pure, no checklist text in it.
+function tickIdsArgv(pr, ids) {
+  return ['--pr', pr, '--mode', 'tick-ids', '--ids', ids.join(',')]
+}
 // --- acceptanceItems:end ---
 
 // ---------------------------------------------------------------------------
@@ -3824,9 +3829,11 @@ if (after('review', entryStage)) {
   // non-gate boxes `[x]` by id (a human-gate id keeps the state the body has: the engine never writes a gate `[x]`; a
   // non-gate box Morgan returned nothing proven for is open, a stale `[x]` of the body reopened). The tick has landed when the probe answered written or
   // skipped; anything else is "not ticked" and names its reason (`tickReason`: the probe's own, 'probe-unavailable'-like
-  // when it gave no answer); a `stale-read` is retried once, the body being read afresh by the script. #212: the block
-  // travels as one base64 token (`--text-b64`) and the script refuses a copy that does not hash to the composed command
-  // before it writes anything, so a `cmd-mismatch` (the copy was altered) is retried once too.
+  // when it gave no answer); a `stale-read` is retried once, the body being read afresh by the script. #257: a tick of
+  // one box or more is the short command `--mode tick-ids --ids CSV` (the script reads the body and sets those boxes;
+  // no checklist text travels); only the empty tick (nothing to set, a stale [x] to reopen) keeps the #212 text mode,
+  // where the block travels as one base64 token (`--text-b64`). The script refuses a copy that does not hash to the
+  // composed command before it writes anything, so a `cmd-mismatch` (the copy was altered) is retried once too.
   // The boxes not proven are judged FIRST: a LGTM with one is REQUIRED_CHANGES carrying its canonical line, whatever
   // the tick does. Then, not ticked while a non-gate box is proven: a LGTM becomes REQUIRED_CHANGES carrying those boxes'
   // canonical lines and `untickable` [{ id, item, proof }] (reviewParkedTerminal parks the run from them, only when
@@ -3863,7 +3870,10 @@ if (after('review', entryStage)) {
         prBodyPreview = out
         return null
       }
-      const res = await prWrite('body-splice', label, round, ['--pr', pr, '--mode', 'tick', '--text-b64', base64Utf8(rendered), '--ids', tickIds.join(','), '--keep', keepIds.join(',')])
+      // #257: a non-empty tick is the short command (ids only); the empty tick keeps the text mode, which reopens a stale [x].
+      const res = await prWrite('body-splice', label, round, tickIds.length > 0
+        ? tickIdsArgv(pr, tickIds)
+        : ['--pr', pr, '--mode', 'tick', '--text-b64', base64Utf8(rendered), '--ids', tickIds.join(','), '--keep', keepIds.join(',')])
       if (res && (res.result === 'written' || res.result === 'skipped')) return null
       tickDetail = res ? namedReadFailure(res.detail) : null
       return res ? (res.reason || 'write-failed') : (prWriteFailure || 'probe-unavailable')
