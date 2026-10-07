@@ -31,6 +31,11 @@ exactness keys that change no fixture that does not set them: `traceExact: true`
 entries as `trace`) and `callLabels` (the ordered labels of the `agent()` calls, exact equality). Two more opt-in keys:
 `phases` (the ordered `phase()` titles of the run, exact equality) and `callLabelsAbsent` (a non-empty list of label
 prefixes no `agent()` call may start with; an empty list or a non-array is refused).
+Prompt assertions (#262, each an object or a non-empty array of objects): `promptIncludes` (`{label, nth?, includes: [...]}`:
+the prompt of the nth call carrying that label, 0-based, default 0, must contain every string) and `promptOrder`
+(`{label, nth?, order: [a, b, ...]}`, at least 2 strings: their first occurrences in that prompt must be at strictly
+increasing offsets). A label repeats only when its `calls` entry is an array. Any other `expect` key fails the fixture
+(an unknown key is refused, never ignored).
 
 - `runs` (see `relaunch/dev-after-plan.json`): at least 2 runs, each with its own `args`, `calls` and `expect` (plus `carry`); no other key on a run (a misspelled one is refused), no top-level `args`/`calls`/`expect`.
 - `carry` on a run: `{ "<arg>": "<field of the previous run's result>" }`, e.g. `"planText": "plan"`; a field the previous run did not return fails the fixture.
