@@ -1,0 +1,21 @@
+lgtmgate init proposal
+detected
+  stacks: node
+  signals: .github/dependabot.yml, .nvmrc
+  ci: .github/workflows/ci.yml
+  rules: .claude/rules/code-style.md (no paths)
+  agents-md: no
+  mcp: no
+  project agents: 0
+  lane candidates: none
+files
+  create .claude/lgtmgate/shared.md
+  create .claude/lgtmgate/sam.md
+  create .claude/lgtmgate/nick.md
+  create .claude/lgtmgate/morgan.md
+  create .claude/lgtmgate/theo.md
+  create .claude/lgtmgate/mia.md
+config (.claude/pipeline.config.json, a key is set only when absent or empty)
+  projectSpecifics: ".claude/lgtmgate"
+  minPluginVersion: "9.9.9"
+  agentContext: unchanged (rules to target are asked per role)
