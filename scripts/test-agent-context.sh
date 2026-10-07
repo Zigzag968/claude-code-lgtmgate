@@ -72,6 +72,22 @@ SHA=$(jx 'j.refSha'); DIG=$(jx 'j.roles.Sam.digest'); TXT=$(jx 'JSON.stringify(j
 WANT=$(printf '{"lanes":[],"refSha":"%s","role":"Sam","text":%s}' "$SHA" "$TXT" | shasum -a 256 | cut -d' ' -f1)
 if [ -n "$DIG" ] && [ "$DIG" = "$WANT" ]; then ok "digest-independent: sha256 of {lanes,refSha,role,text} matches"; else bad "digest-independent: got [$DIG] wanted [$WANT]"; fi
 
+# ---- digest parity with the workflow engine (#265) ----------------------------------------------
+SHA_BLK="$(sed -n '/^\/\/ --- sha256Hex:start ---/,/^\/\/ --- sha256Hex:end ---/p' "$ROOT/workflows/deliver-pipeline.js")"
+PS_BLK="$(sed -n '/^\/\/ --- projectSpecifics:start ---/,/^\/\/ --- projectSpecifics:end ---/p' "$ROOT/workflows/deliver-pipeline.js")"
+PAR=0
+if [ -n "$SHA_BLK" ] && [ -n "$PS_BLK" ]; then
+  node -e '
+    const f = new Function(process.argv[1] + "\n" + process.argv[2] + "\nreturn { sha256Hex, specificsDigest }")()
+    const { digestOf } = require(process.argv[3])
+    const ref = "0123456789abcdef0123456789abcdef01234567"
+    const lanes = [{ file: "d/sam.api.md", lane: "api", persona: "p", hint: "h", paths: ["a/**", "b"] }]
+    const cases = [["Nick", "Use tabs.", []], ["Sam", "caf\u00e9 \u00e9", []], ["Morgan", "astral \ud83d\ude80 char", lanes], ["Theo", "", []], ["shared", "S\nT", []], ["Sam", "x", lanes]]
+    for (const [k, t, l] of cases) if (f.specificsDigest(f.sha256Hex, ref, k, t, l) !== digestOf(ref, k, t, l)) process.exit(1)
+  ' "$SHA_BLK" "$PS_BLK" "$AC" 2>/dev/null && PAR=1
+fi
+if [ "$PAR" = 1 ]; then ok "digest-parity-workflow: the engine digest equals agent-context.cjs digestOf"; else bad "digest-parity-workflow: the engine digest differs from digestOf"; fi
+
 # ---- print ------------------------------------------------------------------------------------
 run "$R" --print Nick
 if [ "$rc" = 0 ] && grep -q '^== Nick (' "$OUT" && grep -q 'NICK-MARK' "$OUT" && ! grep -q 'SAM-MARK' "$OUT"; then ok "print: --print Nick renders one role"; else bad "print: exit $rc: $(head -c 200 "$OUT")"; fi
