@@ -2628,6 +2628,112 @@ await testCase('T195d the check runs first, only when the templates come from pl
   return checks.find(c => c) || { ok: true }
 })
 
+// T177 (#177) — a run whose Lead session root is not the target repository is refused before provisioning. The decision is
+// sessionRootVerdict(), a pure function extracted from its source markers; the real command runs against temp git repos.
+const sessionRootPieces = () => {
+  const src = SUITE_ARGS.fpSource
+  if (!src) return null
+  const block = extractBetween(src, '// --- sessionRoot:start ---', '// --- sessionRoot:end ---')
+  if (!block) return { missing: true, src }
+  // eslint-disable-next-line no-new-func
+  const fns = new Function(block + '\nreturn { sessionRootCmd, sessionRootVerdict }')()
+  return { ...fns, src }
+}
+await testCase('T177a the verdict on the real command: same repository passes, another one is session-root-mismatch, fail closed otherwise (#177)', async () => {
+  const sp = sessionRootPieces()
+  if (!sp) {
+    log('SKIP — T177a: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  if (sp.missing) return { ok: false, msg: 'sessionRoot:start/:end markers not found in pipeline source' }
+  const { sessionRootCmd, sessionRootVerdict } = sp
+  const cp = process.getBuiltinModule('child_process')
+  const fsm = process.getBuiltinModule('fs')
+  const osm = process.getBuiltinModule('os')
+  const pathm = process.getBuiltinModule('path')
+  const tmp = fsm.mkdtempSync(pathm.join(osm.tmpdir(), 't177-'))
+  try {
+    const git = (cwd, ...a) => cp.execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', ...a], { cwd, stdio: 'ignore' })
+    const repoA = pathm.join(tmp, 'a')
+    const repoB = pathm.join(tmp, 'b')
+    const wtA = pathm.join(tmp, 'wt a')
+    for (const r of [repoA, repoB]) { fsm.mkdirSync(r); git(r, 'init', '-q'); git(r, 'commit', '--allow-empty', '-q', '-m', 'init') }
+    git(repoA, 'worktree', 'add', '-q', '-b', 'feat/x', wtA)
+    const real = (sessionRoot, wtPath) => {
+      let out = ''
+      let exit = 0
+      try { out = cp.execFileSync('sh', ['-c', sessionRootCmd(sessionRoot, wtPath)], { encoding: 'utf8' }) } catch (e) { exit = e.status || 1 }
+      return { exit, lines: out.split('\n').filter((l) => l !== '') }
+    }
+    const same = real(repoA, wtA)
+    const differs = real(repoB, wtA)
+    const notRepo = real(pathm.join(tmp, 'missing'), wtA)
+    const v = (o) => sessionRootVerdict({ exit: 0, lines: [], ...o })
+    const mismatch = sessionRootVerdict(differs)
+    const checks = [
+      eq('the real command: the repo and its linked worktree are the same', same.lines, ['SESSION-ROOT:same']),
+      eq('the real command: another repository differs', differs.lines, ['SESSION-ROOT:differs']),
+      eq('the real command: a non-repository is unreadable', notRepo.lines, ['SESSION-ROOT-ERROR:unreadable']),
+      eq('same -> no verdict', sessionRootVerdict(same), null),
+      eq('differs -> session-root-mismatch', mismatch && mismatch.code, 'session-root-mismatch'),
+      includes('the mismatch says nothing ran', mismatch.reason, 'nothing ran'),
+      includes('the mismatch names the remedy', mismatch.reason, 'session opened in it'),
+      eq('the reason carries no local path', mismatch.reason.includes(tmp) || mismatch.reason.includes('/Users/') || mismatch.reason.includes('/Volumes/'), false),
+      eq('error line -> session-root-unreadable', v({ lines: ['SESSION-ROOT-ERROR:unreadable'] }).code, 'session-root-unreadable'),
+      eq('empty -> session-root-unreadable', v({ lines: [] }).code, 'session-root-unreadable'),
+      eq('two lines -> session-root-unreadable', v({ lines: ['SESSION-ROOT:same', 'x'] }).code, 'session-root-unreadable'),
+      eq('exit != 0 -> session-root-unreadable', v({ exit: 1, lines: ['SESSION-ROOT:same'] }).code, 'session-root-unreadable'),
+      eq('a probe failure keeps the documented provision-failed', sessionRootVerdict({ probeFailed: 'no-attestation' }).code, 'provision-failed'),
+    ]
+    return checks.find(c => c) || { ok: true }
+  } finally {
+    fsm.rmSync(tmp, { recursive: true, force: true })
+  }
+})
+await testCase('T177b the gate runs before provisioning and any agent call, only outside simulate, and writes no label (#177)', async () => {
+  const sp = sessionRootPieces()
+  if (!sp) {
+    log('SKIP — T177b: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const src = sp.src
+  const gate = 'if (!simulate && sessionRoot) {'
+  const iGate = src.indexOf(gate)
+  if (iGate < 0) return { ok: false, msg: 'session-root gate not found in pipeline source' }
+  const iPlugin = src.indexOf('if (!simulate && pluginRoot && !config.probeRunPath) {')
+  const iProvision = src.indexOf("await probe('provision',")
+  const iRecheck = src.indexOf("if (entryStage !== 'plan') {", iGate)
+  const body = src.slice(iGate, src.indexOf('\n}\n', iGate))
+  const checks = [
+    eq('gate follows the plugin-version gate', iPlugin >= 0 && iPlugin < iGate, true),
+    eq('gate precedes the provision probe', iGate < iProvision, true),
+    eq('gate precedes the entryStage re-check', iRecheck > iGate, true),
+    eq('gate reads through probe(lines) with noReuse', body.includes("probe('lines', sessionRootCmd(sessionRoot, wtPath), { label: 'session-root', noReuse: true"), true),
+    eq('gate escalates on the existing status with the verdict reason', body.includes("finish(STATUS['escalate'], { reason: srv.reason"), true),
+    eq('gate writes no label and makes no agent call', body.includes('updateStatus') || body.includes('prWrite') || body.includes('agent('), false),
+    eq('the reason is named in the source', src.includes("code: 'session-root-mismatch'"), true),
+    eq('no new status: the registry has no session-root key', /STATUS = \{[^}]*session-root/.test(src), false),
+  ]
+  return checks.find(c => c) || { ok: true }
+})
+await testCase('T177c commands/deliver.md states the rule once and documents the escalate reason (#177)', async () => {
+  const fsm = process.getBuiltinModule('fs')
+  const pathm = process.getBuiltinModule('path')
+  if (!SUITE_ARGS.fpScriptPath) {
+    log('SKIP — T177c: SUITE_ARGS.fpScriptPath absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const doc = fsm.readFileSync(pathm.resolve(pathm.dirname(SUITE_ARGS.fpScriptPath), '..', 'commands', 'deliver.md'), 'utf8')
+  const rule = 'session opened in the target repository'
+  const row = doc.split('\n').find((l) => l.startsWith('| `escalate` |')) || ''
+  const checks = [
+    eq('the rule line appears in the restart paragraph, once', doc.split(rule).length - 1 >= 1 && doc.split('\n').filter((l) => l.startsWith('A run is driven from a ' + rule)).length, 1),
+    eq('the escalate row names session-root-mismatch', row.includes('session-root-mismatch'), true),
+    eq('the sessionRoot arg is documented', doc.includes('sessionRoot: <'), true),
+  ]
+  return checks.find(c => c) || { ok: true }
+})
+
 // T9233 (#233) — config.minPluginVersion: a repo can make the engine refuse to run when the engine is older than the
 // version it asks for (a Lead who merges engine fixes keeps running the old engine until the plugin is updated and
 // the session restarted). Pure decision (minPluginVersionVerdict, extracted from the pluginVersion markers), raised
