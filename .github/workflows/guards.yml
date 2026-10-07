@@ -8,7 +8,8 @@ name: guards
 #   - scripts/run-flow-suite.cjs         : offline flow suite (templates/test-deliver-pipeline.js)
 #   - scripts/run-offline.cjs --all fixtures : record/replay harness with the real parsers
 #   - scripts/test-guards.sh, test-run-offline.sh, test-capture-incident.sh, test-publish-fixture.sh,
-#     test-redact-fixture.sh, test-agent-context.sh, test-init-specifics.sh, test-cleanup-worktree.sh,
+#     test-redact-fixture.sh, test-agent-context.sh, test-context-print.sh, test-init-specifics.sh,
+#     test-cleanup-worktree.sh,
 #     test-verify-workflow-launch.sh, hooks/test-*.sh, templates/test-provision-worktree.sh,
 #     test-blocked-by-check.sh, test-gh-pipeline-status.sh, test-probe-evals.sh,
 #     test-gate-check.sh : per-script regression tests
@@ -53,6 +54,8 @@ jobs:
         run: bash scripts/test-redact-fixture.sh
       - name: agent-context self-test
         run: bash scripts/test-agent-context.sh
+      - name: context-print self-test
+        run: bash scripts/test-context-print.sh
       - name: init-specifics self-test
         run: bash scripts/test-init-specifics.sh
       - name: publish-fixture self-test
