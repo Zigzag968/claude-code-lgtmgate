@@ -410,7 +410,7 @@ if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: phase-titles: no '; then ok 
 # ---- init-stubs (#267) ----
 run_stubs() { OUT="$(GUARDS_ONLY=init-stubs GUARDS_INIT_STUBS="$1" node scripts/guards.cjs 2>&1)"; RC=$?; }
 run_stubs "$REPO_ROOT/scripts/init-specifics.cjs"
-if [ "$RC" -eq 0 ] && [ "$OUT" = "PASS: init-stubs: 6 stubs, no engine vocabulary, empty once comments are stripped" ]; then ok "init-stubs: the six real stubs -> PASS"; else ko "init-stubs real stubs (rc=$RC) $OUT"; fi
+if [ "$RC" -eq 0 ] && [ "$OUT" = "PASS: init-stubs: 6 stubs, 1 lane stub, 1 lane sentence, no engine vocabulary, empty once comments are stripped" ]; then ok "init-stubs: the six real stubs -> PASS"; else ko "init-stubs real stubs (rc=$RC) $OUT"; fi
 printf "exports.STUBS = { sam: '<!-- run the simulate step -->' }\n" > "$T/stubs-bad.cjs"; run_stubs "$T/stubs-bad.cjs"
 if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q "^FAIL: init-stubs: stub 'sam' carries the engine word 'simulate'$"; then ok "init-stubs: a stub with an engine word -> FAIL naming the stub"; else ko "init-stubs engine word (rc=$RC) $OUT"; fi
 printf "exports.STUBS = { sam: 'a rule that injects text' }\n" > "$T/stubs-text.cjs"; run_stubs "$T/stubs-text.cjs"

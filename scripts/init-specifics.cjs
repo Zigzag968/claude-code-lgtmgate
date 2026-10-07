@@ -10,9 +10,10 @@
 //
 // Usage: node scripts/init-specifics.cjs [--root <repo>]                           create the missing stubs
 //        node scripts/init-specifics.cjs [--root <repo>] --detect                  what the repo already holds (JSON)
-//        node scripts/init-specifics.cjs [--root <repo>] --propose [--plugin-version <x.y.z>]   readable proposal, writes nothing
-// Stdout (write mode): one JSON line {"created":[...],"kept":[...]} (relative paths, fixed role order).
-// Exit:  0 ok · 2 usage or a folder that cannot be created.
+//        node scripts/init-specifics.cjs [--root <repo>] --propose [--plugin-version <x.y.z>] [--lanes a,b]   readable proposal, writes nothing
+//        node scripts/init-specifics.cjs [--root <repo>] --lanes ios,web          create only sam|nick|morgan.<lane>.md (#271)
+// Stdout (write mode): one JSON line {"created":[...],"kept":[...]} (relative paths, fixed role order; lane files after the role files).
+// Exit:  0 ok · 2 usage (a lane name outside [a-z0-9-]{1,24} included) or a folder that cannot be created.
 // Writes only inside <root>/.claude/lgtmgate/, only a file that does not exist (open flag wx): an existing
 // path (file, symlink, directory) is kept and never opened.
 // Lead allow rule: Bash(node */scripts/init-specifics.cjs:*)
@@ -72,6 +73,19 @@ const STUBS = {
     '[ask] docs/issues language: the language of the issues she writes',
     '[ask] rules to target: which rule files she must read',
   ]),
+}
+
+// A lane stub (#271): the frontmatter declares the lane, the body is one comment the owner completes (persona, paths, hint).
+const LANE_ROLES = ['sam', 'nick', 'morgan']
+const LANE_NAME_RE = /^[a-z0-9-]{1,24}$/
+const LANE_ROLE_NOUN = { sam: 'planner', nick: 'developer', morgan: 'reviewer' }
+function laneStub(role, lane) {
+  return `---\nlane: ${lane}\n---\n` + stub([
+    `Owner notes read by the ${LANE_ROLE_NOUN[role] || 'agent'} when the ${lane} lane applies. Complete this file in your own words; it is never rewritten.`,
+    '[ask] persona (optional): a single name',
+    '[ask] paths: the globs of the files this lane covers',
+    '[ask] hint (120 characters at most): one line on what this role is in this lane',
+  ])
 }
 
 // ---- detect ------------------------------------------------------------------------------------
@@ -139,6 +153,16 @@ function detect(root) {
     return { path: p, present, pristine }
   })
   const stackList = [...stacks].sort(byCode)
+  const laneFiles = []
+  let dirEnts = []
+  try { dirEnts = fs.readdirSync(nodePath.join(root, DIR), { withFileTypes: true }) } catch (e) { /* no folder yet */ }
+  for (const e of dirEnts.map((x) => x).sort((a, b) => byCode(a.name, b.name))) {
+    const m = /^(sam|nick|morgan|theo|mia)\.([a-z0-9-]{1,24})\.md$/.exec(e.name)
+    if (!m || !e.isFile()) continue
+    let pristine = false
+    try { pristine = LANE_ROLES.includes(m[1]) && fs.readFileSync(nodePath.join(root, DIR, e.name), 'utf8') === laneStub(m[1], m[2]) } catch (err) { /* unreadable */ }
+    laneFiles.push({ path: `${DIR}/${e.name}`, role: m[1], lane: m[2], pristine })
+  }
   return {
     stacks: stackList,
     signals: SIGNAL_FILES.filter((s) => relSet.has(s)).sort(byCode),
@@ -149,12 +173,13 @@ function detect(root) {
     existing,
     projectAgents: direct('.claude/agents/', /\.md$/).length,
     laneCandidates: stackList.length >= 2 ? stackList : [],
+    laneFiles,
   }
 }
 
 // ---- propose -----------------------------------------------------------------------------------
 
-function propose(root, pluginVersion) {
+function propose(root, pluginVersion, lanes = []) {
   const d = detect(root)
   const list = (a) => (a.length ? a.join(', ') : 'none')
   const lines = [
@@ -175,6 +200,15 @@ function propose(root, pluginVersion) {
     else if (e.pristine) lines.push(`  keep ${e.path} (stub unchanged)`)
     else lines.push(`  keep ${e.path} (edited by the owner, never touched)`)
   }
+  for (const l of lanes) {
+    for (const r of LANE_ROLES) {
+      const p = `${DIR}/${r}.${l}.md`
+      const f = d.laneFiles.find((x) => x.path === p)
+      if (!f) lines.push(`  create ${p}`)
+      else if (f.pristine) lines.push(`  keep ${p} (stub unchanged)`)
+      else lines.push(`  keep ${p} (edited by the owner, never touched)`)
+    }
+  }
   lines.push(
     'config (.claude/pipeline.config.json, a key is set only when absent or empty)',
     `  projectSpecifics: ${JSON.stringify(DIR)}`,
@@ -186,13 +220,15 @@ function propose(root, pluginVersion) {
 
 // ---- write -------------------------------------------------------------------------------------
 
-function writeStubs(root) {
+function writeStubs(root, lanes = []) {
   const dir = nodePath.join(root, DIR)
   fs.mkdirSync(dir, { recursive: true })
   const created = []
   const kept = []
-  for (const r of ROLE_FILES) {
-    const rel = `${DIR}/${r}.md`
+  // With --lanes only the lane files are written (the role stubs come from the plain run); the plain run writes the role stubs.
+  const targets = lanes.length > 0 ? [] : ROLE_FILES.map((r) => [`${DIR}/${r}.md`, STUBS[r]])
+  for (const l of lanes) for (const r of LANE_ROLES) targets.push([`${DIR}/${r}.${l}.md`, laneStub(r, l)])
+  for (const [rel, body] of targets) {
     let fd
     try {
       fd = fs.openSync(nodePath.join(root, rel), 'wx', 0o644)
@@ -200,7 +236,7 @@ function writeStubs(root) {
       if (e && e.code === 'EEXIST') { kept.push(rel); continue }
       throw e
     }
-    try { fs.writeSync(fd, STUBS[r]) } finally { fs.closeSync(fd) }
+    try { fs.writeSync(fd, body) } finally { fs.closeSync(fd) }
     created.push(rel)
   }
   return { created, kept }
@@ -216,10 +252,10 @@ function pluginVersion() {
   }
 }
 
-const USAGE = 'usage: init-specifics.cjs [--root <repo>] [--detect | --propose [--plugin-version <x.y.z>]]'
+const USAGE = 'usage: init-specifics.cjs [--root <repo>] [--detect | --propose [--plugin-version <x.y.z>]] [--lanes a,b]'
 
 function main(argv) {
-  const o = { root: process.cwd(), mode: 'write', version: null }
+  const o = { root: process.cwd(), mode: 'write', version: null, lanes: [] }
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     const val = () => {
@@ -231,6 +267,12 @@ function main(argv) {
       else if (a === '--detect') o.mode = 'detect'
       else if (a === '--propose') o.mode = 'propose'
       else if (a === '--plugin-version') o.version = val()
+      else if (a === '--lanes') {
+        const names = val().split(',')
+        const badName = names.find((n) => !LANE_NAME_RE.test(n))
+        if (badName !== undefined) throw new Error('bad lane name (expected [a-z0-9-], 1 to 24 characters)')
+        o.lanes = names.filter((n, i) => names.indexOf(n) === i)
+      }
       else throw new Error(`unknown argument: ${a}`)
     } catch (e) {
       process.stderr.write(`init-specifics: ${e.message}\n${USAGE}\n`)
@@ -243,8 +285,8 @@ function main(argv) {
   }
   try {
     if (o.mode === 'detect') process.stdout.write(JSON.stringify(detect(o.root)) + '\n')
-    else if (o.mode === 'propose') process.stdout.write(propose(o.root, o.version || pluginVersion()))
-    else process.stdout.write(JSON.stringify(writeStubs(o.root)) + '\n')
+    else if (o.mode === 'propose') process.stdout.write(propose(o.root, o.version || pluginVersion(), o.lanes))
+    else process.stdout.write(JSON.stringify(writeStubs(o.root, o.lanes)) + '\n')
     return 0
   } catch (e) {
     process.stderr.write(`init-specifics: ${String(e && e.message ? e.message : e).split('\n')[0]}\n`)
@@ -252,6 +294,6 @@ function main(argv) {
   }
 }
 
-module.exports = { STUBS, ROLE_FILES, detect, propose, writeStubs }
+module.exports = { STUBS, ROLE_FILES, laneStub, detect, propose, writeStubs }
 
 if (require.main === module) process.exitCode = main(process.argv.slice(2))

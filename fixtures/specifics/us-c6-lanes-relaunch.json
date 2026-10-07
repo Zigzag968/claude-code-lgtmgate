@@ -1,0 +1,550 @@
+{
+  "name": "us-c6-lanes-relaunch",
+  "note": "#271: run 1 stops at plan-ready with Theo's lane persisted as the lanes: line of the plan; run 2 is the Lead relaunch at entryStage dev with that plan as planText and no lanes arg: no Theo, and Nick still gets the ios text.",
+  "runs": [
+    {
+      "args": {
+        "pluginRoot": "/plugin",
+        "issue": 123,
+        "brief": "fix slugify accents",
+        "wtPath": "/wt/root/issue-123",
+        "config": {
+          "projectSpecifics": ".claude/lgtmgate"
+        },
+        "mode": "manual",
+        "projectSpecifics": {
+          "ref": "origin/main",
+          "refSha": "7e56d678d4084b204b35d4dfd993bad00be5e93c",
+          "shared": {
+            "text": "# Shared\n\nSHARED-MARK applies to every agent of this synthetic project.",
+            "digest": "decd858c632b7573b15a9a74c9ae8979b0f263b79b34bd9cde7540d67af5cbc9",
+            "bytes": 71,
+            "lanes": []
+          },
+          "roles": {
+            "Sam": {
+              "text": "# Sam\n\nSAM-MARK plans in small steps.",
+              "digest": "47bfc893dff2397881cc0ee9a2b1137103c575c5ddb844ca756b20537ff7e0e7",
+              "bytes": 91,
+              "lanes": [
+                {
+                  "name": "ios",
+                  "persona": "Ivy",
+                  "paths": [
+                    "ios/**"
+                  ],
+                  "hint": "a senior iOS planner",
+                  "files": [
+                    ".claude/lgtmgate/sam.ios.md"
+                  ],
+                  "text": "# Sam iOS\n\nIOS-SAM-MARK plans screens before code.",
+                  "digest": "c6319942caafcd9f175d4c4267830493220b6e283f6ad29875d83b78390acbe6",
+                  "bytes": 50
+                },
+                {
+                  "name": "web",
+                  "paths": [
+                    "web/**"
+                  ],
+                  "files": [
+                    ".claude/lgtmgate/sam.web.md"
+                  ],
+                  "text": "# Sam web\n\nWEB-SAM-MARK plans routes before templates.",
+                  "digest": "2a3d6485bf04ef59c6c2e608e4ac6f01a2c2fec80dde79f6f16984725b39c195",
+                  "bytes": 54
+                }
+              ]
+            },
+            "Nick": {
+              "text": "# Nick\n\nNICK-MARK writes the tests first.",
+              "digest": "98d8af7b548383b57bed2dcda11ae956e40cced763908ac047a9e3bfbbf6db36",
+              "bytes": 158,
+              "lanes": [
+                {
+                  "name": "ios",
+                  "persona": "Nora",
+                  "files": [
+                    ".claude/lgtmgate/nick.ios.md",
+                    ".claude/lgtmgate/nick.ios.testing.md"
+                  ],
+                  "text": "# Nick iOS\n\nIOS-NICK-MARK builds with the simulator.\n\n# Nick iOS testing\n\nIOS-NICK-TESTING-MARK runs the unit target.",
+                  "digest": "3a61e32a0353b4fe8bbf77abb41463eeae18f26b4060a389c99952e45aae93fe",
+                  "bytes": 117
+                }
+              ]
+            },
+            "Morgan": {
+              "text": "# Morgan\n\nMORGAN-MARK reviews against the checklist.",
+              "digest": "524fa0ad90b75abb21011fd9272dc219719f409ce0401e0de724e586d42c6225",
+              "bytes": 117,
+              "lanes": [
+                {
+                  "name": "ios",
+                  "persona": "Milo",
+                  "files": [
+                    ".claude/lgtmgate/morgan.ios.md"
+                  ],
+                  "text": "# Morgan iOS\n\nIOS-MORGAN-MARK checks the layout on small screens.",
+                  "digest": "0b583ecff7c4047be5f68de03edb816673c6657d403f9a75720452a9c35c05a3",
+                  "bytes": 65
+                }
+              ]
+            }
+          },
+          "files": [
+            {
+              "path": ".claude/lgtmgate/shared.md",
+              "oid": "c6078ed2e76f9ebc2f0c12c7757a333942a26205",
+              "bytes": 72,
+              "roles": [
+                "shared"
+              ]
+            },
+            {
+              "path": ".claude/lgtmgate/sam.md",
+              "oid": "eedfa886e59ea1fcf0b5cb248dee2ac95d48d168",
+              "bytes": 38,
+              "roles": [
+                "Sam"
+              ]
+            },
+            {
+              "path": ".claude/lgtmgate/sam.ios.md",
+              "oid": "d5bb86c4303e4407b42d756fac6b64833c73ed6b",
+              "bytes": 127,
+              "roles": [
+                "Sam"
+              ],
+              "lane": "ios"
+            },
+            {
+              "path": ".claude/lgtmgate/sam.web.md",
+              "oid": "90a2bec7b1ca5c27bf3cdf2f0d0d597bfb49b730",
+              "bytes": 91,
+              "roles": [
+                "Sam"
+              ],
+              "lane": "web"
+            },
+            {
+              "path": ".claude/lgtmgate/nick.md",
+              "oid": "c80cbece5b384d8b3fa1f268bbae59dd5cd5a2b3",
+              "bytes": 42,
+              "roles": [
+                "Nick"
+              ]
+            },
+            {
+              "path": ".claude/lgtmgate/nick.ios.md",
+              "oid": "ae232bc49c37084650050e7cb1e7732d1d724486",
+              "bytes": 85,
+              "roles": [
+                "Nick"
+              ],
+              "lane": "ios"
+            },
+            {
+              "path": ".claude/lgtmgate/nick.ios.testing.md",
+              "oid": "f6e68c2fbadeec640f24a6414e0cab47ac006f17",
+              "bytes": 64,
+              "roles": [
+                "Nick"
+              ],
+              "lane": "ios"
+            },
+            {
+              "path": ".claude/lgtmgate/morgan.md",
+              "oid": "38198eb22edf71efd4ea4358283212cb7a143804",
+              "bytes": 53,
+              "roles": [
+                "Morgan"
+              ]
+            },
+            {
+              "path": ".claude/lgtmgate/morgan.ios.md",
+              "oid": "e236655509fe43b8f35a3974b53af33fd8b0b839",
+              "bytes": 98,
+              "roles": [
+                "Morgan"
+              ],
+              "lane": "ios"
+            }
+          ],
+          "warnings": [],
+          "lanes": [
+            {
+              "name": "ios",
+              "roles": [
+                "Sam",
+                "Nick",
+                "Morgan"
+              ],
+              "persona": "Ivy",
+              "paths": [
+                "ios/**"
+              ],
+              "hint": "a senior iOS planner"
+            },
+            {
+              "name": "web",
+              "roles": [
+                "Sam"
+              ],
+              "paths": [
+                "web/**"
+              ]
+            }
+          ]
+        }
+      },
+      "calls": {
+        "probe-123-lines-plugin-version-r0": {
+          "line": "PROBE name=lines exit=0 sha=4b0b2f33b20b777393f4cb55ea1d47c45786b52ad36822582a5ed67647e54ed5 cmd=2af1fd58e4141ac8977c54e48900baf5a81f43c1be46d2a1c6f38830f7582ec8 json={\"lines\":[\"PLUGIN-VERSION:@@ENGINE_VERSION@@\"]}",
+          "verify": "VERIFY ok line=PROBE name=lines exit=0 sha=4b0b2f33b20b777393f4cb55ea1d47c45786b52ad36822582a5ed67647e54ed5 cmd=2af1fd58e4141ac8977c54e48900baf5a81f43c1be46d2a1c6f38830f7582ec8 json={\"lines\":[\"PLUGIN-VERSION:@@ENGINE_VERSION@@\"]}"
+        },
+        "probe-123-provision-provision-r0": {
+          "line": "PROBE name=provision exit=0 sha=30ad404e7bf922808eeb13427c66400303e810a9392f80082fb0abe2fc6fc271 cmd=cb49d972cd5e77c121dac04294f3d1fa6a3363d2451bd60461ad1c814588897a json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}",
+          "verify": "VERIFY ok line=PROBE name=provision exit=0 sha=30ad404e7bf922808eeb13427c66400303e810a9392f80082fb0abe2fc6fc271 cmd=cb49d972cd5e77c121dac04294f3d1fa6a3363d2451bd60461ad1c814588897a json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}"
+        },
+        "probe-123-provision-freshness-provision-freshness-r0": {
+          "line": "PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b cmd=f7148584e77c9da7779115228bbfa0f4223ff89ed5d3031f3e51605249a7eaa7 json={\"state\":\"fresh\",\"behind\":0,\"own\":0}",
+          "verify": "VERIFY ok line=PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b cmd=f7148584e77c9da7779115228bbfa0f4223ff89ed5d3031f3e51605249a7eaa7 json={\"state\":\"fresh\",\"behind\":0,\"own\":0}"
+        },
+        "diagnose-issue-123": {
+          "confirmed": true,
+          "evidence": "reproduced: `node -e` prints the wrong slug",
+          "actualCause": "accent stripping",
+          "laneOk": true,
+          "lanes": [
+            "ios"
+          ],
+          "laneEvidence": "the diff touches the screens",
+          "persistentStateSignal": false,
+          "authSecurityBoundarySignal": false,
+          "deployConfigSignal": false,
+          "immatureVendorApiSignal": false
+        },
+        "scout-issue-123-1": {
+          "decision": "GO",
+          "plan": "## Plan\n1. src/slugify.js: transliterate before stripping\n\n## Acceptance checklist\n- [ ] <!-- ac:1 --> `npm test` passes",
+          "rationale": "",
+          "targetFiles": [
+            "src/slugify.js"
+          ],
+          "absorbedIssues": [],
+          "acceptanceChecklist": "- [ ] <!-- ac:1 --> `npm test` passes",
+          "acceptanceItems": [
+            {
+              "id": 1,
+              "text": "`npm test` passes",
+              "humanGate": false
+            }
+          ]
+        },
+        "plan-check-123-1": {
+          "verdict": "CONFORMING",
+          "issues": []
+        }
+      },
+      "expect": {
+        "status": "plan-ready",
+        "resultIncludes": {
+          "lanes": [
+            "ios"
+          ]
+        },
+        "trace": [
+          "specifics@7e56d678d408:e779bfcd6104",
+          "branch-prefix-fallback-default",
+          "probe:lines:haiku",
+          "probe:provision:haiku",
+          "probe:provision-freshness:haiku",
+          "lanes:ios",
+          "lanes:theo=ios,paths=-"
+        ],
+        "traceExact": true
+      }
+    },
+    {
+      "args": {
+        "pluginRoot": "/plugin",
+        "issue": 123,
+        "brief": "fix slugify accents",
+        "wtPath": "/wt/root/issue-123",
+        "config": {
+          "projectSpecifics": ".claude/lgtmgate"
+        },
+        "mode": "manual",
+        "entryStage": "dev",
+        "proceedThrough": "dev",
+        "projectSpecifics": {
+          "ref": "origin/main",
+          "refSha": "7e56d678d4084b204b35d4dfd993bad00be5e93c",
+          "shared": {
+            "text": "# Shared\n\nSHARED-MARK applies to every agent of this synthetic project.",
+            "digest": "decd858c632b7573b15a9a74c9ae8979b0f263b79b34bd9cde7540d67af5cbc9",
+            "bytes": 71,
+            "lanes": []
+          },
+          "roles": {
+            "Sam": {
+              "text": "# Sam\n\nSAM-MARK plans in small steps.",
+              "digest": "47bfc893dff2397881cc0ee9a2b1137103c575c5ddb844ca756b20537ff7e0e7",
+              "bytes": 91,
+              "lanes": [
+                {
+                  "name": "ios",
+                  "persona": "Ivy",
+                  "paths": [
+                    "ios/**"
+                  ],
+                  "hint": "a senior iOS planner",
+                  "files": [
+                    ".claude/lgtmgate/sam.ios.md"
+                  ],
+                  "text": "# Sam iOS\n\nIOS-SAM-MARK plans screens before code.",
+                  "digest": "c6319942caafcd9f175d4c4267830493220b6e283f6ad29875d83b78390acbe6",
+                  "bytes": 50
+                },
+                {
+                  "name": "web",
+                  "paths": [
+                    "web/**"
+                  ],
+                  "files": [
+                    ".claude/lgtmgate/sam.web.md"
+                  ],
+                  "text": "# Sam web\n\nWEB-SAM-MARK plans routes before templates.",
+                  "digest": "2a3d6485bf04ef59c6c2e608e4ac6f01a2c2fec80dde79f6f16984725b39c195",
+                  "bytes": 54
+                }
+              ]
+            },
+            "Nick": {
+              "text": "# Nick\n\nNICK-MARK writes the tests first.",
+              "digest": "98d8af7b548383b57bed2dcda11ae956e40cced763908ac047a9e3bfbbf6db36",
+              "bytes": 158,
+              "lanes": [
+                {
+                  "name": "ios",
+                  "persona": "Nora",
+                  "files": [
+                    ".claude/lgtmgate/nick.ios.md",
+                    ".claude/lgtmgate/nick.ios.testing.md"
+                  ],
+                  "text": "# Nick iOS\n\nIOS-NICK-MARK builds with the simulator.\n\n# Nick iOS testing\n\nIOS-NICK-TESTING-MARK runs the unit target.",
+                  "digest": "3a61e32a0353b4fe8bbf77abb41463eeae18f26b4060a389c99952e45aae93fe",
+                  "bytes": 117
+                }
+              ]
+            },
+            "Morgan": {
+              "text": "# Morgan\n\nMORGAN-MARK reviews against the checklist.",
+              "digest": "524fa0ad90b75abb21011fd9272dc219719f409ce0401e0de724e586d42c6225",
+              "bytes": 117,
+              "lanes": [
+                {
+                  "name": "ios",
+                  "persona": "Milo",
+                  "files": [
+                    ".claude/lgtmgate/morgan.ios.md"
+                  ],
+                  "text": "# Morgan iOS\n\nIOS-MORGAN-MARK checks the layout on small screens.",
+                  "digest": "0b583ecff7c4047be5f68de03edb816673c6657d403f9a75720452a9c35c05a3",
+                  "bytes": 65
+                }
+              ]
+            }
+          },
+          "files": [
+            {
+              "path": ".claude/lgtmgate/shared.md",
+              "oid": "c6078ed2e76f9ebc2f0c12c7757a333942a26205",
+              "bytes": 72,
+              "roles": [
+                "shared"
+              ]
+            },
+            {
+              "path": ".claude/lgtmgate/sam.md",
+              "oid": "eedfa886e59ea1fcf0b5cb248dee2ac95d48d168",
+              "bytes": 38,
+              "roles": [
+                "Sam"
+              ]
+            },
+            {
+              "path": ".claude/lgtmgate/sam.ios.md",
+              "oid": "d5bb86c4303e4407b42d756fac6b64833c73ed6b",
+              "bytes": 127,
+              "roles": [
+                "Sam"
+              ],
+              "lane": "ios"
+            },
+            {
+              "path": ".claude/lgtmgate/sam.web.md",
+              "oid": "90a2bec7b1ca5c27bf3cdf2f0d0d597bfb49b730",
+              "bytes": 91,
+              "roles": [
+                "Sam"
+              ],
+              "lane": "web"
+            },
+            {
+              "path": ".claude/lgtmgate/nick.md",
+              "oid": "c80cbece5b384d8b3fa1f268bbae59dd5cd5a2b3",
+              "bytes": 42,
+              "roles": [
+                "Nick"
+              ]
+            },
+            {
+              "path": ".claude/lgtmgate/nick.ios.md",
+              "oid": "ae232bc49c37084650050e7cb1e7732d1d724486",
+              "bytes": 85,
+              "roles": [
+                "Nick"
+              ],
+              "lane": "ios"
+            },
+            {
+              "path": ".claude/lgtmgate/nick.ios.testing.md",
+              "oid": "f6e68c2fbadeec640f24a6414e0cab47ac006f17",
+              "bytes": 64,
+              "roles": [
+                "Nick"
+              ],
+              "lane": "ios"
+            },
+            {
+              "path": ".claude/lgtmgate/morgan.md",
+              "oid": "38198eb22edf71efd4ea4358283212cb7a143804",
+              "bytes": 53,
+              "roles": [
+                "Morgan"
+              ]
+            },
+            {
+              "path": ".claude/lgtmgate/morgan.ios.md",
+              "oid": "e236655509fe43b8f35a3974b53af33fd8b0b839",
+              "bytes": 98,
+              "roles": [
+                "Morgan"
+              ],
+              "lane": "ios"
+            }
+          ],
+          "warnings": [],
+          "lanes": [
+            {
+              "name": "ios",
+              "roles": [
+                "Sam",
+                "Nick",
+                "Morgan"
+              ],
+              "persona": "Ivy",
+              "paths": [
+                "ios/**"
+              ],
+              "hint": "a senior iOS planner"
+            },
+            {
+              "name": "web",
+              "roles": [
+                "Sam"
+              ],
+              "paths": [
+                "web/**"
+              ]
+            }
+          ]
+        }
+      },
+      "carry": {
+        "planText": "plan"
+      },
+      "calls": {
+        "probe-123-lines-plugin-version-r0": {
+          "line": "PROBE name=lines exit=0 sha=4b0b2f33b20b777393f4cb55ea1d47c45786b52ad36822582a5ed67647e54ed5 cmd=2af1fd58e4141ac8977c54e48900baf5a81f43c1be46d2a1c6f38830f7582ec8 json={\"lines\":[\"PLUGIN-VERSION:@@ENGINE_VERSION@@\"]}",
+          "verify": "VERIFY ok line=PROBE name=lines exit=0 sha=4b0b2f33b20b777393f4cb55ea1d47c45786b52ad36822582a5ed67647e54ed5 cmd=2af1fd58e4141ac8977c54e48900baf5a81f43c1be46d2a1c6f38830f7582ec8 json={\"lines\":[\"PLUGIN-VERSION:@@ENGINE_VERSION@@\"]}"
+        },
+        "probe-123-provision-provision-r0": {
+          "line": "PROBE name=provision exit=0 sha=30ad404e7bf922808eeb13427c66400303e810a9392f80082fb0abe2fc6fc271 cmd=cb49d972cd5e77c121dac04294f3d1fa6a3363d2451bd60461ad1c814588897a json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}",
+          "verify": "VERIFY ok line=PROBE name=provision exit=0 sha=30ad404e7bf922808eeb13427c66400303e810a9392f80082fb0abe2fc6fc271 cmd=cb49d972cd5e77c121dac04294f3d1fa6a3363d2451bd60461ad1c814588897a json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}"
+        },
+        "probe-123-preflight-dev-r0": {
+          "line": "PROBE name=preflight exit=0 sha=0acd6243a89b98b4bb2d70cb70c8f020921b3ba8feae419783c1e32c54be75dd cmd=931c6bad0a77e4f370494610f153ca3fee1e6b037f18be09444590c9aab16240 json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/wt/root/.git/worktrees/issue-123\",\"writable\":true}",
+          "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=0acd6243a89b98b4bb2d70cb70c8f020921b3ba8feae419783c1e32c54be75dd cmd=931c6bad0a77e4f370494610f153ca3fee1e6b037f18be09444590c9aab16240 json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/wt/root/.git/worktrees/issue-123\",\"writable\":true}"
+        },
+        "nick-issue-123": {
+          "prNumber": 42,
+          "branch": "features/issue-123",
+          "testsPass": true,
+          "summary": "opened PR #42"
+        },
+        "probe-123-preflight-branch-r0": {
+          "line": "PROBE name=preflight exit=0 sha=5fbfdf840750936170ea0caa2986e56765751306cca75f230cff37f141b42cdc cmd=874136047142387c5b6bcbcfedfb7409c9281ae2d4ac8c60d8821a85d66f30be json={\"mode\":\"branch\",\"headRef\":\"features/issue-123\",\"branchPrefix\":\"\"}",
+          "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=5fbfdf840750936170ea0caa2986e56765751306cca75f230cff37f141b42cdc cmd=874136047142387c5b6bcbcfedfb7409c9281ae2d4ac8c60d8821a85d66f30be json={\"mode\":\"branch\",\"headRef\":\"features/issue-123\",\"branchPrefix\":\"\"}"
+        },
+        "probe-123-lines-config-project-recheck-r0": {
+          "line": "PROBE name=lines exit=0 sha=da14e2853923ece193a3486a739f1f8c976028ca04facc681b98671e83078760 cmd=c5c02b6f6ba24a10fca25807cc8074aaf1416abf9363a69e1e7c13f8f206e222 json={\"lines\":[\"{\\\"baseBranch\\\":\\\"develop\\\"}\"]}",
+          "verify": "VERIFY ok line=PROBE name=lines exit=0 sha=da14e2853923ece193a3486a739f1f8c976028ca04facc681b98671e83078760 cmd=c5c02b6f6ba24a10fca25807cc8074aaf1416abf9363a69e1e7c13f8f206e222 json={\"lines\":[\"{\\\"baseBranch\\\":\\\"develop\\\"}\"]}"
+        },
+        "already-done-check-123": {
+          "isAlreadyDone": false,
+          "isIssueClosed": false,
+          "issueState": "OPEN",
+          "issueCreatedAt": "2026-01-01T00:00:00Z",
+          "isMerged": false,
+          "mergedAt": "",
+          "mergedPrClosesIssue": false,
+          "checkFailed": false
+        }
+      },
+      "expect": {
+        "status": "dev-done",
+        "resultIncludes": {
+          "lanes": [
+            "ios"
+          ]
+        },
+        "callLabelsAbsent": [
+          "diagnose-",
+          "scout-",
+          "plan-check-",
+          "plan-audit-"
+        ],
+        "promptIncludes": [
+          {
+            "label": "nick-issue-123",
+            "includes": [
+              "In this lane you act as Nora.",
+              "IOS-NICK-MARK"
+            ]
+          }
+        ],
+        "promptExcludes": [
+          {
+            "label": "nick-issue-123",
+            "excludes": [
+              "WEB-SAM-MARK"
+            ]
+          }
+        ],
+        "trace": [
+          "specifics@7e56d678d408:e779bfcd6104",
+          "branch-prefix-fallback-default",
+          "probe:lines:haiku",
+          "probe:lines:haiku",
+          "probe:provision:haiku",
+          "lanes:ios",
+          "probe:preflight:haiku",
+          "probe:preflight:haiku"
+        ],
+        "traceExact": true
+      }
+    }
+  ]
+}

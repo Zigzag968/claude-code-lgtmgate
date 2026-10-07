@@ -38,7 +38,8 @@ export const meta = {
 // | `dryRun` | if true, validate args and return immediately (no agents spawned) |
 // | `probeOnly` | optional { name, cmd, label, round }: run ONE probe() (probe-run gate, #80) and return status 'dry-run-ok' reason 'probe-only'. Lets a run-offline fixture reach probe() while no engine call site is migrated yet. Not a simulate key. |
 // | `pluginRoot` | optional absolute path of the plugin root (#82). The Lead passes ${CLAUDE_PLUGIN_ROOT} for the plugin component and omits it for a local copy; the probe layer resolves templates/probe-run.cjs from it (the workflow has no filesystem or env). config.probeRunPath wins; fallback <wtPath>/templates/probe-run.cjs. When the templates come from pluginRoot (no config.probeRunPath), the manifest version of the root must equal this engine's BUILD.version, else the run escalates before provisioning (`plugin-version-skew` / `plugin-version-unreadable`, #195). |
-// | `projectSpecifics` | optional object: the verbatim stdout of `scripts/agent-context.cjs` (commands/deliver.md §3bis). Required when `config.projectSpecifics` or `config.agentContext` is set. Absent, malformed or a digest mismatch throws before any agent call; nothing is injected on a refusal. The per-role text is inserted in every prompt of that role; the fingerprint is returned as `specifics` and traced (#265). |
+// | `projectSpecifics` | optional object: the verbatim stdout of `scripts/agent-context.cjs` (commands/deliver.md §3bis). Required when `config.projectSpecifics` or `config.agentContext` is set. Absent, malformed or a digest mismatch throws before any agent call; nothing is injected on a refusal. The per-role text is inserted in every prompt of that role; the fingerprint is returned as `specifics` and traced (#265). Lanes (#271): a role block may carry `lanes:[{name, persona?, paths?, hint?, files, text, digest, bytes}]`; each lane digest is verified too; only the lanes chosen for the run are injected (see `lanes`). |
+// | `lanes` | optional array of lane names: the `lanes` of the previous result, carried by the Lead on every `entryStage` dev\|review relaunch (else the `lanes:` line of `planText` is read). A name that is no lane of `projectSpecifics` throws. A plan run asks Theo for the lanes (only when lane files exist), validates them, adds the lanes whose `paths` hit Sam's `targetFiles` for Nick and Morgan, appends `lanes: a,b` to the plan it returns, and reports `lanes` (and `lanesUnresolved:true` when Theo gave none) on `finish()`. |
 // | `models` | optional per-role model override: { scout?, planAudit?, morgan? }. Resolution order per role is `models.<role> ?? config.models?.<role> ?? 'sonnet'` (same `??` idiom as planAudit above — arg wins per-run over the project default). Default is 'sonnet' for all three roles (lgtmgate#161: the plan-phase loop could spawn up to 4 opus scout attempts per issue with planAudit on, the dominant cost driver); pass e.g. `models: { scout: 'opus' }` per-run when an issue is dense/dangerous enough to warrant it — opus stays fully reachable, just no longer the default. Not a general cost-control knob: Theo and Nick are NOT overridable by this key, always 'sonnet' (out of scope per the issue — their calls are unconditional literals). |
 // | `maxPlanAttempts` | bound on the plan-verification gate loop between Sam and Nick (default 2; mirrors advisory.js's `maxAttempts = 2`). On the maxPlanAttempts-th NOT_CONFORMING verdict, escalate instead of looping again. |
 // | `planAudit` | optional, DEFAULT OFF: once Sam's plan clears the planCheck gate, run an independent, adversarial plan-soundness audit (persona-in-prompt, no agentType — independence holds by construction) before Dev ever starts. Resolved `planAudit ?? config.planAudit ?? false` — arg wins per-run over the project default, an explicit `false` beats a `true` config. Placement: Plan phase only — never re-runs on entryStage='dev'\|'review' (resume). Spawn-cost bound (~70k session tokens/spawn): OFF unchanged; ON typical +1 opus audit (SOUND) or +1 audit +1 scout +1 planCheck (one amendment); ON worst case per Plan phase = maxAuditRounds × maxPlanAttempts = 4 opus scout spawns + 4 haiku planChecks + 2 opus audits (defaults). |
@@ -132,7 +133,7 @@ export const meta = {
 // `version`, checked against plugin.json by templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '1.1.0-beta.10', cutFrom: '692e39c' }
+const BUILD = { plugin: 'lgtmgate', version: '1.1.0-beta.11', cutFrom: '006dd4f' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -160,6 +161,13 @@ let boxesMapped = null
 let specificsPayload = null
 let specificsLine = null
 let specificsOversize = null
+// #271: the lanes of the project specifics: found in the verified payload, chosen by Theo (lanesSam), complemented by Sam's
+// targetFiles for Nick and Morgan (lanesDev), reported on finish(); declared before `const finish` like specificsPayload.
+let lanesFound = []
+let lanesSam = []
+let lanesDev = []
+let lanesReport = null
+let lanesUnresolved = false
 let retiredKeyPath = null
 // #183: the ids of the human-gate boxes the PR body shows ticked (a person's tick): the one kind of box settled by the body.
 let boxesGates = []
@@ -202,6 +210,8 @@ const finish = (def, extra = {}) => ({ buildStamp: BUILD_STAMP, ...(simulate ? {
   ...(boxesMapped ? { boxes: boxesMapped } : {}),
   ...(specificsLine ? { specifics: specificsLine } : {}),
   ...(specificsOversize ? { specificsOversize } : {}),
+  ...(Array.isArray(lanesReport) && lanesReport.length > 0 ? { lanes: lanesReport } : {}),
+  ...(lanesUnresolved ? { lanesUnresolved: true } : {}),
   ...(retiredKeyPath ? { retiredKeyPath } : {}),
   ...(classifierOutageDeath && def.status.endsWith('-died')
     ? { reason: 'classifier-outage: resume with resumeFromRunId' } : {}), ...def, ...extra })
@@ -221,6 +231,7 @@ const {
   probeOnly = null,
   pluginRoot = null,
   projectSpecifics = undefined,
+  lanes: lanesArg = undefined,
   maxPlanAttempts = 2,
   planAudit = undefined,
   planFreshness = undefined,
@@ -256,6 +267,10 @@ if (projectSpecifics !== undefined && projectSpecifics !== null) {
   specificsPayload = projectSpecifics
   specificsLine = fp.line
   specificsOversize = fp.oversize.length > 0 ? fp.oversize : null
+  lanesFound = specificsLanesFound(projectSpecifics)
+}
+if (lanesArg !== undefined && lanesArg !== null && (!Array.isArray(lanesArg) || lanesArg.some((n) => typeof n !== 'string'))) {
+  throw new Error('Invalid arg: lanes must be an array of lane names (the `lanes` of the previous result)')
 }
 if (!['auto', 'semi', 'manual'].includes(mode)) throw new Error(`Invalid mode: ${mode}`)
 if (!['plan', 'dev', 'review'].includes(entryStage)) throw new Error(`Invalid entryStage: ${entryStage}`)
@@ -1306,6 +1321,8 @@ const DIAGNOSIS = {
     evidence: { type: 'string', description: 'Concrete repro (command run + observed output) proving or refuting the claimed cause' },
     actualCause: { type: 'string', description: 'If refuted, the real cause if found; else empty' },
     laneOk: { type: 'boolean', description: 'False if the issue is on the WRONG scout lane (user-visible surface routed to the mechanical/backend scout) — see requiredScout' },
+    lanes: { type: 'array', items: { type: 'string' }, description: 'The project lanes (project specifics) this issue touches, from the LANES list of the prompt only; at least one when the prompt lists lanes' },
+    laneEvidence: { type: 'string', description: 'What was checked to choose the lanes' },
     requiredScout: { type: 'string', description: 'When laneOk is false, the product scout the project should re-dispatch with (project-specific — e.g. a mobile or backend specialist)' },
     // Design-step-trigger signals — independently classified by Theo against the
     // REAL code/cited docs, never trusted from the issue's own self-declared risk tag (same
@@ -1383,10 +1400,16 @@ function specificsProblem(switchOn, ps, sha) {
   let total = 0
   const checkBlock = (key, b) => {
     if (!specificsIsPlain(b)) return `malformed (${key} block is not an object)`
-    if (typeof b.text !== 'string' || b.text === '') return `malformed (${key} text is not a non-empty string)`
+    if (typeof b.text !== 'string') return `malformed (${key} text is not a string)`
     if (typeof b.digest !== 'string') return `malformed (${key} digest is not a string)`
     if (!Array.isArray(b.lanes)) return `malformed (${key} lanes is not an array)`
+    if (b.text === '' && b.lanes.length === 0) return `malformed (${key} text is not a non-empty string)`
     total += b.text.length
+    for (const l of b.lanes) {
+      if (key === 'shared') break
+      if (!specificsIsPlain(l) || typeof l.name !== 'string' || typeof l.text !== 'string' || typeof l.digest !== 'string') return `malformed (${key} lane entry is not {name, text, digest})`
+      total += l.text.length
+    }
     return null
   }
   if (ps.shared !== null && ps.shared !== undefined) {
@@ -1405,18 +1428,100 @@ function specificsProblem(switchOn, ps, sha) {
   for (const key of Object.keys(ps.roles)) {
     const b = ps.roles[key]
     if (specificsDigest(sha, ps.refSha, key, b.text, b.lanes) !== b.digest) return `digest mismatch for ${key}`
+    for (const l of b.lanes) {
+      if (specificsDigest(sha, ps.refSha, `${key}:${l.name}`, l.text, []) !== l.digest) return `digest mismatch for ${key}:${l.name}`
+    }
   }
   return null
 }
 
+// `In this lane you act as <persona>[, <hint>].`, '' without a persona (same text as scripts/agent-context.cjs laneSentence).
+function laneSentence(persona, hint) {
+  if (typeof persona !== 'string' || persona === '') return ''
+  return typeof hint === 'string' && hint !== '' ? `In this lane you act as ${persona}, ${hint}.` : `In this lane you act as ${persona}.`
+}
+
+// The lanes of a verified payload, one per name (metadata of the first role, in this order, that declares it), sorted by name.
+function specificsLanesFound(ps) {
+  const out = []
+  if (!ps || !specificsIsPlain(ps.roles)) return out
+  for (const role of ['Sam', 'Nick', 'Morgan', 'Theo', 'Mia']) {
+    const rb = ps.roles[role]
+    if (!rb || !Array.isArray(rb.lanes)) continue
+    for (const l of rb.lanes) {
+      let e = out.find((x) => x.name === l.name)
+      if (!e) { e = { name: l.name }; out.push(e) }
+      for (const f of ['persona', 'paths', 'hint']) if (e[f] === undefined && l[f] !== undefined) e[f] = l[f]
+    }
+  }
+  return out.sort((x, y) => (x.name < y.name ? -1 : x.name > y.name ? 1 : 0))
+}
+
+// Theo's answer against the lanes found -> { lanes, unresolved, unknown }. Absent, not an array, [] or a non-string entry
+// = unresolved (base only); a name that is not a lane found = unknown (the caller throws).
+function resolveTheoLanes(found, asked) {
+  if (!Array.isArray(asked) || asked.length === 0 || asked.some((n) => typeof n !== 'string')) return { lanes: [], unresolved: true, unknown: [] }
+  const names = found.map((l) => l.name)
+  const unknown = asked.filter((n) => !names.includes(n))
+  if (unknown.length > 0) return { lanes: [], unresolved: false, unknown }
+  return { lanes: names.filter((n) => asked.includes(n)), unresolved: false, unknown: [] }
+}
+
+function laneNameOk(n) {
+  if (typeof n !== 'string' || n.length < 1 || n.length > 24) return false
+  for (const c of n) if (!('abcdefghijklmnopqrstuvwxyz0123456789-'.includes(c))) return false
+  return true
+}
+
+// The lanes persisted in a plan: the LAST line starting `lanes:` (`lanes: ios,web`); [] when absent or any name is invalid.
+function lanesFromPlanText(planText) {
+  let line = null
+  for (const l of String(planText ?? '').split('\n')) if (l.startsWith('lanes:')) line = l
+  if (line === null) return []
+  const names = line.slice('lanes:'.length).split(',').map((n) => n.trim())
+  return names.every(laneNameOk) ? names : []
+}
+
+function appendLanesLine(plan, names) {
+  const base = String(plan ?? '')
+  if (!Array.isArray(names) || names.length === 0) return base
+  return `${base.trimEnd()}\nlanes: ${names.join(',')}`
+}
+
+// The lanes whose `paths` hit Sam's targetFiles ('!' entries exclude), in found order.
+function lanePathHits(found, targetFiles) {
+  const files = safePlanTargets(targetFiles)
+  const hits = []
+  for (const l of found) {
+    const entries = Array.isArray(l.paths) ? l.paths.filter((e) => typeof e === 'string' && e.trim() !== '').map((e) => e.trim()) : []
+    const excluded = entries.filter((e) => e.startsWith('!')).map((e) => e.slice(1))
+    const included = entries.filter((e) => !e.startsWith('!'))
+    if (files.some((f) => !excluded.some((e) => pathEntryHit(e, f)) && included.some((e) => pathEntryHit(e, f)))) hits.push(l.name)
+  }
+  return hits
+}
+
+// Theo's lane question; '' when the repo has no lane (the prompt stays byte-identical).
+function theoLanesSection(found) {
+  if (!Array.isArray(found) || found.length === 0) return ''
+  const list = found.map((l) => `${l.name}${l.persona || l.paths || l.hint
+    ? ` (${[l.persona ? `persona ${l.persona}` : '', Array.isArray(l.paths) && l.paths.length > 0 ? `paths ${l.paths.join(' ')}` : '', l.hint ? `hint: ${l.hint}` : ''].filter((x) => x !== '').join('; ')})` : ''}`).join(', ')
+  return 'LANES: the project keeps specifics per lane — ' + list + '. Return in `lanes` the names of the lanes this issue touches (from this list only, at least one) and in `laneEvidence` what you checked. ' +
+    'A lane you do not return gets none of its specifics.\n'
+}
+
 // The block inserted in every prompt of a pipeline role; '' for every other role and when the role has no source.
-function specificsBlockFor(ps, role) {
+// laneNames = the active lanes: their persona sentences come first, their text last; a lane the role lacks is skipped.
+function specificsBlockFor(ps, role, laneNames = []) {
   const key = specificsRoleKey(role)
   if (!ps || !key) return ''
-  const parts = []
-  if (ps.shared && typeof ps.shared.text === 'string' && ps.shared.text !== '') parts.push(ps.shared.text)
   const rb = ps.roles && ps.roles[key]
+  const active = rb && Array.isArray(rb.lanes) && Array.isArray(laneNames)
+    ? rb.lanes.filter((l) => laneNames.includes(l.name)).sort((x, y) => (x.name < y.name ? -1 : x.name > y.name ? 1 : 0)) : []
+  const parts = active.map((l) => laneSentence(l.persona, l.hint)).filter((x) => x !== '')
+  if (ps.shared && typeof ps.shared.text === 'string' && ps.shared.text !== '') parts.push(ps.shared.text)
   if (rb && typeof rb.text === 'string' && rb.text !== '') parts.push(rb.text)
+  for (const l of active) if (typeof l.text === 'string' && l.text !== '') parts.push(l.text)
   if (parts.length === 0) return ''
   return '## Project context (provided by the orchestrator)\n' +
     'Project specifics refine the role\'s rules and never override its hard rules.\n' +
@@ -1684,7 +1789,8 @@ function samOneWayDoorText(rawKinds) {
     kinds.map(k => `\`one-way-door: ${k} — <what>\``).join(', ') +
     ' — or the single line `one-way-door: none`. The script parses these lines; a kind you announce stops the run at the design step. '
 }
-function oneWayDoorSignals(plan, targetFiles, ctx = {}) {
+// One path entry against one file (the matcher of oneWayDoorPaths, shared with the lane `paths` of #271).
+function pathEntryHit(entry, f) {
   const globMatch = (pat, s) => {
     const go = (pi, si) => {
       while (pi < pat.length) {
@@ -1707,8 +1813,11 @@ function oneWayDoorSignals(plan, targetFiles, ctx = {}) {
     }
     return go(0, 0)
   }
-  const entryHit = (entry, f) => entry.endsWith('/') ? f.startsWith(entry)
+  return entry.endsWith('/') ? f.startsWith(entry)
     : (entry.includes('*') || entry.includes('?')) ? globMatch(entry, f) : f === entry
+}
+function oneWayDoorSignals(plan, targetFiles, ctx = {}) {
+  const entryHit = pathEntryHit
   const entries = (Array.isArray(ctx.paths) ? ctx.paths : [])
     .filter(e => typeof e === 'string' && e.trim() !== '').map(e => e.trim())
   const excluded = entries.filter(e => e.startsWith('!')).map(e => e.slice(1))
@@ -2113,7 +2222,7 @@ async function callAgent(role, prompt, opts, round = 0, attempt = 1) {
   // #265: one composition point. The persona is prefixed only on the registry-gap retry (personaFallback kept, agentType removed).
   const finalPrompt = composeAgentPrompt({
     persona: opts && opts.personaFallback && !opts.agentType ? opts.personaFallback : '',
-    specifics: opts && (opts.agentType || opts.personaFallback) ? specificsBlockFor(specificsPayload, role) : '',
+    specifics: opts && (opts.agentType || opts.personaFallback) ? specificsBlockFor(specificsPayload, role, role === 'sam' ? lanesSam : role === 'nick' || role === 'morgan' ? lanesDev : []) : '',
     prompt,
     mandate: opts && opts.schema ? STRUCTURED_OUTPUT_MANDATE : '',
   })
@@ -2780,6 +2889,7 @@ if (after('plan', entryStage)) {
       `(routes, templates, redirects, copy, URL/slug shapes) AND '${scoutAgent}' is the mechanical/backend scout `+
       `(e.g. 'Sam'), set laneOk=false and requiredScout to the product scout the project should use — `+
       `a product change must not be planned on the mechanical lane. Otherwise laneOk=true.\n` +
+      theoLanesSection(lanesFound) +
       `Do NOT propose a fix or implementation — that is Sam's job.\n` +
       `DESIGN-STEP-TRIGGER CLASSIFICATION: independently classify this issue's ACTUAL scope from the real code — never trust the issue's own stated risk tag, or its silence, as ground truth. Set each signal only on evidence you checked (same bar as confirmed/evidence): ` +
       `persistentStateSignal (creates/modifies data with a multi-request lifecycle), authSecurityBoundarySignal (decides who may do what, or opens new attack surface), deployConfigSignal (touches infra/production config whose blast radius is the whole service), immatureVendorApiSignal (depends on a vendor/API primitive a CITED source calls preview/beta/not-production-ready, or one nothing in this codebase has used in production before). Cite the code/doc grounding each true signal in designStepSignalEvidence. ` +
@@ -2789,7 +2899,7 @@ if (after('plan', entryStage)) {
       `BLAST-RADIUS: no destructive git (git clean, reset --hard, checkout -- <path>, forced -f/-D deletes) — you diagnose, you never reset the shared worktree's state. ` +
       `Never read/probe a real credential path (~/.ssh/*, ~/.aws/*, .env*, **/*secret*, keychains) — to verify a sandbox deny-rule empirically, create a SYNTHETIC file in $TMPDIR named after the pattern, never the real one. ` +
       `Stay inside the worktree "${wtPath}" plus $TMPDIR — no traversal to another worktree/repo/home.\n\n` +
-      `Return { confirmed: bool, evidence: string, actualCause: string|null, laneOk: bool, requiredScout: string|null, persistentStateSignal: bool, authSecurityBoundarySignal: bool, deployConfigSignal: bool, immatureVendorApiSignal: bool, designStepSignalEvidence: string, issueClassificationMismatch: bool }. confirmed=true means "proceed to Sam"; laneOk=false stops for a lane re-dispatch. evidence is what you checked and ` +
+      `Return { confirmed: bool, evidence: string, actualCause: string|null, laneOk: bool, requiredScout: string|null, persistentStateSignal: bool, authSecurityBoundarySignal: bool, deployConfigSignal: bool, immatureVendorApiSignal: bool, designStepSignalEvidence: string, issueClassificationMismatch: bool${lanesFound.length > 0 ? ', lanes: string[], laneEvidence: string' : ''} }. confirmed=true means "proceed to Sam"; laneOk=false stops for a lane re-dispatch. evidence is what you checked and ` +
       `found (command run + observed output, or the codebase check performed). actualCause is set only when a claimed cause was refuted and you found the real one.`,
     {
       agentType: 'Theo', phase: 'Diagnose', schema: DIAGNOSIS, label: `diagnose-issue-${issue}`, model: 'sonnet',
@@ -2813,6 +2923,22 @@ if (after('plan', entryStage)) {
     log(`Lane refused: user-visible issue on the '${scoutAgent}' lane — requires ${diag.requiredScout || 'the product scout'}`)
     await updateStatus('Blocked')
     return finish(STATUS['lane-refused'], { requiredScout: diag.requiredScout || null, evidence: diag.evidence, issue, trace })
+  }
+
+  // #271: Theo's lanes, validated by the script (a name that is no lane found throws; absent or empty = base only).
+  if (lanesFound.length > 0) {
+    const lr = resolveTheoLanes(lanesFound, diag.lanes)
+    if (lr.unknown.length > 0) {
+      throw new Error(`lanes: Theo returned ${lr.unknown.join(', ')}, not in the lanes found (${lanesFound.map((l) => l.name).join(', ')}); nothing was planned`)
+    }
+    if (lr.unresolved) {
+      lanesUnresolved = true
+      trace.push('lanes-unresolved')
+      log('Lanes unresolved: Theo returned no usable lane — base specifics only')
+    } else {
+      lanesSam = lr.lanes
+      trace.push(`lanes:${lanesSam.join('+')}`)
+    }
   }
 
   // Design-step-trigger gate (B1-B3) — computed by the SCRIPT from Theo's raw
@@ -3122,6 +3248,15 @@ if (after('plan', entryStage)) {
   // R3 (#77) — 5th design-step signal, computed here from Sam's plan + targetFiles against the repo's
   // declared oneWayDoorKinds / oneWayDoorPaths (never an LLM-filled field). Same status and bypass as
   // the trigger above: no new status, agent or seam. `oneWayDoorHits` = what fired (a kind or `path`).
+  // #271: Nick and Morgan get Theo's lanes plus the lanes whose `paths` hit Sam's targetFiles; the union is persisted in the plan.
+  if (lanesFound.length > 0) {
+    const pathLanes = lanePathHits(lanesFound, sam.targetFiles)
+    lanesDev = lanesFound.map((l) => l.name).filter((n) => lanesSam.includes(n) || pathLanes.includes(n))
+    trace.push(`lanes:theo=${lanesSam.join('+') || '-'},paths=${pathLanes.join('+') || '-'}`)
+    lanesReport = lanesDev
+    sam.plan = appendLanesLine(sam.plan, lanesDev)
+    samPlan = sam.plan
+  }
   const oneWayDoor = oneWayDoorSignals(sam.plan, sam.targetFiles, { issue, planPath, paths: config.oneWayDoorPaths, kinds: config.oneWayDoorKinds })
   // #208 — proceedThrough:'plan' resolves this stop exactly as it resolves Theo's trigger: the run then stops at
   // plan-ready below (gate('plan') holds in every mode) and the plan comes back whole for the Lead's validation.
@@ -3178,6 +3313,25 @@ if (samAcceptanceItems === null && (entryStage === 'dev' || entryStage === 'revi
   samAcceptanceItems = itemsFromPlan(planText)
   acceptanceBlock = samAcceptanceItems ? renderChecklist(samAcceptanceItems) : ''
   if (samAcceptanceItems) log(`Resume at entryStage='${entryStage}': ${samAcceptanceItems.length} acceptance item(s) rebuilt from the ids of planText.`)
+}
+
+// #271 — a resume at entryStage dev/review runs no Theo: the lanes come from the `lanes` arg, else from the `lanes:` line of
+// planText. A name that is no lane found throws; none with lane files present = base only, flagged unresolved.
+if ((entryStage === 'dev' || entryStage === 'review') && (lanesFound.length > 0 || (Array.isArray(lanesArg) && lanesArg.length > 0))) {
+  const asked = Array.isArray(lanesArg) ? lanesArg : lanesFromPlanText(planText)
+  const unknown = asked.filter((n) => !lanesFound.some((l) => l.name === n))
+  if (unknown.length > 0) {
+    throw new Error(`lanes: ${unknown.join(', ')} is not in the lanes found (${lanesFound.map((l) => l.name).join(', ') || 'none'}); nothing ran`)
+  }
+  if (asked.length === 0) {
+    lanesUnresolved = true
+    trace.push('lanes-unresolved')
+  } else {
+    lanesDev = lanesFound.map((l) => l.name).filter((n) => asked.includes(n))
+    lanesSam = lanesDev
+    lanesReport = lanesDev
+    trace.push(`lanes:${lanesDev.join('+')}`)
+  }
 }
 
 // Plan reference block inlined into every downstream prompt (advisory.js style):
@@ -4410,7 +4564,7 @@ if (after('review', entryStage)) {
         await updateStatus('Blocked')
         return finish(STATUS['no-go'], { reason: samAmend.rationale, plan: samAmend.plan, trace })
       }
-      samPlan = samAmend.plan
+      samPlan = appendLanesLine(samAmend.plan, lanesDev)
       refreshPlanBlock()
       // The amendment renumbers the boxes (an id is a position): the blockers of the rounds before it are not the same
       // boxes as the ones after it, so the history that reviewProgress compares is dropped.

@@ -340,6 +340,8 @@ h.replayFixture(fix, run, { prompts: true }).then((r) => {
   const w = (n, e) => fs.writeFileSync(path.join(out, n), JSON.stringify(Object.assign({}, fix, { expect: Object.assign({}, fix.expect, e) })))
   w('prompt-ok.json', { promptIncludes: { label: c.label, nth: 0, includes: [p.slice(0, 20)] }, promptOrder: { label: c.label, nth: 0, order: [p.slice(0, 12), p.slice(-12)] } })
   w('prompt-bad.json', { promptIncludes: { label: c.label, includes: ['zzz-not-in-any-prompt'] }, promptOrder: { label: c.label, order: [p.slice(-12), p.slice(0, 12)] } })
+  w('excl-ok.json', { promptExcludes: { label: c.label, nth: 0, excludes: ['zzz-not-in-any-prompt'] } })
+  w('excl-bad.json', { promptExcludes: { label: c.label, nth: 0, excludes: [p.slice(0, 20)] } })
   w('expect-unknown.json', { bogusKey: 1 })
   w('result-ok.json', { resultIncludes: { status: fix.expect.status } })
   w('result-bad.json', { resultIncludes: { status: 'zzz-not-a-status' } })
@@ -350,6 +352,10 @@ out=$(node scripts/run-offline.cjs "$TMP/prompt-ok.json" 2>&1)
 case "$out" in *"status=ok passed=1"*) ok "promptIncludes and promptOrder are satisfied by the real prompt (#262)";; *) bad "promptIncludes/promptOrder satisfied case: $out";; esac
 out=$(node scripts/run-offline.cjs "$TMP/prompt-bad.json" 2>&1)
 case "$out" in *"FAIL:"*"promptIncludes:"*"promptOrder:"*) ok "a violated promptIncludes and promptOrder fail the fixture (#262)";; *) bad "violated prompt expectations not reported: $out";; esac
+out=$(node scripts/run-offline.cjs "$TMP/excl-ok.json" 2>&1)
+case "$out" in *"status=ok passed=1"*) ok "promptExcludes satisfied: a string absent from the prompt passes (#271)";; *) bad "promptExcludes satisfied case: $out";; esac
+out=$(node scripts/run-offline.cjs "$TMP/excl-bad.json" 2>&1)
+case "$out" in *"FAIL:"*"promptExcludes: "*"prompt holds"*) ok "promptExcludes violated: a string found in the prompt fails the fixture (#271)";; *) bad "promptExcludes violated case: $out";; esac
 out=$(node scripts/run-offline.cjs "$TMP/expect-unknown.json" 2>&1)
 case "$out" in *"FAIL:"*"unknown expect key \"bogusKey\""*) ok "an unknown expect key fails the fixture (#262)";; *) bad "unknown expect key not refused: $out";; esac
 

@@ -1,0 +1,150 @@
+{
+  "name": "us-c6-lanes-none",
+  "note": "#271: a repo with specifics but no lane file: the Theo prompt carries no LANES section and the run is the one of a repo without lanes.",
+  "args": {
+    "pluginRoot": "/plugin",
+    "issue": 123,
+    "brief": "fix slugify accents",
+    "wtPath": "/wt/root/issue-123",
+    "config": {
+      "projectSpecifics": ".claude/lgtmgate"
+    },
+    "mode": "semi",
+    "projectSpecifics": {
+      "ref": "origin/main",
+      "refSha": "360adfe041ae70c1f1674bf2595bcbf853dfd3e4",
+      "shared": {
+        "text": "# Shared\n\nSHARED-MARK applies to every agent of this synthetic project.",
+        "digest": "f44140bb777803420d39bdc71ef4f588578df3c40e86e8593ba6fede1b7a03d9",
+        "bytes": 71,
+        "lanes": []
+      },
+      "roles": {
+        "Sam": {
+          "text": "# Sam\n\nSAM-MARK plans in small steps.",
+          "digest": "2e41e1ebf2c3db0b2bd0e0d1c1b53c046ee776823676ff08fe316ffa354ae46f",
+          "bytes": 37,
+          "lanes": []
+        },
+        "Nick": {
+          "text": "# Nick\n\nNICK-MARK writes the tests first. A fenced sample:\n\n````text\n```inner```\n````",
+          "digest": "70ce624c650264d683b6ff1e8d7ec7bcd2f02dab54203c5e75bcd400a69ae4bc",
+          "bytes": 85,
+          "lanes": []
+        },
+        "Morgan": {
+          "text": "# Morgan\n\nMORGAN-MARK reviews against the checklist.",
+          "digest": "bc3976806520ac0909e2340cf72a9c63733f74ffe8deb22d19158a98024c5c36",
+          "bytes": 52,
+          "lanes": []
+        }
+      },
+      "files": [
+        {
+          "path": ".claude/lgtmgate/shared.md",
+          "oid": "c6078ed2e76f9ebc2f0c12c7757a333942a26205",
+          "bytes": 72,
+          "roles": [
+            "shared"
+          ]
+        },
+        {
+          "path": ".claude/lgtmgate/sam.md",
+          "oid": "eedfa886e59ea1fcf0b5cb248dee2ac95d48d168",
+          "bytes": 38,
+          "roles": [
+            "Sam"
+          ]
+        },
+        {
+          "path": ".claude/lgtmgate/nick.md",
+          "oid": "0aac55fdd17c7d691ebec2df41b3cfa4fffef8ad",
+          "bytes": 86,
+          "roles": [
+            "Nick"
+          ]
+        },
+        {
+          "path": ".claude/lgtmgate/morgan.md",
+          "oid": "38198eb22edf71efd4ea4358283212cb7a143804",
+          "bytes": 53,
+          "roles": [
+            "Morgan"
+          ]
+        }
+      ],
+      "warnings": []
+    }
+  },
+  "calls": {
+    "probe-123-lines-plugin-version-r0": {
+      "line": "PROBE name=lines exit=0 sha=4b0b2f33b20b777393f4cb55ea1d47c45786b52ad36822582a5ed67647e54ed5 cmd=2af1fd58e4141ac8977c54e48900baf5a81f43c1be46d2a1c6f38830f7582ec8 json={\"lines\":[\"PLUGIN-VERSION:@@ENGINE_VERSION@@\"]}",
+      "verify": "VERIFY ok line=PROBE name=lines exit=0 sha=4b0b2f33b20b777393f4cb55ea1d47c45786b52ad36822582a5ed67647e54ed5 cmd=2af1fd58e4141ac8977c54e48900baf5a81f43c1be46d2a1c6f38830f7582ec8 json={\"lines\":[\"PLUGIN-VERSION:@@ENGINE_VERSION@@\"]}"
+    },
+    "probe-123-provision-provision-r0": {
+      "line": "PROBE name=provision exit=0 sha=30ad404e7bf922808eeb13427c66400303e810a9392f80082fb0abe2fc6fc271 cmd=cb49d972cd5e77c121dac04294f3d1fa6a3363d2451bd60461ad1c814588897a json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}",
+      "verify": "VERIFY ok line=PROBE name=provision exit=0 sha=30ad404e7bf922808eeb13427c66400303e810a9392f80082fb0abe2fc6fc271 cmd=cb49d972cd5e77c121dac04294f3d1fa6a3363d2451bd60461ad1c814588897a json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}"
+    },
+    "probe-123-provision-freshness-provision-freshness-r0": {
+      "line": "PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b cmd=f7148584e77c9da7779115228bbfa0f4223ff89ed5d3031f3e51605249a7eaa7 json={\"state\":\"fresh\",\"behind\":0,\"own\":0}",
+      "verify": "VERIFY ok line=PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b cmd=f7148584e77c9da7779115228bbfa0f4223ff89ed5d3031f3e51605249a7eaa7 json={\"state\":\"fresh\",\"behind\":0,\"own\":0}"
+    },
+    "diagnose-issue-123": {
+      "confirmed": true,
+      "evidence": "reproduced: `node -e` prints the wrong slug",
+      "actualCause": "accent stripping",
+      "laneOk": true,
+      "persistentStateSignal": false,
+      "authSecurityBoundarySignal": false,
+      "deployConfigSignal": false,
+      "immatureVendorApiSignal": false
+    },
+    "scout-issue-123-1": {
+      "decision": "GO",
+      "plan": "## Plan\n1. src/slugify.js: transliterate before stripping\n\n## Acceptance checklist\n- [ ] `npm test` passes",
+      "rationale": "",
+      "targetFiles": [
+        "src/slugify.js"
+      ],
+      "absorbedIssues": [],
+      "acceptanceChecklist": "- [ ] `npm test` passes"
+    },
+    "plan-check-123-1": {
+      "verdict": "CONFORMING",
+      "issues": []
+    }
+  },
+  "expect": {
+    "status": "plan-ready",
+    "promptIncludes": [
+      {
+        "label": "scout-issue-123-1",
+        "includes": [
+          "SAM-MARK"
+        ]
+      }
+    ],
+    "promptExcludes": [
+      {
+        "label": "diagnose-issue-123",
+        "excludes": [
+          "LANES:"
+        ]
+      },
+      {
+        "label": "scout-issue-123-1",
+        "excludes": [
+          "In this lane you act as "
+        ]
+      }
+    ],
+    "trace": [
+      "specifics@360adfe041ae:3de316d12b0f",
+      "branch-prefix-fallback-default",
+      "probe:lines:haiku",
+      "probe:provision:haiku",
+      "probe:provision-freshness:haiku"
+    ],
+    "traceExact": true
+  }
+}

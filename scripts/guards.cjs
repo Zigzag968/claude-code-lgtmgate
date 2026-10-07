@@ -63,7 +63,9 @@
 //      as the viewer does). Only the meta block is read. A failure names the title.
 //   init-stubs (#267): the six stubs `/lgtmgate:init` creates under .claude/lgtmgate/ (STUBS of
 //      scripts/init-specifics.cjs) carry none of the engine vocabulary (ENGINE_WORDS_RE) and are empty once
-//      their comments are stripped (a stub injects nothing into an agent's prompt). A failure names the stub.
+//      their comments are stripped (a stub injects nothing into an agent's prompt). Since #271 the lane stub
+//      (laneStub of the same module, frontmatter and comments stripped) and the persona sentence
+//      (laneSentence of scripts/agent-context.cjs) are held to the same vocabulary rule. A failure names the stub.
 //
 // Env (test seams, all optional)
 //   GUARDS_ONLY            comma list among r1,wired,version,parity,budgets,instructions,status,phases,init-stubs (default: all)
@@ -574,27 +576,51 @@ function checkPhaseTitles() {
 }
 
 function checkInitStubs() {
-  let stubs
+  let mod
   try {
-    stubs = require(process.env.GUARDS_INIT_STUBS || path.join(ROOT, 'scripts/init-specifics.cjs')).STUBS
+    mod = require(process.env.GUARDS_INIT_STUBS || path.join(ROOT, 'scripts/init-specifics.cjs'))
   } catch (e) {
     bad('FAIL: init-stubs: cannot load the stubs module')
     return
   }
+  const stubs = mod.STUBS
   const names = stubs && typeof stubs === 'object' ? Object.keys(stubs) : []
   if (names.length === 0) { bad('FAIL: init-stubs: no stub exported'); return }
   const problems = []
+  const emptyOnceStripped = (txt) => {
+    let prev
+    let cur = txt
+    do { prev = cur; cur = cur.replace(/<!--[\s\S]*?-->/g, '') } while (cur !== prev)
+    return cur.trim() === ''
+  }
   for (const n of names) {
     const txt = String(stubs[n])
     const w = ENGINE_WORDS_RE.exec(txt)
     if (w) problems.push(`stub '${n}' carries the engine word '${w[0]}'`)
-    let prev
-    let cur = txt
-    do { prev = cur; cur = cur.replace(/<!--[\s\S]*?-->/g, '') } while (cur !== prev)
-    if (cur.trim() !== '') problems.push(`stub '${n}' is not empty once comments are stripped`)
+    if (!emptyOnceStripped(txt)) problems.push(`stub '${n}' is not empty once comments are stripped`)
+  }
+  // Lane stub (#271): the frontmatter is stripped with the comments; a module without laneStub (the test seam) is tolerated.
+  let laneStubs = 0
+  if (typeof mod.laneStub === 'function') {
+    const txt = String(mod.laneStub('sam', 'ios'))
+    const w = ENGINE_WORDS_RE.exec(txt)
+    if (w) problems.push(`lane stub carries the engine word '${w[0]}'`)
+    const body = txt.startsWith('---\n') && txt.indexOf('\n---\n', 3) > 0 ? txt.slice(txt.indexOf('\n---\n', 3) + 5) : txt
+    if (!emptyOnceStripped(body)) problems.push('lane stub is not empty once its frontmatter and comments are stripped')
+    laneStubs = 1
+  }
+  let laneSentences = 0
+  try {
+    const sentence = require(path.join(ROOT, 'scripts/agent-context.cjs')).laneSentence('Ivy', 'senior iOS engineer')
+    const w = ENGINE_WORDS_RE.exec(sentence)
+    if (w) problems.push(`lane sentence carries the engine word '${w[0]}'`)
+    if (sentence === '') problems.push('lane sentence is empty for a persona')
+    laneSentences = 1
+  } catch (e) {
+    problems.push('cannot load laneSentence from scripts/agent-context.cjs')
   }
   if (problems.length) { for (const pr of problems) bad(`FAIL: init-stubs: ${pr}`); return }
-  out(`PASS: init-stubs: ${names.length} stubs, no engine vocabulary, empty once comments are stripped`)
+  out(`PASS: init-stubs: ${names.length} stubs, ${laneStubs} lane stub, ${laneSentences} lane sentence, no engine vocabulary, empty once comments are stripped`)
 }
 
 if (ONLY.includes('r1')) checkR1()

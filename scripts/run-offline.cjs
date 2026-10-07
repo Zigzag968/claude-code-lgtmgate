@@ -34,6 +34,8 @@
 //       "promptIncludes": { "label": "<call label>", "nth": 0, "includes": ["..."] },
 //                                          // optional (object or non-empty array of them): the prompt of the nth (0-based, default 0)
 //                                          // call carrying that label must contain every string (non-empty list of non-empty strings)
+//       "promptExcludes": { "label": "<call label>", "nth": 0, "excludes": ["..."] },
+//                                          // optional (object or array): in that prompt none of the strings may appear (same shape as promptIncludes)
 //       "promptOrder": { "label": "<call label>", "nth": 0, "order": ["a", "b"] }
 //                                          // optional (object or array): in that prompt the first occurrence of each string
 //                                          // (at least 2) must appear at strictly increasing offsets
@@ -208,7 +210,7 @@ function findUnused(fixture, calls, cursors) {
 }
 
 // Every key `expect` may carry. Any other key is refused (an ignored key is a silent non-proof, the defect #185 closed for run keys).
-const EXPECT_KEYS = ['status', 'throws', 'reason', 'trace', 'traceExact', 'callLabels', 'logsInclude', 'phases', 'callLabelsAbsent', 'promptIncludes', 'promptOrder', 'resultIncludes']
+const EXPECT_KEYS = ['status', 'throws', 'reason', 'trace', 'traceExact', 'callLabels', 'logsInclude', 'phases', 'callLabelsAbsent', 'promptIncludes', 'promptExcludes', 'promptOrder', 'resultIncludes']
 
 function expectKeyProblems(exp) {
   if (exp === null || typeof exp !== 'object' || Array.isArray(exp)) return []
@@ -219,12 +221,13 @@ function expectKeyProblems(exp) {
 
 const isNonEmptyString = (s) => typeof s === 'string' && s !== ''
 
-// promptIncludes / promptOrder: one entry object or a non-empty array of entries. A wrong shape or an unknown sub-key is a problem (fail closed).
+// promptIncludes / promptExcludes / promptOrder: one entry object or a non-empty array of entries. A wrong shape or an unknown sub-key is a problem (fail closed).
 function promptProblems(exp, calls) {
   const problems = []
   if (exp === null || typeof exp !== 'object') return problems
   const specs = [
     { key: 'promptIncludes', field: 'includes', minLen: 1 },
+    { key: 'promptExcludes', field: 'excludes', minLen: 1 },
     { key: 'promptOrder', field: 'order', minLen: 2 },
   ]
   for (const { key, field, minLen } of specs) {
@@ -251,6 +254,10 @@ function promptProblems(exp, calls) {
       if (key === 'promptIncludes') {
         for (const needle of e.includes) {
           if (!prompt.includes(needle)) problems.push(`promptIncludes: "${e.label}"[${nth}] prompt lacks "${needle}"`)
+        }
+      } else if (key === 'promptExcludes') {
+        for (const needle of e.excludes) {
+          if (prompt.includes(needle)) problems.push(`promptExcludes: "${e.label}"[${nth}] prompt holds "${needle}"`)
         }
       } else {
         let last = -1

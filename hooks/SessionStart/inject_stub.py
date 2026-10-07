@@ -106,6 +106,82 @@ def _specifics_hint(project_dir: str, config_path: Path) -> str:
         return ""
 
 
+_LANE_ROLES = ("mia", "sam", "nick", "morgan", "theo")
+_LANE_READ_BYTES = 65536
+
+
+def _names_line(prefix: str, names: list, tail: str) -> str:
+    shown = ", ".join(names[:3]) + (" (+{} more)".format(len(names) - 3) if len(names) > 3 else "")
+    return "- {} {}{}".format(prefix, shown, tail)
+
+
+def _lanes_hints(project_dir: str, config_path: Path) -> list:
+    """
+    Up to two lines about the lane files of the `projectSpecifics` folder
+    (`<role>.<lane>[.<subject>].md`, a lane being declared by `lane:` in the
+    frontmatter): one when a `lane:` contradicts the file name (or sits on a
+    `<role>.md`), one when a declared lane has no text left once the HTML
+    comments are stripped (what /lgtmgate:init --lanes leaves until the owner
+    completes it). Silent without frontmatter, and when every lane is
+    consistent and filled. Same path-escape refusal as _specifics_hint. MUST
+    NEVER raise: any failure means "no hint".
+    """
+    try:
+        cfg = json.loads(config_path.read_text(encoding="utf-8"))
+        if not isinstance(cfg, dict):
+            return []
+        rel = cfg.get("projectSpecifics")
+        if not isinstance(rel, str) or not rel.strip():
+            return []
+        rel = rel.strip().rstrip("/")
+        if os.path.isabs(rel) or ".." in Path(rel).parts:
+            return []
+        folder = Path(project_dir) / rel
+        if not folder.is_dir():
+            return []
+        contradicting = []
+        empty = []
+        for f in sorted(folder.glob("*.md")):
+            parts = f.name[:-3].split(".")
+            if parts[0] not in _LANE_ROLES or f.is_symlink() or not f.is_file():
+                continue
+            with open(f, "rb") as fh:
+                text = fh.read(_LANE_READ_BYTES).decode("utf-8", errors="replace")
+            if not text.startswith("---\n"):
+                continue
+            end = text.find("\n---", 4)
+            if end < 0:
+                continue
+            fm = text[4:end]
+            m = re.search(r"^lane:[ \t]*(.*)$", fm, re.MULTILINE)
+            if not m:
+                continue
+            lane = m.group(1).strip().strip("\"'")
+            seg = parts[1] if len(parts) > 1 else None
+            if lane != seg:
+                contradicting.append(f.name)
+                continue
+            body = text[end + 4:]
+            prev = None
+            while prev != body:
+                prev = body
+                body = re.sub(r"<!--.*?-->", "", body, flags=re.DOTALL)
+            if body.strip() == "":
+                empty.append(f.name)
+        lines = []
+        if contradicting:
+            lines.append(_names_line(
+                "lane: contradicts the file name in", contradicting,
+                " (a file <role>.<lane>.md declares that same lane; fix one of the two, then commit to the base branch)."))
+        if empty:
+            lines.append(_names_line(
+                "lane declared but empty:", empty,
+                " (write the lane's rules in the file, or remove it; an empty lane adds nothing)."))
+        return lines
+    except Exception:
+        return []
+
+
 def build_stub() -> str:
     project_dir = os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
     config_path = Path(project_dir) / ".claude" / "pipeline.config.json"
@@ -139,6 +215,7 @@ def build_stub() -> str:
         hint = _specifics_hint(project_dir, config_path)
         if hint:
             lines.append(hint)
+        lines.extend(_lanes_hints(project_dir, config_path))
     else:
         lines.append(
             "- **No `.claude/pipeline.config.json` detected** in this project. "
