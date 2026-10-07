@@ -77,6 +77,35 @@ def _pr_ready_reminder(project_dir: str) -> str:
         return ""
 
 
+def _specifics_hint(project_dir: str, config_path: Path) -> str:
+    """
+    One line when the config sets `projectSpecifics` but its folder holds no
+    .md file (the stubs `/lgtmgate:init` creates are missing). A path that
+    escapes the project directory is never read. MUST NEVER raise: any
+    failure means "no hint".
+    """
+    try:
+        cfg = json.loads(config_path.read_text(encoding="utf-8"))
+        if not isinstance(cfg, dict):
+            return ""
+        rel = cfg.get("projectSpecifics")
+        if not isinstance(rel, str) or not rel.strip():
+            return ""
+        rel = rel.strip().rstrip("/")
+        if os.path.isabs(rel) or ".." in Path(rel).parts:
+            return ""
+        folder = Path(project_dir) / rel
+        if folder.is_dir() and any(folder.glob("*.md")):
+            return ""
+        return (
+            "- projectSpecifics is set but {} holds no .md file: run /lgtmgate:init "
+            "to create the stubs, then commit and push them to the base branch "
+            "(specifics are read from origin/<base>).".format(rel)
+        )
+    except Exception:
+        return ""
+
+
 def build_stub() -> str:
     project_dir = os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
     config_path = Path(project_dir) / ".claude" / "pipeline.config.json"
@@ -107,6 +136,9 @@ def build_stub() -> str:
 
     if configured:
         lines.append("- Status: config detected, pipeline ready to use.")
+        hint = _specifics_hint(project_dir, config_path)
+        if hint:
+            lines.append(hint)
     else:
         lines.append(
             "- **No `.claude/pipeline.config.json` detected** in this project. "

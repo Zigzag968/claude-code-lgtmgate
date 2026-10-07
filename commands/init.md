@@ -37,7 +37,7 @@ Pipeline stage 1 (provisioning) is **fail-closed** on `scripts/provision_worktre
 
 **Commit + push BEFORE the first run (mandatory — MANDATORY, claude-agent-pipeline#51).** The provisioning gate runs `bash "<worktree>/scripts/provision_worktree.sh"` **from the WORKTREE**, i.e. the content **COMMITTED** on `baseBranch` — not the working tree of the main checkout that `init` just wrote to. `git worktree add` always clones from a committed ref: until these files are committed + pushed to `baseBranch`, a freshly created worktree does NOT have `scripts/provision_worktree.sh`, the gate `exit 127`s, and the pipeline escalates `provision-failed` on the very first task — exactly the failure this gate is meant to prevent. Before the first `/lgtmgate:deliver`:
 ```bash
-git add scripts/provision_worktree.sh .claude/workflows .claude/rules .claude/scripts .claude/pipeline.config.json
+git add .claude/lgtmgate scripts/provision_worktree.sh .claude/workflows .claude/rules .claude/scripts .claude/pipeline.config.json
 ```
 ```bash
 git commit -m "chore(pipeline): bootstrap lgtmgate machinery"
@@ -46,6 +46,8 @@ git commit -m "chore(pipeline): bootstrap lgtmgate machinery"
 git push origin <baseBranch>
 ```
 (1 command per call, no compounding — same rule as the rest of this runbook.)
+
+The `.claude/lgtmgate/` folder is created by section 2bis below: run it before staging. Project specifics are read from `origin/<baseBranch>`, so commit and push the folder and the config to the base branch before the first `/lgtmgate:deliver`.
 
 ## 2. Generate `.claude/pipeline.config.json`
 Read the template `${CLAUDE_PLUGIN_ROOT}/templates/pipeline.config.template.json`. Detect what you can, ask for the rest via **AskUserQuestion** (lettered options + tradeoff), then write the final JSON with the Write tool.
@@ -72,6 +74,24 @@ Fields to fill in:
 - **commitHygiene** / **commentHygiene**: optional keys, deliberately absent from `pipeline.config.template.json` (no automatic generation — enable knowingly). `commitHygiene: { squashBeforeHandoff, maxCommits }` only pays off on a repo whose base merges with merge-commits (otherwise a squash merge already does the job for free). `commentHygiene: true` collapses the review-round history in PR comments — the decision-log compositor landed in this copy (0.8.2) and preserves that history in the PR body, so enabling it stays a conscious decision but is no longer blocked by a lack of replacement mechanism.
 
 Validate the written JSON: `python3 -c "import json; json.load(open('.claude/pipeline.config.json'))"`.
+
+## 2bis. Project specifics (stubs the owner completes)
+The agents read the owner's rules from `.claude/lgtmgate/` (config key `projectSpecifics`). Init proposes and creates only the stubs; the owner completes them in their own words.
+
+1. **Detect.** `node ${CLAUDE_PLUGIN_ROOT}/scripts/init-specifics.cjs --root "${CLAUDE_PROJECT_DIR}" --detect` prints JSON: the stacks (manifests), the signals and CI workflows, `.claude/rules/*` with or without `paths:`, `AGENTS.md`, `.mcp.json`, the project agents, and an existing `.claude/lgtmgate/` (`existing`, each stub `pristine` or not).
+2. **Ask (AskUserQuestion, a recommendation each, only what cannot be detected).** Name each question with these exact phrases:
+   - `docs/issues language`
+   - `test policy`
+   - `forbidden actions`
+   - `tools/CLI allowed`, per role
+   - `rules to target`, per role: the answer goes to `agentContext` (`"*"` or a role)
+   - `branch protection`: see (7)
+   Lanes are not asked here, and there is no `oneWayDoorPaths` question (documented option only).
+3. **Proposal before any write.** `node ${CLAUDE_PLUGIN_ROOT}/scripts/init-specifics.cjs --root "${CLAUDE_PROJECT_DIR}" --propose --plugin-version <version of ${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json>` prints what would be created or kept and which config keys would be set. Show it and wait for the owner's confirmation.
+4. **Write.** `node ${CLAUDE_PLUGIN_ROOT}/scripts/init-specifics.cjs --root "${CLAUDE_PROJECT_DIR}"` creates only the missing stubs and never touches an existing path. Add the owner's answers, in the owner's words, with Edit ONLY into a stub that `--detect` reports `pristine: true`. For any other existing file, print the proposed diff and write nothing: the file is project-owned, never overwrite (P-04).
+5. **Config keys (Edit, only when absent or empty).** `projectSpecifics: ".claude/lgtmgate"`; `minPluginVersion` = the plugin version (never lower an existing one, written together with `projectSpecifics` because an older engine ignores the key); `agentContext` entries are added, never removed. Validate the JSON afterwards.
+6. **Never copy** a file of `${CLAUDE_PLUGIN_ROOT}/templates/` under `.claude/lgtmgate/` (a copy drifts from the plugin).
+7. **Security.** The pipeline needs branch protection on `<baseBranch>` plus required CI (threats: a reviewer ticking everything, an agent pushing to the base or disabling a hook, one shared `gh` identity so a forged review marker is indistinguishable). Ask the branch protection question, then verify with `gh api repos/{o}/{r}/branches/<base>/protection` (REST): 200 with required status checks = ok; 404 = warn and document the need; 403 plan limit = report "cannot verify", never block.
 
 ## 3. GitHub snippets (optional, propose)
 Propose (AskUserQuestion) inserting the snippets to enable pm_review + the acceptance gate:
