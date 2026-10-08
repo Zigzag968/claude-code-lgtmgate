@@ -68,34 +68,34 @@ const KEY_RULES = RULES.filter((r) => r.kind === 'json-key')
 // the delimiter is the last backslash). A bare quote, or a quote after an even run of backslashes, ends the
 // outer string (truncated capture): the value stops before it, and so does a newline (a truncated line never
 // swallows the next one). Only this one nesting level is handled.
-function escapedValueEnd(t, i) {
-  while (i < t.length) {
-    if (t[i] === '"' || t[i] === '\n') return i
-    if (t[i] !== '\\') { i++; continue }
-    let j = i
-    while (t[j] === '\\') j++
-    if (t[j] === '"' && (j - i) % 4 === 1) return j - 1
-    if (t[j] === '"' && (j - i) % 2 === 0) return i
-    i = t[j] === '"' ? j + 1 : j
+function escapedValueEnd(t, index) {
+  while (index < t.length) {
+    if (t[index] === '"' || t[index] === '\n') return index
+    if (t[index] !== '\\') { index++; continue }
+    let index_ = index
+    while (t[index_] === '\\') index_++
+    if (t[index_] === '"' && (index_ - index) % 4 === 1) return index_ - 1
+    if (t[index_] === '"' && (index_ - index) % 2 === 0) return index
+    index = t[index_] === '"' ? index_ + 1 : index_
   }
-  return i
+  return index
 }
 
 // `"key":"value"` -> `"key":"<to>"` for the pairs of one json-key rule (the key keeps its spelling)
 function redactPairs(text, r) {
   let out = text.replace(r.plain, (m, open, key, close) => open + key + close + r.to)
-  let res = ''
+  let result = ''
   let last = 0
   r.head.lastIndex = 0
   for (let m; (m = r.head.exec(out)); ) {
     const start = m.index + m[0].length
     const end = escapedValueEnd(out, start)
     if (end === start) continue
-    res += out.slice(last, start) + r.to
+    result += out.slice(last, start) + r.to
     last = end
     r.head.lastIndex = end
   }
-  return res + out.slice(last)
+  return result + out.slice(last)
 }
 
 function redactText(text) {
@@ -126,7 +126,7 @@ function redactValue(v) {
 function redactFile(raw, isJson) {
   if (isJson) {
     let parsed
-    try { parsed = JSON.parse(raw) } catch (e) { return redactText(raw) }
+    try { parsed = JSON.parse(raw) } catch (error) { return redactText(raw) }
     return JSON.stringify(redactValue(parsed), null, 2) + '\n'
   }
   return redactText(raw)
@@ -149,7 +149,7 @@ function stringHits(s) {
 const step = (k) => (/^[A-Za-z_]\w*$/.test(k) ? `.${k}` : `[${JSON.stringify(k)}]`)
 function jsonHits(v, at, found) {
   if (typeof v === 'string') for (const id of stringHits(v)) found.push([id, at])
-  else if (Array.isArray(v)) v.forEach((x, i) => jsonHits(x, `${at}[${i}]`, found))
+  else if (Array.isArray(v)) v.forEach((x, index) => jsonHits(x, `${at}[${index}]`, found))
   else if (v && typeof v === 'object') {
     for (const k of Object.keys(v)) {
       const inKey = stringHits(k)
@@ -164,11 +164,11 @@ function jsonHits(v, at, found) {
 }
 function textHits(text) {
   const found = []
-  text.split('\n').forEach((line, i) => { for (const id of stringHits(line)) found.push([id, `line ${i + 1}`]) })
+  text.split('\n').forEach((line, index) => { for (const id of stringHits(line)) found.push([id, `line ${index + 1}`]) })
   return found
 }
 function hitsOf(output, isJson) {
-  if (isJson) { try { return jsonHits(JSON.parse(output), '$', []) } catch (e) { /* not JSON: scanned as text */ } }
+  if (isJson) { try { return jsonHits(JSON.parse(output), '$', []) } catch (error) { /* not JSON: scanned as text */ } }
   return textHits(output)
 }
 
@@ -195,7 +195,7 @@ if (refused.length) {
   for (const { f, isJson, before, after } of runs) {
     // compare on content, not formatting: a JSON file is re-serialised by this script
     const same = isJson
-      ? (() => { try { return JSON.stringify(JSON.parse(before)) === JSON.stringify(JSON.parse(after)) } catch (e) { return before === after } })()
+      ? (() => { try { return JSON.stringify(JSON.parse(before)) === JSON.stringify(JSON.parse(after)) } catch (error) { return before === after } })()
       : before === after
     if (!same) {
       dirty++
