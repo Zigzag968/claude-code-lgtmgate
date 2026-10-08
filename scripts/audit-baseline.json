@@ -3,7 +3,6 @@
     "SC2046": 9
   },
   "plugins/backlog/scripts/backlog_apply.py": {
-    "N818": 1,
     "max-lines": 1
   },
   "plugins/backlog/scripts/backlog_config.py": {
@@ -14,78 +13,6 @@
   },
   "plugins/backlog/scripts/backlog_set.py": {
     "PLR0915": 1
-  },
-  "plugins/backlog/tests/_support.py": {
-    "N812": 2
-  },
-  "plugins/backlog/tests/test_apply_conditions.py": {
-    "N812": 6
-  },
-  "plugins/backlog/tests/test_apply_gh.py": {
-    "N812": 3
-  },
-  "plugins/backlog/tests/test_apply_journal.py": {
-    "N812": 3
-  },
-  "plugins/backlog/tests/test_apply_rollback.py": {
-    "N812": 3
-  },
-  "plugins/backlog/tests/test_apply_surface.py": {
-    "N812": 3
-  },
-  "plugins/backlog/tests/test_catchup.py": {
-    "N812": 4
-  },
-  "plugins/backlog/tests/test_config.py": {
-    "N812": 2
-  },
-  "plugins/backlog/tests/test_config_catchup.py": {
-    "N812": 2
-  },
-  "plugins/backlog/tests/test_dependencies.py": {
-    "N812": 4
-  },
-  "plugins/backlog/tests/test_file.py": {
-    "N812": 2
-  },
-  "plugins/backlog/tests/test_gh_wrapper.py": {
-    "N812": 2
-  },
-  "plugins/backlog/tests/test_guard_hook.py": {
-    "N812": 3
-  },
-  "plugins/backlog/tests/test_inert.py": {
-    "N812": 1
-  },
-  "plugins/backlog/tests/test_inert_writers.py": {
-    "N812": 1
-  },
-  "plugins/backlog/tests/test_labelsync.py": {
-    "N812": 3
-  },
-  "plugins/backlog/tests/test_lint.py": {
-    "N812": 2
-  },
-  "plugins/backlog/tests/test_next_item.py": {
-    "N812": 2
-  },
-  "plugins/backlog/tests/test_no_live_gh.py": {
-    "N812": 2
-  },
-  "plugins/backlog/tests/test_promote.py": {
-    "N812": 3
-  },
-  "plugins/backlog/tests/test_set.py": {
-    "N812": 3
-  },
-  "plugins/backlog/tests/test_skills.py": {
-    "N812": 1
-  },
-  "plugins/backlog/tests/test_snapshot.py": {
-    "N812": 3
-  },
-  "plugins/backlog/tests/test_triage.py": {
-    "N812": 3
   },
   "scripts/agent-context.cjs": {
     "max-lines": 1,
@@ -113,9 +40,6 @@
   "scripts/lead-merge.sh": {
     "max-lines": 1
   },
-  "scripts/prompt-hash.cjs": {
-    "unicorn/name-replacements": 7
-  },
   "scripts/provision_worktree.sh": {
     "ls-lint:.sh:kebabcase": 1
   },
@@ -123,45 +47,20 @@
     "max-lines-per-function": 1,
     "unicorn/name-replacements": 45
   },
-  "scripts/redact-fixture.cjs": {
-    "unicorn/name-replacements": 8
-  },
   "scripts/run-flow-suite.cjs": {
     "unicorn/name-replacements": 19
   },
   "scripts/run-offline.cjs": {
     "unicorn/name-replacements": 28
   },
-  "scripts/test-agent-context.sh": {
-    "SC2164": 1
-  },
   "scripts/test-capture-incident.sh": {
-    "SC2164": 1,
     "max-lines": 1
   },
-  "scripts/test-cleanup-worktree.sh": {
-    "SC2046": 10
-  },
-  "scripts/test-context-print.sh": {
-    "SC2164": 1
-  },
-  "scripts/test-init-specifics.sh": {
-    "SC2164": 1
-  },
   "scripts/test-lead-merge.sh": {
-    "SC1090": 1,
     "max-lines": 1
   },
   "scripts/test-publish-fixture.sh": {
-    "SC2115": 1,
-    "SC2164": 1,
     "max-lines": 1
-  },
-  "scripts/test-redact-fixture.sh": {
-    "SC2164": 1
-  },
-  "scripts/test-run-offline.sh": {
-    "SC2164": 1
   },
   "templates/pr-body-splice.cjs": {
     "unicorn/name-replacements": 16
@@ -185,14 +84,8 @@
     "max-lines": 1,
     "unicorn/name-replacements": 1127
   },
-  "templates/test-gh-pipeline-status.sh": {
-    "SC2034": 1
-  },
   "templates/test-probe-run.sh": {
     "max-lines": 1
-  },
-  "templates/test-provision-worktree.sh": {
-    "SC2034": 3
   },
   "workflows/deliver-pipeline.js": {
     "max-lines": 1,
