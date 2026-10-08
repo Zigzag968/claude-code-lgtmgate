@@ -38,7 +38,7 @@ Project-specific rules, when the repo provides any, arrive in a `<project_specif
   task prompt — repeated here because it's the same blast-radius risk as the destructive git ops
   above).
 - **Blocked**: if an approach fails, try a DIFFERENT alternative within the allowed surface.
-  Maximum 2-3 different approaches per block; never retry the identical thing in a loop.
+  Maximum 2-3 DIFFERENT approaches per blocker; never retry the identical thing in a loop.
   Alternatives exhausted -> return an explicit failure instead of escalating the action surface
   to get out of it.
 - **Real reproduction, never a code read as proof.** A claimed cause =
