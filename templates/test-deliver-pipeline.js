@@ -2414,6 +2414,15 @@ await testCase('T272 probeCommands() extracted from source markers (#82)', async
     eq('same out dir in both', withRoot.run.includes("--out '/wt/issue-7/.pipeline/probes/issue-7'") && withRoot.verify.includes("--out '/wt/issue-7/.pipeline/probes/issue-7'"), true),
     eq('default run has no --no-reuse (provision record rule unchanged)', withRoot.run.includes('--no-reuse'), false),
     eq('noReuse run carries --no-reuse before --cmd (#83)', /--no-reuse --cmd /.test(pc({ ...base, pluginRoot: '/plug', noReuse: true }).run), true),
+    // #338: cmdB64 replaces --cmd with one bare token (no quoting to re-type); the default output is unchanged
+    ...(() => {
+      const d = 'a'.repeat(64)
+      const b = pc({ ...base, pluginRoot: '/plug', expectCmd: d, cmdB64: 'ZWNobyAnaGknCg==' }).run
+      return [
+        eq('cmdB64 run ends with --expect-cmd <digest> --cmd-b64 <token> (#338)', b.endsWith(` --expect-cmd ${d} --cmd-b64 ZWNobyAnaGknCg==`), true),
+        eq('cmdB64 run has no --cmd flag and no nested quote after the digest (#338)', b.includes(' --cmd ') || b.slice(b.indexOf('--expect-cmd')).includes("'"), false),
+      ]
+    })(),
     eq('noReuse never reaches the verify command', pc({ ...base, pluginRoot: '/plug', noReuse: true }).verify.includes('--no-reuse'), false),
     eq('preflightProbe passes noReuse: true to probe() (live state, #83)', /async function preflightProbe[\s\S]*?probe\('preflight', cmd, \{[\s\S]*?noReuse: true/.test(src), true),
     // #212: the digest the engine composed travels to the script, which refuses a copy that does not hash to it
@@ -2615,7 +2624,7 @@ await testCase('T195e a failure of the probe itself is the documented provision-
   const { V, pluginVersionVerdict } = pv
   // the hooks off (no-attestation), an unresolved agent type, a copy that altered the command: the probe never ran
   // to the point of reading the manifest, so the manifest is not what failed
-  for (const reason of ['no-attestation', 'unparseable-line', 'cmd-mismatch', 'unparseable-verify', 'verify-hash-mismatch', 'sha-mismatch', 'probe-run-not-found']) {
+  for (const reason of ['no-attestation', 'unparseable-line', 'cmd-mismatch', 'unparseable-verify', 'verify-hash-mismatch', 'sha-mismatch', 'probe-run-not-found', 'command-not-run']) {
     const got = pluginVersionVerdict({ engineVersion: V, pluginRoot: '/r', probeFailed: reason, lines: undefined })
     const bad = eq(reason + ': code', got && got.code, 'provision-failed')
       || eq(reason + ': reason is the documented one', got.reason, 'provision-failed')
@@ -2639,7 +2648,8 @@ await testCase('T195d the check runs first, only when the templates come from pl
   const body = src.slice(iGate, src.indexOf('\n}\n', iGate))
   const checks = [
     eq('gate precedes the provision probe', iGate < iProvision, true),
-    eq('gate reads the manifest through probe(lines) with noReuse', body.includes("probe('lines', pluginVersionCmd(pluginRoot), { label: 'plugin-version', noReuse: true"), true),
+    eq('gate reads the manifest through probe(lines) with noReuse', body.includes("probe('lines', pluginVersionCmd(pluginRoot), { label: 'plugin-version', noReuse: true, b64: true"), true),
+    eq('the session-root probe is delivered as --cmd-b64 too (#338)', src.includes("probe('lines', sessionRootCmd(sessionRoot, wtPath), { label: 'session-root', noReuse: true, b64: true"), true),
     eq('gate escalates on the existing status', body.includes("finish(STATUS['escalate'], { reason: skew.reason"), true),
     eq('the root path travels in its own result field, not in the reason', body.includes("{ reason: skew.reason, issue, pluginRoot, trace }"), true),
     eq('a failure of the probe itself keeps the provision-failed signature', body.includes("reason: 'provision-failed', issue, missing: [], exitCode: null, probeReason: pv.probeFailed, probeHint: PROBE_REASON_HINTS[pv.probeFailed]"), true),
