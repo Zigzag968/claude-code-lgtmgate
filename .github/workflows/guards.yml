@@ -132,8 +132,11 @@ jobs:
         with:
           node-version: "20"
       # Exact pin: the validator gains rules over time, so the version moves only by a deliberate edit.
-      - name: Install Claude Code CLI
-        run: npm install -g @anthropic-ai/claude-code@2.1.294
+      # The version lives in .devcontainer/package.json, its integrity hash in the lockfile next to it.
+      - name: Install Claude Code CLI (lockfile, integrity-checked)
+        run: |
+          npm ci --prefix .devcontainer
+          echo "$GITHUB_WORKSPACE/.devcontainer/node_modules/.bin" >> "$GITHUB_PATH"
       - name: Validate marketplace and plugin manifests as committed (stable, backlog, beta copy), strict
         run: |
           claude plugin validate ./ --strict
