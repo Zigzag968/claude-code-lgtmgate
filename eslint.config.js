@@ -31,7 +31,7 @@ module.exports = [
   {
     files: ['**/*.js', '**/*.cjs', '**/*.mjs'],
     plugins: { unicorn },
-    // Existing `eslint-disable` comments of the repo are not this audit's business.
+    // Existing `eslint-disable` comments are not ESLint's business here: scripts/audit.cjs counts them as the `suppression` rule and the baseline freezes them.
     linterOptions: { reportUnusedDisableDirectives: 'off' },
     rules: {
       camelcase: 'error',

@@ -5,6 +5,9 @@
   "plugins/backlog/scripts/backlog_apply.py": {
     "max-lines": 1
   },
+  "plugins/backlog/scripts/backlog_cli.py": {
+    "suppression": 11
+  },
   "plugins/backlog/scripts/backlog_config.py": {
     "PLR0915": 2
   },
@@ -13,6 +16,9 @@
   },
   "plugins/backlog/scripts/backlog_set.py": {
     "PLR0915": 1
+  },
+  "plugins/backlog/tests/test_snapshot.py": {
+    "suppression": 1
   },
   "scripts/agent-context.cjs": {
     "max-lines": 1,
@@ -38,7 +44,8 @@
     "unicorn/name-replacements": 22
   },
   "scripts/lead-merge.sh": {
-    "max-lines": 1
+    "max-lines": 1,
+    "suppression": 1
   },
   "scripts/provision_worktree.sh": {
     "ls-lint:.sh:kebabcase": 1
@@ -48,9 +55,11 @@
     "unicorn/name-replacements": 45
   },
   "scripts/run-flow-suite.cjs": {
+    "suppression": 2,
     "unicorn/name-replacements": 19
   },
   "scripts/run-offline.cjs": {
+    "suppression": 1,
     "unicorn/name-replacements": 28
   },
   "scripts/test-capture-incident.sh": {
@@ -71,6 +80,9 @@
   "templates/pr-write.sh": {
     "SC2164": 1
   },
+  "templates/preflight.sh": {
+    "suppression": 1
+  },
   "templates/probe-run.cjs": {
     "unicorn/name-replacements": 21
   },
@@ -82,6 +94,7 @@
   },
   "templates/test-deliver-pipeline.js": {
     "max-lines": 1,
+    "suppression": 10,
     "unicorn/name-replacements": 1127
   },
   "templates/test-probe-run.sh": {

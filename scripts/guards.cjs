@@ -69,7 +69,9 @@
 //   audit (#289): the code-quality ratchet. Rule 2 first (cheap): scripts/audit-baseline.json may never raise a
 //      (file, rule) count above `git show origin/main:scripts/audit-baseline.json` (absent = 0); with no base baseline
 //      (bootstrap) it prints `SKIP: baseline-vs-origin (no base baseline)`, and with an unresolvable origin/main it FAILS
-//      like R1. Rule 1: `node scripts/audit.cjs --check` (size, naming, lint against that baseline); its lines are
+//      like R1. Rule 2 is rename-aware (`git diff -M origin/main`: a renamed file keeps its budget, a copy does not)
+//      and refuses a NEW-RULE: a rule absent from the origin baseline, unless eslint.config.js, .ls-lint.yml or
+//      ruff.toml changes in the same branch (then the rule enters at its current level). Rule 1: `node scripts/audit.cjs --check` (size, naming, lint against that baseline); its lines are
 //      printed verbatim and a nonzero exit fails. A missing baseline FAILS. Needs `npm ci` and the pinned ruff.
 //
 // Env (test seams, all optional)
@@ -641,7 +643,50 @@ function originResolves() {
     return false
   }
 }
-// Rule 2: the baseline only goes down. Returns false (after printing the named reds) when it was raised vs origin/main.
+// A new rule may enter the baseline only when a tool config changes in the same branch.
+const AUDIT_TOOL_CONFIGS = ['eslint.config.js', '.ls-lint.yml', 'ruff.toml']
+// Working tree vs origin/main with rename detection: renames maps new path -> old path, changed holds every path touched
+// (both sides of a rename). Null when git fails.
+function auditDiffAgainstOrigin() {
+  let raw
+  try {
+    raw = execFileSync('git', ['diff', '-M', '--name-status', '-z', 'origin/main', '--'], { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 1 << 28 })
+  } catch (_) {
+    return null
+  }
+  const tokens = raw.split('\0')
+  const renames = new Map()
+  const changed = new Set()
+  for (let index = 0; index < tokens.length && tokens[index] !== ''; index++) {
+    const status = tokens[index]
+    if (status.startsWith('R') || status.startsWith('C')) {
+      const [oldPath, newPath] = [tokens[index + 1], tokens[index + 2]]
+      index += 2
+      changed.add(oldPath)
+      changed.add(newPath)
+      if (status.startsWith('R')) renames.set(newPath, oldPath)
+    } else {
+      index += 1
+      changed.add(tokens[index])
+    }
+  }
+  return { renames, changed }
+}
+function auditNewRules(branchBaseline, originBaseline, changed) {
+  const originRules = new Set(Object.values(originBaseline).flatMap((rules) => Object.keys(rules || {})))
+  const unlocked = AUDIT_TOOL_CONFIGS.some((config) => changed.has(config))
+  const entering = new Set()
+  for (const rules of Object.values(branchBaseline)) {
+    for (const rule of Object.keys(rules || {})) if (!originRules.has(rule)) entering.add(rule)
+  }
+  if (unlocked) return { entering, held: true }
+  for (const rule of [...entering].sort()) {
+    bad(`FAIL: audit: NEW-RULE ${rule} absent from origin/main ${AUDIT_BASELINE} and no tool config file (${AUDIT_TOOL_CONFIGS.join(', ')}) changed in this branch`)
+  }
+  return { entering, held: entering.size === 0 }
+}
+// Rule 2: the baseline only goes down (a renamed file keeps its budget), and a rule enters only with a tool config change.
+// Returns false (after printing the named reds) when it was raised vs origin/main.
 function auditBaselineHolds(branchText) {
   const branchBaseline = parseJsonOr(branchText)
   if (branchBaseline === null || typeof branchBaseline !== 'object') { bad(`FAIL: audit: ${AUDIT_BASELINE} missing or invalid`); return false }
@@ -652,10 +697,15 @@ function auditBaselineHolds(branchText) {
     return true
   }
   const originBaseline = parseJsonOr(originText) || {}
-  let held = true
+  const diff = auditDiffAgainstOrigin()
+  if (diff === null) { bad('FAIL: audit: baseline-vs-origin: cannot run git diff -M origin/main'); return false }
+  const newRules = auditNewRules(branchBaseline, originBaseline, diff.changed)
+  let held = newRules.held
   for (const [file, rules] of Object.entries(branchBaseline)) {
+    const origin = originBaseline[diff.renames.get(file) || file] || {}
     for (const [rule, count] of Object.entries(rules)) {
-      const allowed = (originBaseline[file] && originBaseline[file][rule]) || 0
+      if (newRules.entering.has(rule)) continue
+      const allowed = origin[rule] || 0
       if (count > allowed) { bad(`FAIL: audit: baseline-vs-origin ${file} ${rule} ${count} > origin/main ${allowed}`); held = false }
     }
   }
