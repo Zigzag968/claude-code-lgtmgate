@@ -1053,5 +1053,20 @@ D="$(setup spec-unchanged)"; run "$D" "$BASE/good.md"; rc=$?
 [ "$rc" -eq 0 ] && ! grep -qF 'Project specifics changed' "$D/out" && grep -q 'pr merge 7 -R o/r --merge' "$D/log" \
   && ok "specifics-visibility: no section when nothing relevant changed" || bad "specifics-visibility unchanged (rc=$rc): $(tail -5 "$D/out")"
 
+# 24. guard surface visibility (#308): printed (not blocking) when the PR changes a guard file or the commands / oneWayDoorPaths config keys; none otherwise
+D="$(setup guard-changed)"
+( cd "$D/work" && echo "// guard-surface-marker" > eslint.config.js && git add -A && git commit -qm "guard file" && git push -q origin feat/x ) >/dev/null 2>&1
+run "$D" "$BASE/good.md"; rc=$?
+[ "$rc" -eq 0 ] && grep -qF 'lead-merge: Guard surface changed' "$D/out" && grep -qF 'guard-surface-marker' "$D/out" && grep -q 'pr merge 7 -R o/r --merge' "$D/log" \
+  && ok "guard-surface: a changed guard file is printed with its diff and the merge still goes through" || bad "guard-surface file (rc=$rc): $(tail -5 "$D/out")"
+D="$(setup guard-config)"
+( cd "$D/work" && mkdir -p .claude && echo '{"commands":{"test":"x"},"oneWayDoorPaths":["a"]}' > .claude/pipeline.config.json && git add -A && git commit -qm "guard config" && git push -q origin feat/x ) >/dev/null 2>&1
+run "$D" "$BASE/good.md"; rc=$?
+[ "$rc" -eq 0 ] && grep -qF 'lead-merge: Guard surface changed' "$D/out" && grep -qF '"test": "x"' "$D/out" && grep -q 'pr merge 7 -R o/r --merge' "$D/log" \
+  && ok "guard-surface: changed commands / oneWayDoorPaths keys are printed and the merge still goes through" || bad "guard-surface config (rc=$rc): $(tail -5 "$D/out")"
+D="$(setup guard-unchanged)"; run "$D" "$BASE/good.md"; rc=$?
+[ "$rc" -eq 0 ] && ! grep -qF 'Guard surface changed' "$D/out" && grep -q 'pr merge 7 -R o/r --merge' "$D/log" \
+  && ok "guard-surface: no section when nothing relevant changed" || bad "guard-surface unchanged (rc=$rc): $(tail -5 "$D/out")"
+
 echo "[lead-merge test] passed=$PASS failed=$FAIL"
 [ "$FAIL" -eq 0 ]

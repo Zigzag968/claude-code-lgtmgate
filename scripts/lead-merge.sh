@@ -31,6 +31,10 @@
 #      projectSpecifics / agentContext / baseBranch lines of `.claude/pipeline.config.json` against origin/main are printed under
 #      one `lead-merge: Project specifics changed` line when non-empty. Never blocks, no flag; a custom projectSpecifics folder
 #      is visible through the config-key diff only.
+#   3c. guard surface visibility (#308): the diff against origin/main of eslint.config.js, .ls-lint.yml, ruff.toml,
+#      scripts/guards.cjs, scripts/audit.cjs, .github/workflows/guards.yml and templates/test-canonical-guards.sh, and of the
+#      `commands` and `oneWayDoorPaths` keys of `.claude/pipeline.config.json`, is printed under one `lead-merge: Guard surface changed`
+#      line when non-empty. Never blocks, no flag.
 #   4. bump from the merged tree: next version over max(branch, origin/main) (semver 2.0.0 precedence: X.Y.Z -> patch+1,
 #      X.Y.Z-beta.N -> X.Y.Z-beta.(N+1)) in .claude-plugin/plugin.json
 #      + BUILD line of workflows/deliver-pipeline.js (cutFrom = origin/main short sha), commit
@@ -462,6 +466,30 @@ if [ -n "$spec_diff" ] || [ -n "$spec_cfg" ]; then
   echo "lead-merge: Project specifics changed (not blocking: every later run reads these rules from the base; review them before the merge lands)"
   [ -n "$spec_cfg" ] && printf '%s\n' "$spec_cfg"
   [ -n "$spec_diff" ] && printf '%s\n' "$spec_diff"
+fi
+
+# --- 3c. guard surface visibility (#308; not blocking) ----------------------------------------------------------
+# These files and config keys decide what the checks accept: a PR changing them changes the gate that judged it. Print the diff,
+# never refuse, no flag. A config file missing on either side reads as {} (consumer repos).
+guard_diff="$(git diff origin/main...HEAD -- eslint.config.js .ls-lint.yml ruff.toml scripts/guards.cjs scripts/audit.cjs .github/workflows/guards.yml templates/test-canonical-guards.sh 2>/dev/null || true)"
+guard_base_cfg="$(git show origin/main:.claude/pipeline.config.json 2>/dev/null || true)"
+guard_head_cfg="$(git show HEAD:.claude/pipeline.config.json 2>/dev/null || true)"
+guard_cfg="$(GUARD_BASE_CFG="$guard_base_cfg" GUARD_HEAD_CFG="$guard_head_cfg" python3 -c '
+import difflib, json, os
+def load(name):
+    try:
+        data = json.loads(os.environ.get(name) or "{}")
+    except ValueError:
+        data = {}
+    if not isinstance(data, dict):
+        data = {}
+    return json.dumps({k: data.get(k) for k in ("commands", "oneWayDoorPaths") if k in data}, indent=2, sort_keys=True).splitlines()
+print("\n".join(difflib.unified_diff(load("GUARD_BASE_CFG"), load("GUARD_HEAD_CFG"), "origin/main:.claude/pipeline.config.json", "HEAD:.claude/pipeline.config.json", lineterm="")))
+' 2>/dev/null || true)"
+if [ -n "$guard_diff" ] || [ -n "$guard_cfg" ]; then
+  echo "lead-merge: Guard surface changed (not blocking: these files and config keys decide what the checks accept; review them before the merge lands)"
+  [ -n "$guard_cfg" ] && printf '%s\n' "$guard_cfg"
+  [ -n "$guard_diff" ] && printf '%s\n' "$guard_diff"
 fi
 
 ver_of() { python3 -c "import json,sys; print(json.load(sys.stdin).get('version',''))"; }

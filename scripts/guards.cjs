@@ -75,7 +75,8 @@
 //      printed verbatim and a nonzero exit fails. A missing baseline FAILS. Needs `npm ci` and the pinned ruff.
 //
 // Env (test seams, all optional)
-//   GUARDS_ONLY            comma list among r1,wired,version,parity,budgets,instructions,status,phases,init-stubs,audit (default: all)
+//   GUARDS_ONLY            comma list among r1,wired,guard-steps,version,parity,budgets,instructions,status,phases,init-stubs,audit (default: all)
+//   GUARDS_BASE_YML        guards.yml used as the base for guard-steps (default: git show origin/main:.github/workflows/guards.yml)
 //   GUARDS_BASE_FILE       workflow file used as the base for R1 (default: git show origin/main:<file>)
 //   GUARDS_BRANCH_FILE     workflow file used as the branch for R1 (default: workflows/deliver-pipeline.js)
 //   GUARDS_BASE_MANIFEST   base plugin.json path for the version floor (default: git show origin/main:...)
@@ -99,7 +100,7 @@ const WORKFLOW = 'workflows/deliver-pipeline.js'
 const MANIFEST = '.claude-plugin/plugin.json'
 const GUARDS_YML = '.github/workflows/guards.yml'
 const DELIVER_MD = 'commands/deliver.md'
-const ONLY = process.env.GUARDS_ONLY ? process.env.GUARDS_ONLY.split(',') : ['r1', 'wired', 'version', 'parity', 'budgets', 'instructions', 'status', 'phases', 'init-stubs', 'audit']
+const ONLY = process.env.GUARDS_ONLY ? process.env.GUARDS_ONLY.split(',') : ['r1', 'wired', 'guard-steps', 'version', 'parity', 'budgets', 'instructions', 'status', 'phases', 'init-stubs', 'audit']
 
 // Suites that are NOT named in guards.yml, each with its reason. Add a suite here only if it is
 // red on main (report it, do not wire it) or is run through another runner.
@@ -337,6 +338,34 @@ function checkWired() {
   const missing = suites.filter((s) => !EXEMPT[s] && !runText.includes(s))
   if (missing.length) bad(`FAIL: all-tests-wired: not referenced in a run: step of ${GUARDS_YML} (comments do not count): ${missing.join(', ')}`)
   else out(`PASS: all-tests-wired: ${suites.length} suites checked, ${Object.keys(EXEMPT).length} documented exemption(s)`)
+}
+
+// ---- Guard steps (#308) -----------------------------------------------------------------------
+// The `guards` job must keep running the three suites that judge every PR, compared with origin/main's guards.yml:
+// a step the base runs and the branch no longer runs fails (the command text counts, not the step name; comments do not).
+const GUARD_STEPS = ['templates/test-canonical-guards.sh', 'scripts/run-flow-suite.cjs', 'scripts/run-offline.cjs']
+// Run text of one job: lines from its 2-space-indent key up to the next 2-space-indent key (or EOF).
+function jobRunText(yml, job) {
+  const lines = yml.split('\n')
+  const start = lines.findIndex((l) => new RegExp(`^  ${job}:\\s*$`).test(l))
+  if (start < 0) return ''
+  let end = lines.length
+  for (let index = start + 1; index < lines.length; index++) {
+    if (/^  [A-Za-z0-9_-]+:\s*$/.test(lines[index])) { end = index; break }
+  }
+  return ymlRunText(lines.slice(start, end).join('\n'))
+}
+function checkGuardSteps() {
+  const branch = readOr(path.join(ROOT, GUARDS_YML))
+  if (branch === null) { bad(`FAIL: guard-steps: ${GUARDS_YML} missing`); return }
+  const base = process.env.GUARDS_BASE_YML ? readOr(process.env.GUARDS_BASE_YML) : gitShow(GUARDS_YML)
+  if (base === null) { bad(`FAIL: guard-steps: cannot read base ${GUARDS_YML} (origin/main not resolvable) - run 'git fetch origin main' first`); return }
+  const baseRun = jobRunText(base, 'guards')
+  const branchRun = jobRunText(branch, 'guards')
+  const lost = GUARD_STEPS.filter((s) => baseRun.includes(s) && !branchRun.includes(s))
+  if (lost.length) { bad(`FAIL: guard-steps: the guards job of ${GUARDS_YML} no longer runs, compared with origin/main: ${lost.join(', ')}`); return }
+  const n = GUARD_STEPS.filter((s) => baseRun.includes(s)).length
+  out(`PASS: guard-steps: ${n} protected step(s) still run in the guards job (${GUARD_STEPS.join(', ')})`)
 }
 
 // ---- Invariant 1 (relaxed) --------------------------------------------------------------------
@@ -739,6 +768,7 @@ function checkAudit() {
 
 if (ONLY.includes('r1')) checkR1()
 if (ONLY.includes('wired')) checkWired()
+if (ONLY.includes('guard-steps')) checkGuardSteps()
 if (ONLY.includes('version')) checkVersion()
 if (ONLY.includes('parity')) checkSamParity()
 if (ONLY.includes('budgets')) checkDocBudgets()

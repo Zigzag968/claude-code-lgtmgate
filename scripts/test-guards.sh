@@ -220,6 +220,54 @@ $WIRED_RUN
 run_wired "$T/w8"
 if [ "$RC" -eq 0 ]; then ok "all-tests-wired: the same file inside a test folder, wired -> ok"; else ko "inside folder wired (rc=$RC) $OUT"; fi
 
+# ---- guard-steps (#308) ----
+# gsyml <dir> <guards-job-steps> [extra smoke-install steps]: guards.yml with a guards job and a smoke-install job
+gsyml() {
+  mkdir -p "$1/.github/workflows"
+  printf 'jobs:\n  guards:\n    steps:\n%s\n  smoke-install:\n    steps:\n%s\n' "$2" "${3:-      - run: echo smoke}" > "$1/.github/workflows/guards.yml"
+}
+GS_ALL='      - name: Canonical guard net
+        run: bash templates/test-canonical-guards.sh
+      - name: Offline flow suite
+        run: node scripts/run-flow-suite.cjs
+      - name: Offline harness
+        run: node scripts/run-offline.cjs --all fixtures'
+gsyml "$T/gs-base" "$GS_ALL"
+run_gs() { OUT="$(GUARDS_ROOT="$1" GUARDS_ONLY=guard-steps GUARDS_BASE_YML="$T/gs-base/.github/workflows/guards.yml" node scripts/guards.cjs 2>&1)"; RC=$?; }
+gsyml "$T/gs1" "$GS_ALL"
+run_gs "$T/gs1"
+if [ "$RC" -eq 0 ] && echo "$OUT" | grep -q '^PASS: guard-steps: 3 protected'; then ok "guard-steps: identical guards job -> PASS"; else ko "guard-steps identical (rc=$RC) $OUT"; fi
+gi=0
+for path in templates/test-canonical-guards.sh scripts/run-flow-suite.cjs scripts/run-offline.cjs; do
+  gi=$((gi+1))
+  gsyml "$T/gsr$gi" "$(printf '%s\n' "$GS_ALL" | grep -v -F "$path" | grep -v -E '^      - name: (Canonical guard net|Offline flow suite|Offline harness)$' | sed 's/^$//')"
+  # re-add the other two steps' names are irrelevant: the command text is what counts
+  run_gs "$T/gsr$gi"
+  if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q "^FAIL: guard-steps:.*no longer runs.*$path"; then ok "guard-steps: $path removed -> FAIL naming it"; else ko "guard-steps removed $path (rc=$RC) $OUT"; fi
+done
+gsyml "$T/gs5" "      - run: bash templates/test-canonical-guards.sh
+      - run: node scripts/run-flow-suite.cjs
+      # node scripts/run-offline.cjs --all fixtures"
+run_gs "$T/gs5"
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: guard-steps:.*scripts/run-offline.cjs'; then ok "guard-steps: step only in a # comment -> FAIL"; else ko "guard-steps comment (rc=$RC) $OUT"; fi
+gsyml "$T/gs6" "      - run: bash templates/test-canonical-guards.sh
+      - run: node scripts/run-flow-suite.cjs" "      - run: node scripts/run-offline.cjs --all fixtures"
+run_gs "$T/gs6"
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: guard-steps:.*scripts/run-offline.cjs'; then ok "guard-steps: step moved to another job -> FAIL"; else ko "guard-steps other job (rc=$RC) $OUT"; fi
+gsyml "$T/gs7" "      - run: echo nothing"
+printf 'jobs:\n  guards:\n    steps:\n      - run: bash templates/test-canonical-guards.sh\n' > "$T/gs-base2.yml"
+OUT="$(GUARDS_ROOT="$T/gs7" GUARDS_ONLY=guard-steps GUARDS_BASE_YML="$T/gs-base2.yml" node scripts/guards.cjs 2>&1)"; RC=$?
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q 'canonical-guards' && ! echo "$OUT" | grep -q 'run-flow-suite'; then ok "guard-steps: only a step the base runs is required"; else ko "guard-steps base lacks step (rc=$RC) $OUT"; fi
+gsyml "$T/gs8" "      - run: bash templates/test-canonical-guards.sh"
+printf 'jobs:\n  guards:\n    steps:\n      - run: echo hi\n' > "$T/gs-base3.yml"
+OUT="$(GUARDS_ROOT="$T/gs8" GUARDS_ONLY=guard-steps GUARDS_BASE_YML="$T/gs-base3.yml" node scripts/guards.cjs 2>&1)"; RC=$?
+if [ "$RC" -eq 0 ] && echo "$OUT" | grep -q '^PASS: guard-steps: 0 protected'; then ok "guard-steps: base lacks every step -> PASS"; else ko "guard-steps base lacks all (rc=$RC) $OUT"; fi
+mkdir -p "$T/gs9"
+OUT="$(GUARDS_ROOT="$T/gs9" GUARDS_ONLY=guard-steps GUARDS_BASE_YML="$T/gs-base/.github/workflows/guards.yml" node scripts/guards.cjs 2>&1)"; RC=$?
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: guard-steps:.*missing'; then ok "guard-steps: branch guards.yml missing -> FAIL"; else ko "guard-steps branch missing (rc=$RC) $OUT"; fi
+OUT="$(GUARDS_ROOT="$T/gs1" GUARDS_ONLY=guard-steps GUARDS_BASE_YML="$T/does-not-exist.yml" node scripts/guards.cjs 2>&1)"; RC=$?
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q "git fetch origin main"; then ok "guard-steps: base unreadable -> FAIL with actionable message"; else ko "guard-steps base unreadable (rc=$RC) $OUT"; fi
+
 # ---- sam-parity ----
 # PR = neutral PLAN_RULE (persona + workflow), LR = engine LAYER_RULE (workflow only; the persona must not carry it, #163)
 PR="$(node -e "const s=require('fs').readFileSync('scripts/guards.cjs','utf8');console.log(/const PLAN_RULE = '(.*)'\n/.exec(s)[1])")"
