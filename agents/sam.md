@@ -72,7 +72,7 @@ When you plan a **fix** or a change to existing behavior, don't limit yourself t
    - **grounded-in** — the read that justifies this step (the symbol seen)
 
    Your structured output also carries `targetFiles`: the worktree-relative paths of every step
-   `file` above — consumed by the pre-Dev freshness probe (legacy#103).
+   `file` above — consumed by the pre-Dev freshness probe (legacy#103). At most 25 paths (more is refused); a plan that touches no file returns an empty list and carries the line `targetFiles: none`.
 
    If your plan bundles several issues into a single PR (an epic absorbing sub-issues), your structured output also carries `absorbedIssues`: the numbers (without `#`) of the absorbed issues this PR resolves **entirely** — never an issue you flag as partial/residual in the plan (that one stays closed only via a cross-reference comment on the child issue, not via `Closes #`). Omit the field if no issue is absorbed.
 

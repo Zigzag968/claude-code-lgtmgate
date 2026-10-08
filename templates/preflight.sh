@@ -6,11 +6,14 @@
 # (nothing else on stdout, stderr silenced). A read that fails is reported as null, never as an error.
 #
 # Usage:
-#   bash preflight.sh dev    --wt DIR --issue N --base BRANCH [--repo OWNER/REPO] [--targets 'a b c'] [--stamp S]
+#   bash preflight.sh dev    --wt DIR --issue N --base BRANCH [--repo OWNER/REPO] [--targets 'a b c'] [--engine true] [--stamp S]
 #   bash preflight.sh branch --wt DIR [--pr N] [--repo OWNER/REPO] [--stamp S]
 # --stamp is ignored: it only makes the command text differ per launch (probe-run record reuse).
 #
-# dev    -> {"mode":"dev","planStale":[..]|null,"openSubIssues":["12",..]|null,"gitDir":"<abs>"|null,"writable":true|false|null}
+# dev    -> {"mode":"dev","planStale":[..]|null,"openSubIssues":["12",..]|null,"gitDir":"<abs>"|null,"writable":true|false|null,
+#            "layout":{"verdict":"CONFORMING"|"NOT_CONFORMING","issues":[..]}|null}
+#   layout (#307): with --engine true, empty files are created at the planned --targets in <wt>/.pipeline/layout-probe and
+#   ls-lint runs on that tree WITHOUT file arguments (the folder and exists rules only fire so). null = not checked.
 # branch -> {"mode":"branch","headRef":"<name>"|null,"branchPrefix":"<string>"|null[,"readFailed":"<class>"]}
 #   readFailed (#239): the PR head-ref read failed AND its `gh` stderr was readable; the CAUSE as one word of a closed
 #   set (tls|auth|rate-limit|not-found|other, templates/gh-read-class.sh). The stderr goes to a file under
@@ -20,7 +23,7 @@
 
 MODE="${1:-}"
 [ $# -gt 0 ] && shift
-WT=""; ISSUE=""; BASE=""; REPO=""; TARGETS=""; PR=""
+WT=""; ISSUE=""; BASE=""; REPO=""; TARGETS=""; PR=""; ENGINE=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --wt) WT="${2:-}" ;;
@@ -29,6 +32,7 @@ while [ $# -gt 0 ]; do
     --repo) REPO="${2:-}" ;;
     --targets) TARGETS="${2:-}" ;;
     --pr) PR="${2:-}" ;;
+    --engine) ENGINE="${2:-}" ;;
     --stamp) ;;
     *) ;;
   esac
@@ -43,7 +47,7 @@ if [ -f "$SD/gh-read-class.sh" ]; then . "$SD/gh-read-class.sh"; else gh_read_cl
 lines_json() { jq -Rsc 'split("\n") | map(select(length > 0))'; }
 
 dev() {
-  local plan_stale="null" subs="null" gitdir="null" writable="null" out total repo gd probe
+  local plan_stale="null" subs="null" gitdir="null" writable="null" layout="null" out total repo gd probe d bin t lout lrc tlist
 
   # planStale: files of the plan targets that moved on origin/<base> since the frozen base.
   if [ -n "$TARGETS" ] && [ -n "$WT" ] && [ -n "$BASE" ]; then
@@ -54,6 +58,26 @@ dev() {
       plan_stale="$(printf '%s\n' "$out" | lines_json)"
     fi
     set +f
+  fi
+
+  # layout (#307): the planned paths, as empty files in a scratch tree, against the repo's ls-lint rules.
+  if [ "$ENGINE" = "true" ] && [ -n "$TARGETS" ] && [ -n "$WT" ] && [ -f "$WT/.ls-lint.yml" ]; then
+    bin=""
+    if [ -x "$WT/node_modules/.bin/ls-lint" ]; then bin="$WT/node_modules/.bin/ls-lint"; else bin="$(command -v ls-lint 2>/dev/null)"; fi
+    d="$WT/.pipeline/layout-probe"
+    if [ -n "$bin" ] && mkdir -p "$d" 2>/dev/null && find "$d" -mindepth 1 -delete 2>/dev/null; then
+      IFS=' ' read -r -a tlist <<< "$TARGETS"
+      for t in "${tlist[@]}"; do
+        case "$t" in /*|..|../*|*/..|*/../*) continue ;; esac
+        mkdir -p "$d/$(dirname "$t")" 2>/dev/null && : > "$d/$t" 2>/dev/null
+      done
+      lout="$(cd "$d" && "$bin" -config "$WT/.ls-lint.yml" 2>&1)"; lrc=$?
+      if [ "$lrc" = "0" ]; then
+        layout='{"verdict":"CONFORMING","issues":[]}'
+      elif [ "$lrc" = "1" ]; then
+        layout="$(printf '%s\n' "$lout" | jq -Rsc 'split("\n") | map(select(length > 0)) | .[:10] | {verdict:"NOT_CONFORMING", issues:.}')" || layout="null"
+      fi
+    fi
   fi
 
   # openSubIssues: open sub-issue numbers of the epic (as strings).
@@ -78,8 +102,8 @@ dev() {
     if touch "$probe" 2>/dev/null && unlink "$probe" 2>/dev/null; then writable="true"; else writable="false"; fi
   fi
 
-  jq -nc --argjson ps "$plan_stale" --argjson si "$subs" --argjson gd "$gitdir" --argjson w "$writable" \
-    '{mode:"dev", planStale:$ps, openSubIssues:$si, gitDir:$gd, writable:$w}'
+  jq -nc --argjson ps "$plan_stale" --argjson si "$subs" --argjson gd "$gitdir" --argjson w "$writable" --argjson ly "$layout" \
+    '{mode:"dev", planStale:$ps, openSubIssues:$si, gitDir:$gd, writable:$w, layout:$ly}'
 }
 
 branch() {

@@ -133,7 +133,7 @@ export const meta = {
 // `version`, checked against plugin.json by templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '1.1.0-beta.22', cutFrom: 'b78b409' }
+const BUILD = { plugin: 'lgtmgate', version: '1.1.0-beta.23', cutFrom: 'ec44f6d' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -1744,13 +1744,14 @@ function worktreeFreshnessNote(behind, baseBranch) {
 // command the plan-freshness probe below hands a haiku agent. Charset allowlist + no absolute
 // path + no `..` segment, deduped, capped at 25 entries. Anything else is dropped SILENTLY —
 // never throws (an LLM-authored plan is untrusted input, not a contract violation to surface).
+const PLAN_TARGETS_CAP = 25
 function safePlanTargets(files) {
   if (!Array.isArray(files)) return []
   const SAFE = /^[A-Za-z0-9._/-]+$/
   const seen = new Set()
   const out = []
   for (const f of files) {
-    if (out.length >= 25) break
+    if (out.length >= PLAN_TARGETS_CAP) break
     if (typeof f !== 'string') continue
     const p = f.trim()
     if (!p || !SAFE.test(p)) continue
@@ -1761,6 +1762,20 @@ function safePlanTargets(files) {
     out.push(p)
   }
   return out
+}
+// #307: the script-side refusals on Sam's `targetFiles` (pure). Empty = fine. The cap above drops silently, so a
+// 26th target would escape every check; an omitted list would too. Both are named here, before the sanitizer runs.
+function planTargetIssues(plan, files) {
+  const issues = []
+  if (Array.isArray(files) && files.length > PLAN_TARGETS_CAP) {
+    issues.push(`targetFiles lists ${files.length} paths, above the cap of ${PLAN_TARGETS_CAP}: split the plan into smaller issues or list fewer, directory-level steps.`)
+  }
+  const empty = !Array.isArray(files) || files.length === 0
+  const saysNone = String(plan == null ? '' : plan).split('\n').some((l) => l.trim().toLowerCase() === 'targetfiles: none')
+  if (empty && !saysNone) {
+    issues.push('targetFiles is empty and the plan does not say so: return the worktree-relative path of every step file in targetFiles (the impact table names files), or write the line `targetFiles: none` when the plan touches no file.')
+  }
+  return issues
 }
 // --- safePlanTargets:end ---
 
@@ -2125,7 +2140,7 @@ function simFixture(role, round = 0, prNum = null) {
   if (role === 'sam') return {
     decision: simulate.probes?.sam === 'NO-GO' ? 'NO-GO' : 'GO',
     // #153: the default simulated plan carries its checklist, as a compliant Sam's plan does.
-    plan: simulate.probes?.samPlan || ('(simulated plan)' + (simulate.probes?.samAcceptanceChecklist ? '\n' + simulate.probes.samAcceptanceChecklist : '')),
+    plan: simulate.probes?.samPlan || ('(simulated plan)\ntargetFiles: none' + (simulate.probes?.samAcceptanceChecklist ? '\n' + simulate.probes.samAcceptanceChecklist : '')),
     planPath: simulate.probes?.samPlanPath || planPath,
     rationale: simulate.probes?.samRationale || '',
     debtIssue: simulate.probes?.debtIssue || '',
@@ -3078,7 +3093,7 @@ const samScoutPrompt = ({ fixBlock = '', auditFixBlock = '', reviewFixBlock = ''
     `POST IDEMPOTENTLY: write the index body to ".pipeline/issue-${issue}-comment.md", then look for an existing marked comment with ` +
     `\`gh api repos/{owner}/{repo}/issues/${issue}/comments --jq '.[]|select(.body|startswith("${planMarker}"))|.id'\` — if an id comes back, EDIT that comment in place with ` +
     `\`gh api -X PATCH repos/{owner}/{repo}/issues/comments/<id> -F body=@.pipeline/issue-${issue}-comment.md\`; otherwise create it with \`gh issue comment ${issue} --body-file .pipeline/issue-${issue}-comment.md\`. Reuse the id returned by the listing; never reconstruct it. Never stack a second plan comment on the issue. ` +
-    `Then return GO/NO-GO, the COMPLETE text of the artifact in the \`plan\` field (NEVER a summary or pointer to the artifact; the plan gate judges only this field and refuses a plan lacking an acceptance item's line, see the ACCEPTANCE ITEMS RULE below), and the artifact path in \`planPath\` (use "${planPath}"), and \`targetFiles\`: the worktree-RELATIVE paths your steps modify, delete or create (repo-relative, no absolute path, no \`..\`; omit it if your plan touches no file). ${ACCEPTANCE_ITEMS_RULE}\n\n` +
+    `Then return GO/NO-GO, the COMPLETE text of the artifact in the \`plan\` field (NEVER a summary or pointer to the artifact; the plan gate judges only this field and refuses a plan lacking an acceptance item's line, see the ACCEPTANCE ITEMS RULE below), and the artifact path in \`planPath\` (use "${planPath}"), and \`targetFiles\`: the worktree-RELATIVE paths your steps modify, delete or create (repo-relative, no absolute path, no \`..\`; at most 25 paths, more is refused; when your plan touches no file, return an empty list AND write the line \`targetFiles: none\` in the plan). ${ACCEPTANCE_ITEMS_RULE}\n\n` +
     `OUTPUT-SPEC GATE: if this is a human-facing deliverable (asset/render/copy/UI-visible), the plan MUST start from a concrete OUTPUT EXAMPLE with named content contracts, and MUST cite any existing corpus/asset spec (precedent: a similar prior deliverable, if one exists). If no spec exists, propose the contract for human validation — do not skip it.\n` +
     `OBSERVED-INTERFACES RULE: any step consuming an external interface MUST cite a REAL observed payload. REUSE a provided field (e.g. \`qr_url\`) over reconstructing it — reconstruction is a plan defect.\n` +
     `VERSION RULE: do NOT bump .claude-plugin/plugin.json or the BUILD line; the Lead's scripts/lead-merge.sh bumps at merge time.${designStepBlock}${fixBlock}${auditFixBlock}${reviewFixBlock}`
@@ -3163,11 +3178,17 @@ if (after('plan', entryStage)) {
       // Valid items are numbered and rendered (ids = positions) for Nick and Morgan below.
       const itemEntries = Array.isArray(sam.acceptanceItems) ? sam.acceptanceItems : null
       const itemIssues = itemEntries ? validateAcceptanceItems(itemEntries) : []
+      const targetIssues = planTargetIssues(sam.plan, sam.targetFiles)
+      const scriptIssues = itemIssues.concat(targetIssues)
       samAcceptanceItems = itemEntries && itemIssues.length === 0 ? numberItems(itemEntries) : null
       acceptanceBlock = samAcceptanceItems ? renderChecklist(samAcceptanceItems) : ''
       if (itemIssues.length > 0) {
         trace.push(`acceptance-items-refused:${planPass}`)
         log(`Plan-verification gate: ${itemIssues.length} acceptance item problem(s) found by the script — refusing without a plan-check call`)
+      }
+      if (targetIssues.length > 0) {
+        trace.push(`plan-targets-refused:${planPass}`)
+        log(`Plan-verification gate: ${targetIssues.length} target file problem(s) found by the script — refusing without a plan-check call`)
       }
       // #153: the gate judges only the returned text. A summary/pointer plan that lacks the checklist
       // lines Sam also returned is refused here (no plan-check call) and looped back to Sam. With items (#182) the
@@ -3178,8 +3199,8 @@ if (after('plan', entryStage)) {
       if (itemIssues.length === 0 && missingChecklist.length > 0) {
         log(`Plan-verification gate: returned plan lacks ${missingChecklist.length} acceptance checklist line(s) Sam also returned (summary/pointer plan) — refusing without a plan-check call`)
       }
-      const planCheck = itemIssues.length > 0
-        ? { verdict: 'NOT_CONFORMING', issues: itemIssues }
+      const planCheck = scriptIssues.length > 0
+        ? { verdict: 'NOT_CONFORMING', issues: scriptIssues }
         : missingChecklist.length > 0
         ? {
             verdict: 'NOT_CONFORMING',
@@ -3594,6 +3615,7 @@ if (after('dev', entryStage)) {
   const preflightDev = simulate ? null : await preflightProbe('dev', 'dev', [
     '--wt', wtPath, '--issue', String(issue), '--base', baseBranch, '--repo', repo || '',
     '--targets', planTargets.join(' '), '--stamp', String(stamp ?? ''),
+    ...(isEngineRepo(config) ? ['--engine', 'true'] : []),
   ])
   if (planFreshnessMode !== 'off' && planTargets.length > 0) {
     const planStaleFilesProbe = async () => {
@@ -3613,6 +3635,16 @@ if (after('dev', entryStage)) {
         return finish(STATUS['escalate'], { reason: 'plan-stale', staleFiles: planStaleFiles, planTargetsChecked, issue, trace })
       }
     }
+  }
+
+  // #307: the layout check is a gate (always refuses). The probe already received the sanitized list, so
+  // pathEntryHit is not needed here. A null layout (probe unavailable, no ls-lint) skips, never refuses.
+  const layout = preflightDev && preflightDev.layout
+  if (planTargets.length > 0 && layout && layout.verdict === 'NOT_CONFORMING') {
+    trace.push('plan-layout:' + layout.issues.length)
+    log(`Plan layout: ${layout.issues.length} planned path(s) break the layout rules — ${layout.issues.join(' | ')}`)
+    await updateStatus('Blocked')
+    return finish(STATUS['escalate'], { reason: 'plan-not-conforming', planCheckIssues: layout.issues, planTargetsChecked, issue, trace })
   }
 
   const openSubIssuesProbe = async () => {

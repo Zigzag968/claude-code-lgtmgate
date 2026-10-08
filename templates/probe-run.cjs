@@ -118,12 +118,18 @@ const PARSERS = {
     const strArr = (x) => (Array.isArray(x) && x.every((i) => typeof i === 'string') ? x : null)
     const str = (x) => (typeof x === 'string' && x.length > 0 ? x : null)
     if (v.mode === 'dev') {
+      // #307: the layout verdict of the planned paths, kept only when well formed.
+      const ly = v.layout
+      const layout = ly !== null && typeof ly === 'object' && !Array.isArray(ly) && (ly.verdict === 'CONFORMING' || ly.verdict === 'NOT_CONFORMING') && strArr(ly.issues)
+        ? { verdict: ly.verdict, issues: ly.issues }
+        : null
       return {
         mode: 'dev',
         planStale: strArr(v.planStale),
         openSubIssues: strArr(v.openSubIssues),
         gitDir: str(v.gitDir),
         writable: typeof v.writable === 'boolean' ? v.writable : null,
+        layout,
       }
     }
     if (v.mode === 'branch') {
