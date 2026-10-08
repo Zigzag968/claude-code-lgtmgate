@@ -134,14 +134,14 @@ jobs:
       # Exact pin: the validator gains rules over time, so the version moves only by a deliberate edit.
       - name: Install Claude Code CLI
         run: npm install -g @anthropic-ai/claude-code@2.1.294
-      - name: Validate marketplace and plugin manifests as committed (stable, backlog, beta copy)
+      - name: Validate marketplace and plugin manifests as committed (stable, backlog, beta copy), strict
         run: |
-          claude plugin validate ./
-          claude plugin validate ./plugins/backlog
+          claude plugin validate ./ --strict
+          claude plugin validate ./plugins/backlog --strict
           beta_dir="$(mktemp -d "${TMPDIR:-/tmp}/beta.XXXXXX")"
           mkdir "$beta_dir/.claude-plugin"
           cp .claude-plugin/marketplace-beta.json "$beta_dir/.claude-plugin/marketplace.json"
-          claude plugin validate "$beta_dir"
+          claude plugin validate "$beta_dir" --strict
       - name: Point the lgtmgate entry at this checkout (CI-only, never committed)
         run: |
           python3 - <<'PY'

@@ -402,8 +402,9 @@ if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q 'ARCHITECTURE.md line 6 has 200 char
 # mkinst <dir> [no-agents-md]: fake repo root wired as this repo is (CLAUDE.md imports, AGENTS.md, one agent with a
 # frontmatter that does not skip the project instructions); each case then breaks one thing.
 mkinst() {
-  mkdir -p "$1/agents"
-  printf '# CLAUDE.md\n\n@VISION.md\n@ARCHITECTURE.md\n\n- An escalation that trades off a `VISION.md` principle names it.\n' > "$1/CLAUDE.md"
+  mkdir -p "$1/agents" "$1/.claude"
+  printf '# CLAUDE.md\n\n@../VISION.md\n@../ARCHITECTURE.md\n\n- An escalation that trades off a `VISION.md` principle names it.\n' > "$1/.claude/CLAUDE.md"
+  printf '# Vision\n' > "$1/VISION.md"; printf '# Architecture\n' > "$1/ARCHITECTURE.md"
   [ "${2:-}" = no-agents-md ] || printf '# AGENTS.md\n\nRead `VISION.md` and `ARCHITECTURE.md` first.\n' > "$1/AGENTS.md"
   printf -- '---\nname: A\nomitClaudeMd: false\n---\nBody mentions omitClaudeMd: true outside the frontmatter.\n' > "$1/agents/a.md"
 }
@@ -413,24 +414,28 @@ inst_fail() { # <label> <dir> <expected FAIL substring>
   if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: instructions-wired: ' && echo "$OUT" | grep -qF "$3"; then ok "$1"; else ko "$1 (rc=$RC) $OUT"; fi
 }
 mkinst "$T/i1"; run_inst "$T/i1"
-if [ "$RC" -eq 0 ] && echo "$OUT" | grep -q '^PASS: instructions-wired: CLAUDE.md imports @VISION.md and @ARCHITECTURE.md once each; AGENTS.md names both; 1 agents/\*.md, none sets omitClaudeMd: true$'; then ok "instructions-wired: imports, AGENTS.md, omitClaudeMd false (and only in the body) -> PASS"; else ko "instructions-wired positive (rc=$RC) $OUT"; fi
-mkinst "$T/i2"; printf '# CLAUDE.md\n\n@VISION.md\n- Technical constraints: `ARCHITECTURE.md`.\n' > "$T/i2/CLAUDE.md"
-inst_fail "instructions-wired: ARCHITECTURE.md only named in a code span -> FAIL" "$T/i2" 'CLAUDE.md has no line `@ARCHITECTURE.md` outside code'
-mkinst "$T/i3"; printf '# CLAUDE.md\n\n```\n@VISION.md\n```\n@ARCHITECTURE.md\n' > "$T/i3/CLAUDE.md"
-inst_fail "instructions-wired: @VISION.md only inside a fenced block -> FAIL" "$T/i3" 'CLAUDE.md has no line `@VISION.md` outside code'
-mkinst "$T/i4"; printf '# CLAUDE.md\n\n`@VISION.md`\n  @ARCHITECTURE.md\n' > "$T/i4/CLAUDE.md"
+if [ "$RC" -eq 0 ] && echo "$OUT" | grep -q '^PASS: instructions-wired: .claude/CLAUDE.md imports @../VISION.md and @../ARCHITECTURE.md once each, targets exist; AGENTS.md names both; 1 agents/\*.md, none sets omitClaudeMd: true$'; then ok "instructions-wired: imports, AGENTS.md, omitClaudeMd false (and only in the body) -> PASS"; else ko "instructions-wired positive (rc=$RC) $OUT"; fi
+mkinst "$T/i2"; printf '# CLAUDE.md\n\n@../VISION.md\n- Technical constraints: `ARCHITECTURE.md`.\n' > "$T/i2/.claude/CLAUDE.md"
+inst_fail "instructions-wired: ARCHITECTURE.md only named in a code span -> FAIL" "$T/i2" '.claude/CLAUDE.md has no line `@../ARCHITECTURE.md` outside code'
+mkinst "$T/i3"; printf '# CLAUDE.md\n\n```\n@../VISION.md\n```\n@../ARCHITECTURE.md\n' > "$T/i3/.claude/CLAUDE.md"
+inst_fail "instructions-wired: @VISION.md only inside a fenced block -> FAIL" "$T/i3" '.claude/CLAUDE.md has no line `@../VISION.md` outside code'
+mkinst "$T/i4"; printf '# CLAUDE.md\n\n`@../VISION.md`\n  @../ARCHITECTURE.md\n' > "$T/i4/.claude/CLAUDE.md"
 run_inst "$T/i4"
-if [ "$RC" -ne 0 ] && echo "$OUT" | grep -qF 'no line `@VISION.md`' && echo "$OUT" | grep -qF 'no line `@ARCHITECTURE.md`'; then ok "instructions-wired: import in a code span, indented import line -> FAIL for both"; else ko "instructions-wired code span / indent (rc=$RC) $OUT"; fi
-mkinst "$T/i5"; printf '# CLAUDE.md\n\n@VISION.md\n@ARCHITECTURE.md\n- Product vision, read by every agent: @VISION.md\n' > "$T/i5/CLAUDE.md"
-inst_fail "instructions-wired: a second, inline @VISION.md import -> FAIL" "$T/i5" 'CLAUDE.md imports VISION.md 2 times, keep exactly one `@VISION.md` line'
-mkinst "$T/i6"; printf '# CLAUDE.md\n\n@VISION.md\n@ARCHITECTURE.md\n@AGENTS.md\n' > "$T/i6/CLAUDE.md"
-inst_fail "instructions-wired: CLAUDE.md imports AGENTS.md -> FAIL" "$T/i6" 'CLAUDE.md imports AGENTS.md, which loads the docs twice'
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -qF 'no line `@../VISION.md`' && echo "$OUT" | grep -qF 'no line `@../ARCHITECTURE.md`'; then ok "instructions-wired: import in a code span, indented import line -> FAIL for both"; else ko "instructions-wired code span / indent (rc=$RC) $OUT"; fi
+mkinst "$T/i5"; printf '# CLAUDE.md\n\n@../VISION.md\n@../ARCHITECTURE.md\n- Product vision, read by every agent: @../VISION.md\n' > "$T/i5/.claude/CLAUDE.md"
+inst_fail "instructions-wired: a second, inline @VISION.md import -> FAIL" "$T/i5" '.claude/CLAUDE.md imports VISION.md 2 times, keep exactly one `@../VISION.md` line'
+mkinst "$T/i6"; printf '# CLAUDE.md\n\n@../VISION.md\n@../ARCHITECTURE.md\n@AGENTS.md\n' > "$T/i6/.claude/CLAUDE.md"
+inst_fail "instructions-wired: CLAUDE.md imports AGENTS.md -> FAIL" "$T/i6" '.claude/CLAUDE.md imports AGENTS.md, which loads the docs twice'
 mkinst "$T/i7" no-agents-md
 inst_fail "instructions-wired: AGENTS.md absent -> FAIL" "$T/i7" 'AGENTS.md missing'
 mkinst "$T/i8"; printf '# AGENTS.md\n\nRead `VISION.md` first.\n' > "$T/i8/AGENTS.md"
 inst_fail "instructions-wired: AGENTS.md does not name ARCHITECTURE.md -> FAIL" "$T/i8" 'AGENTS.md does not name ARCHITECTURE.md'
 mkinst "$T/i9"; printf -- '---\nname: B\nomitClaudeMd: true\n---\nbody\n' > "$T/i9/agents/b.md"
 inst_fail "instructions-wired: agents/b.md frontmatter omitClaudeMd: true -> FAIL" "$T/i9" 'agents/b.md sets omitClaudeMd: true'
+mkinst "$T/i10"; printf '# CLAUDE.md\n\n@VISION.md\n@../ARCHITECTURE.md\n' > "$T/i10/.claude/CLAUDE.md"
+inst_fail "instructions-wired: bare @VISION.md (loads nothing from .claude/) -> FAIL" "$T/i10" 'has a bare `@VISION.md` import, which loads nothing from .claude/'
+mkinst "$T/i11"; rm -f "$T/i11/VISION.md"
+inst_fail "instructions-wired: imports correct but VISION.md target missing -> FAIL" "$T/i11" 'imports @../VISION.md but VISION.md does not exist there'
 
 # ---- status-table (#180) ----
 # A registry of 3 statuses (plus agentDeathRouting's indented role table, which must not be read as the
