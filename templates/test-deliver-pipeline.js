@@ -751,7 +751,7 @@ const t182Lines = (items, ids = true) =>
   items.map((it, i) => `- [ ] ${ids ? `<!-- ac:${i + 1} --> ` : ''}${it.humanGate ? '[human-gate] ' : ''}${it.text}`)
 // A Sam return carrying the items as data AND their lines in the plan text, as the contract asks.
 const t182Sam = (items, ids = true) => ({
-  plan: '## Plan\n1. change it\n\n## Acceptance checklist\n' + t182Lines(items, ids).join('\n') + '\n',
+  plan: '## Plan\n1. change it\ntargetFiles: none\n\n## Acceptance checklist\n' + t182Lines(items, ids).join('\n') + '\n',
   acceptanceItems: items,
 })
 // A permissive plan-check model: when a plan is refused, only the script can have refused it.
@@ -3457,7 +3457,7 @@ await testCase('T97e no design-step signals (0/3, no immature API) → gate neve
 const T77_THEO = { confirmed: true, evidence: 'e', actualCause: '', persistentStateSignal: false, authSecurityBoundarySignal: false, deployConfigSignal: false, immatureVendorApiSignal: false }
 // #153: a plan returned by Sam must carry the checklist lines she also returns; a custom samPlan therefore
 // ends with the default simulated checklist, as the default simulated plan does.
-const T77_CK = '\n' + SIM_DEFAULTS.samAcceptanceChecklist
+const T77_CK = '\ntargetFiles: none\n' + SIM_DEFAULTS.samAcceptanceChecklist
 // The four kinds the mechanism knows; T77a/T77d/T77k pin it with them explicitly, T77m pins that this
 // repo's own config still declares them.
 const T77_KINDS = ['status', 'agent', 'hook', 'seam']
@@ -5371,7 +5371,7 @@ await testCase('T182h source: ACCEPTANCE_ITEMS_RULE once, the Nick note once, th
 // T182i (#153, #182) — the plan gate judges the returned text: a summary plan that lacks the rendered item lines is
 // refused without a plan-check call (one sentence plus one line per item to write), the id comment being optional.
 await testCase('T182i a summary-only plan is refused with one line per missing item; a plan holding the lines without ids passes', async () => {
-  const summary = { plan: '## Plan\nsummary only', acceptanceItems: T182_ITEMS }
+  const summary = { plan: '## Plan\nsummary only\ntargetFiles: none', acceptanceItems: T182_ITEMS }
   const r1 = await run({ mode: 'auto', simulate: { sam: { 1: summary, 2: summary }, planCheck: T182_CONFORMING } })
   const issues = r1.planCheckIssues || []
   const e1 = eq('status', r1.status, 'escalate')
@@ -5381,6 +5381,44 @@ await testCase('T182i a summary-only plan is refused with one line per missing i
   const r2 = await run({ mode: 'semi', simulate: { sam: { 1: t182Sam(T182_ITEMS, false) }, planCheck: T182_CONFORMING } })
   const e5 = eq('lines without ids: status', r2.status, 'plan-ready')
   return e1 || e2 || e3 || e4 || e5 || { ok: true }
+})
+
+// T307a-c (#307) — the script refuses Sam's `targetFiles` before any model call: empty without the explicit
+// `targetFiles: none` line, above the cap of 25 (named, never truncated); the controls pass.
+const T307_ITEMS = [{ text: '`node scripts/guards.cjs; echo $?` prints `0` as its last line' }]
+const t307Sam = (extraPlanLine, targetFiles) => ({
+  ...t182Sam(T307_ITEMS),
+  plan: '## Plan\n| file | change |\n| workflows/x.js | edit |\n' + (extraPlanLine ? extraPlanLine + '\n' : '') + '\n## Acceptance checklist\n' + t182Lines(T307_ITEMS).join('\n') + '\n',
+  ...(targetFiles ? { targetFiles } : {}),
+})
+await testCase('T307a a plan naming files in its table with an empty targetFiles and no `targetFiles: none` line is refused NOT_CONFORMING', async () => {
+  const sam = t307Sam('', null)
+  const r = await run({ mode: 'auto', simulate: { sam: { 1: sam, 2: sam }, planCheck: T182_CONFORMING } })
+  const e1 = eq('status', r.status, 'escalate')
+  const e2 = eq('reason', r.reason, 'plan-not-conforming')
+  const e3 = includes('planCheckIssues[0] names targetFiles', String((r.planCheckIssues || [])[0] || ''), 'targetFiles')
+  const e4 = (r.trace || []).some((t) => String(t).startsWith('plan-targets-refused:')) ? null : { ok: false, msg: 'no plan-targets-refused trace' }
+  return e1 || e2 || e3 || e4 || { ok: true }
+})
+await testCase('T307b more than 25 targets are refused by name, not truncated', async () => {
+  const many = Array.from({ length: 26 }, (_, i) => `docs/file-${i}.md`)
+  const sam = t307Sam('', many)
+  const r = await run({ mode: 'auto', simulate: { sam: { 1: sam, 2: sam }, planCheck: T182_CONFORMING } })
+  const issue0 = String((r.planCheckIssues || [])[0] || '')
+  const e1 = eq('status', r.status, 'escalate')
+  const e2 = eq('reason', r.reason, 'plan-not-conforming')
+  const e3 = includes('issue names the count', issue0, '26')
+  const e4 = includes('issue names the cap', issue0, 'cap of 25')
+  return e1 || e2 || e3 || e4 || { ok: true }
+})
+await testCase('T307c controls: an explicit `targetFiles: none` line with an empty list, and exactly 25 targets, both pass the script', async () => {
+  const none = t307Sam('targetFiles: none', null)
+  const r1 = await run({ mode: 'semi', simulate: { sam: { 1: none }, planCheck: T182_CONFORMING } })
+  const e1 = eq('none line: status', r1.status, 'plan-ready')
+  const exactly = t307Sam('', Array.from({ length: 25 }, (_, i) => `docs/file-${i}.md`))
+  const r2 = await run({ mode: 'semi', simulate: { sam: { 1: exactly }, planCheck: T182_CONFORMING } })
+  const e2 = eq('25 targets: status', r2.status, 'plan-ready')
+  return e1 || e2 || { ok: true }
 })
 
 // T182j (#182) — state preservation: the legacy Sam shape (a checklist string, no items) and a Morgan verdict that
