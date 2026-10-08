@@ -3,7 +3,7 @@
 # minus the firewall and shell niceties; adds bubblewrap + socat for the eval Bash sandbox.
 FROM node:20
 
-# Pinned by package.json + package-lock.json in this folder (npm ci checks the integrity hash); the verify-ok
+# Pinned by package.json + package-lock.json in this folder (the install checks the integrity hash); the verify-ok
 # grader reads that version's trace format. A bump needs a full rerun of the suite
 # (scripts/run-probe-evals-docker.sh) and a re-check of the pinned graders.
 
