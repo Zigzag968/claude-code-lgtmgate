@@ -5,7 +5,7 @@
 # Override: ALLOW_PUSH_TO_MAIN=1 git push origin main
 
 # Read stdin: <local_ref> <local_sha> <remote_ref> <remote_sha>
-while read -r local_ref local_sha remote_ref remote_sha; do
+while read -r _ _ remote_ref _; do
     case "$remote_ref" in
         refs/heads/main|refs/heads/master)
             if [ "${ALLOW_PUSH_TO_MAIN:-0}" = "1" ]; then

@@ -1,16 +1,121 @@
-# ls-lint config of the code-quality audit (scripts/audit.cjs): file names.
-ls:
+# ls-lint config of the code-quality audit (scripts/audit.cjs). It is read twice: with file arguments (code file names,
+# the `.dir` rules never fire) and without (folder names, forbidden extensions, non-code file names).
+#
+# Measured on ls-lint v2.3.1: a block that has its own rules does NOT inherit the extension rules of its parent, so every
+# block starts with `<<: *names`; its `.dir` rule applies to the folder itself and to the folders below it, so the root
+# `.dir` is the allowlist of root folders and every block repeats `.dir: kebab-case`; `exists:0` counts the files of that
+# folder only, not of the folders below it.
+x-names: &names
   .js: kebab-case
   .cjs: kebab-case
   .mjs: kebab-case
   .sh: kebab-case
   .py: snake_case
-  # Hook scripts are named after the Claude Code event they handle (PostToolUse-*, Stop-*, SubagentStop-*).
-  # hooks/SessionStart/ needs no entry: ls-lint checks no directory name and its .py is snake_case.
-  hooks:
-    .sh: kebab-case | regex:(test-)?(PostToolUse|Stop|SubagentStop)-[a-z-]+
+  # Non-code names: kebab-case, except the files a tool or a platform asks for by name.
+  .md: kebab-case | regex:(README|CLAUDE|AGENTS|VISION|ARCHITECTURE|SECURITY|MAINTAINING|CONTRIBUTING|CODE_OF_CONDUCT|SKILL|PULL_REQUEST_TEMPLATE|bug_report|feature_request)
+  .json: kebab-case
+  .yml: kebab-case
+  .svg: kebab-case
+  .png: kebab-case
+  .snippet: kebab-case
+  .txt: exists:0
 
+ls:
+  <<: *names
+  # Root folders allowed (dot folders included). A new root folder is a decision: add it here and in docs/layout.md.
+  .dir: regex:(\.claude|\.claude-plugin|\.devcontainer|\.githooks|\.github|agents|commands|docs|evals|fixtures|hooks|plugins|scripts|templates|workflows)
+  # Declared folder-name exceptions (8): .claude, .claude-plugin, .devcontainer, .githooks, .github (root allowlist or own
+  # block), .github/ISSUE_TEMPLATE, hooks/SessionStart, plugins/backlog/.claude-plugin (named in their parent block).
+  .claude:
+    <<: *names
+    .dir: kebab-case | regex:\.claude
+  .github:
+    <<: *names
+    .dir: kebab-case | regex:(\.github|ISSUE_TEMPLATE)
+  agents:
+    <<: *names
+    .dir: kebab-case
+    .js: exists:0
+    .cjs: exists:0
+    .mjs: exists:0
+    .py: exists:0
+    .sh: exists:0
+    .json: exists:0
+  commands:
+    <<: *names
+    .dir: kebab-case
+    .js: exists:0
+    .cjs: exists:0
+    .mjs: exists:0
+    .py: exists:0
+    .sh: exists:0
+    .json: exists:0
+  docs:
+    <<: *names
+    .dir: kebab-case
+    .js: exists:0
+    .cjs: exists:0
+    .mjs: exists:0
+    .py: exists:0
+    .sh: exists:0
+  evals:
+    <<: *names
+    .dir: kebab-case
+    .js: exists:0
+    .cjs: exists:0
+    .mjs: exists:0
+    .py: exists:0
+  # Hook scripts are named after the Claude Code event they handle (PostToolUse-*, Stop-*, SubagentStop-*).
+  hooks:
+    <<: *names
+    .dir: kebab-case | regex:SessionStart
+    .sh: kebab-case | regex:(test-)?(PostToolUse|Stop|SubagentStop)-[a-z-]+
+    .js: exists:0
+    .cjs: exists:0
+    .mjs: exists:0
+    .md: exists:0
+  plugins:
+    <<: *names
+    .dir: kebab-case
+    backlog:
+      <<: *names
+      .dir: kebab-case | regex:\.claude-plugin
+  scripts:
+    <<: *names
+    .dir: kebab-case
+    .js: exists:0
+    .py: exists:0
+    .md: exists:0
+  templates:
+    <<: *names
+    .dir: kebab-case
+    .py: exists:0
+    .mjs: exists:0
+  workflows:
+    <<: *names
+    .dir: kebab-case
+    .cjs: exists:0
+    .mjs: exists:0
+    .py: exists:0
+    .sh: exists:0
+    .md: exists:0
+    .json: exists:0
+
+# Aligned with .gitignore (ls-lint reads no .gitignore); a path git ignores for another reason (a global ignore) is
+# dropped by scripts/audit.cjs after the run.
 ignore:
   - .git
   - node_modules
+  - .venv
   - fixtures
+  - plugins/*/tests/fixtures
+  - .pipeline
+  - .probes
+  - evals/results
+  - .claude/.backlog-snapshots
+  - .claude/pipeline.config.local.json
+  - .claude/settings.local.json
+  - "**/__pycache__"
+  - "**/*.log"
+  - "**/*.pyc"
+  - "**/.DS_Store"

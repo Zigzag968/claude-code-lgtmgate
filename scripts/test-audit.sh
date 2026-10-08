@@ -6,7 +6,9 @@
 # Cases: P-30 size budget, P-31 function length (plain, nested, template literal), P-32 naming (identifier, abbreviation,
 # file name), P-33 baseline freeze and the hook-name exemption, P-34 ShellCheck, P-35 baseline-vs-origin (raised, bootstrap),
 # P-41 slack, P-42 stale key and folder, P-43 suppression comments, P-36 fixtures out of scope, P-37 unreadable file, P-38 default list of guards.cjs, P-39 same verdict line through
-# guards.cjs, P-40 clean repo (one line, timing), ruff-missing, ruff-version, baseline-missing.
+# guards.cjs, P-40 clean repo (one line, timing), ruff-missing, ruff-version, baseline-missing, P-07 folder key and rule
+# name, P-08 root folders, folder names, forbidden extensions, file names, ignore:, git-ignored paths, P-09 misplaced
+# fixtures folder and extensionless shebang script.
 # Ends with `[test-audit] status=<ok|fail> passed=<n> failed=<n>`.
 set -u
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -26,7 +28,7 @@ gitq() { git -c user.name=t -c user.email=t@t "$@"; }
 mkrepo() {
   REPO="$T/$1"
   git init -q --bare "$T/$1.git" && git init -q "$REPO" && mkdir -p "$REPO/scripts"
-  printf 'seed\n' > "$REPO/seed.txt"
+  printf 'seed\n' > "$REPO/seed.md"
   if [ $# -ge 2 ]; then printf '%s\n' "$2" > "$REPO/scripts/audit-baseline.json"; fi
   git -C "$REPO" add -A && gitq -C "$REPO" commit -qm seed && git -C "$REPO" branch -M main \
     && git -C "$REPO" remote add origin "$T/$1.git" && git -C "$REPO" push -q origin main && git -C "$REPO" fetch -q origin main
@@ -151,8 +153,8 @@ case_slack_stale() {
   mkrepo stale '{"gone.sh":{"max-lines":1}}'
   run_audit "$REPO"
   red_with P-42 "a key naming an absent file is red, named as a stale key" 'FAIL: audit: gone.sh stale baseline key'
-  mkrepo folder '{"sub":{}}'
-  mkdir "$REPO/sub"
+  mkrepo folder '{"docs":{}}'
+  mkdir "$REPO/docs"
   run_audit "$REPO"
   green P-42 "a key naming an existing folder is not stale"
 }
@@ -187,6 +189,55 @@ case_tool_setup() {
   red_with baseline-missing "no baseline file exits 1 naming it" 'FAIL: audit: scripts/audit-baseline.json missing or invalid'
 }
 
+# put_file <path>...: an empty-ish file, parents created.
+put_file() { local f; for f in "$@"; do mkdir -p "$(dirname "$f")" && printf 'x\n' > "$f"; done; }
+
+case_layout() {
+  mkrepo newdir; put_file "$REPO/newdir/x.md"; run_audit "$REPO"
+  red_with P-08 "a new root folder newdir is red, named" 'FAIL: audit: newdir ls-lint:.dir:regex 1 > baseline 0'
+  mkrepo baddir; put_file "$REPO/Bad_Dir/x.md"; run_audit "$REPO"
+  red_with P-08 "a folder Bad_Dir/ is red, named" 'FAIL: audit: Bad_Dir ls-lint:.dir:regex 1 > baseline 0'
+  local dir_out="$OUT"
+  mkrepo forbidden; put_file "$REPO/agents/x.txt"; run_audit "$REPO"
+  red_with P-08 "a forbidden extension (agents/x.txt) is red, named" 'FAIL: audit: agents ls-lint:.txt:exists:0 1 > baseline 0'
+  if printf '%s\n%s\n' "$dir_out" "$OUT" | grep -qF 'Bad_Dir ls-lint:.dir:regex' && has 'agents ls-lint:.txt:exists:0' && ! has '(found' && ! printf '%s\n' "$dir_out" | grep -qF -e '(found' -e 'regex:('; then ok "P-07 a directory violation is keyed by the folder path, rule name without (found N) and without the regex"; else ko "P-07 $dir_out $OUT"; fi
+  mkrepo foobar; put_file "$REPO/docs/Foo_bar.md"; run_audit "$REPO"
+  local name_rc="$RC" name_out="$OUT"
+  mkrepo rootdocs; put_file "$REPO/README.md" "$REPO/CODE_OF_CONDUCT.md"; run_audit "$REPO"
+  if [ "$name_rc" -eq 1 ] && printf '%s\n' "$name_out" | grep -qF 'FAIL: audit: docs/Foo_bar.md ls-lint:.md:kebabcase 1 > baseline 0' && [ "$RC" -eq 0 ]; then ok "P-08 docs/Foo_bar.md is red, README.md and CODE_OF_CONDUCT.md are green"; else ko "P-08 Foo_bar (rc=$name_rc/$RC) $name_out $OUT"; fi
+}
+
+case_layout_extra() {
+  mkrepo exceptions
+  put_file "$REPO/.claude/x.md" "$REPO/.claude-plugin/x.md" "$REPO/.devcontainer/x.md" "$REPO/.githooks/x.md" \
+    "$REPO/.github/ISSUE_TEMPLATE/x.md" "$REPO/hooks/SessionStart/inject_stub.py" "$REPO/plugins/backlog/.claude-plugin/x.md"
+  run_audit "$REPO"
+  local accepted_rc="$RC" accepted_out="$OUT"
+  put_file "$REPO/.claude/Bad_Dir/x.md"; run_audit "$REPO"
+  if [ "$accepted_rc" -eq 0 ] && [ "$RC" -eq 1 ] && has '.claude/Bad_Dir ls-lint:.dir:'; then ok "P-08 the 8 declared directory exceptions are accepted"; else ko "P-08 exceptions (rc=$accepted_rc/$RC) $accepted_out $OUT"; fi
+  mkrepo ignored
+  put_file "$REPO/.pipeline/Bad_Dir/x.md" "$REPO/node_modules/Bad_X/y.md" "$REPO/.venv/Bad_Z/a.md" "$REPO/.probes/Bad_V/b.md" \
+    "$REPO/evals/results/Bad_Y/z.md" "$REPO/.claude/.backlog-snapshots/Bad_W/c.md" "$REPO/scripts/__pycache__/Bad_File.pyc" \
+    "$REPO/x.log" "$REPO/.DS_Store" "$REPO/.claude/settings.local.json" "$REPO/.claude/pipeline.config.local.json"
+  run_audit "$REPO"
+  green P-08 "paths named by ignore: are not audited"
+  mkrepo gitignored
+  printf 'Ignored_Dir/\n' > "$REPO/.gitignore"; put_file "$REPO/Ignored_Dir/x.md"
+  run_audit "$REPO"
+  green P-08 "a folder ignored by git is not audited"
+}
+
+case_fixtures_and_shebang() {
+  mkrepo misplaced; put_file "$REPO/scripts/fixtures/data.json"; run_audit "$REPO"
+  local misplaced_rc="$RC" misplaced_out="$OUT"
+  mkrepo allowed; put_file "$REPO/fixtures/a.cjs" "$REPO/plugins/backlog/tests/fixtures/Bad_Name.json"; run_audit "$REPO"
+  if [ "$misplaced_rc" -eq 1 ] && printf '%s\n' "$misplaced_out" | grep -qF 'FAIL: audit: scripts/fixtures fixtures-location 1 > baseline 0' && [ "$RC" -eq 0 ]; then ok "P-09 scripts/fixtures/ is red naming the fixtures segment; fixtures/ and plugins/backlog/tests/fixtures/ stay green"; else ko "P-09 fixtures (rc=$misplaced_rc/$RC) $misplaced_out $OUT"; fi
+  mkrepo shebang; printf '#!/bin/sh\nunused=1\n' > "$REPO/tool"; run_audit "$REPO"
+  local shebang_rc="$RC" shebang_out="$OUT"
+  mkrepo plaintext; printf 'unused=1\n' > "$REPO/notes"; run_audit "$REPO"
+  if [ "$shebang_rc" -eq 1 ] && printf '%s\n' "$shebang_out" | grep -qF 'FAIL: audit: tool SC2034 1 > baseline 0' && [ "$RC" -eq 0 ]; then ok "P-09 an extensionless #!/bin/sh script with a ShellCheck warning is red, named"; else ko "P-09 shebang (rc=$shebang_rc/$RC) $shebang_out $OUT"; fi
+}
+
 case_plants
 case_template
 case_baseline_freeze
@@ -195,6 +246,9 @@ case_clean_and_guards
 case_origin
 case_slack_stale
 case_suppression
+case_layout
+case_layout_extra
+case_fixtures_and_shebang
 case_tool_setup
 
 STATUS=ok; [ "$FAIL_N" -eq 0 ] || STATUS=fail

@@ -3,7 +3,7 @@
 # (GUARDS_BASE_FILE / GUARDS_BRANCH_FILE / GUARDS_BASE_MANIFEST / GUARDS_BRANCH_MANIFEST,
 # GUARDS_ONLY) with throwaway files under $TMPDIR — never mutates tracked files.
 # Cases: positive (same counts), 3 negative R1 counters, parser markers not counted/balanced,
-# block comments, multi-line agent calls, missing base, all-tests-wired (wired/unwired/comment-only),
+# block comments, multi-line agent calls, missing base, all-tests-wired (wired/unwired/comment-only, nested below a test folder, outside every test folder),
 # version floor, sam-parity (PLAN RULE both sides, LAYER RULE workflow only, no engine vocabulary in the persona),
 # doc-budgets (at budget / over / missing / per-line cap, through GUARDS_ROOT),
 # instructions-wired (imports outside code, once each, no @AGENTS.md, AGENTS.md names both, omitClaudeMd),
@@ -193,6 +193,32 @@ $WIRED_RUN
         run: echo hi"
 run_wired "$T/w5"
 if [ "$RC" -ne 0 ]; then ok "suite named only in a step name (not a run:) -> FAIL"; else ko "name-only (rc=$RC) $OUT"; fi
+# the walk is recursive: a nested suite is a suite, a test file outside every known test folder is a FAIL
+mkroot "$T/w6" "jobs:
+  g:
+    steps:
+$WIRED_RUN
+      - run: bash scripts/test-foo.sh"
+mkdir -p "$T/w6/scripts/lib" && : > "$T/w6/scripts/lib/test-bar.sh"
+run_wired "$T/w6"
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: all-tests-wired:.*scripts/lib/test-bar.sh'; then ok "all-tests-wired: a suite nested below a test folder, not wired -> FAIL naming it"; else ko "nested unwired (rc=$RC) $OUT"; fi
+mkroot "$T/w7" "jobs:
+  g:
+    steps:
+$WIRED_RUN
+      - run: bash scripts/test-foo.sh"
+mkdir -p "$T/w7/docs" && : > "$T/w7/docs/test-baz.sh"
+run_wired "$T/w7"
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: all-tests-wired:.*outside.*docs/test-baz.sh'; then ok "all-tests-wired: a test file outside every known test folder -> FAIL naming it"; else ko "outside folder (rc=$RC) $OUT"; fi
+mkroot "$T/w8" "jobs:
+  g:
+    steps:
+$WIRED_RUN
+      - run: bash scripts/test-foo.sh
+      - run: bash scripts/test-baz.sh"
+: > "$T/w8/scripts/test-baz.sh"
+run_wired "$T/w8"
+if [ "$RC" -eq 0 ]; then ok "all-tests-wired: the same file inside a test folder, wired -> ok"; else ko "inside folder wired (rc=$RC) $OUT"; fi
 
 # ---- sam-parity ----
 # PR = neutral PLAN_RULE (persona + workflow), LR = engine LAYER_RULE (workflow only; the persona must not carry it, #163)

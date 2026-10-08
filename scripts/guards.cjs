@@ -310,18 +310,29 @@ function ymlRunText(yml) {
   return parts.join('\n')
 }
 
+// Every test-*.sh|cjs|js file of the tree (relative path), whatever its depth. Symlinks are not followed.
+const TEST_FOLDERS = ['hooks', 'scripts', 'templates', 'plugins/backlog/tests']
+const SKIPPED_FOLDERS = new Set(['.git', 'node_modules', '.venv', '.pipeline', '.probes', 'fixtures', '__pycache__'])
+function walkTestFiles(relative) {
+  const found = []
+  for (const entry of fs.readdirSync(path.join(ROOT, relative), { withFileTypes: true })) {
+    const child = relative === '' ? entry.name : `${relative}/${entry.name}`
+    if (entry.isDirectory() && !SKIPPED_FOLDERS.has(entry.name)) found.push(...walkTestFiles(child))
+    else if (entry.isFile() && /^test-.*\.(sh|cjs|js)$/.test(entry.name)) found.push(child)
+  }
+  return found.sort()
+}
+
 function checkWired() {
   const yml = readOr(path.join(ROOT, GUARDS_YML))
   if (yml === null) { bad(`FAIL: all-tests-wired: ${GUARDS_YML} missing`); return }
-  const dirs = ['hooks', 'scripts', 'templates', 'plugins/backlog/tests']
   const suites = ['scripts/run-offline.cjs']
-  for (const d of dirs) {
-    const abs = path.join(ROOT, d)
-    if (!fs.existsSync(abs)) continue
-    for (const f of fs.readdirSync(abs)) {
-      if (/^test-.*\.(sh|cjs|js)$/.test(f)) suites.push(`${d}/${f}`)
-    }
+  const stray = []
+  for (const rel of walkTestFiles('')) {
+    if (TEST_FOLDERS.some((folder) => rel.startsWith(`${folder}/`))) suites.push(rel)
+    else stray.push(rel)
   }
+  if (stray.length) { bad(`FAIL: all-tests-wired: test file outside every known test folder (${TEST_FOLDERS.join(', ')}): ${stray.join(', ')}`); return }
   const runText = ymlRunText(yml)
   const missing = suites.filter((s) => !EXEMPT[s] && !runText.includes(s))
   if (missing.length) bad(`FAIL: all-tests-wired: not referenced in a run: step of ${GUARDS_YML} (comments do not count): ${missing.join(', ')}`)
