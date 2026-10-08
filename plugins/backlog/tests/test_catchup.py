@@ -5,10 +5,10 @@ import json
 import unittest
 from pathlib import Path
 
-import _support as S
-import backlog_catchup as K
-import backlog_config as C
-import backlog_triage as T
+import _support
+import backlog_catchup
+import backlog_config
+import backlog_triage
 from backlog_gh import Gh
 
 MAPPING = (
@@ -21,9 +21,9 @@ LIVE = {"type:bug", "type:feature", "type:chore", "type:epic", "status:inbox", "
 
 
 def load(extra="", repo="acme/widgets"):
-    with S.tmpdir() as tmp:
-        S.write_repo_config(tmp, repo, "propose", extra)
-        cfg = C.load_config(tmp)
+    with _support.tmpdir() as tmp:
+        _support.write_repo_config(tmp, repo, "propose", extra)
+        cfg = backlog_config.load_config(tmp)
     assert cfg.mode == "propose", cfg.reason
     return cfg
 
@@ -33,7 +33,7 @@ DEFAULT = load()
 
 
 def after(names, cfg=MAPPED):
-    result = K.map_legacy(set(names), cfg)
+    result = backlog_catchup.map_legacy(set(names), cfg)
     return result
 
 
@@ -107,7 +107,7 @@ class TestMapLegacy(unittest.TestCase):
 
 class TestValidateCatchup(unittest.TestCase):
     def check(self, entry, issue, cfg=MAPPED):
-        results = K.validate_catchup(T.parse_proposals([entry]), [issue], LIVE, cfg)
+        results = backlog_catchup.validate_catchup(backlog_triage.parse_proposals([entry]), [issue], LIVE, cfg)
         return results[0].codes
 
     def prop(self, before, after_, issue=1):
@@ -115,19 +115,19 @@ class TestValidateCatchup(unittest.TestCase):
 
     def test_removing_a_mapped_legacy_label_is_allowed_only_with_the_mapping(self):
         before, after_ = ("bug", "status:inbox"), ("type:bug", "status:inbox")
-        issue = S.issue(1, *before)
+        issue = _support.issue(1, *before)
         self.assertEqual(self.check(self.prop(before, after_), issue), [])
         self.assertIn("remove-not-allowed", self.check(self.prop(before, after_), issue, DEFAULT))
 
     def test_a_kept_legacy_label_can_never_be_removed(self):
         before, after_ = ("epic", "type:epic", "status:inbox"), ("type:epic", "status:inbox")
-        self.assertIn("remove-not-allowed", self.check(self.prop(before, after_), S.issue(1, *before)))
+        self.assertIn("remove-not-allowed", self.check(self.prop(before, after_), _support.issue(1, *before)))
 
     def test_adding_ready_or_an_agent_executor_is_refused(self):
         before = ("type:chore", "status:inbox")
-        issue = S.issue(1, *before)
+        issue = _support.issue(1, *before)
         promoted = self.prop(before, ("type:chore", "status:ready", "exec:agent", "size:S"))
-        self.assertEqual(T.validate(T.parse_proposals([promoted]), [issue], LIVE, MAPPED)[0].codes, [])  # triage alone accepts it
+        self.assertEqual(backlog_triage.validate(backlog_triage.parse_proposals([promoted]), [issue], LIVE, MAPPED)[0].codes, [])  # triage alone accepts it
         self.assertEqual(self.check(promoted, issue), ["role-add-refused"])
         only_agent = self.prop(before, before + ("exec:agent",))
         self.assertEqual(self.check(only_agent, issue), ["role-add-refused"])
@@ -135,13 +135,13 @@ class TestValidateCatchup(unittest.TestCase):
     def test_keeping_ready_is_not_adding_it(self):
         before = ("type:chore", "status:ready", "exec:agent", "size:S")
         after_ = before + ("priority:1-next",)
-        self.assertEqual(self.check(self.prop(before, after_), S.issue(1, *before)), [])
+        self.assertEqual(self.check(self.prop(before, after_), _support.issue(1, *before)), [])
 
     def test_the_code_is_reported_once_and_not_for_a_schema_error(self):
         before = ("type:chore", "status:inbox")
-        results = K.validate_catchup(
-            T.parse_proposals([{"issue": 1}, self.prop(before, ("type:chore", "status:ready", "exec:agent", "size:S"), 2)]),
-            [S.issue(2, *before)], LIVE, MAPPED)
+        results = backlog_catchup.validate_catchup(
+            backlog_triage.parse_proposals([{"issue": 1}, self.prop(before, ("type:chore", "status:ready", "exec:agent", "size:S"), 2)]),
+            [_support.issue(2, *before)], LIVE, MAPPED)
         codes = {r.proposal.issue: r.codes for r in results}
         self.assertEqual(codes[2], ["role-add-refused"])
         self.assertEqual(codes[1], ["bad-schema"])
@@ -149,20 +149,20 @@ class TestValidateCatchup(unittest.TestCase):
 
 class Base(unittest.TestCase):
     def setUp(self):
-        self._tmp = S.tmpdir()
+        self._tmp = _support.tmpdir()
         self.tmp = Path(self._tmp.name)
         self.project = self.tmp / "repo"
         self.project.mkdir()
-        S.write_repo_config(self.project, "acme/widgets", "propose", MAPPING)
-        self.cfg = C.load_config(str(self.project))
+        _support.write_repo_config(self.project, "acme/widgets", "propose", MAPPING)
+        self.cfg = backlog_config.load_config(str(self.project))
         self.assertEqual(self.cfg.mode, "propose", self.cfg.reason)
         self.issues = self.tmp / "issues.json"
         self.issues.write_text(json.dumps([
-            S.issue(1, "bug", "P0-now"),
-            S.issue(2, "type:chore", "status:inbox"),                # already canonical
-            S.issue(3, "enhancement", "P0-now", "P1-next"),           # priority conflict
-            S.issue(4, "docs"),                                       # type-unmapped
-            S.issue(5, "tech-debt", state="CLOSED"),                  # closed: ignored
+            _support.issue(1, "bug", "P0-now"),
+            _support.issue(2, "type:chore", "status:inbox"),                # already canonical
+            _support.issue(3, "enhancement", "P0-now", "P1-next"),           # priority conflict
+            _support.issue(4, "docs"),                                       # type-unmapped
+            _support.issue(5, "tech-debt", state="CLOSED"),                  # closed: ignored
         ]))
         self.labels = self.tmp / "labels.json"
         self.labels.write_text(json.dumps([{"name": n} for n in sorted(LIVE)]))
@@ -173,7 +173,7 @@ class Base(unittest.TestCase):
     def call(self, argv, cfg=None, gh=None):
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
-            rc = K.main(argv, cfg or self.cfg, gh)
+            rc = backlog_catchup.main(argv, cfg or self.cfg, gh)
         return rc, buf.getvalue()
 
 
@@ -217,7 +217,7 @@ class TestPropose(Base):
         self.assertIn("proposals=1 accepted=1 rejected=0", out)
 
     def test_live_read_uses_the_open_issue_list_only(self):
-        runner = S.FakeRunner(issues=json.loads(self.issues.read_text()))
+        runner = _support.FakeRunner(issues=json.loads(self.issues.read_text()))
         rc, _ = self.call(["propose"], gh=Gh(self.cfg, runner=runner))
         self.assertEqual((rc, runner.verbs()), (0, [("issue", "list")]))
         self.assertTrue(runner.calls[0][-2:] == ["-R", "acme/widgets"])
@@ -240,16 +240,16 @@ class TestCheck(Base):
         self.assertEqual(rc, 0, out)
         self.assertIn("[catch-up] open=4 proposals=1 accepted=1 rejected=0", out)
         self.assertIn("| #1 | P0-now, bug | priority:0-now, status:inbox, type:bug | map | high | ok |", out)
-        digest = K.catchup_digest(T.parse_proposals([self.GOOD]), "acme/widgets")
+        digest = backlog_catchup.catchup_digest(backlog_triage.parse_proposals([self.GOOD]), "acme/widgets")
         self.assertIn("[catch-up] table-digest: %s" % digest, out)
         self.assertTrue(out.rstrip().endswith("(--apply needs --snapshot-dir, --expect-sha and --confirm <table-digest>)"))
 
     def test_the_digest_is_bound_to_the_repo(self):
-        proposals = T.parse_proposals([self.GOOD])
-        a, b = K.catchup_digest(proposals, "acme/widgets"), K.catchup_digest(proposals, "acme/other")
+        proposals = backlog_triage.parse_proposals([self.GOOD])
+        a, b = backlog_catchup.catchup_digest(proposals, "acme/widgets"), backlog_catchup.catchup_digest(proposals, "acme/other")
         self.assertNotEqual(a, b)
-        self.assertEqual(a, hashlib.sha256(("acme/widgets\n" + T.table_digest(proposals)).encode()).hexdigest()[:16])
-        self.assertNotEqual(a, T.table_digest(proposals))
+        self.assertEqual(a, hashlib.sha256(("acme/widgets\n" + backlog_triage.table_digest(proposals)).encode()).hexdigest()[:16])
+        self.assertNotEqual(a, backlog_triage.table_digest(proposals))
         other = load(MAPPING, "acme/other")
         self.assertIn("table-digest: %s" % b, self.check([self.GOOD], other)[1])
 
@@ -269,10 +269,10 @@ class TestCheck(Base):
         self.assertNotIn("\x1b", out)
         self.assertNotIn("\r", out)
         self.assertIn("see ?[31mred?[0m?now", out)
-        self.assertIn("table-digest: %s" % K.catchup_digest(T.parse_proposals([evil]), "acme/widgets"), out)
+        self.assertIn("table-digest: %s" % backlog_catchup.catchup_digest(backlog_triage.parse_proposals([evil]), "acme/widgets"), out)
 
     def test_live_read_fetches_the_open_issues_and_the_labels(self):
-        runner = S.FakeRunner(issues=json.loads(self.issues.read_text()), labels=sorted(LIVE))
+        runner = _support.FakeRunner(issues=json.loads(self.issues.read_text()), labels=sorted(LIVE))
         path = self.proposals([self.GOOD])
         rc, out = self.call(["check", "--proposals", str(path)], gh=Gh(self.cfg, runner=runner))
         self.assertEqual(rc, 0, out)
@@ -290,14 +290,14 @@ class TestNoWritePath(Base):
         for flag in apply_flags:
             with self.subTest(sub="propose", flag=flag), contextlib.redirect_stderr(io.StringIO()):
                 with self.assertRaises(SystemExit) as raised:
-                    K.build_parser().parse_args(["propose"] + flag)
+                    backlog_catchup.build_parser().parse_args(["propose"] + flag)
                 self.assertEqual(raised.exception.code, 2)
             with self.subTest(sub="check", flag=flag):
-                K.build_parser().parse_args(["check", "--proposals", "p.json"] + flag)
+                backlog_catchup.build_parser().parse_args(["check", "--proposals", "p.json"] + flag)
         for base in (["propose"], ["check", "--proposals", "p.json"]):
             with self.subTest(base=base), contextlib.redirect_stderr(io.StringIO()):
                 with self.assertRaises(SystemExit) as raised:
-                    K.build_parser().parse_args(base + ["--batch-size", "5"])
+                    backlog_catchup.build_parser().parse_args(base + ["--batch-size", "5"])
                 self.assertEqual(raised.exception.code, 2)
 
     def test_the_repo_flag_is_an_assertion(self):

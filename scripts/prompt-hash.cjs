@@ -16,15 +16,15 @@ const path = require('path')
 const crypto = require('crypto')
 
 const argv = process.argv.slice(2)
-let dir = 'fixtures'
+let directory = 'fixtures'
 let harness = path.join(__dirname, 'run-offline.cjs')
-for (let i = 0; i < argv.length; i++) {
-  if (argv[i] === '--dir') dir = argv[++i]
-  else if (argv[i] === '--harness') harness = argv[++i]
-  else { process.stderr.write(`unknown argument ${argv[i]}\n`); process.exit(2) }
+for (let index = 0; index < argv.length; index++) {
+  if (argv[index] === '--dir') directory = argv[++index]
+  else if (argv[index] === '--harness') harness = argv[++index]
+  else { process.stderr.write(`unknown argument ${argv[index]}\n`); process.exit(2) }
 }
 // Resolve against the caller's cwd BEFORE moving to the repo root.
-dir = path.resolve(dir)
+directory = path.resolve(directory)
 harness = path.resolve(harness)
 const root = path.join(__dirname, '..')
 process.chdir(root)
@@ -43,25 +43,25 @@ function listJson(d) {
 
 async function main() {
   const h = require(harness)
-  const src = h.stripExports(fs.readFileSync(path.join(root, 'workflows', 'deliver-pipeline.js'), 'utf-8'))
+  const source = h.stripExports(fs.readFileSync(path.join(root, 'workflows', 'deliver-pipeline.js'), 'utf-8'))
   const hashes = []
-  for (const file of listJson(dir)) {
+  for (const file of listJson(directory)) {
     const fixture = JSON.parse(fs.readFileSync(file, 'utf-8'))
     if (!fixture.name) fixture.name = path.basename(file, '.json')
     const specs = fixture.runs !== undefined ? fixture.runs : [fixture]
     const lines = []
-    let prev = null
+    let previous = null
     for (const spec of specs) {
-      const run = h.buildPipelineRunner(src)
-      const args = JSON.parse(JSON.stringify(spec.args || {}))
-      if (spec.carry && prev && prev.result) {
-        for (const [argName, field] of Object.entries(spec.carry)) {
-          if (prev.result[field] !== undefined) args[argName] = JSON.parse(JSON.stringify(prev.result[field]))
+      const run = h.buildPipelineRunner(source)
+      const arguments_ = JSON.parse(JSON.stringify(spec.args || {}))
+      if (spec.carry && previous && previous.result) {
+        for (const [argumentName, field] of Object.entries(spec.carry)) {
+          if (previous.result[field] !== undefined) arguments_[argumentName] = JSON.parse(JSON.stringify(previous.result[field]))
         }
       }
-      const r = await h.replayFixture({ name: fixture.name, args, calls: spec.calls, expect: spec.expect }, run, { prompts: true })
+      const r = await h.replayFixture({ name: fixture.name, args: arguments_, calls: spec.calls, expect: spec.expect }, run, { prompts: true })
       for (const c of r.calls) lines.push(`${c.label}:${sha(String(c.prompt))}`)
-      prev = r
+      previous = r
     }
     const fh = sha(lines.join('\n')).slice(0, 16)
     hashes.push(fh)
@@ -70,4 +70,4 @@ async function main() {
   process.stdout.write(`[prompt-hash] fixtures=${hashes.length} total=${sha(hashes.join('\n')).slice(0, 16)}\n`)
 }
 
-main().catch((e) => { process.stderr.write(`${e && e.stack ? e.stack : e}\n`); process.exit(1) })
+main().catch((error) => { process.stderr.write(`${error && error.stack ? error.stack : error}\n`); process.exit(1) })

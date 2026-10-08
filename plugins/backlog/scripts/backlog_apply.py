@@ -61,7 +61,7 @@ SET_JOURNAL = "set-journal.jsonl"
 _DONE = ("applied", "noop")
 
 
-class Refused(Exception):
+class RefusedError(Exception):
     """An apply condition is not met (nothing was written). The message is `<code>: <text>`."""
 
     def __init__(self, code: str, text: str):
@@ -85,11 +85,11 @@ class Gate:
 def stage_one(cfg, apply: bool) -> None:
     """The cheap conditions (mode, repo, apply): checked BEFORE any live read."""
     if cfg.mode not in ("write-supervised", "free"):
-        raise Refused("mode", "mode %s never writes (write-supervised or free is required)" % cfg.mode)
+        raise RefusedError("mode", "mode %s never writes (write-supervised or free is required)" % cfg.mode)
     if not cfg.repo:
-        raise Refused("repo", "`repo:` is absent from .claude/backlog.yml (an apply needs an explicit target)")
+        raise RefusedError("repo", "`repo:` is absent from .claude/backlog.yml (an apply needs an explicit target)")
     if not apply:
-        raise Refused("apply", "--confirm without --apply: nothing to do (add --apply to write)")
+        raise RefusedError("apply", "--confirm without --apply: nothing to do (add --apply to write)")
 
 
 def _load_snapshot(snapshot_dir, project_dir) -> Tuple[Path, bytes]:
@@ -97,61 +97,61 @@ def _load_snapshot(snapshot_dir, project_dir) -> Tuple[Path, bytes]:
         directory = assert_outside_repo(snapshot_dir, project_dir)
         return directory, (directory / SNAPSHOT_FILE).read_bytes()
     except (ValueError, OSError) as exc:
-        raise Refused("snapshot", printable(exc))
+        raise RefusedError("snapshot", printable(exc))
 
 
 def verify_snapshot(cfg, snapshot_dir, expect_sha, project_dir, covers: Iterable[Tuple[int, Iterable[str]]] = ()) -> str:
-    """Return the verified sha256 of the snapshot, or raise `Refused("snapshot", ...)`."""
+    """Return the verified sha256 of the snapshot, or raise `RefusedError("snapshot", ...)`."""
     if not snapshot_dir or not expect_sha:
-        raise Refused("snapshot", "--snapshot-dir and --expect-sha are required (take a snapshot first)")
+        raise RefusedError("snapshot", "--snapshot-dir and --expect-sha are required (take a snapshot first)")
     _, raw = _load_snapshot(snapshot_dir, project_dir)
     sha = hashlib.sha256(raw).hexdigest()
     if sha != expect_sha:
-        raise Refused("snapshot", "sha256 mismatch (expected %s, got %s)" % (printable(expect_sha), sha))
+        raise RefusedError("snapshot", "sha256 mismatch (expected %s, got %s)" % (printable(expect_sha), sha))
     try:
         snapshot = json.loads(raw)
         if not isinstance(snapshot, dict) or snapshot.get("version") != SNAPSHOT_VERSION:
-            raise Refused("snapshot", "unsupported snapshot version")
+            raise RefusedError("snapshot", "unsupported snapshot version")
         if snapshot.get("repo") != cfg.repo:
-            raise Refused("snapshot", "the snapshot belongs to %s, the config targets %s" % (printable(snapshot.get("repo")), cfg.repo))
+            raise RefusedError("snapshot", "the snapshot belongs to %s, the config targets %s" % (printable(snapshot.get("repo")), cfg.repo))
         by_number = {int(i["number"]): set(i.get("labels") or []) for i in snapshot["issues"]}
     except (ValueError, KeyError, TypeError) as exc:
-        raise Refused("snapshot", "unreadable snapshot (%s)" % printable(exc))
+        raise RefusedError("snapshot", "unreadable snapshot (%s)" % printable(exc))
     for number, before in covers:
         if number not in by_number:
-            raise Refused("snapshot", "#%d is not in the snapshot: take a fresh snapshot" % number)
+            raise RefusedError("snapshot", "#%d is not in the snapshot: take a fresh snapshot" % number)
         if by_number[number] != set(before):
-            raise Refused("snapshot", "#%d changed since the snapshot (labels differ): take a fresh snapshot" % number)
+            raise RefusedError("snapshot", "#%d changed since the snapshot (labels differ): take a fresh snapshot" % number)
     return sha
 
 
 def check_gate(cfg, *, apply: bool, confirm: Optional[str], digest: Optional[str],
                verify: Callable[[], str], rejected: int) -> Gate:
-    """The six conditions, in a fixed order, one code each. Any miss raises `Refused` (zero write)."""
+    """The six conditions, in a fixed order, one code each. Any miss raises `RefusedError` (zero write)."""
     stage_one(cfg, apply)
     if digest is None:
         verify()  # surfaces the missing/invalid snapshot first
-        raise Refused("confirm", "no table digest can be computed")
+        raise RefusedError("confirm", "no table digest can be computed")
     if not confirm or confirm != digest:
-        raise Refused("confirm", "--confirm does not match the table digest printed by the dry run")
+        raise RefusedError("confirm", "--confirm does not match the table digest printed by the dry run")
     sha = verify()
     if rejected:
-        raise Refused("rejected", "%d proposal(s) rejected on the live data: fix them and re-run the check" % rejected)
+        raise RefusedError("rejected", "%d proposal(s) rejected on the live data: fix them and re-run the check" % rejected)
     return Gate(digest=digest, confirm=confirm, sha=sha, rejected=rejected)
 
 
 def mint_grant(cfg, gate: Gate, issues: Iterable[int] = (), labels: Iterable[str] = ()) -> ApplyGrant:
     """Defence in depth: re-verify the gate's facts, then mint the grant. Never builds one without a `Gate`."""
     if not isinstance(gate, Gate):
-        raise Refused("apply", "no gate")
+        raise RefusedError("apply", "no gate")
     if cfg.mode not in ("write-supervised", "free"):
-        raise Refused("mode", "mode %s never writes" % cfg.mode)
+        raise RefusedError("mode", "mode %s never writes" % cfg.mode)
     if not cfg.repo:
-        raise Refused("repo", "`repo:` is absent")
+        raise RefusedError("repo", "`repo:` is absent")
     if gate.confirm != gate.digest:
-        raise Refused("confirm", "--confirm does not match the table digest")
+        raise RefusedError("confirm", "--confirm does not match the table digest")
     if gate.rejected:
-        raise Refused("rejected", "rejected proposals")
+        raise RefusedError("rejected", "rejected proposals")
     refused_adds = frozenset({cfg.role_label("ready")} | set(cfg.role_labels("agent")))
     return ApplyGrant(
         repo=cfg.repo,
@@ -172,11 +172,11 @@ def mint_set_grant(cfg, edit: LabelEdit, verdict=None) -> ApplyGrant:
     plain triage label) or `verdict` is an ok `PromotionVerdict` of THIS issue on a repo that opted in with
     `promotion: checked`. `mint_grant` (the bulk paths) never relaxes it."""
     if not isinstance(edit, LabelEdit):
-        raise Refused("apply", "no edit")
+        raise RefusedError("apply", "no edit")
     if cfg.mode not in ("write-supervised", "free"):
-        raise Refused("mode", "mode %s never writes" % cfg.mode)
+        raise RefusedError("mode", "mode %s never writes" % cfg.mode)
     if not cfg.repo:
-        raise Refused("repo", "`repo:` is absent")
+        raise RefusedError("repo", "`repo:` is absent")
     refused_adds = frozenset(reserved_adds(cfg)) if effective_promotion(edit.before, edit.after, cfg) else frozenset()
     if isinstance(verdict, PromotionVerdict) and verdict.ok and verdict.issue == edit.issue and cfg.promotion == "checked":
         refused_adds = frozenset()
@@ -230,7 +230,7 @@ class Journal:
             same = False
             data = None
         if not same:
-            raise Refused("snapshot", "%s is a journal of another table or snapshot (or unreadable): take a fresh snapshot" % printable(target))
+            raise RefusedError("snapshot", "%s is a journal of another table or snapshot (or unreadable): take a fresh snapshot" % printable(target))
         return cls(target, kind, repo, digest, snapshot_sha, data["entries"])
 
     def done(self) -> Set[str]:
@@ -282,7 +282,7 @@ class SetJournal:
             directory = project_dir_of(cfg) / ".claude" / ".backlog-snapshots"
             directory.mkdir(mode=0o700, parents=True, exist_ok=True)
         except OSError as exc:
-            raise Refused("journal", printable(exc))
+            raise RefusedError("journal", printable(exc))
         return cls(directory / SET_JOURNAL)
 
     def append(self, entry: dict) -> None:
@@ -353,7 +353,7 @@ def _finish(tag: str, prefix: str, verb: str, outcome: Outcome, skipped: Optiona
     return 0
 
 
-def _refuse(tag: str, exc: Refused) -> int:
+def _refuse(tag: str, exc: RefusedError) -> int:
     print("[%s] refused: %s" % (tag, printable(exc)))
     return 1
 
@@ -361,7 +361,7 @@ def _refuse(tag: str, exc: Refused) -> int:
 def _offline(args, tag: str, names: Sequence[Tuple[str, str]]) -> None:
     for attr, flag in names:
         if getattr(args, attr, None):
-            raise Refused("apply", "--apply reads the LIVE state from GitHub: %s is for dry runs only" % flag)
+            raise RefusedError("apply", "--apply reads the LIVE state from GitHub: %s is for dry runs only" % flag)
 
 
 def _journal(args, cfg, kind: str, file_name: str, digest: Optional[str]) -> Optional[Journal]:
@@ -394,7 +394,7 @@ def apply_catchup(args, cfg, gh=None, apply_runner=None) -> int:
         pending = [p for p in proposals if p.issue is None or str(p.issue) not in done]
         issues = gh.fetch_issues("open", OPEN_LIMIT)
         labels = gh.fetch_label_names()
-    except Refused as exc:
+    except RefusedError as exc:
         return _refuse(tag, exc)
     except (RuntimeError, ValueError, KeyError, TypeError, OSError, json.JSONDecodeError) as exc:
         print("[%s] error: %s" % (tag, printable(exc)))
@@ -432,7 +432,7 @@ def apply_catchup(args, cfg, gh=None, apply_runner=None) -> int:
         grant = mint_grant(cfg, gate, issues=[e.issue for e in edits])
         journal = _fresh_journal(journal, args, cfg, "catchup", CATCHUP_JOURNAL, gate)
         apply_gh = ApplyGh(cfg, grant, runner=apply_runner)
-    except Refused as exc:
+    except RefusedError as exc:
         return _refuse(tag, exc)
     except (RuntimeError, OSError) as exc:  # ModeError of the constructor, unreadable journal directory
         print("[%s] refused: %s" % (tag, printable(exc)))
@@ -455,12 +455,12 @@ def apply_rollback(args, cfg, gh=None, apply_runner=None) -> int:
             snapshot_issues = json.loads(raw)["issues"]
             digest: Optional[str] = rollback_digest(snapshot_issues, cfg.repo)
         except (ValueError, KeyError, TypeError) as exc:
-            raise Refused("snapshot", "unreadable snapshot (%s)" % printable(exc))
+            raise RefusedError("snapshot", "unreadable snapshot (%s)" % printable(exc))
         journal = _journal(args, cfg, "rollback", ROLLBACK_JOURNAL, digest)
         issues = gh.fetch_issues("open", OPEN_LIMIT)
         labels = gh.fetch_label_names()
         edits, problems = rollback_plan(snapshot_issues, issues, labels, cfg)
-    except Refused as exc:
+    except RefusedError as exc:
         return _refuse(tag, exc)
     except (RuntimeError, ValueError, KeyError, TypeError, OSError, json.JSONDecodeError) as exc:
         print("[%s] error: %s" % (tag, printable(exc)))
@@ -490,7 +490,7 @@ def apply_rollback(args, cfg, gh=None, apply_runner=None) -> int:
         grant = mint_grant(cfg, gate, issues=[e.issue for e in kept])
         journal = _fresh_journal(journal, args, cfg, "rollback", ROLLBACK_JOURNAL, gate)
         apply_gh = ApplyGh(cfg, grant, runner=apply_runner)
-    except Refused as exc:
+    except RefusedError as exc:
         return _refuse(tag, exc)
     except (RuntimeError, OSError) as exc:
         print("[%s] refused: %s" % (tag, printable(exc)))
@@ -515,7 +515,7 @@ def apply_labelsync(args, cfg, gh=None, apply_runner=None) -> int:
         creates = [(a.name, colors[a.name]) for a in actions if a.kind == "create"]
         digest = labelsync_digest(creates, cfg.repo, args.expect_sha) if args.expect_sha else None
         journal = _journal(args, cfg, "label-sync", LABELSYNC_JOURNAL, digest)
-    except Refused as exc:
+    except RefusedError as exc:
         return _refuse(tag, exc)
     except (RuntimeError, ValueError, KeyError, TypeError, OSError, json.JSONDecodeError) as exc:
         print("[%s] error: %s" % (tag, printable(exc)))
@@ -536,7 +536,7 @@ def apply_labelsync(args, cfg, gh=None, apply_runner=None) -> int:
         grant = mint_grant(cfg, gate, labels=[name for name, _ in creates])
         journal = _fresh_journal(journal, args, cfg, "label-sync", LABELSYNC_JOURNAL, gate)
         apply_gh = ApplyGh(cfg, grant, runner=apply_runner)
-    except Refused as exc:
+    except RefusedError as exc:
         return _refuse(tag, exc)
     except (RuntimeError, OSError) as exc:
         print("[%s] refused: %s" % (tag, printable(exc)))
@@ -579,7 +579,7 @@ def execute_set(cfg, edit: LabelEdit, reason: str = "", verdict=None, apply_runn
             "issue": edit.issue, "status": "intent", "before": list(edit.before), "add": list(edit.add),
             "remove": list(edit.remove), "reason": reason, "promotion": _verdict_record(verdict),
         })
-    except Refused as exc:
+    except RefusedError as exc:
         return _refuse(tag, exc)
     except (RuntimeError, OSError) as exc:  # ModeError of the constructor, unwritable journal
         print("[%s] refused: %s" % (tag, printable(exc)))
@@ -616,7 +616,7 @@ def execute_deps(cfg, issue: int, add: Sequence[int], remove: Sequence[int], rea
             "issue": issue, "status": "intent", "kind": "dependencies",
             "blocked_by_add": list(add), "blocked_by_remove": list(remove), "reason": reason,
         })
-    except Refused as exc:
+    except RefusedError as exc:
         return _refuse(tag, exc)
     except (RuntimeError, OSError) as exc:  # ModeError of the constructor, unwritable journal
         print("[%s] refused: %s" % (tag, printable(exc)))

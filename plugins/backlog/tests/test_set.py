@@ -7,9 +7,9 @@ import os
 import stat
 import unittest
 
-import _support as S
-import backlog_apply as A
-import backlog_promote as P
+import _support
+import backlog_apply
+import backlog_promote
 import backlog_set
 from backlog_gh import Gh
 
@@ -18,7 +18,7 @@ def edit_argv(number, flag, labels, repo="acme/widgets"):
     return ["gh", "issue", "edit", str(number), "%s=%s" % (flag, ",".join(labels)), "-R", repo]
 
 
-class SetBase(S.ApplyBase):
+class SetBase(_support.ApplyBase):
     """A write-supervised acme/widgets config with the reference taxonomy and no legacy mapping."""
 
     def setUp(self):
@@ -26,14 +26,14 @@ class SetBase(S.ApplyBase):
         self.cfg = self.make_cfg(extra="")
 
     def journal_path(self, cfg=None):
-        return A.project_dir_of(cfg or self.cfg) / ".claude" / ".backlog-snapshots" / "set-journal.jsonl"
+        return backlog_apply.project_dir_of(cfg or self.cfg) / ".claude" / ".backlog-snapshots" / "set-journal.jsonl"
 
     def journal_lines(self):
         return [json.loads(line) for line in self.journal_path().read_text().splitlines()]
 
     def run_set(self, argv, issues=None, cfg=None, labels=None, **kw):
         cfg = cfg or self.cfg
-        issues = [S.issue(1, "type:bug", "status:inbox")] if issues is None else issues
+        issues = [_support.issue(1, "type:bug", "status:inbox")] if issues is None else issues
         runner = self.new_runner(issues, labels=labels, **kw)
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
@@ -76,7 +76,7 @@ class TestDryRun(SetBase):
         self.assertEqual(runner.writes(), [])
 
     def test_dry_run_replaces_the_labels_of_the_axis_only(self):
-        issues = [S.issue(1, "type:bug", "status:inbox", "size:S", "area:web")]
+        issues = [_support.issue(1, "type:bug", "status:inbox", "size:S", "area:web")]
         rc, out, _ = self.run_set(["--issue", "1", "--size", "M"], issues=issues)
         self.assertEqual(rc, 0, out)
         self.assertIn("size:S -> size:M (+size:M -size:S)", out)
@@ -120,28 +120,28 @@ class TestRefusedAfterTheRead(SetBase):
         self.assertEqual(runner.writes(), [])
 
     def test_refused_closed_issue_writes_nothing(self):
-        issues = [S.issue(1, "type:bug", "status:inbox", state="CLOSED")]
+        issues = [_support.issue(1, "type:bug", "status:inbox", state="CLOSED")]
         rc, out, runner = self.run_set(["--issue", "1", "--status", "needs-info", "--apply"], issues=issues)
         self.assertEqual(rc, 1)
         self.assertIn("issue-not-open", out)
         self.assertEqual(runner.writes(), [])
 
     def test_refused_unknown_label_writes_nothing(self):
-        labels = [n for n in S.APPLY_LIVE_LABELS if n != "status:needs-info"]
+        labels = [n for n in _support.APPLY_LIVE_LABELS if n != "status:needs-info"]
         rc, out, runner = self.run_set(["--issue", "1", "--status", "needs-info", "--apply"], labels=labels)
         self.assertEqual(rc, 1)
         self.assertIn("unknown-label", out)
         self.assertEqual(runner.writes(), [])
 
     def test_refused_second_executor_writes_nothing(self):
-        issues = [S.issue(1, "type:bug", "status:inbox", "nightly")]
+        issues = [_support.issue(1, "type:bug", "status:inbox", "nightly")]
         rc, out, runner = self.run_set(["--issue", "1", "--exec", "human", "--apply"], issues=issues)
         self.assertEqual(rc, 1)
         self.assertIn("lint:executor-multiple", out)
         self.assertEqual(runner.writes(), [])
 
     def test_refused_axis_replacement_that_would_drop_an_unknown_label(self):
-        issues = [S.issue(1, "type:bug", "status:inbox", "size:XL")]
+        issues = [_support.issue(1, "type:bug", "status:inbox", "size:XL")]
         rc, out, runner = self.run_set(["--issue", "1", "--size", "M", "--apply"], issues=issues)
         self.assertEqual(rc, 1)
         self.assertIn("remove-not-allowed", out)
@@ -155,7 +155,7 @@ class TestRefusedAfterTheRead(SetBase):
 
     def test_refused_cap_exceeded_after_a_real_open_issue_count(self):
         cfg = self.make_cfg(extra='caps:\n  "size:M": 1\n')
-        issues = [S.issue(1, "type:bug", "status:inbox"), S.issue(2, "type:bug", "status:inbox", "size:M")]
+        issues = [_support.issue(1, "type:bug", "status:inbox"), _support.issue(2, "type:bug", "status:inbox", "size:M")]
         rc, out, runner = self.run_set(["--issue", "1", "--size", "M", "--apply"], issues=issues, cfg=cfg)
         self.assertEqual(rc, 1)
         self.assertIn("cap-exceeded:size:M", out)
@@ -163,7 +163,7 @@ class TestRefusedAfterTheRead(SetBase):
 
     def test_cap_count_ignores_closed_issues(self):
         cfg = self.make_cfg(extra='caps:\n  "size:M": 1\n')
-        issues = [S.issue(1, "type:bug", "status:inbox"), S.issue(2, "type:bug", "status:inbox", "size:M", state="CLOSED")]
+        issues = [_support.issue(1, "type:bug", "status:inbox"), _support.issue(2, "type:bug", "status:inbox", "size:M", state="CLOSED")]
         rc, out, runner = self.run_set(["--issue", "1", "--size", "M", "--apply"], issues=issues, cfg=cfg)
         self.assertEqual(rc, 0, out)
         self.assertEqual(runner.writes(), [edit_argv(1, "--add-label", ["size:M"])])
@@ -176,7 +176,7 @@ class TestRefusedAfterTheRead(SetBase):
         self.assertEqual(runner.writes(), [])
 
     def test_refused_when_the_journal_cannot_be_created(self):
-        project_dir = A.project_dir_of(self.cfg)
+        project_dir = backlog_apply.project_dir_of(self.cfg)
         (project_dir / ".claude" / ".backlog-snapshots").write_text("a file where the directory should be")
         rc, out, runner = self.run_set(["--issue", "1", "--status", "needs-info", "--apply"])
         self.assertEqual(rc, 1)
@@ -215,11 +215,11 @@ class TestArgumentSurface(SetBase):
         err = self.parse_error(["--issue", "1", "--area", "not-a-declared-value"], cfg=cfg)
         self.assertIn("invalid choice", err)
         rc, out, _ = self.run_set(
-            ["--issue", "1", "--area", "web"], cfg=cfg, labels=list(S.APPLY_LIVE_LABELS) + ["area:web"]
+            ["--issue", "1", "--area", "web"], cfg=cfg, labels=list(_support.APPLY_LIVE_LABELS) + ["area:web"]
         )
         self.assertEqual(rc, 0, out)
         rc, out, _ = self.run_set(
-            ["--issue", "1", "--area", "anything-at-all"], labels=list(S.APPLY_LIVE_LABELS) + ["area:anything-at-all"]
+            ["--issue", "1", "--area", "anything-at-all"], labels=list(_support.APPLY_LIVE_LABELS) + ["area:anything-at-all"]
         )
         self.assertEqual(rc, 0, out)
 
@@ -254,7 +254,7 @@ class TestApply(SetBase):
         self.assertEqual(runner.writes(), [edit_argv(1, "--add-label", ["size:S"])])
 
     def test_two_axes_in_one_call(self):
-        issues = [S.issue(1, "type:bug", "status:inbox", "size:S")]
+        issues = [_support.issue(1, "type:bug", "status:inbox", "size:S")]
         rc, out, runner = self.run_set(["--issue", "1", "--status", "needs-info", "--size", "M", "--apply"], issues=issues)
         self.assertEqual(rc, 0, out)
         self.assertEqual(
@@ -266,7 +266,7 @@ class TestApply(SetBase):
         )
 
     def test_protected_and_bare_labels_never_reach_an_argv(self):
-        issues = [S.issue(1, "type:bug", "status:inbox", "nightly", "cross-repo", "auto:blocked")]
+        issues = [_support.issue(1, "type:bug", "status:inbox", "nightly", "cross-repo", "auto:blocked")]
         rc, out, runner = self.run_set(["--issue", "1", "--status", "needs-info", "--apply"], issues=issues)
         self.assertEqual(rc, 0, out)
         argv_text = " ".join(" ".join(call) for call in runner.writes())
@@ -317,7 +317,7 @@ class TestJournal(SetBase):
         path = self.journal_path()
         self.assertEqual(stat.S_IMODE(os.stat(path).st_mode), 0o600)
         self.assertEqual(stat.S_IMODE(os.stat(path.parent).st_mode), 0o700)
-        project_dir = A.project_dir_of(self.cfg)
+        project_dir = backlog_apply.project_dir_of(self.cfg)
         self.assertEqual(path.parent, project_dir / ".claude" / ".backlog-snapshots")
         self.assertIn(str(project_dir), str(path))
 
@@ -327,7 +327,7 @@ class TestJournal(SetBase):
         self.assertEqual([e["status"] for e in self.journal_lines()], ["intent", "applied", "intent", "applied"])
 
     def test_the_journal_never_holds_free_text_of_the_issue(self):
-        issues = [S.issue(1, "type:bug", "status:inbox", body="SECRET-TEXT - [ ] x")]
+        issues = [_support.issue(1, "type:bug", "status:inbox", body="SECRET-TEXT - [ ] x")]
         self.run_set(["--issue", "1", "--status", "needs-info", "--apply"], issues=issues)
         text = self.journal_path().read_text()
         self.assertNotIn("SECRET-TEXT", text)
@@ -347,7 +347,7 @@ class PromotionBase(SetBase):
         self.cfg = self.make_cfg(extra="promotion: checked\n")
 
     def candidate(self, *extra, body=BODY, blockers=(), state="OPEN", labels=("type:feature", "status:inbox", "size:S")):
-        return S.issue(1, *(tuple(labels) + extra), blockers=list(blockers), body=body, state=state)
+        return _support.issue(1, *(tuple(labels) + extra), blockers=list(blockers), body=body, state=state)
 
     def views(self, runner):
         return [c for c in runner.calls if tuple(c[1:3]) == ("issue", "view")]
@@ -405,7 +405,7 @@ class TestPromotion(PromotionBase):
         cases = {
             "no-acceptance": self.candidate(body="no list here"),
             "open-blocker:9": self.candidate(blockers=[{"number": 9, "state": "OPEN"}]),
-            "blockers-unknown": S.issue(1, "type:feature", "status:inbox", "size:S", body=BODY),
+            "blockers-unknown": _support.issue(1, "type:feature", "status:inbox", "size:S", body=BODY),
             "human-executor": self.candidate("exec:human"),
             "protected-present:auto:blocked": self.candidate("auto:blocked"),
             "exclusion:cross-repo": self.candidate("cross-repo"),
@@ -486,20 +486,20 @@ class TestBootstrapCarveOut(SetBase):
 
     def test_succeeds_under_promotion_checked_default_exec_gating(self):
         cfg = self.make_cfg(extra="promotion: checked\n")
-        rc, out, runner = self.run_set(self.BOOTSTRAP_ARGV, issues=[S.issue(1)], cfg=cfg)
+        rc, out, runner = self.run_set(self.BOOTSTRAP_ARGV, issues=[_support.issue(1)], cfg=cfg)
         self.assertEqual(rc, 0, out)
         self.assertNotIn("no-acceptance", out)
         self.assertEqual(runner.writes(), [edit_argv(1, "--add-label", ["exec:agent", "size:S", "status:inbox", "type:feature"])])
 
     def test_succeeds_under_promotion_checked_and_exec_gating_triage(self):
         cfg = self.make_cfg(extra="promotion: checked\nexec_gating: triage\n")
-        rc, out, runner = self.run_set(self.BOOTSTRAP_ARGV, issues=[S.issue(1)], cfg=cfg)
+        rc, out, runner = self.run_set(self.BOOTSTRAP_ARGV, issues=[_support.issue(1)], cfg=cfg)
         self.assertEqual(rc, 0, out)
         self.assertEqual(runner.writes(), [edit_argv(1, "--add-label", ["exec:agent", "size:S", "status:inbox", "type:feature"])])
 
     def test_still_refused_without_promotion_checked(self):
         cfg = self.make_cfg(extra="")
-        rc, out, runner = self.run_set(self.BOOTSTRAP_ARGV, issues=[S.issue(1)], cfg=cfg)
+        rc, out, runner = self.run_set(self.BOOTSTRAP_ARGV, issues=[_support.issue(1)], cfg=cfg)
         self.assertEqual(rc, 1)
         self.assertIn("promotion-off", out)
         self.assertEqual(runner.writes(), [])
@@ -507,7 +507,7 @@ class TestBootstrapCarveOut(SetBase):
     def test_requesting_ready_too_is_not_carved_out_and_needs_the_full_check(self):
         cfg = self.make_cfg(extra="promotion: checked\n")
         argv = ["--issue", "1", "--status", "ready", "--type", "feature", "--size", "S", "--exec", "agent", "--apply"]
-        rc, out, runner = self.run_set(argv, issues=[S.issue(1)], cfg=cfg)
+        rc, out, runner = self.run_set(argv, issues=[_support.issue(1)], cfg=cfg)
         self.assertEqual(rc, 1)
         self.assertIn("no-acceptance", out)
         self.assertEqual(runner.writes(), [])
@@ -517,19 +517,19 @@ class TestTheGrantOfASet(PromotionBase):
     """Defence in depth: the applier relaxes the refusal only for an ok verdict of THIS issue on an opted-in repo."""
 
     def edit(self, issue=1):
-        return A.LabelEdit(
+        return backlog_apply.LabelEdit(
             issue=issue, before=("status:inbox", "type:feature"), after=("exec:agent", "status:ready", "type:feature"),
             add=("exec:agent", "status:ready"), remove=("status:inbox",), reason="x",
         )
 
     def verdict(self, issue=1, ok=True):
-        return P.PromotionVerdict(issue=issue, ok=ok, codes=() if ok else ("no-acceptance",), facts={})
+        return backlog_promote.PromotionVerdict(issue=issue, ok=ok, codes=() if ok else ("no-acceptance",), facts={})
 
     def test_the_bulk_refusal_is_the_default(self):
-        self.assertEqual(A.mint_set_grant(self.cfg, self.edit()).refused_adds, frozenset({"status:ready", "exec:agent"}))
+        self.assertEqual(backlog_apply.mint_set_grant(self.cfg, self.edit()).refused_adds, frozenset({"status:ready", "exec:agent"}))
 
     def test_an_ok_verdict_of_the_same_issue_lifts_it(self):
-        self.assertEqual(A.mint_set_grant(self.cfg, self.edit(), self.verdict()).refused_adds, frozenset())
+        self.assertEqual(backlog_apply.mint_set_grant(self.cfg, self.edit(), self.verdict()).refused_adds, frozenset())
 
     def test_no_other_verdict_lifts_it(self):
         for name, verdict in (
@@ -539,29 +539,29 @@ class TestTheGrantOfASet(PromotionBase):
             ("none", None),
         ):
             with self.subTest(case=name):
-                self.assertEqual(A.mint_set_grant(self.cfg, self.edit(), verdict).refused_adds, frozenset({"status:ready", "exec:agent"}))
+                self.assertEqual(backlog_apply.mint_set_grant(self.cfg, self.edit(), verdict).refused_adds, frozenset({"status:ready", "exec:agent"}))
 
     def test_a_repo_that_did_not_opt_in_never_lifts_it(self):
         cfg = self.make_cfg(extra="")
-        self.assertEqual(A.mint_set_grant(cfg, self.edit(), self.verdict()).refused_adds, frozenset({"status:ready", "exec:agent"}))
+        self.assertEqual(backlog_apply.mint_set_grant(cfg, self.edit(), self.verdict()).refused_adds, frozenset({"status:ready", "exec:agent"}))
 
     def test_the_grant_covers_one_issue_and_no_label_creation(self):
-        grant = A.mint_set_grant(self.cfg, self.edit(), self.verdict())
+        grant = backlog_apply.mint_set_grant(self.cfg, self.edit(), self.verdict())
         self.assertEqual((grant.issues, grant.labels), (frozenset({1}), frozenset()))
 
     def test_refused_execute_without_a_verdict_never_writes_a_promotion(self):
-        runner = S.FakeRunner(issues=[self.candidate()])
+        runner = _support.FakeRunner(issues=[self.candidate()])
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
-            rc = A.execute_set(self.cfg, self.edit(), "x", None, apply_runner=runner)
+            rc = backlog_apply.execute_set(self.cfg, self.edit(), "x", None, apply_runner=runner)
         self.assertEqual(rc, 1)
         self.assertEqual(runner.writes(), [])
         # journaled first, then the chokepoint itself refused the add
         self.assertEqual([e["status"] for e in self.journal_lines()], ["intent", "failed"])
 
     def test_the_bulk_grant_still_refuses_ready_and_agent(self):
-        gate = A.Gate(digest="d", confirm="d", sha="s", rejected=0)
-        grant = A.mint_grant(self.cfg, gate, issues=[1])
+        gate = backlog_apply.Gate(digest="d", confirm="d", sha="s", rejected=0)
+        grant = backlog_apply.mint_grant(self.cfg, gate, issues=[1])
         self.assertEqual(grant.refused_adds, frozenset({"status:ready", "exec:agent"}))
 
 

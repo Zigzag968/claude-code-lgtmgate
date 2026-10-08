@@ -5,17 +5,17 @@ plays GitHub, so a write that slipped through would show in `runner.writes()`.""
 import shutil
 import unittest
 
-import _support as S
-import backlog_apply as A
-import backlog_catchup as K
-import backlog_labelsync as L
-import backlog_snapshot as SN
+import _support
+import backlog_apply
+import backlog_catchup
+import backlog_labelsync
+import backlog_snapshot
 
 COMMANDS = ("catchup", "rollback", "label-sync")
 GOOD = "good"
 
 
-class World(S.ApplyBase):
+class World(_support.ApplyBase):
     """Two `bug` issues frozen in a snapshot; what each command would do on the live state is prepared per command."""
 
     def prepare(self, command):
@@ -32,7 +32,7 @@ class World(S.ApplyBase):
             live, labels = [], []  # no label exists yet: every label of the config is a `create`
         self.command = command
         self.runner = self.runner_for(live, labels)
-        self.proposals = self.proposals_file([S.proposal(1), S.proposal(2)])
+        self.proposals = self.proposals_file([_support.proposal(1), _support.proposal(2)])
 
     def runner_for(self, live, labels):
         return self.new_runner(live, labels=labels)
@@ -54,7 +54,7 @@ class World(S.ApplyBase):
         return args
 
     def fn(self):
-        return {"catchup": K.main, "rollback": SN.main_rollback, "label-sync": L.main}[self.command]
+        return {"catchup": backlog_catchup.main, "rollback": backlog_snapshot.main_rollback, "label-sync": backlog_labelsync.main}[self.command]
 
     def good_digest(self):
         if not hasattr(self, "_digest"):
@@ -118,10 +118,10 @@ class TestConditions(World):
 
     def test_the_digest_without_a_snapshot_binding_is_not_accepted(self):
         self.prepare("catchup")
-        import backlog_triage as T
+        import backlog_triage
 
-        s1 = K.catchup_digest(T.parse_proposals([S.proposal(1), S.proposal(2)]), "acme/widgets")
-        rc, out = self.call(K.main, self.argv(confirm=s1), self.runner)
+        s1 = backlog_catchup.catchup_digest(backlog_triage.parse_proposals([_support.proposal(1), _support.proposal(2)]), "acme/widgets")
+        rc, out = self.call(backlog_catchup.main, self.argv(confirm=s1), self.runner)
         self.assertEqual(rc, 1, out)
         self.assertIn("refused: confirm", out)
         self.assertEqual(self.runner.writes(), [])
@@ -149,7 +149,7 @@ class TestConditions(World):
                 self.prepare(command)
                 other_cfg = self.make_cfg(repo="acme/other")
                 other_dir, other_sha = self.take_snapshot([], cfg=other_cfg, target=self.tmp / "snaps" / ("other%d" % self._prepared))
-                digest = SN.rollback_digest([], "acme/widgets") if command == "rollback" else self.dry_digest_for(command, other_sha, True)
+                digest = backlog_snapshot.rollback_digest([], "acme/widgets") if command == "rollback" else self.dry_digest_for(command, other_sha, True)
                 rc, out = self.call(self.fn(), self.argv(directory=other_dir, sha=other_sha, confirm=digest), self.runner)
                 self.assertEqual(rc, 1, out)
                 self.assertIn("refused: snapshot", out)
@@ -166,16 +166,16 @@ class TestConditions(World):
                 self.assertEqual(self.runner.writes(), [])
 
     def dir_inside_the_repo(self):
-        project = A.project_dir_of(self.cfg)
+        project = backlog_apply.project_dir_of(self.cfg)
         target = project / ("snapshots-in-repo-%d" % self._prepared)
         shutil.copytree(str(self.dir), str(target))
         return target
 
     def test_refused_snapshot_when_the_snapshot_does_not_cover_a_proposed_issue(self):
         self.prepare("catchup")
-        self.proposals = self.proposals_file([S.proposal(1), S.proposal(2), S.proposal(3)])
-        self.runner.issues.append(S.issue(3, "bug"))  # opened after the snapshot
-        rc, out = self.call(K.main, self.argv(confirm=self.dry_digest_for("catchup", self.sha, True)), self.runner)
+        self.proposals = self.proposals_file([_support.proposal(1), _support.proposal(2), _support.proposal(3)])
+        self.runner.issues.append(_support.issue(3, "bug"))  # opened after the snapshot
+        rc, out = self.call(backlog_catchup.main, self.argv(confirm=self.dry_digest_for("catchup", self.sha, True)), self.runner)
         self.assertEqual(rc, 1, out)
         self.assertIn("refused: snapshot", out)
         self.assertIn("#3 is not in the snapshot", out)
@@ -183,21 +183,21 @@ class TestConditions(World):
 
     def test_refused_snapshot_when_the_labels_changed_since_the_snapshot(self):
         self.prepare("catchup")
-        self.proposals = self.proposals_file([S.proposal(1, before=("bug", "nightly"), after=("nightly", "status:inbox", "type:bug")),
-                                              S.proposal(2)])
+        self.proposals = self.proposals_file([_support.proposal(1, before=("bug", "nightly"), after=("nightly", "status:inbox", "type:bug")),
+                                              _support.proposal(2)])
         self.runner.issues[0]["labels"].append({"name": "nightly"})  # relabelled after the snapshot
-        rc, out = self.call(K.main, self.argv(confirm=self.dry_digest_for("catchup", self.sha, True)), self.runner)
+        rc, out = self.call(backlog_catchup.main, self.argv(confirm=self.dry_digest_for("catchup", self.sha, True)), self.runner)
         self.assertEqual(rc, 1, out)
         self.assertIn("refused: snapshot", out)
         self.assertIn("#1 changed since the snapshot", out)
         self.assertEqual(self.runner.writes(), [])
 
     def test_refused_rejected(self):
-        role = S.proposal(1, after=("status:ready", "exec:agent", "type:bug", "size:S", "priority:1-next"))
+        role = _support.proposal(1, after=("status:ready", "exec:agent", "type:bug", "size:S", "priority:1-next"))
         cases = {
-            "role-add-refused": (lambda w: None, [role, S.proposal(2)]),
-            "stale-before": (lambda w: w.runner.issues[1]["labels"].append({"name": "size:L"}), [S.proposal(1), S.proposal(2)]),
-            "issue-not-open": (lambda w: w.runner.issues[1].update(state="CLOSED"), [S.proposal(1), S.proposal(2)]),
+            "role-add-refused": (lambda w: None, [role, _support.proposal(2)]),
+            "stale-before": (lambda w: w.runner.issues[1]["labels"].append({"name": "size:L"}), [_support.proposal(1), _support.proposal(2)]),
+            "issue-not-open": (lambda w: w.runner.issues[1].update(state="CLOSED"), [_support.proposal(1), _support.proposal(2)]),
         }
         for code, (mutate, entries) in cases.items():
             with self.subTest(code=code):
@@ -206,30 +206,30 @@ class TestConditions(World):
                 mutate(self)
                 # the snapshot still covers the issues: only the LIVE validation rejects
                 digest = self.dry_digest_for("catchup", self.sha, True)
-                rc, out = self.call(K.main, self.argv(confirm=digest), self.runner)
+                rc, out = self.call(backlog_catchup.main, self.argv(confirm=digest), self.runner)
                 self.assertEqual(rc, 1, out)
                 self.assertIn("refused: rejected", out)
                 self.assertIn(code, out)
                 self.assertEqual(self.runner.writes(), [])
 
     def test_check_gate_refuses_rejections_on_its_own_too(self):
-        with self.assertRaises(A.Refused) as raised:
-            A.check_gate(self.cfg, apply=True, confirm="d", digest="d", verify=lambda: "sha", rejected=1)
+        with self.assertRaises(backlog_apply.RefusedError) as raised:
+            backlog_apply.check_gate(self.cfg, apply=True, confirm="d", digest="d", verify=lambda: "sha", rejected=1)
         self.assertEqual(raised.exception.code, "rejected")
 
     def test_the_six_codes_are_the_documented_ones(self):
-        self.assertEqual(A.CODES, ("mode", "repo", "apply", "confirm", "snapshot", "rejected"))
+        self.assertEqual(backlog_apply.CODES, ("mode", "repo", "apply", "confirm", "snapshot", "rejected"))
 
     def test_check_gate_orders_the_conditions_mode_first(self):
         propose = self.make_cfg("propose")
         for kw in ({"apply": False}, {"apply": True, "confirm": None}):
-            with self.subTest(kw=kw), self.assertRaises(A.Refused) as raised:
-                A.check_gate(propose, confirm=kw.get("confirm", "d"), digest="d", verify=lambda: "sha", rejected=1, apply=kw["apply"])
+            with self.subTest(kw=kw), self.assertRaises(backlog_apply.RefusedError) as raised:
+                backlog_apply.check_gate(propose, confirm=kw.get("confirm", "d"), digest="d", verify=lambda: "sha", rejected=1, apply=kw["apply"])
             self.assertEqual(raised.exception.code, "mode")
 
     def test_the_apply_path_refuses_offline_inputs(self):
         self.prepare("catchup")
-        rc, out = self.call(K.main, self.argv() + ["--issues-file", str(self.tmp / "x.json"), "--labels-file", str(self.tmp / "y.json")], self.runner)
+        rc, out = self.call(backlog_catchup.main, self.argv() + ["--issues-file", str(self.tmp / "x.json"), "--labels-file", str(self.tmp / "y.json")], self.runner)
         self.assertEqual(rc, 1, out)
         self.assertIn("refused: apply", out)
         self.assertEqual(self.runner.calls, [])

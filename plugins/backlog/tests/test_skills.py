@@ -2,10 +2,10 @@ import json
 import re
 import unittest
 
-import _support as S
+import _support
 
-SKILLS_DIR = S.PLUGIN_ROOT / "skills"
-README = S.PLUGIN_ROOT / "README.md"
+SKILLS_DIR = _support.PLUGIN_ROOT / "skills"
+README = _support.PLUGIN_ROOT / "README.md"
 MAX_DESCRIPTION = 90
 EXPECTED = ("file", "next", "triage")
 
@@ -60,26 +60,26 @@ class TestSkills(unittest.TestCase):
             self.assertIn('${CLAUDE_PLUGIN_ROOT}/scripts/backlog_cli.py', body)
 
     def test_manifest_hooks_target_exists(self):
-        manifest = json.loads((S.PLUGIN_ROOT / ".claude-plugin" / "plugin.json").read_text())
+        manifest = json.loads((_support.PLUGIN_ROOT / ".claude-plugin" / "plugin.json").read_text())
         self.assertEqual(manifest["name"], "backlog")
-        target = S.PLUGIN_ROOT / manifest["hooks"]
+        target = _support.PLUGIN_ROOT / manifest["hooks"]
         self.assertTrue(target.is_file(), target)
         hooks = json.loads(target.read_text())["hooks"]
         self.assertEqual(sorted(hooks), ["PreToolUse"])
         command = hooks["PreToolUse"][0]["hooks"][0]["command"]
         script = command.split("${CLAUDE_PLUGIN_ROOT}/")[1].rstrip('"')
-        self.assertTrue((S.PLUGIN_ROOT / script).is_file(), script)
+        self.assertTrue((_support.PLUGIN_ROOT / script).is_file(), script)
 
     def test_manifest_has_no_settings_or_user_config_surface(self):
-        manifest = json.loads((S.PLUGIN_ROOT / ".claude-plugin" / "plugin.json").read_text())
+        manifest = json.loads((_support.PLUGIN_ROOT / ".claude-plugin" / "plugin.json").read_text())
         self.assertNotIn("userConfig", manifest)
-        self.assertEqual(manifest["version"], "0.5.7")
+        self.assertEqual(manifest["version"], "0.5.8")
 
     def test_reserved_words_stay_where_the_contract_puts_them(self):
         def offenders(pattern, allowed):
             allowed = (allowed,) if isinstance(allowed, str) else allowed
             out = []
-            for path in sorted(S.SCRIPTS.glob("*.py")):
+            for path in sorted(_support.SCRIPTS.glob("*.py")):
                 if re.search(pattern, path.read_text(encoding="utf-8"), re.I) and path.name not in allowed:
                     out.append(path.name)
             return out

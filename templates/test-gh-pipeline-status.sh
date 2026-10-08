@@ -126,7 +126,7 @@ git init -q "$repo3"
 log3="$f3/gh-calls.log"
 : > "$log3"
 
-out3="$(PATH="$f3/bin:$PATH" FAKE_GH_LOG="$log3" bash "$repo3/.claude/scripts/gh-pipeline-status.sh" 799 2>"$f3/stderr")"
+PATH="$f3/bin:$PATH" FAKE_GH_LOG="$log3" bash "$repo3/.claude/scripts/gh-pipeline-status.sh" 799 >/dev/null 2>"$f3/stderr"
 exit3=$?
 
 if [ "$exit3" -ne 0 ]; then

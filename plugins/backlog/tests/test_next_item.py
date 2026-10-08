@@ -4,26 +4,26 @@ import json
 import subprocess
 import unittest
 
-import _support as S
-import backlog_config as C
+import _support
+import backlog_config
 from backlog_gh import Gh
 from next_item import main, open_blockers, open_pr_references, select_next
 
-SNAPSHOT = S.FIXTURES / "backlog_issues_snapshot.json"
-EMPTY_QUEUE = S.FIXTURES / "backlog_issues_empty_queue.json"
-PRS = S.FIXTURES / "backlog_prs_open.json"
+SNAPSHOT = _support.FIXTURES / "backlog_issues_snapshot.json"
+EMPTY_QUEUE = _support.FIXTURES / "backlog_issues_empty_queue.json"
+PRS = _support.FIXTURES / "backlog_prs_open.json"
 
 # The reference implementation also excludes its two legacy flags from the queue: they are plain `exclusions` here.
-with S.tmpdir() as _tmp:
-    S.write_config(_tmp, "contract: 1\nmode: propose\nexclusions: [cross-repo, money-path, epic, triage:interactive]\n")
-    CFG = C.load_config(_tmp)
+with _support.tmpdir() as _tmp:
+    _support.write_config(_tmp, "contract: 1\nmode: propose\nexclusions: [cross-repo, money-path, epic, triage:interactive]\n")
+    CFG = backlog_config.load_config(_tmp)
 assert CFG.mode == "propose", CFG.reason
 
 BASE = ("status:ready", "exec:agent", "size:S", "type:chore")
 
 
 def _issue(number, *labels, created="2026-09-10T00:00:00Z", state="OPEN", blockers=None):
-    return S.issue(number, *(labels or BASE), state=state, created=created, blockers=blockers)
+    return _support.issue(number, *(labels or BASE), state=state, created=created, blockers=blockers)
 
 
 def _labels(*extra, drop=()):
@@ -69,9 +69,9 @@ class TestSort(unittest.TestCase):
         self.assertEqual(_picked([_issue(5), _issue(3)]), 3)
 
     def test_priority_rank_follows_configured_order(self):
-        with S.tmpdir() as tmp:
-            S.write_config(tmp, "contract: 1\nmode: propose\nlabels:\n  priority: [2-later, 1-next, 0-now]\ncaps:\n")
-            cfg = C.load_config(tmp)
+        with _support.tmpdir() as tmp:
+            _support.write_config(tmp, "contract: 1\nmode: propose\nlabels:\n  priority: [2-later, 1-next, 0-now]\ncaps:\n")
+            cfg = backlog_config.load_config(tmp)
         first = _issue(1, *_labels("priority:0-now"))
         second = _issue(2, *_labels("priority:2-later"))
         self.assertEqual(select_next([first, second], [], cfg).selected["number"], 2)
@@ -100,7 +100,7 @@ class TestExclusions(unittest.TestCase):
                 self.assertIsNone(_picked([_issue(1, *_labels(flag))]))
 
     def test_exclusions_are_configurable(self):
-        cfg = C.default_config("propose")  # reference defaults: no `triage:interactive` exclusion
+        cfg = backlog_config.default_config("propose")  # reference defaults: no `triage:interactive` exclusion
         issue = _issue(1, *_labels("triage:interactive"))
         self.assertEqual(select_next([issue], [], cfg).selected["number"], 1)
 
@@ -193,7 +193,7 @@ class TestCli(unittest.TestCase):
         self.assertEqual(json.loads(out)["candidates"], [101, 102, 104, 113])
 
     def test_fetch_failure_returns_1_and_is_never_queue_empty(self):
-        gh = Gh(CFG, runner=S.FakeRunner(fail=subprocess.CalledProcessError(1, "gh")))
+        gh = Gh(CFG, runner=_support.FakeRunner(fail=subprocess.CalledProcessError(1, "gh")))
         rc, out = run_main([], gh)
         self.assertEqual(rc, 1)
         self.assertTrue(out.startswith("[next-item] error:"))
@@ -208,22 +208,22 @@ class TestCli(unittest.TestCase):
         self.assertNotIn("queue empty", out)
 
     def test_truncated_fetch_is_an_error_not_an_empty_queue(self):
-        runner = S.FakeRunner(issues=[{"number": n} for n in range(500)])
+        runner = _support.FakeRunner(issues=[{"number": n} for n in range(500)])
         rc, out = run_main([], Gh(CFG, runner=runner))
         self.assertEqual(rc, 1)
         self.assertIn("truncation", out)
         self.assertNotIn("queue empty", out)
 
     def test_fetch_uses_limits(self):
-        runner = S.FakeRunner()
+        runner = _support.FakeRunner()
         rc, _ = run_main([], Gh(CFG, runner=runner))
         self.assertEqual(rc, 0)
         self.assertEqual(len(runner.calls), 2)
         self.assertTrue(all("--limit" in c for c in runner.calls))
 
     def test_bad_issues_file_returns_1(self):
-        with S.tmpdir() as tmp:
-            bad = S.Path(tmp) / "issues.json"
+        with _support.tmpdir() as tmp:
+            bad = _support.Path(tmp) / "issues.json"
             bad.write_text('{"not": "a list"}')
             rc, out = run_main(["--issues-file", str(bad), "--prs-file", str(PRS)])
         self.assertEqual(rc, 1)

@@ -3,22 +3,22 @@ import shutil
 import subprocess
 import unittest
 
-import _support as S
-import backlog_config as C
-import backlog_guard as G
+import _support
+import backlog_config
+import backlog_guard
 
 
 def hook(project, command, tmp_bin=None):
-    env = S.cli_env(tmp_bin, {"CLAUDE_PROJECT_DIR": str(project), "CLAUDE_PLUGIN_ROOT": str(S.PLUGIN_ROOT)})
+    env = _support.cli_env(tmp_bin, {"CLAUDE_PROJECT_DIR": str(project), "CLAUDE_PLUGIN_ROOT": str(_support.PLUGIN_ROOT)})
     payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": command}})
-    return subprocess.run(["bash", str(S.GUARD_HOOK)], input=payload, env=env, capture_output=True, text=True, cwd=str(project))
+    return subprocess.run(["bash", str(_support.GUARD_HOOK)], input=payload, env=env, capture_output=True, text=True, cwd=str(project))
 
 
 @unittest.skipUnless(shutil.which("jq"), "jq not installed")
 class TestGuardHook(unittest.TestCase):
     def setUp(self):
-        self._tmp = S.tmpdir()
-        self.project = S.Path(self._tmp.name)
+        self._tmp = _support.tmpdir()
+        self.project = _support.Path(self._tmp.name)
 
     def tearDown(self):
         self._tmp.cleanup()
@@ -28,7 +28,7 @@ class TestGuardHook(unittest.TestCase):
         self.assertEqual((proc.returncode, proc.stdout, proc.stderr), (0, "", ""))
 
     def test_propose_denies_raw_owned_axis_write(self):
-        S.write_mode(self.project, "propose")
+        _support.write_mode(self.project, "propose")
         proc = hook(self.project, "gh issue edit 5 --add-label status:ready")
         self.assertEqual(proc.returncode, 2, proc.stdout + proc.stderr)
         out = json.loads(proc.stdout)["hookSpecificOutput"]
@@ -42,15 +42,15 @@ class TestGuardHook(unittest.TestCase):
         command = "gh issue edit 5 --add-label status:ready"
         for mode, expected in (("propose", 2), ("write-supervised", 2), ("free", 0)):
             with self.subTest(mode=mode):
-                S.write_mode(self.project, mode)
+                _support.write_mode(self.project, mode)
                 self.assertEqual(hook(self.project, command).returncode, expected)
 
     def test_write_supervised_denies_too(self):
-        S.write_mode(self.project, "write-supervised")
+        _support.write_mode(self.project, "write-supervised")
         self.assertEqual(hook(self.project, "gh issue create --title x --label type:bug").returncode, 2)
 
     def test_non_owned_labels_and_flags_are_allowed(self):
-        S.write_mode(self.project, "propose")
+        _support.write_mode(self.project, "propose")
         for command in (
             "gh issue edit 5 --add-label auto:pr-ready",
             "gh issue edit 5 --add-label nightly",
@@ -68,12 +68,12 @@ class TestGuardHook(unittest.TestCase):
     def test_free_and_off_allow_everything(self):
         for mode in ("free", "off"):
             with self.subTest(mode=mode):
-                S.write_mode(self.project, mode)
+                _support.write_mode(self.project, mode)
                 self.assertEqual(hook(self.project, "gh issue edit 5 --add-label status:ready").returncode, 0)
 
     def test_free_mode_still_denies_an_undeclared_axis_value(self):
         # doctrine rule 3 (§4): unlike the namespace-touch rule above, this one is NOT lifted in free mode
-        S.write_mode(self.project, "free")
+        _support.write_mode(self.project, "free")
         proc = hook(self.project, "gh issue edit 5 --add-label priority:not-a-declared-value")
         self.assertEqual(proc.returncode, 2, proc.stdout + proc.stderr)
         out = json.loads(proc.stdout)["hookSpecificOutput"]
@@ -84,12 +84,12 @@ class TestGuardHook(unittest.TestCase):
     def test_free_mode_still_allows_a_declared_axis_value(self):
         # no over-blocking regression: status:ready is a DECLARED value, stays allowed in free (see the test above
         # this replaces: test_a_raw_status_ready_write_is_denied_or_allowed_by_mode also covers free -> 0)
-        S.write_mode(self.project, "free")
+        _support.write_mode(self.project, "free")
         proc = hook(self.project, "gh issue edit 5 --add-label status:ready")
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
 
     def test_free_mode_still_denies_the_rest_api_bypass(self):
-        S.write_mode(self.project, "free")
+        _support.write_mode(self.project, "free")
         proc = hook(
             self.project,
             'gh api repos/acme/widgets/issues/5/labels -f "labels[]=priority:not-a-declared-value"',
@@ -102,7 +102,7 @@ class TestGuardHook(unittest.TestCase):
     def test_bare_issue_create_denied_by_default_in_write_supervised_and_free(self):
         for mode in ("write-supervised", "free"):
             with self.subTest(mode=mode):
-                S.write_mode(self.project, mode)
+                _support.write_mode(self.project, mode)
                 proc = hook(self.project, "gh issue create --title x")
                 self.assertEqual(proc.returncode, 2, proc.stdout + proc.stderr)
                 out = json.loads(proc.stdout)["hookSpecificOutput"]
@@ -112,29 +112,29 @@ class TestGuardHook(unittest.TestCase):
     def test_bare_issue_create_allowed_with_guard_issue_create_false(self):
         for mode in ("write-supervised", "free"):
             with self.subTest(mode=mode):
-                S.write_repo_config(self.project, mode=mode, extra="guard_issue_create: false\n")
+                _support.write_repo_config(self.project, mode=mode, extra="guard_issue_create: false\n")
                 proc = hook(self.project, "gh issue create --title x")
                 self.assertEqual((proc.returncode, proc.stdout, proc.stderr), (0, "", ""))
 
     def test_bare_issue_create_never_denied_in_propose(self):
         # propose already refuses every gh-level creation through mode alone; the new rule targets write-supervised/free
-        S.write_mode(self.project, "propose")
+        _support.write_mode(self.project, "propose")
         proc = hook(self.project, "gh issue create --title x")
         self.assertEqual((proc.returncode, proc.stdout, proc.stderr), (0, "", ""))
 
     def test_missing_python_fails_open(self):
-        S.write_mode(self.project, "propose")
+        _support.write_mode(self.project, "propose")
         proc = hook(self.project, "gh issue edit 5 --add-label status:ready", None)
         self.assertEqual(proc.returncode, 2)  # control: it denies when python works
-        env = S.cli_env(None, {"CLAUDE_PROJECT_DIR": str(self.project), "CLAUDE_PLUGIN_ROOT": "/nonexistent"})
+        env = _support.cli_env(None, {"CLAUDE_PROJECT_DIR": str(self.project), "CLAUDE_PLUGIN_ROOT": "/nonexistent"})
         payload = json.dumps({"tool_input": {"command": "gh issue edit 5 --add-label status:ready"}})
-        broken = subprocess.run(["bash", str(S.GUARD_HOOK)], input=payload, env=env, capture_output=True, text=True, cwd=str(self.project))
+        broken = subprocess.run(["bash", str(_support.GUARD_HOOK)], input=payload, env=env, capture_output=True, text=True, cwd=str(self.project))
         self.assertEqual(broken.returncode, 0)
 
 
 class TestGuardCheck(unittest.TestCase):
     def check(self, command, mode="propose"):
-        return G.check(command, C.default_config(mode))
+        return backlog_guard.check(command, backlog_config.default_config(mode))
 
     def test_denies_each_owned_axis_write_shape(self):
         for command in (
@@ -224,7 +224,7 @@ class TestGuardCheck(unittest.TestCase):
             for mode in ("propose", "write-supervised", "free"):
                 with self.subTest(command=command, mode=mode):
                     self.assertIsNone(self.check(command, mode))
-                    self.assertIsNone(G.check_ask(command, C.default_config(mode)))
+                    self.assertIsNone(backlog_guard.check_ask(command, backlog_config.default_config(mode)))
 
     def test_bare_issue_create_denied_only_in_write_supervised_and_free(self):
         self.assertIsNone(self.check("gh issue create --title x", "propose"))
@@ -236,23 +236,23 @@ class TestGuardCheck(unittest.TestCase):
                 self.assertIn("/backlog:file", reason)
 
     def test_bare_issue_create_opt_out(self):
-        cfg = C.replace(C.default_config("free"), guard_issue_create=False)
-        self.assertIsNone(G.check("gh issue create --title x", cfg))
+        cfg = backlog_config.replace(backlog_config.default_config("free"), guard_issue_create=False)
+        self.assertIsNone(backlog_guard.check("gh issue create --title x", cfg))
 
 
 class TestApiTouchedLabels(unittest.TestCase):
     def test_extracts_values_from_dash_f_and_dash_capital_f(self):
         self.assertEqual(
-            G.api_touched_labels('gh api repos/o/r/issues/5/labels -f "labels[]=priority:bogus" -F name=type:bug'),
+            backlog_guard.api_touched_labels('gh api repos/o/r/issues/5/labels -f "labels[]=priority:bogus" -F name=type:bug'),
             ["priority:bogus", "type:bug"],
         )
 
     def test_ignores_calls_to_other_endpoints(self):
-        self.assertEqual(G.api_touched_labels("gh api repos/o/r/issues/5 -f title=x"), [])
-        self.assertEqual(G.api_touched_labels("gh api repos/o/r/pulls/5 -f labels[]=type:bug"), [])
+        self.assertEqual(backlog_guard.api_touched_labels("gh api repos/o/r/issues/5 -f title=x"), [])
+        self.assertEqual(backlog_guard.api_touched_labels("gh api repos/o/r/pulls/5 -f labels[]=type:bug"), [])
 
     def test_matches_the_bare_labels_endpoint_too(self):
-        self.assertEqual(G.api_touched_labels("gh api repos/o/r/labels -f name=type:bug -f color=fff"), ["type:bug", "fff"])
+        self.assertEqual(backlog_guard.api_touched_labels("gh api repos/o/r/labels -f name=type:bug -f color=fff"), ["type:bug", "fff"])
 
 
 APPLY_COMMANDS = (
@@ -285,8 +285,8 @@ class TestApplyAskRuleH2(unittest.TestCase):
     """Rule H2: an apply command gets `permissionDecision: ask` (exit 0), in every mode except off."""
 
     def setUp(self):
-        self._tmp = S.tmpdir()
-        self.project = S.Path(self._tmp.name)
+        self._tmp = _support.tmpdir()
+        self.project = _support.Path(self._tmp.name)
 
     def tearDown(self):
         self._tmp.cleanup()
@@ -294,7 +294,7 @@ class TestApplyAskRuleH2(unittest.TestCase):
     def test_an_apply_command_is_silent_by_default(self):
         # apply_prompt defaults to "none": normal work raises no permission prompt
         for mode in ("propose", "write-supervised", "free"):
-            S.write_mode(self.project, mode)
+            _support.write_mode(self.project, mode)
             for command in APPLY_COMMANDS:
                 with self.subTest(mode=mode, command=command):
                     proc = hook(self.project, command)
@@ -302,7 +302,7 @@ class TestApplyAskRuleH2(unittest.TestCase):
 
     def test_an_apply_command_asks_when_apply_prompt_is_ask(self):
         for mode in ("propose", "write-supervised", "free"):
-            S.write_repo_config(self.project, mode=mode, extra="apply_prompt: ask\n")
+            _support.write_repo_config(self.project, mode=mode, extra="apply_prompt: ask\n")
             for command in APPLY_COMMANDS:
                 with self.subTest(mode=mode, command=command):
                     proc = hook(self.project, command)
@@ -314,12 +314,12 @@ class TestApplyAskRuleH2(unittest.TestCase):
                     self.assertIn("APPLIES label changes", out["permissionDecisionReason"])
 
     def test_off_and_no_config_stay_silent(self):
-        S.write_mode(self.project, "off")
+        _support.write_mode(self.project, "off")
         for command in APPLY_COMMANDS:
             with self.subTest(mode="off", command=command):
                 proc = hook(self.project, command)
                 self.assertEqual((proc.returncode, proc.stdout, proc.stderr), (0, "", ""))
-        empty = S.Path(self._tmp.name) / "empty"
+        empty = _support.Path(self._tmp.name) / "empty"
         empty.mkdir()
         for command in APPLY_COMMANDS:
             with self.subTest(config="none", command=command):
@@ -328,14 +328,14 @@ class TestApplyAskRuleH2(unittest.TestCase):
 
     def test_everything_that_is_not_an_apply_stays_silent(self):
         for mode in ("propose", "write-supervised", "free"):
-            S.write_mode(self.project, mode)
+            _support.write_mode(self.project, mode)
             for command in NOT_APPLY_COMMANDS:
                 with self.subTest(mode=mode, command=command):
                     proc = hook(self.project, command)
                     self.assertEqual((proc.returncode, proc.stdout, proc.stderr), (0, "", ""))
 
     def test_the_raw_owned_axis_deny_is_still_a_deny(self):
-        S.write_mode(self.project, "propose")
+        _support.write_mode(self.project, "propose")
         proc = hook(self.project, "gh issue edit 5 --add-label status:ready")
         self.assertEqual(proc.returncode, 2)
         self.assertEqual(json.loads(proc.stdout)["hookSpecificOutput"]["permissionDecision"], "deny")
@@ -345,27 +345,27 @@ class TestApplyAskRuleH2(unittest.TestCase):
 
     def test_no_config_means_no_stdin_read_no_jq_and_no_python(self):
         # inert before anything: an EMPTY PATH would break jq/python/grep, and the hook must still exit 0 silently
-        env = {"PATH": "", "CLAUDE_PROJECT_DIR": str(self.project), "CLAUDE_PLUGIN_ROOT": str(S.PLUGIN_ROOT)}
+        env = {"PATH": "", "CLAUDE_PROJECT_DIR": str(self.project), "CLAUDE_PLUGIN_ROOT": str(_support.PLUGIN_ROOT)}
         bash = shutil.which("bash")
-        proc = subprocess.run([bash, str(S.GUARD_HOOK)], input="{}", env=env, capture_output=True, text=True, cwd=str(self.project))
+        proc = subprocess.run([bash, str(_support.GUARD_HOOK)], input="{}", env=env, capture_output=True, text=True, cwd=str(self.project))
         self.assertEqual((proc.returncode, proc.stdout, proc.stderr), (0, "", ""))
 
     def test_a_broken_plugin_root_fails_open(self):
-        S.write_mode(self.project, "propose")
-        env = S.cli_env(None, {"CLAUDE_PROJECT_DIR": str(self.project), "CLAUDE_PLUGIN_ROOT": "/nonexistent"})
+        _support.write_mode(self.project, "propose")
+        env = _support.cli_env(None, {"CLAUDE_PROJECT_DIR": str(self.project), "CLAUDE_PLUGIN_ROOT": "/nonexistent"})
         payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": APPLY_COMMANDS[0]}})
-        proc = subprocess.run(["bash", str(S.GUARD_HOOK)], input=payload, env=env, capture_output=True, text=True, cwd=str(self.project))
+        proc = subprocess.run(["bash", str(_support.GUARD_HOOK)], input=payload, env=env, capture_output=True, text=True, cwd=str(self.project))
         self.assertEqual((proc.returncode, proc.stdout), (0, ""))
 
     def test_the_first_executable_line_is_still_the_config_test(self):
-        lines = [l for l in S.GUARD_HOOK.read_text().splitlines() if l.strip() and not l.lstrip().startswith("#")]
+        lines = [l for l in _support.GUARD_HOOK.read_text().splitlines() if l.strip() and not l.lstrip().startswith("#")]
         self.assertEqual(lines[0], '[ -f "${CLAUDE_PROJECT_DIR:-$PWD}/.claude/backlog.yml" ] || exit 0')
-        self.assertIn('"ask"', S.GUARD_HOOK.read_text())
+        self.assertIn('"ask"', _support.GUARD_HOOK.read_text())
 
 
 class TestCheckAsk(unittest.TestCase):
     def check(self, command, mode="propose"):
-        return G.check_ask(command, C.default_config(mode))
+        return backlog_guard.check_ask(command, backlog_config.default_config(mode))
 
     def test_off_never_asks(self):
         for command in APPLY_COMMANDS:
@@ -373,10 +373,10 @@ class TestCheckAsk(unittest.TestCase):
 
     def test_apply_commands_ask_in_the_other_modes_when_enabled(self):
         for mode in ("propose", "write-supervised", "free"):
-            cfg = C.replace(C.default_config(mode), apply_prompt="ask")
+            cfg = backlog_config.replace(backlog_config.default_config(mode), apply_prompt="ask")
             for command in APPLY_COMMANDS:
                 with self.subTest(mode=mode, command=command):
-                    self.assertIn(mode, G.check_ask(command, cfg))
+                    self.assertIn(mode, backlog_guard.check_ask(command, cfg))
 
     def test_apply_commands_never_ask_by_default(self):
         for mode in ("propose", "write-supervised", "free"):
@@ -390,7 +390,7 @@ class TestCheckAsk(unittest.TestCase):
                 self.assertIsNone(self.check(command))
 
     def test_check_itself_is_unchanged_and_never_asks(self):
-        self.assertIsNone(G.check("python3 backlog_cli.py label-sync --apply", C.default_config("propose")))
+        self.assertIsNone(backlog_guard.check("python3 backlog_cli.py label-sync --apply", backlog_config.default_config("propose")))
 
 
 if __name__ == "__main__":

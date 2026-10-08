@@ -3,20 +3,20 @@
 import dataclasses
 import unittest
 
-import _support as S
-import backlog_config as C
-import backlog_promote as P
+import _support
+import backlog_config
+import backlog_promote
 
 BODY = "## Acceptance\n- [ ] the thing works\n- [x] and is tested\n"
 AFTER = frozenset({"type:feature", "status:ready", "exec:agent", "size:S"})
 
 
 def cfg(promotion="checked"):
-    return C.replace(C.default_config("write-supervised", "acme/widgets"), promotion=promotion)
+    return backlog_config.replace(backlog_config.default_config("write-supervised", "acme/widgets"), promotion=promotion)
 
 
 def live(*labels, body=BODY, blockers=(), number=7):
-    return S.issue(number, *(labels or ("type:feature", "status:inbox", "size:S")), blockers=list(blockers), body=body)
+    return _support.issue(number, *(labels or ("type:feature", "status:inbox", "size:S")), blockers=list(blockers), body=body)
 
 
 class TestCheckboxCounter(unittest.TestCase):
@@ -34,7 +34,7 @@ class TestCheckboxCounter(unittest.TestCase):
                 "\t- [ ] tabbed",
             ]
         )
-        self.assertEqual(P.count_checkboxes(text), 9)
+        self.assertEqual(backlog_promote.count_checkboxes(text), 9)
 
     def test_does_not_count_lookalikes(self):
         text = "\n".join(
@@ -51,54 +51,54 @@ class TestCheckboxCounter(unittest.TestCase):
                 "1234. [ ] too many digits",
             ]
         )
-        self.assertEqual(P.count_checkboxes(text), 0)
+        self.assertEqual(backlog_promote.count_checkboxes(text), 0)
 
     def test_ignores_backtick_fences(self):
-        self.assertEqual(P.count_checkboxes("```\n- [ ] in code\n```\n"), 0)
-        self.assertEqual(P.count_checkboxes("   ```md\n- [ ] in code\n   ```\n- [ ] real\n"), 1)
+        self.assertEqual(backlog_promote.count_checkboxes("```\n- [ ] in code\n```\n"), 0)
+        self.assertEqual(backlog_promote.count_checkboxes("   ```md\n- [ ] in code\n   ```\n- [ ] real\n"), 1)
 
     def test_ignores_tilde_fences(self):
-        self.assertEqual(P.count_checkboxes("~~~\n- [ ] in code\n~~~\n"), 0)
+        self.assertEqual(backlog_promote.count_checkboxes("~~~\n- [ ] in code\n~~~\n"), 0)
 
     def test_a_fence_is_closed_by_its_own_marker_only(self):
-        self.assertEqual(P.count_checkboxes("~~~\n```\n- [ ] still code\n```\n~~~\n- [ ] real\n"), 1)
+        self.assertEqual(backlog_promote.count_checkboxes("~~~\n```\n- [ ] still code\n```\n~~~\n- [ ] real\n"), 1)
 
     def test_an_unclosed_fence_hides_the_rest(self):
-        self.assertEqual(P.count_checkboxes("- [ ] before\n```\n- [ ] after\n- [ ] after too\n"), 1)
+        self.assertEqual(backlog_promote.count_checkboxes("- [ ] before\n```\n- [ ] after\n- [ ] after too\n"), 1)
 
     def test_ignores_html_comments(self):
-        self.assertEqual(P.count_checkboxes("<!-- - [ ] hidden -->\n- [ ] real\n"), 1)
-        self.assertEqual(P.count_checkboxes("<!--\n- [ ] hidden\n- [ ] hidden\n-->\n"), 0)
+        self.assertEqual(backlog_promote.count_checkboxes("<!-- - [ ] hidden -->\n- [ ] real\n"), 1)
+        self.assertEqual(backlog_promote.count_checkboxes("<!--\n- [ ] hidden\n- [ ] hidden\n-->\n"), 0)
 
     def test_an_unterminated_comment_hides_the_rest(self):
-        self.assertEqual(P.count_checkboxes("- [ ] before\n<!-- never closed\n- [ ] after\n"), 1)
+        self.assertEqual(backlog_promote.count_checkboxes("- [ ] before\n<!-- never closed\n- [ ] after\n"), 1)
 
     def test_counts_after_a_closed_comment_and_a_closed_fence(self):
         text = "<!-- c -->\n```\n- [ ] code\n```\n- [ ] one\n<!-- d -->\n- [x] two\n"
-        self.assertEqual(P.count_checkboxes(text), 2)
+        self.assertEqual(backlog_promote.count_checkboxes(text), 2)
 
     def test_crlf_lines_count(self):
-        self.assertEqual(P.count_checkboxes("- [ ] a\r\n- [x] b\r\n"), 2)
+        self.assertEqual(backlog_promote.count_checkboxes("- [ ] a\r\n- [x] b\r\n"), 2)
 
     def test_a_missing_or_non_text_value_is_zero(self):
         for value in (None, 5, ["- [ ] x"], {"a": 1}, b"- [ ] x"):
             with self.subTest(value=value):
-                self.assertEqual(P.count_checkboxes(value), 0)
+                self.assertEqual(backlog_promote.count_checkboxes(value), 0)
 
     def test_only_the_first_max_body_characters_are_read(self):
-        cut = "x" * (P.MAX_BODY - 2) + "\n"  # two characters left: a box cannot even start
-        self.assertEqual(P.count_checkboxes(cut + "- [ ] beyond the limit\n"), 0)
-        self.assertEqual(P.count_checkboxes("- [ ] first\n" + "x" * P.MAX_BODY + "\n- [ ] beyond\n"), 1)
+        cut = "x" * (backlog_promote.MAX_BODY - 2) + "\n"  # two characters left: a box cannot even start
+        self.assertEqual(backlog_promote.count_checkboxes(cut + "- [ ] beyond the limit\n"), 0)
+        self.assertEqual(backlog_promote.count_checkboxes("- [ ] first\n" + "x" * backlog_promote.MAX_BODY + "\n- [ ] beyond\n"), 1)
 
     def test_a_pathological_text_returns(self):
         for chunk in ("- [", "<!--", "```\n", "- [ ] ", "\t", "~~~ ", "1) [x] "):
             with self.subTest(chunk=chunk):
-                self.assertIsInstance(P.count_checkboxes(chunk * 60000), int)
+                self.assertIsInstance(backlog_promote.count_checkboxes(chunk * 60000), int)
 
 
 class TestVerdict(unittest.TestCase):
     def verdict(self, issue=None, after=AFTER, config=None):
-        return P.check_promotion(issue or live(), after, config or cfg())
+        return backlog_promote.check_promotion(issue or live(), after, config or cfg())
 
     def test_the_baseline_is_ok(self):
         verdict = self.verdict()
@@ -188,32 +188,32 @@ class TestVerdict(unittest.TestCase):
 
     def test_wants_and_is_promotion(self):
         config = cfg()
-        self.assertTrue(P.wants_promotion(["status:ready"], config))
-        self.assertTrue(P.wants_promotion(["size:S", "exec:agent"], config))
-        self.assertFalse(P.wants_promotion(["status:needs-info", "exec:human", "size:M"], config))
-        self.assertTrue(P.is_promotion({"status:inbox"}, {"status:ready"}, config))
-        self.assertFalse(P.is_promotion({"status:ready"}, {"status:ready", "size:S"}, config))
-        self.assertFalse(P.is_promotion({"status:ready"}, {"status:inbox"}, config))
+        self.assertTrue(backlog_promote.wants_promotion(["status:ready"], config))
+        self.assertTrue(backlog_promote.wants_promotion(["size:S", "exec:agent"], config))
+        self.assertFalse(backlog_promote.wants_promotion(["status:needs-info", "exec:human", "size:M"], config))
+        self.assertTrue(backlog_promote.is_promotion({"status:inbox"}, {"status:ready"}, config))
+        self.assertFalse(backlog_promote.is_promotion({"status:ready"}, {"status:ready", "size:S"}, config))
+        self.assertFalse(backlog_promote.is_promotion({"status:ready"}, {"status:inbox"}, config))
 
 
 class TestExecGating(unittest.TestCase):
     """`exec_gating` (default `promotion`, opt-in `triage`): whether an agent-executor add is reserved."""
 
     def test_promotion_gating_reserves_ready_and_agent(self):
-        self.assertEqual(P.reserved_adds(cfg()), frozenset({"status:ready", "exec:agent"}))
+        self.assertEqual(backlog_promote.reserved_adds(cfg()), frozenset({"status:ready", "exec:agent"}))
 
     def test_triage_gating_reserves_only_ready(self):
-        config = C.replace(cfg(), exec_gating="triage")
-        self.assertEqual(P.reserved_adds(config), frozenset({"status:ready"}))
+        config = backlog_config.replace(cfg(), exec_gating="triage")
+        self.assertEqual(backlog_promote.reserved_adds(config), frozenset({"status:ready"}))
 
     def test_triage_gating_makes_an_agent_only_add_non_promoting(self):
-        config = C.replace(cfg(), exec_gating="triage")
-        self.assertFalse(P.is_promotion({"status:inbox"}, {"status:inbox", "exec:agent"}, config))
-        self.assertTrue(P.is_promotion({"status:inbox"}, {"status:ready"}, config))
+        config = backlog_config.replace(cfg(), exec_gating="triage")
+        self.assertFalse(backlog_promote.is_promotion({"status:inbox"}, {"status:inbox", "exec:agent"}, config))
+        self.assertTrue(backlog_promote.is_promotion({"status:inbox"}, {"status:ready"}, config))
 
     def test_promotion_gating_is_unchanged_from_today(self):
         config = cfg()
-        self.assertTrue(P.is_promotion({"status:inbox"}, {"status:inbox", "exec:agent"}, config))
+        self.assertTrue(backlog_promote.is_promotion({"status:inbox"}, {"status:inbox", "exec:agent"}, config))
 
 
 class TestEffectivePromotion(unittest.TestCase):
@@ -222,20 +222,20 @@ class TestEffectivePromotion(unittest.TestCase):
 
     def test_bootstrap_carve_out_a_labelless_issue_adding_exec_agent_without_ready(self):
         after = {"type:feature", "status:inbox", "size:S", "exec:agent"}
-        self.assertFalse(P.effective_promotion(frozenset(), after, cfg()))
+        self.assertFalse(backlog_promote.effective_promotion(frozenset(), after, cfg()))
 
     def test_the_carve_out_does_not_apply_once_ready_is_requested_too(self):
         after = {"type:feature", "status:ready", "size:S", "exec:agent"}
-        self.assertTrue(P.effective_promotion(frozenset(), after, cfg()))
+        self.assertTrue(backlog_promote.effective_promotion(frozenset(), after, cfg()))
 
     def test_the_carve_out_does_not_apply_to_a_non_empty_before(self):
-        self.assertTrue(P.effective_promotion({"status:inbox"}, {"status:inbox", "exec:agent"}, cfg()))
+        self.assertTrue(backlog_promote.effective_promotion({"status:inbox"}, {"status:inbox", "exec:agent"}, cfg()))
 
     def test_under_triage_gating_only_a_ready_request_is_ever_a_promotion(self):
-        config = C.replace(cfg(), exec_gating="triage")
+        config = backlog_config.replace(cfg(), exec_gating="triage")
         after = {"type:feature", "status:inbox", "size:S", "exec:agent"}
-        self.assertFalse(P.effective_promotion(frozenset(), after, config))
-        self.assertTrue(P.effective_promotion(frozenset(), {"status:ready"}, config))
+        self.assertFalse(backlog_promote.effective_promotion(frozenset(), after, config))
+        self.assertTrue(backlog_promote.effective_promotion(frozenset(), {"status:ready"}, config))
 
 
 if __name__ == "__main__":

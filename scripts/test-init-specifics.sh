@@ -6,7 +6,7 @@
 # line, materialised as empty files); nothing is written in the repository.
 # bash 3.2 compatible. Trailer: [test-init-specifics] status=<ok|fail> passed=<n> failed=<n>
 set -u
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 1
 ROOT=$(pwd)
 IS="$ROOT/scripts/init-specifics.cjs"
 TREES="$ROOT/fixtures/specifics/init-trees"

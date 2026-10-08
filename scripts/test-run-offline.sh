@@ -3,7 +3,7 @@
 # (2) report FAIL on a status mismatch, (3) report FAIL on a missing label — never default.
 # bash 3.2 compatible. Trailer: [test-run-offline] status=<ok|fail> passed=<n> failed=<n>
 set -u
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 1
 PASS=0; FAIL=0
 ok()   { PASS=$((PASS+1)); echo "ok: $1"; }
 bad()  { FAIL=$((FAIL+1)); echo "FAIL: $1"; }

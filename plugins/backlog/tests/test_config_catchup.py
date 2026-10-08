@@ -2,16 +2,16 @@
 
 import unittest
 
-import _support as S
-import backlog_config as C
+import _support
+import backlog_config
 
 BASE = "contract: 1\nmode: propose\n"
 
 
 def load(extra):
-    with S.tmpdir() as tmp:
-        S.write_config(tmp, BASE + extra)
-        return C.load_config(tmp)
+    with _support.tmpdir() as tmp:
+        _support.write_config(tmp, BASE + extra)
+        return backlog_config.load_config(tmp)
 
 
 class TestCatchupKeys(unittest.TestCase):
@@ -21,7 +21,7 @@ class TestCatchupKeys(unittest.TestCase):
         self.assertEqual(cfg.legacy_map, {})
         self.assertEqual(cfg.legacy_keep, ())
         self.assertEqual(cfg.label_colors, {})
-        self.assertEqual(cfg.label_color("type"), C.DEFAULT_LABEL_COLOR)
+        self.assertEqual(cfg.label_color("type"), backlog_config.DEFAULT_LABEL_COLOR)
 
     def test_empty_blocks_are_accepted(self):
         cfg = load("legacy_map:\nlabel_colors:\n")
@@ -40,12 +40,12 @@ class TestCatchupKeys(unittest.TestCase):
         self.assertEqual(load("promotion: none\n").promotion, "none")
         cfg = load("promotion: checked\n")
         self.assertEqual((cfg.mode, cfg.promotion), ("propose", "checked"), cfg.reason)
-        self.assertEqual(C.default_config("propose").promotion, "none")
+        self.assertEqual(backlog_config.default_config("propose").promotion, "none")
 
     def test_promotion_is_an_additive_key_of_contract_1(self):
-        self.assertEqual(C.CONTRACT, 1)
-        self.assertIn("promotion", C.TOP_KEYS)
-        self.assertEqual(C.PROMOTIONS, ("none", "checked"))
+        self.assertEqual(backlog_config.CONTRACT, 1)
+        self.assertIn("promotion", backlog_config.TOP_KEYS)
+        self.assertEqual(backlog_config.PROMOTIONS, ("none", "checked"))
 
     def test_promotion_does_not_change_the_reserved_legacy_targets(self):
         cfg = load("promotion: checked\nlegacy_map:\n  wip: status:ready\n")
@@ -62,7 +62,7 @@ class TestCatchupKeys(unittest.TestCase):
         self.assertEqual(cfg.legacy_keep, ("triage:interactive",))
         self.assertEqual(cfg.label_color("type"), "d73a4a")  # normalized to lowercase
         self.assertEqual(cfg.label_color("status"), "0e8a16")
-        self.assertEqual(cfg.label_color("size"), C.DEFAULT_LABEL_COLOR)
+        self.assertEqual(cfg.label_color("size"), backlog_config.DEFAULT_LABEL_COLOR)
 
     def test_a_quoted_all_digit_color_is_accepted_and_an_unquoted_one_is_refused(self):
         self.assertEqual(load('label_colors:\n  type: "123456"\n').label_color("type"), "123456")
@@ -117,12 +117,12 @@ class TestCatchupKeys(unittest.TestCase):
         self.assertEqual(cfg.mode, "propose", cfg.reason)
 
     def test_the_contract_is_unchanged_and_the_new_keys_are_known(self):
-        self.assertEqual(C.CONTRACT, 1)
+        self.assertEqual(backlog_config.CONTRACT, 1)
         for key in ("legacy_map", "legacy_keep", "label_colors"):
-            self.assertIn(key, C.TOP_KEYS)
+            self.assertIn(key, backlog_config.TOP_KEYS)
 
     def test_default_config_still_matches_the_template(self):
-        cfg = C.default_config("propose", "acme/widgets")
+        cfg = backlog_config.default_config("propose", "acme/widgets")
         self.assertEqual((cfg.repo, cfg.legacy_map, cfg.legacy_keep), ("acme/widgets", {}, ()))
 
 

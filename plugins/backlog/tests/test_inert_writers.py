@@ -8,7 +8,7 @@ import re
 import unittest
 from pathlib import Path
 
-import _support as S
+import _support
 
 SUBCOMMANDS = {
     "label-sync": ["label-sync"],
@@ -26,15 +26,15 @@ SUBCOMMANDS = {
 
 class Base(unittest.TestCase):
     def setUp(self):
-        self._tmp = S.tmpdir()
+        self._tmp = _support.tmpdir()
         self.tmp = Path(self._tmp.name)
         self.project = self.tmp / "repo"
         self.project.mkdir()
         self.home = self.tmp / "home"
         self.home.mkdir()
         self.bin = self.tmp / "bin"
-        self.log = S.fake_gh(self.bin)
-        self.env = S.cli_env(self.bin, {"HOME": str(self.home)})
+        self.log = _support.fake_gh(self.bin)
+        self.env = _support.cli_env(self.bin, {"HOME": str(self.home)})
 
     def tearDown(self):
         self._tmp.cleanup()
@@ -44,10 +44,10 @@ class TestInertWithoutConfig(Base):
     def _run_all(self):
         for name, args in SUBCOMMANDS.items():
             with self.subTest(subcommand=name):
-                proc = S.run_cli(args, self.project, self.env)
+                proc = _support.run_cli(args, self.project, self.env)
                 self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
                 self.assertIn("mode=off", proc.stdout)
-        self.assertEqual(S.gh_calls(self.log), [])
+        self.assertEqual(_support.gh_calls(self.log), [])
         self.assertEqual(list(self.home.iterdir()), [])  # no snapshot directory, nothing at all
 
     def test_no_config(self):
@@ -55,26 +55,26 @@ class TestInertWithoutConfig(Base):
         self._run_all()
 
     def test_mode_off(self):
-        S.write_mode(self.project, "off")
+        _support.write_mode(self.project, "off")
         self._run_all()
 
     def test_invalid_config(self):
-        S.write_config(self.project, "contract: 1\nmode: propose\nrepo: acme/widgets\nlegacy_map:\n  bug: type:nope\n")
+        _support.write_config(self.project, "contract: 1\nmode: propose\nrepo: acme/widgets\nlegacy_map:\n  bug: type:nope\n")
         self._run_all()
 
     def test_help_never_reaches_gh(self):
         for name in ("label-sync", "snapshot", "rollback", "catchup", "set"):
             with self.subTest(subcommand=name):
-                proc = S.run_cli([name, "--help"], self.project, self.env)
+                proc = _support.run_cli([name, "--help"], self.project, self.env)
                 self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
                 self.assertIn("usage:", proc.stdout)
-        self.assertEqual(S.gh_calls(self.log), [])
+        self.assertEqual(_support.gh_calls(self.log), [])
 
     def test_positive_control_propose_mode_does_call_gh(self):
-        S.write_repo_config(self.project, "acme/widgets", "propose")
-        proc = S.run_cli(["label-sync"], self.project, self.env)
+        _support.write_repo_config(self.project, "acme/widgets", "propose")
+        proc = _support.run_cli(["label-sync"], self.project, self.env)
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
-        calls = S.gh_calls(self.log)
+        calls = _support.gh_calls(self.log)
         self.assertEqual(len(calls), 1, calls)
         self.assertTrue(calls[0].startswith("label list"))
         self.assertIn("dry-run: create=15", proc.stdout)
@@ -87,13 +87,13 @@ class TestTargetsTheConfiguredRepo(Base):
         super().setUp()
         self.target = self.tmp / "target"
         self.target.mkdir()
-        S.write_repo_config(self.target, "acme/widgets", "propose")
+        _support.write_repo_config(self.target, "acme/widgets", "propose")
         self.elsewhere = self.tmp / "elsewhere"
         self.elsewhere.mkdir()
         self.snap = self.tmp / "snaps" / "s1"
 
     def cli(self, *args):
-        return S.run_cli(["--project-dir", str(self.target)] + list(args), self.elsewhere, self.env)
+        return _support.run_cli(["--project-dir", str(self.target)] + list(args), self.elsewhere, self.env)
 
     def test_every_gh_call_of_every_subcommand_names_the_configured_repo_and_none_writes(self):
         empty = self.tmp / "empty.json"
@@ -109,7 +109,7 @@ class TestTargetsTheConfiguredRepo(Base):
         ]
         for proc in runs:
             self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
-        calls = S.gh_calls(self.log)
+        calls = _support.gh_calls(self.log)
         self.assertGreaterEqual(len(calls), 8, calls)
         for call in calls:
             self.assertTrue(call.endswith("-R acme/widgets"), call)
@@ -131,13 +131,13 @@ class TestTargetsTheConfiguredRepo(Base):
                 proc = self.cli(*(args + ["--repo", "acme/other"]))
                 self.assertEqual(proc.returncode, 1, proc.stdout)
                 self.assertIn("does not match", proc.stdout)
-        self.assertEqual(S.gh_calls(self.log), [])
+        self.assertEqual(_support.gh_calls(self.log), [])
         self.assertFalse((self.home / ".backlog-snapshots").exists())
 
     def test_snapshot_has_no_apply_flag(self):
         proc = self.cli("snapshot", "--apply")
         self.assertEqual(proc.returncode, 2, proc.stdout + proc.stderr)
-        self.assertEqual(S.gh_calls(self.log), [])
+        self.assertEqual(_support.gh_calls(self.log), [])
 
     def test_apply_in_propose_mode_is_refused_and_no_write_verb_ever_reaches_gh(self):
         proposals = self.tmp / "p.json"
@@ -149,7 +149,7 @@ class TestTargetsTheConfiguredRepo(Base):
                 proc = self.cli(*args)
                 self.assertEqual(proc.returncode, 1, proc.stdout + proc.stderr)
                 self.assertIn("refused: mode", proc.stdout)
-        for call in S.gh_calls(self.log):
+        for call in _support.gh_calls(self.log):
             self.assertFalse(call.startswith(("issue edit", "label create")), call)
 
 

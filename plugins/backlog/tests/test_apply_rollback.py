@@ -4,16 +4,16 @@ import json
 import re
 import unittest
 
-import _support as S
-import backlog_catchup as K
-import backlog_snapshot as SN
+import _support
+import backlog_catchup
+import backlog_snapshot
 
 
 def labels_of(issue):
     return sorted(l["name"] for l in issue["labels"])
 
 
-class RoundTrip(S.ApplyBase):
+class RoundTrip(_support.ApplyBase):
     def setUp(self):
         super().setUp()
         self.issues = self.bug_issues(3)
@@ -22,24 +22,24 @@ class RoundTrip(S.ApplyBase):
         self.gh = self.new_runner(self.issues)
 
     def catchup(self):
-        proposals = self.proposals_file([S.proposal(n) for n in (1, 2, 3)])
+        proposals = self.proposals_file([_support.proposal(n) for n in (1, 2, 3)])
         argv = ["check", "--proposals", str(proposals), "--snapshot-dir", str(self.dir), "--expect-sha", self.sha]
-        rc, out = self.call(K.main, argv, self.gh)
+        rc, out = self.call(backlog_catchup.main, argv, self.gh)
         self.assertEqual(rc, 0, out)
-        rc, out = self.call(K.main, argv + ["--apply", "--confirm", self.digest(out)], self.gh)
+        rc, out = self.call(backlog_catchup.main, argv + ["--apply", "--confirm", self.digest(out)], self.gh)
         self.assertEqual(rc, 0, out)
 
     def rollback_argv(self, *extra):
         return ["--snapshot-dir", str(self.dir), "--expect-sha", self.sha] + list(extra)
 
     def rollback_digest(self):
-        rc, out = self.call(SN.main_rollback, self.rollback_argv(), self.new_runner(self._copy.deepcopy(self.gh.issues)))
+        rc, out = self.call(backlog_snapshot.main_rollback, self.rollback_argv(), self.new_runner(self._copy.deepcopy(self.gh.issues)))
         self.assertEqual(rc, 0, out)
         return self.digest(out)
 
     def rollback(self, confirm=True):
         extra = ["--apply"] + (["--confirm", self.rollback_digest()] if confirm else [])
-        return self.call(SN.main_rollback, self.rollback_argv(*extra), self.gh)
+        return self.call(backlog_snapshot.main_rollback, self.rollback_argv(*extra), self.gh)
 
 
 class TestRoundTrip(RoundTrip):
@@ -100,13 +100,13 @@ class TestSkips(RoundTrip):
 
     def test_a_restore_that_would_re_add_a_role_label_is_skipped_never_applied(self):
         # #1 was `ready` + `agent` in the snapshot; a person (or a later catch-up) removed them since
-        issues = [S.issue(1, "type:bug", "status:ready", "exec:agent"), S.issue(2, "bug")]
+        issues = [_support.issue(1, "type:bug", "status:ready", "exec:agent"), _support.issue(2, "bug")]
         directory, sha = self.take_snapshot(self._copy.deepcopy(issues), target=self.tmp / "snaps" / "roles")
-        live = [S.issue(1, "type:bug"), S.issue(2, "type:bug", "status:inbox")]
+        live = [_support.issue(1, "type:bug"), _support.issue(2, "type:bug", "status:inbox")]
         runner = self.new_runner(live)
         argv = ["--snapshot-dir", str(directory), "--expect-sha", sha]
-        rc, out = self.call(SN.main_rollback, argv, self.new_runner(self._copy.deepcopy(live)))
-        rc, out = self.call(SN.main_rollback, argv + ["--apply", "--confirm", self.digest(out)], runner)
+        rc, out = self.call(backlog_snapshot.main_rollback, argv, self.new_runner(self._copy.deepcopy(live)))
+        rc, out = self.call(backlog_snapshot.main_rollback, argv + ["--apply", "--confirm", self.digest(out)], runner)
         self.assertEqual(rc, 0, out)
         self.assertIn("skip: #1 role-add-refused", out)
         self.assertIn("restored=1 skipped=1", out)
@@ -130,7 +130,7 @@ class TestRefusals(RoundTrip):
     def test_rollback_apply_in_propose_mode_writes_nothing(self):
         self.catchup()
         before = len(self.gh.writes())
-        rc, out = self.call(SN.main_rollback, self.rollback_argv("--apply", "--confirm", "x"), self.gh, cfg=self.make_cfg("propose"))
+        rc, out = self.call(backlog_snapshot.main_rollback, self.rollback_argv("--apply", "--confirm", "x"), self.gh, cfg=self.make_cfg("propose"))
         self.assertEqual(rc, 1, out)
         self.assertIn("refused: mode", out)
         self.assertEqual(len(self.gh.writes()), before)
@@ -138,9 +138,9 @@ class TestRefusals(RoundTrip):
     def test_the_dry_run_prints_the_digest_apply_needs_and_stays_read_only(self):
         self.catchup()
         before = len(self.gh.writes())
-        rc, out = self.call(SN.main_rollback, self.rollback_argv(), self.gh)
+        rc, out = self.call(backlog_snapshot.main_rollback, self.rollback_argv(), self.gh)
         self.assertEqual(rc, 0, out)
-        self.assertIn("table-digest: %s" % SN.rollback_digest(json.loads((self.dir / "snapshot.json").read_text())["issues"], "acme/widgets"), out)
+        self.assertIn("table-digest: %s" % backlog_snapshot.rollback_digest(json.loads((self.dir / "snapshot.json").read_text())["issues"], "acme/widgets"), out)
         self.assertEqual(len(self.gh.writes()), before)
 
 

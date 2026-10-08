@@ -115,7 +115,7 @@ pair3="$(new_git_pair)"
 main3="${pair3% *}"; wt3="${pair3#* }"
 echo "SECRET=1" > "$main3/.env"
 
-out3="$(PROVISION_ENV_SYMLINK=forbidden bash "$PROVISION" "$wt3" 2>&1)"
+PROVISION_ENV_SYMLINK=forbidden bash "$PROVISION" "$wt3" >/dev/null 2>&1
 exit3=$?
 no_env3="$(bool test ! -e "$wt3/.env")"
 ok3="false"
@@ -129,7 +129,7 @@ pair4="$(new_git_pair)"
 main4="${pair4% *}"; wt4="${pair4#* }"
 echo "SECRET=1" > "$main4/.env"
 
-out4="$(bash "$PROVISION" "$wt4" 2>&1)"
+bash "$PROVISION" "$wt4" >/dev/null 2>&1
 exit4=$?
 env_linked4="$(bool test -L "$wt4/.env")"
 ok4="false"
@@ -140,7 +140,7 @@ assert_case "#72 default (unset PROVISION_ENV_SYMLINK) implicit .env link non-re
 # --- case 5: #82 PROVISION-VERSION:2 is the first stdout line (also on a usage-error path) ----
 
 pair5="$(new_git_pair)"
-main5="${pair5% *}"; wt5="${pair5#* }"
+wt5="${pair5#* }"
 first5="$(bash "$PROVISION" "$wt5" 2>/dev/null | head -n 1)"
 first5b="$(bash "$PROVISION" 2>/dev/null | head -n 1)"
 ok5="false"

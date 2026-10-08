@@ -10,11 +10,11 @@ import re
 import subprocess
 import unittest
 
-import _support as S
-import backlog_apply as A
-import backlog_config as C
+import _support
+import backlog_apply
+import backlog_config
 import backlog_file
-import backlog_gh as G
+import backlog_gh
 import backlog_set
 from backlog_gh import DepGh, Gh, ModeError
 from test_set import SetBase
@@ -24,22 +24,22 @@ FILE_ARGS = ["--title", "A clear title", "--body", "b", "--label", "type:bug"]
 
 
 def cfg_for(mode="write-supervised", repo="acme/widgets"):
-    return C.default_config(mode, repo)
+    return backlog_config.default_config(mode, repo)
 
 
 def dep_gh(mode="write-supervised", repo="acme/widgets", **kw):
-    runner = S.FakeRunner()
+    runner = _support.FakeRunner()
     return DepGh(cfg_for(mode, repo), runner=runner, **kw), runner
 
 
 class TestDepGh(unittest.TestCase):
     def test_the_two_existing_allow_lists_are_untouched(self):
-        self.assertEqual(G.WRITE_ALLOW, frozenset({("issue", "create")}))
-        self.assertEqual(G.APPLY_ALLOW, frozenset({("issue", "edit"), ("label", "create")}))
+        self.assertEqual(backlog_gh.WRITE_ALLOW, frozenset({("issue", "create")}))
+        self.assertEqual(backlog_gh.APPLY_ALLOW, frozenset({("issue", "edit"), ("label", "create")}))
 
     def test_it_is_a_sibling_not_a_subclass(self):
         self.assertFalse(issubclass(DepGh, Gh))
-        self.assertFalse(issubclass(DepGh, G.ApplyGh))
+        self.assertFalse(issubclass(DepGh, backlog_gh.ApplyGh))
 
     def test_the_three_rest_shapes(self):
         gh, runner = dep_gh()
@@ -56,15 +56,15 @@ class TestDepGh(unittest.TestCase):
 
     def test_write_supervised_and_free_can_build_one_propose_and_off_cannot(self):
         for mode in ("write-supervised", "free"):
-            DepGh(cfg_for(mode), runner=S.FakeRunner())
+            DepGh(cfg_for(mode), runner=_support.FakeRunner())
         for mode in ("propose", "off"):
             with self.subTest(mode=mode), self.assertRaises(ModeError):
-                DepGh(cfg_for(mode), runner=S.FakeRunner())
+                DepGh(cfg_for(mode), runner=_support.FakeRunner())
 
     def test_a_missing_or_malformed_repo_refuses(self):
         for repo in (None, "", "noslash", "a/b/c", "a/..", "a/b\n", "-x/y", "a b/c"):
             with self.subTest(repo=repo), self.assertRaises(ModeError):
-                DepGh(cfg_for(repo=repo), runner=S.FakeRunner())
+                DepGh(cfg_for(repo=repo), runner=_support.FakeRunner())
 
     def test_bad_numbers_are_refused_with_zero_call(self):
         gh, runner = dep_gh()
@@ -96,19 +96,19 @@ class TestDepGh(unittest.TestCase):
         with self.assertRaises(ModeError):
             gh.add_blocked_by(1, 4)
         self.assertEqual(len(runner.calls), 4)
-        self.assertEqual(G.MAX_DEP_LINKS * 2, G.MAX_DEP_CALLS)
+        self.assertEqual(backlog_gh.MAX_DEP_LINKS * 2, backlog_gh.MAX_DEP_CALLS)
 
     def test_a_process_error_becomes_a_runtime_error(self):
-        gh = DepGh(cfg_for(), runner=S.FakeRunner(fail=FileNotFoundError("gh")))
+        gh = DepGh(cfg_for(), runner=_support.FakeRunner(fail=FileNotFoundError("gh")))
         with self.assertRaises(RuntimeError):
             gh.issue_id(3)
-        gh = DepGh(cfg_for(), runner=S.FakeRunner(fail=subprocess.CalledProcessError(1, ["gh"])))
+        gh = DepGh(cfg_for(), runner=_support.FakeRunner(fail=subprocess.CalledProcessError(1, ["gh"])))
         with self.assertRaises(RuntimeError):
             gh.add_blocked_by(1, 2)
 
 
 def run_file(argv, mode, runner=None, cfg=None):
-    runner = runner or S.FakeRunner(labels=sorted(REPO_LABELS))
+    runner = runner or _support.FakeRunner(labels=sorted(REPO_LABELS))
     cfg = cfg or cfg_for(mode)
     out = io.StringIO()
     with contextlib.redirect_stdout(out):
@@ -163,7 +163,7 @@ class TestFileBlockedBy(unittest.TestCase):
         self.assertEqual(len(runner.dep_writes()), 2)
 
     def test_a_failed_link_after_the_create_is_reported_with_the_missing_links(self):
-        runner = S.FakeRunner(labels=sorted(REPO_LABELS), fail_dep_at=1)
+        runner = _support.FakeRunner(labels=sorted(REPO_LABELS), fail_dep_at=1)
         rc, out, runner = run_file(FILE_ARGS + ["--blocked-by", "90", "--blocked-by", "91", "--apply"], "free", runner=runner)
         self.assertEqual(rc, 1)
         self.assertIn("created https://github.com/o/r/issues/1", out)
@@ -172,7 +172,7 @@ class TestFileBlockedBy(unittest.TestCase):
         self.assertIn("linked #1 blocked-by #91", out)
 
     def test_an_unreadable_created_url_is_reported(self):
-        runner = S.FakeRunner(labels=sorted(REPO_LABELS), create_url="created\n")
+        runner = _support.FakeRunner(labels=sorted(REPO_LABELS), create_url="created\n")
         rc, out, runner = run_file(FILE_ARGS + ["--blocked-by", "90", "--apply"], "free", runner=runner)
         self.assertEqual(rc, 1)
         self.assertIn("missing blocked-by links: #90", out)
@@ -192,7 +192,7 @@ class TestFileBlockedBy(unittest.TestCase):
 
     def test_too_many_links_and_bad_numbers_are_refused(self):
         many = []
-        for n in range(1, G.MAX_DEP_LINKS + 2):
+        for n in range(1, backlog_gh.MAX_DEP_LINKS + 2):
             many += ["--blocked-by", str(n)]
         rc, out, runner = run_file(FILE_ARGS + many + ["--apply"], "free")
         self.assertEqual(rc, 1)
@@ -207,7 +207,7 @@ class TestSetBlockedBy(SetBase):
         return self.run_set(argv, issues=issues, cfg=cfg, **kw)
 
     def test_dry_run_prints_the_link_changes_and_writes_nothing(self):
-        issues = [S.issue(1, "type:bug", "status:inbox", blockers=[{"number": 7, "state": "OPEN"}])]
+        issues = [_support.issue(1, "type:bug", "status:inbox", blockers=[{"number": 7, "state": "OPEN"}])]
         rc, out, runner = self.run_dep(["--issue", "1", "--blocked-by", "90", "--unblock", "7"], issues=issues)
         self.assertEqual(rc, 0, out)
         self.assertIn("[set] #1 planned blocked-by: +#90", out)
@@ -227,7 +227,7 @@ class TestSetBlockedBy(SetBase):
         self.assertIn("--blocked-by", self.parse_error(["--issue", "1"]))
 
     def test_a_link_already_in_the_live_blocked_by_is_a_noop(self):
-        issues = [S.issue(1, "type:bug", "status:inbox", blockers=[{"number": 90, "state": "CLOSED"}])]
+        issues = [_support.issue(1, "type:bug", "status:inbox", blockers=[{"number": 90, "state": "CLOSED"}])]
         rc, out, runner = self.run_dep(["--issue", "1", "--blocked-by", "90", "--apply"], issues=issues)
         self.assertEqual(rc, 0, out)
         self.assertIn("blocked-by #90 noop", out)
@@ -247,7 +247,7 @@ class TestSetBlockedBy(SetBase):
         def before_write(argv):
             seen.append(self.journal_lines() if self.journal_path().exists() else None)
 
-        issues = [S.issue(1, "type:bug", "status:inbox", blockers=[{"number": 7, "state": "OPEN"}])]
+        issues = [_support.issue(1, "type:bug", "status:inbox", blockers=[{"number": 7, "state": "OPEN"}])]
         rc, out, runner = self.run_dep(
             ["--issue", "1", "--blocked-by", "90", "--unblock", "7", "--apply", "--reason", "order"],
             issues=issues, before_write=before_write)
@@ -316,31 +316,31 @@ class TestSurface(unittest.TestCase):
         import ast
 
         sites = []
-        for path in sorted(S.SCRIPTS.glob("*.py")):
+        for path in sorted(_support.SCRIPTS.glob("*.py")):
             for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
                 if isinstance(node, ast.Call) and getattr(node.func, "id", getattr(node.func, "attr", "")) == "DepGh":
                     sites.append(path.name)
         self.assertEqual(sorted(set(sites)), ["backlog_apply.py", "backlog_file.py"])
 
     def test_no_graphql_shape_exists_in_the_dependency_chokepoint(self):
-        source = (S.SCRIPTS / "backlog_gh.py").read_text(encoding="utf-8")
+        source = (_support.SCRIPTS / "backlog_gh.py").read_text(encoding="utf-8")
         self.assertNotIn('"graphql"', source)
         self.assertNotIn("api graphql", source)
 
     def test_the_cli_reaches_the_dependencies_only_in_an_apply(self):
         # a dry run through the real CLI, fake gh shim on PATH: the only calls are reads, never an `api` call
-        with S.tmpdir() as tmp:
-            project = S.Path(tmp) / "repo"
+        with _support.tmpdir() as tmp:
+            project = _support.Path(tmp) / "repo"
             project.mkdir()
-            S.write_repo_config(project, "acme/widgets", "free")
-            log = S.fake_gh(S.Path(tmp) / "bin")
-            env = S.cli_env(S.Path(tmp) / "bin", {"HOME": tmp})
-            issues, labels = S.Path(tmp) / "i.json", S.Path(tmp) / "l.json"
+            _support.write_repo_config(project, "acme/widgets", "free")
+            log = _support.fake_gh(_support.Path(tmp) / "bin")
+            env = _support.cli_env(_support.Path(tmp) / "bin", {"HOME": tmp})
+            issues, labels = _support.Path(tmp) / "i.json", _support.Path(tmp) / "l.json"
             issues.write_text("[]")
             labels.write_text(json.dumps([{"name": "type:tech-debt"}, {"name": "status:inbox"}]))
-            proc = S.run_cli(["file", "--title", "t", "--body", "b", "--label", "type:tech-debt", "--blocked-by", "90",
+            proc = _support.run_cli(["file", "--title", "t", "--body", "b", "--label", "type:tech-debt", "--blocked-by", "90",
                               "--issues-file", str(issues), "--labels-file", str(labels)], project, env)
-            self.assertEqual(S.gh_calls(log), [])
+            self.assertEqual(_support.gh_calls(log), [])
         self.assertIn("planned blocked-by: #90", proc.stdout)
 
 
