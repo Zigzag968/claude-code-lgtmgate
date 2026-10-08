@@ -161,8 +161,8 @@ ok=1
 grep -rqE '\$\{\{ *secrets\.' "$ROOT/.github/workflows/" && ok=0
 check "no secrets expression in workflows" "$ok"
 ok=1
-grep -rqE '^ *schedule:' "$ROOT/.github/workflows/" && ok=0
-check "no schedule trigger in workflows" "$ok"
+grep -rqE --exclude=scorecard.yml '^ *schedule:' "$ROOT/.github/workflows/" && ok=0
+check "no schedule trigger in workflows (bar the non-required scorecard.yml)" "$ok"
 ok=1
 grep -rq 'claude plugin eval' "$ROOT/.github/workflows/" && ok=0
 check "no claude plugin eval step in workflows" "$ok"
