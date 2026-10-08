@@ -38,7 +38,7 @@ export const meta = {
 // | `probeOnly` | optional { name, cmd, label, round }: run ONE probe() (probe-run gate, #80) and return status 'dry-run-ok' reason 'probe-only'. Lets a run-offline fixture reach probe() while no engine call site is migrated yet. Not a simulate key. |
 // | `pluginRoot` | optional absolute path of the plugin root (#82). The Lead passes ${CLAUDE_PLUGIN_ROOT} for the plugin component and omits it for a local copy; the probe layer resolves templates/probe-run.cjs from it (the workflow has no filesystem or env). config.probeRunPath wins; fallback <wtPath>/templates/probe-run.cjs. When the templates come from pluginRoot (no config.probeRunPath), the manifest version of the root must equal this engine's BUILD.version, else the run escalates before provisioning (`plugin-version-skew` / `plugin-version-unreadable`, #195). |
 // | `sessionRoot` | optional absolute path of the Lead session's project root (the workflow has no env). When given and not simulate, its git common dir must equal wtPath's, else the run escalates `session-root-mismatch` before provisioning (#177): agents get the launching session's instruction files. Omitted: the check is skipped with a log line. |
-// | `projectSpecifics` | optional object: the verbatim stdout of `scripts/agent-context.cjs` (commands/deliver.md §3bis). Required when `config.projectSpecifics` or `config.agentContext` is set. Absent, malformed or a digest mismatch throws before any agent call; nothing is injected on a refusal. The per-role text is inserted in every prompt of that role; the fingerprint is returned as `specifics` and traced (#265). Lanes (#271): a role block may carry `lanes:[{name, persona?, paths?, hint?, files, text, digest, bytes}]`; each lane digest is verified too; only the lanes chosen for the run are injected (see `lanes`). |
+// | `projectSpecifics` | optional object: the verbatim stdout of `scripts/agent-context.cjs` (skills/deliver/SKILL.md §3bis). Required when `config.projectSpecifics` or `config.agentContext` is set. Absent, malformed or a digest mismatch throws before any agent call; nothing is injected on a refusal. The per-role text is inserted in every prompt of that role; the fingerprint is returned as `specifics` and traced (#265). Lanes (#271): a role block may carry `lanes:[{name, persona?, paths?, hint?, files, text, digest, bytes}]`; each lane digest is verified too; only the lanes chosen for the run are injected (see `lanes`). |
 // | `lanes` | optional array of lane names: the `lanes` of the previous result, carried by the Lead on every `entryStage` dev\|review relaunch (else the `lanes:` line of `planText` is read). A name that is no lane of `projectSpecifics` throws. A plan run asks Theo for the lanes (only when lane files exist), validates them, adds the lanes whose `paths` hit Sam's `targetFiles` for Nick and Morgan, appends `lanes: a,b` to the plan it returns, and reports `lanes` (and `lanesUnresolved:true` when Theo gave none) on `finish()`. |
 // | `models` | optional per-role model override: { scout?, planAudit?, morgan? }. Resolution order per role is `models.<role> ?? config.models?.<role> ?? 'sonnet'` (same `??` idiom as planAudit above — arg wins per-run over the project default). Default is 'sonnet' for all three roles (lgtmgate#161: the plan-phase loop could spawn up to 4 opus scout attempts per issue with planAudit on, the dominant cost driver); pass e.g. `models: { scout: 'opus' }` per-run when an issue is dense/dangerous enough to warrant it — opus stays fully reachable, just no longer the default. Not a general cost-control knob: Theo and Nick are NOT overridable by this key, always 'sonnet' (out of scope per the issue — their calls are unconditional literals). |
 // | `maxPlanAttempts` | bound on the plan-verification gate loop between Sam and Nick (default 2; mirrors advisory.js's `maxAttempts = 2`). On the maxPlanAttempts-th NOT_CONFORMING verdict, escalate instead of looping again. |
@@ -179,7 +179,7 @@ let prBodyPreview = null
 // finish(def, extra) is the only way out of the run, so no status reaches a return as a string
 // literal; `resumable` belongs to the status (a `*-died` run, or one parked for the Lead, resumes
 // through resumeFromRunId), never to a call site. scripts/guards.cjs (status-table) checks these keys
-// against the Lead's table in commands/deliver.md §5, both ways. agentDeathRouting() below keeps its
+// against the Lead's table in skills/deliver/SKILL.md §5, both ways. agentDeathRouting() below keeps its
 // own role -> status table (pure, extractable); its values are keys of this registry.
 const STATUS = Object.freeze({
   'dry-run-ok': { status: 'dry-run-ok' },
@@ -253,7 +253,7 @@ if (!issue || !brief || !wtPath) throw new Error('Missing required args: issue, 
 // an absent config silently ran every default (branchPrefix 'features/', envSymlink 'required',
 // placeholder commands) and surfaced runs later as preflight-stuck / branch-mismatch. Same throw
 // idiom as the arg checks above (zero agent spawns, nothing provisioned). The Lead passes the parsed
-// `.claude/pipeline.config.json` (commands/deliver.md §1). An explicit `{}` is still accepted.
+// `.claude/pipeline.config.json` (skills/deliver/SKILL.md §1). An explicit `{}` is still accepted.
 if (config === null || typeof config !== 'object' || Array.isArray(config)) {
   throw new Error(
     `Missing or invalid arg: config (got ${config === undefined ? 'undefined' : config === null ? 'null' : Array.isArray(config) ? 'array' : typeof config}). ` +
@@ -262,7 +262,7 @@ if (config === null || typeof config !== 'object' || Array.isArray(config)) {
 // #265 — project specifics: validated once, before Setup and before any agent call (a refusal throws, like the missing config).
 const specificsErr = specificsProblem(specificsSwitchOn(config), projectSpecifics, sha256Hex)
 if (specificsErr) {
-  throw new Error(`projectSpecifics: ${specificsErr}. Pass the stdout of the specifics assembler verbatim as args.projectSpecifics (commands/deliver.md §3bis); nothing was injected and no agent ran.`)
+  throw new Error(`projectSpecifics: ${specificsErr}. Pass the stdout of the specifics assembler verbatim as args.projectSpecifics (skills/deliver/SKILL.md §3bis); nothing was injected and no agent ran.`)
 }
 if (projectSpecifics !== undefined && projectSpecifics !== null) {
   const fp = specificsFingerprint(projectSpecifics, sha256Hex)
@@ -1697,7 +1697,7 @@ function staleArtifactBlockers(proofs, floorIso) {
 // Precedence: $LGTMGATE_WORKTREE_ROOT > configLocal.worktreeRoot > config.worktreeRoot
 // (the versioned LOGICAL default). A winner is accepted only when ABSOLUTE; a relative
 // or blank value falls back to this run's own worktree parent — wtPath is
-// `<worktreeRoot>/<slug>` by construction (commands/deliver.md:35) — so the brief
+// `<worktreeRoot>/<slug>` by construction (skills/deliver/SKILL.md:35) — so the brief
 // never carries a relative root. No candidate and no absolute wtPath -> null, which is
 // exactly the pre-#61 `config.worktreeRoot || null` behaviour (clause omitted).
 function resolveWorktreeRoot({ env = {}, configLocal = {}, config = {}, wtPath = '' }) {
@@ -2812,7 +2812,7 @@ if (entryStage !== 'plan') {
 // resume entryStage ('dev'/'review') it is branch-controlled — trusted to exactly the degree the
 // branch under review is. Integrity of the DEPLOYED consumer copies (this repo's own included)
 // is a ship-time pre-condition (md5 equality against templates/provision_worktree.sh — see
-// commands/init.md and the S4 cross-slice flag), not enforced by this file.
+// skills/init/SKILL.md and the S4 cross-slice flag), not enforced by this file.
 // ---------------------------------------------------------------------------
 
 {

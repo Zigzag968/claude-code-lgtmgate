@@ -14,7 +14,7 @@
 # <plugin> found`. Read-only: the only external call is `claude plugin list --json`.
 # Exit: 0 clean (or no install), 1 any MISMATCH or CONFLICT, 2 cannot decide (no target, claude failed, the payload is not the
 # expected list): it never reports "all fine" on something it could not read.
-# Updating an install is a user-level action: the command is printed by the runbook (commands/deliver.md step 0), never run here.
+# Updating an install is a user-level action: the command is printed by the runbook (skills/deliver/SKILL.md step 0), never run here.
 set -uo pipefail
 
 die2() { echo "plugin-versions: $*" >&2; exit 2; }

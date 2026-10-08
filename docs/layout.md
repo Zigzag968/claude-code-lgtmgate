@@ -6,7 +6,7 @@ The root folders are enforced by `.ls-lint.yml` and `node scripts/audit.cjs --ch
 |---|---|---|---|
 | `workflows/` | Claude Code `Workflow` tool | the pipeline engine, one file | `deliver-pipeline.js` |
 | `agents/` | the pipeline (agent personas) | one persona per role | `sam.md`, `nick.md`, `morgan.md` |
-| `commands/` | Claude Code users | slash commands of the plugin | `deliver.md`, `init.md` |
+| `skills/` | Claude Code users | the skills shipped with the plugin; each is a slash command /lgtmgate:<name> | `deliver/SKILL.md`, `init/SKILL.md`, `context/SKILL.md` |
 | `hooks/` | Claude Code (plugin hooks) | hook scripts named after their event | `plugin-hooks.json`, `block-merge-unchecked.sh` |
 | `templates/` | consumer repos and the engine | files copied by `/lgtmgate:init` and scripts the engine runs | `probe-run.cjs`, `pr-acceptance.md`, `pipeline.config.template.json` |
 | `tests/` | maintainers and CI | every test suite, in `hooks/`, `scripts/` or `templates/` after the folder it exercises (`templates/test-deliver-pipeline.js` stays: `/lgtmgate:init` copies it) | `scripts/test-guards.sh`, `templates/test-canonical-guards.sh` |
@@ -24,6 +24,7 @@ The root folders are enforced by `.ls-lint.yml` and `node scripts/audit.cjs --ch
 ## Never
 
 - `workflows/deliver-pipeline.js` imports no module.
-- `agents/` and `commands/` hold no code file (`.ls-lint.yml` `exists:0`).
+- `agents/` and `skills/` hold no code file (`.ls-lint.yml` `exists:0`).
+- `skills/` ships with the plugin; `.claude/skills/` is repo-only (this repo's own maintainer skills, never shipped).
 - `fixtures/` and `plugins/*/tests/fixtures/` are the only fixture folders (`scripts/audit.cjs` `fixtures-location`).
 - A new root folder is added to `.ls-lint.yml` and to this page in the same change.

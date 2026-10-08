@@ -1,5 +1,7 @@
 ---
+name: init
 description: Bootstrap the lgtmgate in this project — copy templates, generate pipeline.config.json, wire GH + settings.
+disable-model-invocation: true
 argument-hint: ""
 allowed-tools: Bash, Read, Write, Edit, AskUserQuestion
 ---

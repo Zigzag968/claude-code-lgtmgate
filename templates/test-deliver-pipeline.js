@@ -105,7 +105,7 @@ const BASE = { issue: 1, brief: 'test feature', wtPath: '/tmp/lgtmgate-test', co
 // explicitly by `scripts/run-flow-suite.cjs` (which defaults it to `workflows/deliver-pipeline.js`,
 // unconditionally setting `suiteArgs.fpScriptPath`), so the `FP_REF` bare-name fallback below is
 // UNREACHABLE in this repo. The bare name IS what resolves a CONSUMER project's own copy
-// pre-S4 (`commands/init.md:21` still copies this suite into every consumer's
+// pre-S4 (`skills/init/SKILL.md:21` still copies this suite into every consumer's
 // `.claude/workflows/test-deliver-pipeline.js`, where the artifact under test is that
 // consumer's own `.claude/workflows/deliver-pipeline.js`) — correct for consumers today, and
 // deliberately NOT flipped here: flipping it would silently validate the plugin's pipeline
@@ -2716,14 +2716,14 @@ await testCase('T177b the gate runs before provisioning and any agent call, only
   ]
   return checks.find(c => c) || { ok: true }
 })
-await testCase('T177c commands/deliver.md states the rule once and documents the escalate reason (#177)', async () => {
+await testCase('T177c skills/deliver/SKILL.md states the rule once and documents the escalate reason (#177)', async () => {
   const fsm = process.getBuiltinModule('fs')
   const pathm = process.getBuiltinModule('path')
   if (!SUITE_ARGS.fpScriptPath) {
     log('SKIP — T177c: SUITE_ARGS.fpScriptPath absent (suite not run via scripts/run-flow-suite.cjs)')
     return { ok: true }
   }
-  const doc = fsm.readFileSync(pathm.resolve(pathm.dirname(SUITE_ARGS.fpScriptPath), '..', 'commands', 'deliver.md'), 'utf8')
+  const doc = fsm.readFileSync(pathm.resolve(pathm.dirname(SUITE_ARGS.fpScriptPath), '..', 'skills', 'deliver', 'SKILL.md'), 'utf8')
   const rule = 'session opened in the target repository'
   const row = doc.split('\n').find((l) => l.startsWith('| `escalate` |')) || ''
   const checks = [

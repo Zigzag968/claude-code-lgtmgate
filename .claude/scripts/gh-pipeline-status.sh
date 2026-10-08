@@ -8,7 +8,7 @@ set -uo pipefail
 N="${1:?usage: gh-pipeline-status.sh <issue-number>}"
 
 # Resolve the CALLING project's own ghProject.owner/projectNumber from its pipeline.config.json —
-# this script is installed verbatim into every consumer project (commands/init.md), so it must
+# this script is installed verbatim into every consumer project (skills/init/SKILL.md), so it must
 # never hardcode a board here. Anchor on the script's OWN file location (not $PWD) so the lookup
 # works identically from either mirrored copy (templates/ vs .claude/scripts/, different depths).
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
