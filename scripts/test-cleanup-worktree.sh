@@ -57,49 +57,49 @@ export FAKE_PR_STATE=MERGED
 OUTSIDE="$WORK/outside"
 git -C "$MAIN" worktree add -q -b feat/outside "$OUTSIDE" main
 run_script "$MAIN" "$OUTSIDE"
-check "refuses a worktree outside the root" $([ "$RC" -eq 1 ] && [ -d "$OUTSIDE" ] && echo 1 || echo 0)
+check "refuses a worktree outside the root" "$([ "$RC" -eq 1 ] && [ -d "$OUTSIDE" ] && echo 1 || echo 0)"
 
 # main tree
 # (root widened to $WORK so the main tree passes the root guard and hits the main-tree guard)
 LGTMGATE_WORKTREE_ROOT="$WORK" run_script "$WORK" "$MAIN"
-check "refuses the main tree" $([ "$RC" -eq 1 ] && [ -d "$MAIN/.git" ] && printf '%s' "$OUT" | grep -q 'main tree' && echo 1 || echo 0)
+check "refuses the main tree" "$([ "$RC" -eq 1 ] && [ -d "$MAIN/.git" ] && printf '%s' "$OUT" | grep -q 'main tree' && echo 1 || echo 0)"
 
 # unregistered directory under the root
 mkdir -p "$ROOT/not-a-worktree"
 run_script "$MAIN" "$ROOT/not-a-worktree"
-check "refuses an unregistered directory" $([ "$RC" -eq 1 ] && [ -d "$ROOT/not-a-worktree" ] && echo 1 || echo 0)
+check "refuses an unregistered directory" "$([ "$RC" -eq 1 ] && [ -d "$ROOT/not-a-worktree" ] && echo 1 || echo 0)"
 
 # missing path
 run_script "$MAIN" "$ROOT/does-not-exist"
-check "refuses a missing path" $([ "$RC" -eq 1 ] && echo 1 || echo 0)
+check "refuses a missing path" "$([ "$RC" -eq 1 ] && echo 1 || echo 0)"
 
 # cwd inside the path
 run_script "$ROOT/wt-open" "$ROOT/wt-open"
-check "refuses when cwd is inside the worktree" $([ "$RC" -eq 1 ] && [ -d "$ROOT/wt-open" ] && echo 1 || echo 0)
+check "refuses when cwd is inside the worktree" "$([ "$RC" -eq 1 ] && [ -d "$ROOT/wt-open" ] && echo 1 || echo 0)"
 
 # dirty tree
 mkwt wt-dirty
 : >"$ROOT/wt-dirty/untracked.txt"
 run_script "$MAIN" "$ROOT/wt-dirty"
-check "refuses a dirty worktree" $([ "$RC" -eq 1 ] && [ -d "$ROOT/wt-dirty" ] && echo 1 || echo 0)
+check "refuses a dirty worktree" "$([ "$RC" -eq 1 ] && [ -d "$ROOT/wt-dirty" ] && echo 1 || echo 0)"
 
 # PR not merged
 FAKE_PR_STATE=OPEN run_script "$MAIN" "$ROOT/wt-open"
-check "refuses when the PR is not MERGED (worktree still present)" $([ "$RC" -eq 1 ] && [ -d "$ROOT/wt-open" ] && echo 1 || echo 0)
+check "refuses when the PR is not MERGED (worktree still present)" "$([ "$RC" -eq 1 ] && [ -d "$ROOT/wt-open" ] && echo 1 || echo 0)"
 
 # --- happy path --------------------------------------------------------------------
 
 mkwt wt-done
 run_script "$MAIN" "$ROOT/wt-done"
 check "merged + clean worktree is removed and REMOVED is printed" \
-  $([ "$RC" -eq 0 ] && [ ! -d "$ROOT/wt-done" ] && printf '%s' "$OUT" | grep -q '^REMOVED ' && echo 1 || echo 0)
+  "$([ "$RC" -eq 0 ] && [ ! -d "$ROOT/wt-done" ] && printf '%s' "$OUT" | grep -q '^REMOVED ' && echo 1 || echo 0)"
 check "removed worktree is no longer registered" \
-  $(git -C "$MAIN" worktree list --porcelain | grep -q 'wt-done' && echo 0 || echo 1)
+  "$(git -C "$MAIN" worktree list --porcelain | grep -q 'wt-done' && echo 0 || echo 1)"
 
 # --- static guard: never --force ---------------------------------------------------
 
 check "script never passes --force to worktree remove" \
-  $(grep -E 'worktree remove' "$SCRIPT" | grep -vE '^[[:space:]]*#' | grep -q -- '--force' && echo 0 || echo 1)
+  "$(grep -E 'worktree remove' "$SCRIPT" | grep -vE '^[[:space:]]*#' | grep -q -- '--force' && echo 0 || echo 1)"
 
 echo "${pass_count}/${total} PASS"
 [ "$fail_count" -eq 0 ] || exit 1

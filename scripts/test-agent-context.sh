@@ -8,7 +8,7 @@
 # no token-shaped or invisible literal in this source or in the fixtures.
 # bash 3.2 compatible. Trailer: [test-agent-context] status=<ok|fail> passed=<n> failed=<n>
 set -u
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 1
 ROOT=$(pwd)
 AC="$ROOT/scripts/agent-context.cjs"
 BASE="$ROOT/fixtures/agent-context/base"

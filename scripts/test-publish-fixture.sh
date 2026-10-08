@@ -10,7 +10,7 @@
 # The stub engines (--fp) are test doubles for the engine body; the PEM header is assembled from fragments.
 # bash 3.2 compatible. Trailer: [test-publish-fixture] status=<ok|fail> passed=<n> failed=<n>
 set -u
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 1
 ROOT="$(pwd)"
 export ROOT
 # the repo must come out of the suite exactly as it went in: no stub engine or publisher writes into the working tree
@@ -126,7 +126,7 @@ planted_in() { cat "$@" 2>/dev/null | grep -c -e "$W_PLAN" -e "$W_EVID" -e "$W_S
 jsf() {
   node -e 'const f=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(JSON.stringify(eval(process.argv[2])))' "$1" "$2"
 }
-newdir() { rm -rf "$TMP/$1"; mkdir -p "$TMP/$1"; echo "$TMP/$1"; }
+newdir() { rm -rf "${TMP:?}/$1"; mkdir -p "$TMP/$1"; echo "$TMP/$1"; }
 
 node "$TMP/gen.cjs" "$RAW" base
 

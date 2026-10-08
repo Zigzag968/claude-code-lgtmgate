@@ -7,7 +7,7 @@
 #   UPDATE_GOLDEN=1 bash scripts/test-context-print.sh  rewrite the goldens (read them before commit)
 # bash 3.2 compatible. Trailer: [test-context-print] status=<ok|fail> passed=<n> failed=<n>
 set -u
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 1
 ROOT=$(pwd)
 AC="$ROOT/scripts/agent-context.cjs"
 SRC="$ROOT/fixtures/specifics/context-src"

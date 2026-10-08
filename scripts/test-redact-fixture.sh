@@ -5,7 +5,7 @@
 # Planted values are assembled below from fragments: no token-shaped or private-path literal in this source.
 # bash 3.2 compatible. Trailer: [test-redact-fixture] status=<ok|fail> passed=<n> failed=<n>
 set -u
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 1
 PASS=0; FAIL=0
 ok()  { PASS=$((PASS+1)); echo "ok: $1"; }
 bad() { FAIL=$((FAIL+1)); echo "FAIL: $1"; }
