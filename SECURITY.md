@@ -5,9 +5,9 @@
 Please report security vulnerabilities using **GitHub's private vulnerability reporting**, not a
 public issue:
 
-1. Go to the [Security tab](../../security/advisories) of this repository.
-2. Click **"Report a vulnerability"**.
-3. Describe the issue, its impact, and steps to reproduce.
+1. Open the [private vulnerability report form](https://github.com/Zigzag968/claude-code-lgtmgate/security/advisories/new)
+   (or the Security tab of this repository, then **"Report a vulnerability"**).
+2. Describe the issue, its impact, and steps to reproduce.
 
 This opens a private advisory visible only to the maintainer and you, so the issue isn't disclosed
 before a fix ships. Private vulnerability reporting is enabled on this repository.
@@ -54,6 +54,11 @@ have — that's exactly what we want reported privately.
 
 ## Supported versions
 
-This project ships as a single rolling Claude Code plugin version (see
-`.claude-plugin/plugin.json`); there are no maintained older release branches. Fixes land on the
-latest version — update via `claude plugin update lgtmgate` (or `backlog`) to get them.
+Security fixes are provided for two versions of the Claude Code plugin (the `version` in
+`.claude-plugin/plugin.json`):
+
+- the latest stable release (tag `v1.0.0` today);
+- the latest beta release (`1.1.0-beta.28` today).
+
+Older releases get no fixes, and there are no maintained release branches. Update via
+`claude plugin update lgtmgate` (or `backlog`) to get them.
