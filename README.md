@@ -220,36 +220,7 @@ script itself. The `.claude/lgtmgate/*.md` files read from the base are an opera
 
 ## Structure
 
-```
-.claude-plugin/
-  plugin.json            # manifest
-  marketplace.json       # marketplace zigzag-plugins
-agents/                  # Theo, Mia, Sam, Nick, Morgan (generic)
-commands/                # /lgtmgate:init, /lgtmgate:deliver
-hooks/
-  plugin-hooks.json      # SessionStart stub + PreToolUse merge gate + SubagentStop warn + Stop watchdog
-  SessionStart/inject_stub.py
-  block-merge-unchecked.sh
-  SubagentStop-worktree-cleanup.sh
-  Stop-supervise-runs.sh # watchdog for stale .pipeline/ runs — see docs/supervision.md
-  test-Stop-supervise-runs.sh # zero-dependency regression test for the watchdog above
-workflows/               # this plugin's own workflow component (default-scanned)
-  deliver-pipeline.js    # resolves as lgtmgate:deliver-pipeline — NOT copied
-templates/               # copied into the consuming project by /lgtmgate:init
-  test-deliver-pipeline.js
-  pr-acceptance.md
-  gh-pipeline-status.sh
-  test-gh-pipeline-status.sh # offline regression test for the resolver above
-  blocked-by-check.sh    # read-only cross-repo blockedBy resolver — see docs/supervision.md
-  test-blocked-by-check.sh # offline regression test for the resolver above
-  pipeline.config.template.json
-  test-canonical-guards.sh # this repo's own release guard net — see MAINTAINING.md
-  github/                # snippets for the project's GH issue/PR templates
-plugins/
-  backlog/               # second plugin of this marketplace — see "Second plugin: backlog" below
-docs/
-  supervision.md         # full reference for run supervision, staleness, cross-repo blockedBy
-```
+Where each kind of file lives, and what is enforced, is in [docs/layout.md](docs/layout.md).
 
 ## This repo is also a marketplace: the backlog plugin
 
