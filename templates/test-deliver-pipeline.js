@@ -2399,7 +2399,7 @@ await testCase('T272 probeCommands() extracted from source markers (#82)', async
   const pc = new Function(block + '\nreturn probeCommands')()
   const base = { wtPath: '/wt/issue-7', issue: 7, name: 'provision', cmd: "echo 'hi'", label: 'provision', round: 0 }
   const withRoot = pc({ ...base, pluginRoot: '/plug' })
-  const cfgWins = pc({ ...base, pluginRoot: '/plug', probeRunPath: '/cfg/probe-run.cjs' })
+  const configWins = pc({ ...base, pluginRoot: '/plug', probeRunPath: '/cfg/probe-run.cjs' })
   const fallback = pc({ ...base })
   const att = "--attest '/wt/issue-7/.pipeline/probe-attest.jsonl'"
   const checks = [
@@ -2409,7 +2409,7 @@ await testCase('T272 probeCommands() extracted from source markers (#82)', async
     eq('run has no --verify', withRoot.run.includes('--verify'), false),
     eq('verify has --attest <wt>/.pipeline/probe-attest.jsonl', withRoot.verify.includes(att), true),
     eq('verify has no --cmd', withRoot.verify.includes('--cmd'), false),
-    eq('config.probeRunPath wins over pluginRoot', cfgWins.run.includes("node '/cfg/probe-run.cjs' "), true),
+    eq('config.probeRunPath wins over pluginRoot', configWins.run.includes("node '/cfg/probe-run.cjs' "), true),
     eq('fallback is the worktree copy', fallback.run.includes("node '/wt/issue-7/templates/probe-run.cjs' "), true),
     eq('same out dir in both', withRoot.run.includes("--out '/wt/issue-7/.pipeline/probes/issue-7'") && withRoot.verify.includes("--out '/wt/issue-7/.pipeline/probes/issue-7'"), true),
     eq('default run has no --no-reuse (provision record rule unchanged)', withRoot.run.includes('--no-reuse'), false),
@@ -4025,7 +4025,7 @@ await testCase('T163a consumer Sam prompt: no engineRepo flag -> neutral PLAN RU
   }
   // The rest of the static Sam prompt: the scout prompt body (whole-line comments dropped) and the two
   // constants it interpolates besides the layer rule and the per-project one-way-door text.
-  const promptBody = extractBetween(src, 'const samScoutPrompt = (', '// Plan phase')
+  const promptBody = extractBetween(src, 'const samScoutPrompt = (', '// Plan stage')
   if (!promptBody) return { ok: false, msg: 'samScoutPrompt body not found in pipeline source' }
   const staticSam = [
     promptBody.split('\n').filter(l => !l.trim().startsWith('//')).join('\n'),
@@ -4819,57 +4819,44 @@ await testCase('T263b (#263) worktree git-dir writable → no escalate, proceeds
 })
 
 // ---------------------------------------------------------------------------
-// Pure functions — worktreeFreshnessNote (extracted from workflows/deliver-pipeline.js)
+// worktreeFreshnessNote — extracted from the workflow markers (no suite-local copy, so it cannot drift)
 // ---------------------------------------------------------------------------
-
-// --- worktreeFreshnessNote:start --- (pure & self-contained — keep extractable by the consuming project's tests)
-// Composes the reviewer-facing staleness warning for a shared worktree whose base is behind the
-// remote base branch. Pure: no I/O, no closure over simulate/config/trace. Returns '' when
-// the worktree is fresh or the count is unknown — so a fresh run's prompts are byte-identical.
-function worktreeFreshnessNote(behind, baseBranch) {
-  const n = Number(behind)
-  if (!Number.isFinite(n) || n <= 0) return ''
-  return (
-    `WORKTREE FRESHNESS WARNING: this shared worktree's frozen base is ${n} commit${n === 1 ? '' : 's'} ` +
-    `behind origin/${baseBranch}. Because of this: ` +
-    `1) the local HEAD suite runs an older base while CI runs the merge ref, so a test-count / ` +
-    `test-inventory difference between the local run and CI is expected by construction, not a ` +
-    `regression; ` +
-    `2) the regression baseline is captured from a freshly fetched origin/${baseBranch} overlay, so a ` +
-    `test name present in the baseline log but absent from the HEAD run is a base-staleness artifact, ` +
-    `never a HEAD regression — the HEAD minus baseline set-diff direction stays authoritative; ` +
-    `3) when local and CI disagree, the CI raw log is the source of truth (gh run view <run-id> --log), ` +
-    `not the local count; ` +
-    `4) do not rebase, reset or otherwise move the worktree to reconcile the numbers — the frozen base ` +
-    `is deliberate.`
-  )
-}
-// --- worktreeFreshnessNote:end ---
+const worktreeFreshnessNote = (() => {
+  const src = SUITE_ARGS.fpSource
+  if (!src) return null
+  const block = extractBetween(src, '// --- worktreeFreshnessNote:start ---', '// --- worktreeFreshnessNote:end ---')
+  return block ? new Function(block + '\nreturn worktreeFreshnessNote')() : null
+})()
 
 // T109 (lgtmgate#215) — worktreeFreshnessNote returns empty string when behind is 0 or negative
 await testCase('T109a worktreeFreshnessNote: behind:0 → empty string', async () => {
+  if (!worktreeFreshnessNote) return SUITE_ARGS.fpSource ? { ok: false, msg: 'worktreeFreshnessNote markers not found in pipeline source' } : t182Skip('T109a')
   const result = worktreeFreshnessNote(0, 'main')
   return eq('result', result, '') || { ok: true }
 })
 
 await testCase('T109b worktreeFreshnessNote: behind:-1 → empty string', async () => {
+  if (!worktreeFreshnessNote) return SUITE_ARGS.fpSource ? { ok: false, msg: 'worktreeFreshnessNote markers not found in pipeline source' } : t182Skip('T109b')
   const result = worktreeFreshnessNote(-5, 'develop')
   return eq('result', result, '') || { ok: true }
 })
 
 // T109c — worktreeFreshnessNote returns empty string when behind is not a finite number
 await testCase('T109c worktreeFreshnessNote: behind:NaN → empty string', async () => {
+  if (!worktreeFreshnessNote) return SUITE_ARGS.fpSource ? { ok: false, msg: 'worktreeFreshnessNote markers not found in pipeline source' } : t182Skip('T109c')
   const result = worktreeFreshnessNote(NaN, 'main')
   return eq('result', result, '') || { ok: true }
 })
 
 await testCase('T109d worktreeFreshnessNote: behind:undefined → empty string', async () => {
+  if (!worktreeFreshnessNote) return SUITE_ARGS.fpSource ? { ok: false, msg: 'worktreeFreshnessNote markers not found in pipeline source' } : t182Skip('T109d')
   const result = worktreeFreshnessNote(undefined, 'main')
   return eq('result', result, '') || { ok: true }
 })
 
 // T109e — worktreeFreshnessNote coerces string "3" to number 3 via Number() and returns warning
 await testCase('T109e worktreeFreshnessNote: behind:"3" (string coerced to number) → warning', async () => {
+  if (!worktreeFreshnessNote) return SUITE_ARGS.fpSource ? { ok: false, msg: 'worktreeFreshnessNote markers not found in pipeline source' } : t182Skip('T109e')
   const result = worktreeFreshnessNote('3', 'main')
   const hasWarning = result.includes('WORKTREE FRESHNESS WARNING')
   const hasPlural = result.includes('3 commits behind origin/main')
@@ -4881,6 +4868,7 @@ await testCase('T109e worktreeFreshnessNote: behind:"3" (string coerced to numbe
 
 // T109f — worktreeFreshnessNote returns a warning message when behind is 1 (singular)
 await testCase('T109f worktreeFreshnessNote: behind:1 → warning with singular "commit"', async () => {
+  if (!worktreeFreshnessNote) return SUITE_ARGS.fpSource ? { ok: false, msg: 'worktreeFreshnessNote markers not found in pipeline source' } : t182Skip('T109f')
   const result = worktreeFreshnessNote(1, 'main')
   const hasWarning = result.includes('WORKTREE FRESHNESS WARNING')
   const hasSingular = result.includes('1 commit behind origin/main')
@@ -4893,6 +4881,7 @@ await testCase('T109f worktreeFreshnessNote: behind:1 → warning with singular 
 
 // T109g — worktreeFreshnessNote returns a warning message when behind is > 1 (plural)
 await testCase('T109g worktreeFreshnessNote: behind:3 → warning with plural "commits"', async () => {
+  if (!worktreeFreshnessNote) return SUITE_ARGS.fpSource ? { ok: false, msg: 'worktreeFreshnessNote markers not found in pipeline source' } : t182Skip('T109g')
   const result = worktreeFreshnessNote(3, 'develop')
   const hasWarning = result.includes('WORKTREE FRESHNESS WARNING')
   const hasPlural = result.includes('3 commits behind origin/develop')
@@ -4904,6 +4893,7 @@ await testCase('T109g worktreeFreshnessNote: behind:3 → warning with plural "c
 
 // T109h — worktreeFreshnessNote includes all four guidance points in the warning message
 await testCase('T109h worktreeFreshnessNote: warning includes all four guidance points', async () => {
+  if (!worktreeFreshnessNote) return SUITE_ARGS.fpSource ? { ok: false, msg: 'worktreeFreshnessNote markers not found in pipeline source' } : t182Skip('T109h')
   const result = worktreeFreshnessNote(2, 'main')
   const hasPt1 = result.includes('1) the local HEAD suite runs an older base')
   const hasPt2 = result.includes('2) the regression baseline is captured from a freshly fetched')
@@ -4917,6 +4907,7 @@ await testCase('T109h worktreeFreshnessNote: warning includes all four guidance 
 
 // T109i — worktreeFreshnessNote includes the correct baseBranch in the output
 await testCase('T109i worktreeFreshnessNote: baseBranch parameter is interpolated correctly', async () => {
+  if (!worktreeFreshnessNote) return SUITE_ARGS.fpSource ? { ok: false, msg: 'worktreeFreshnessNote markers not found in pipeline source' } : t182Skip('T109i')
   const result1 = worktreeFreshnessNote(1, 'main')
   const result2 = worktreeFreshnessNote(1, 'develop')
   const result3 = worktreeFreshnessNote(1, 'feature/custom')
@@ -4931,6 +4922,7 @@ await testCase('T109i worktreeFreshnessNote: baseBranch parameter is interpolate
 
 // T109j — worktreeFreshnessNote handles large numbers (100+ commits behind)
 await testCase('T109j worktreeFreshnessNote: behind:100 → plural "commits"', async () => {
+  if (!worktreeFreshnessNote) return SUITE_ARGS.fpSource ? { ok: false, msg: 'worktreeFreshnessNote markers not found in pipeline source' } : t182Skip('T109j')
   const result = worktreeFreshnessNote(100, 'main')
   const hasWarning = result.includes('WORKTREE FRESHNESS WARNING')
   const hasPlural = result.includes('100 commits behind origin/main')
@@ -4980,7 +4972,7 @@ await testCase('T9028 HUMAN_GATE_TAG_RULE defined once, interpolated once in sam
   const e1 = eq('HUMAN_GATE_TAG_RULE occurrences (definition + interpolation)', src.split('HUMAN_GATE_TAG_RULE').length - 1, 2)
   const e2 = eq('interpolations', src.split('${HUMAN_GATE_TAG_RULE}').length - 1, 1)
   const from = src.indexOf('const samScoutPrompt =')
-  const to = from < 0 ? -1 : src.indexOf('// Plan phase', from)
+  const to = from < 0 ? -1 : src.indexOf('// Plan stage', from)
   const scout = from < 0 || to < 0 ? '' : src.slice(from, to)
   const e3 = includes('interpolated inside samScoutPrompt', scout, '${HUMAN_GATE_TAG_RULE}')
   const e4 = includes('rule text asks act versus confirm', src, 'only to confirm that an action already happened')
@@ -5037,7 +5029,7 @@ await testCase('T9029 FOLLOWUP_ISSUE_RULE defined once, interpolated once in sam
   const e1 = eq('FOLLOWUP_ISSUE_RULE occurrences (definition + interpolation)', src.split('FOLLOWUP_ISSUE_RULE').length - 1, 2)
   const e2 = eq('interpolations', src.split('${FOLLOWUP_ISSUE_RULE}').length - 1, 1)
   const from = src.indexOf('const samScoutPrompt =')
-  const to = from < 0 ? -1 : src.indexOf('// Plan phase', from)
+  const to = from < 0 ? -1 : src.indexOf('// Plan stage', from)
   const scout = from < 0 || to < 0 ? '' : src.slice(from, to)
   const e3 = includes('interpolated inside samScoutPrompt', scout, '${FOLLOWUP_ISSUE_RULE}')
   const e4 = includes('rule text names the sub_issues listing', defLine, 'sub_issues')
