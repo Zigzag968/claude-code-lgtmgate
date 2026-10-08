@@ -1,0 +1,14 @@
+# zizmor config (workflow security lint, run by the `guards` job; epic #302, slice P-15).
+# Each entry freezes ONE legacy finding of guards.yml as `file:line`; the baseline only ratchets down. A line that moves
+# (a step added above it) makes the finding reappear and `guards` red: update the number, never widen an entry to the file.
+rules:
+  artipacked:
+    ignore:
+      # guards job checkout: the credential stays persisted; the guards need no push but the cleanup is out of scope of #306.
+      - guards.yml:41
+      # smoke-install job checkout: same legacy finding, same reason.
+      - guards.yml:134
+  adhoc-packages:
+    ignore:
+      # smoke-install installs the Claude Code CLI under test with an exact version pin; a lockfile does not apply to it.
+      - guards.yml:140
