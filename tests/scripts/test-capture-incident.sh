@@ -686,6 +686,6 @@ usage_case "unknown flag" "--force" "$RUN" 181 t --force
 usage_case "flag without value" "--out" "$RUN" 181 t --out
 
 rm -rf "$TMP"
-STATUS=ok; [ "$FAIL" -gt 0 ] && STATUS=fail
-echo "[test-capture-incident] status=$STATUS passed=$PASS failed=$FAIL"
+RESULT=ok; [ "$FAIL" -gt 0 ] && RESULT=fail
+echo "[test-capture-incident] status=$RESULT passed=$PASS failed=$FAIL"
 [ "$FAIL" -eq 0 ]

@@ -364,6 +364,6 @@ outbad=$(node scripts/run-offline.cjs "$TMP/result-bad.json" 2>&1)
 case "$outok|$outbad" in *"status=ok passed=1"*"|"*"FAIL:"*"resultIncludes: result.status"*) ok "a violated resultIncludes fails the fixture, a satisfied one passes (#270)";; *) bad "resultIncludes: ok=[$outok] bad=[$outbad]";; esac
 
 rm -rf "$TMP"
-STATUS=ok; [ "$FAIL" -gt 0 ] && STATUS=fail
-echo "[test-run-offline] status=$STATUS passed=$PASS failed=$FAIL"
+RESULT=ok; [ "$FAIL" -gt 0 ] && RESULT=fail
+echo "[test-run-offline] status=$RESULT passed=$PASS failed=$FAIL"
 [ "$FAIL" -eq 0 ]

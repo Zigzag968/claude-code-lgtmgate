@@ -30,12 +30,12 @@ new_repo() {
   # the config fixture is stored as .json.in so the recursive *.json replay collector ignores it
   mv "$1/.claude/pipeline.config.json.in" "$1/.claude/pipeline.config.json"
 }
-stage() { git -C "$1" add -A; }
+git_add_all() { git -C "$1" add -A; }
 commit_ref() {
   git -C "$1" commit -q -m fixture
   git -C "$1" update-ref refs/remotes/origin/main HEAD
 }
-seal() { stage "$1"; commit_ref "$1"; }
+seal() { git_add_all "$1"; commit_ref "$1"; }
 # setcfg <dir> <json>
 setcfg() { printf '%s\n' "$2" > "$1/.claude/pipeline.config.json"; }
 # run <dir> <args...>: stdout in $OUT, stderr in $ERR, exit code in $rc
@@ -127,14 +127,14 @@ R="$TMP/nodir"; new_repo "$R"
 setcfg "$R" '{"baseBranch":"main","projectSpecifics":".claude/nodir"}'; seal "$R"
 run "$R"; exit_is "folder-absent-exit3" 3
 R="$TMP/symlink"; new_repo "$R"
-rm "$R/docs/extra-nick.md"; stage "$R"
+rm "$R/docs/extra-nick.md"; git_add_all "$R"
 LNK=$(printf 'extra-all.md' | git -C "$R" hash-object -w --stdin)
 git -C "$R" update-index --add --cacheinfo "120000,$LNK,docs/extra-nick.md"
 commit_ref "$R"
 run "$R"; exit_is "symlink-blob-exit3 (committed mode 120000)" 3
 err_has "symlink-blob-exit3: the rule is named" "symlink"
 R="$TMP/symdisc"; new_repo "$R"
-rm "$R/.claude/lgtmgate/nick.alpha.md"; stage "$R"
+rm "$R/.claude/lgtmgate/nick.alpha.md"; git_add_all "$R"
 LNK=$(printf 'nick.md' | git -C "$R" hash-object -w --stdin)
 git -C "$R" update-index --add --cacheinfo "120000,$LNK,.claude/lgtmgate/nick.alpha.md"
 commit_ref "$R"
@@ -304,6 +304,6 @@ for k in accepts rejectsTamper found blockIos blockNone blockSkipsMissing resolv
 done
 
 rm -rf "$TMP"
-STATUS=ok; [ "$FAIL" -gt 0 ] && STATUS=fail
-echo "[test-agent-context] status=$STATUS passed=$PASS failed=$FAIL"
+RESULT=ok; [ "$FAIL" -gt 0 ] && RESULT=fail
+echo "[test-agent-context] status=$RESULT passed=$PASS failed=$FAIL"
 [ "$FAIL" -eq 0 ]

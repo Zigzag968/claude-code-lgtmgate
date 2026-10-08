@@ -28,19 +28,19 @@ total=0
 
 # new_git_pair -> prints "<main_dir> <wt_dir>" — a real MAIN repo + a real linked worktree,
 # both fresh under mktemp, so dir_contained's `cd`/`pwd -P` machinery has real git-worktree
-# state to resolve (git -C <wt> rev-parse --git-common-dir must succeed).
+# state to resolve (git -C <worktree> rev-parse --git-common-dir must succeed).
 new_git_pair() {
-  local root main wt
+  local root main worktree
   root="$(mktemp -d -p "$FIXTURE_ROOT" "provision-test.XXXXXX")"
   main="$root/main"
-  wt="$root/wt"
+  worktree="$root/wt"
   mkdir -p "$main"
   git -C "$main" init -q
   git -C "$main" config user.email "test@example.com"
   git -C "$main" config user.name "Test"
   git -C "$main" commit -q --allow-empty -m "init"
-  git -C "$main" worktree add -q "$wt" -b "wt-branch-$(basename "$root")" >/dev/null
-  printf '%s %s\n' "$main" "$wt"
+  git -C "$main" worktree add -q "$worktree" -b "wt-branch-$(basename "$root")" >/dev/null
+  printf '%s %s\n' "$main" "$worktree"
 }
 
 # assert_case <name> <0-or-1: condition already evaluated true/false> <detail>
@@ -64,15 +64,15 @@ assert_case() {
 
 bool() { if "$@"; then echo true; else echo false; fi; }
 
-# --- case 1: #53 hostile-symlink rejection — no residual dir created outside WT ------------
+# --- case 1: #53 hostile-symlink rejection — no residual dir created outside WORKTREE ------------
 #
 # dst "escaped/newdir/target" where "escaped" is a symlink OUT of the worktree (pointing at a
 # sibling directory) and "newdir" does NOT yet exist under it. This is the shape that actually
 # exercises the #53 ordering bug: `dirname(abs_dst)` = "$wt1/escaped/newdir" does not exist, so
 # `mkdir -p "$(dirname "$abs_dst")"` — when it ran BEFORE the containment check (pre-fix) —
-# actually created "newdir" INSIDE the escaped (outside-WT) location before the check ever ran.
+# actually created "newdir" INSIDE the escaped (outside-WORKTREE) location before the check ever ran.
 # Post-fix, existing_ancestor() walks up to the nearest existing ancestor ("$wt1/escaped", which
-# resolves outside WT via the symlink) and dir_contained() rejects it BEFORE any mkdir happens,
+# resolves outside WORKTREE via the symlink) and dir_contained() rejects it BEFORE any mkdir happens,
 # so no "newdir" is ever created outside the worktree. Verified this session: reverting the #53
 # fix makes this case observe residual=yes (a real regression-detection, not just a green light).
 
@@ -90,7 +90,7 @@ reported1="$(bool bash -c 'printf "%s" "$1" | grep -q "destination escapes WT"' 
 no_residual1="$(bool test ! -e "$outside1/newdir")"
 ok1="false"
 [ "$rejected1" = "true" ] && [ "$reported1" = "true" ] && [ "$no_residual1" = "true" ] && ok1="true"
-assert_case "#53 hostile symlinked dst rejected, no residual dir created outside WT" "$ok1" \
+assert_case "#53 hostile symlinked dst rejected, no residual dir created outside WORKTREE" "$ok1" \
   "exit=$exit1 (want 2), reported=$reported1, no_residual=$no_residual1"
 
 # --- case 2: #53 happy-path non-regression — an ordinary nested link still works ------------

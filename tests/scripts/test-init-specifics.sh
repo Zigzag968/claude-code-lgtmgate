@@ -162,6 +162,6 @@ printf 'plain subject without frontmatter\n' > "$L/.claude/lgtmgate/nick.testing
 LH3=$(hint "$L")
 if ! printf '%s' "$LH3" | grep -q 'contradicts' && ! printf '%s' "$LH3" | grep -q 'declared but empty' && printf '%s' "$LH3" | grep -q 'config detected'; then ok "inject-stub-lane-silent: consistent and filled lanes, and files without frontmatter, add no line"; else bad "inject-stub-lane-silent: $LH3"; fi
 
-STATUS=ok; [ "$FAIL" -eq 0 ] || STATUS=fail
-echo "[test-init-specifics] status=${STATUS} passed=${PASS} failed=${FAIL}"
+RESULT=ok; [ "$FAIL" -eq 0 ] || RESULT=fail
+echo "[test-init-specifics] status=${RESULT} passed=${PASS} failed=${FAIL}"
 [ "$FAIL" -eq 0 ]
