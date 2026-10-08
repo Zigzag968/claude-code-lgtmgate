@@ -12,9 +12,10 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SCRIPT="$ROOT/scripts/lead-merge.sh"
 BASE="$(mktemp -d "${TMPDIR:-/tmp}/lead-merge-test.XXXXXX")"
-PASS=0; FAIL=0; RUN_FLAGS=""
-ok()  { echo "PASS: $1"; PASS=$((PASS + 1)); }
-bad() { echo "FAIL: $1"; FAIL=$((FAIL + 1)); }
+RUN_FLAGS=""
+HARNESS_OK_PREFIX=PASS
+# shellcheck source=lib/harness.sh
+. "$ROOT/tests/scripts/lib/harness.sh"
 
 # --- 0. lib-level cases (#202), before any lead-merge run ---------------------------------------------------------
 # The gate reads fences and markers byte-wise (LC_ALL=C awk) while the engine (templates/pr-body-splice.cjs) trims Unicode
