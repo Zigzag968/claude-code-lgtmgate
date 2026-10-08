@@ -1,0 +1,6 @@
+# actionlint config (workflow lint, run by the `guards` job; epic #302, slice P-15).
+# No legacy finding exists on main today, so nothing is frozen yet. A legacy finding that cannot be fixed in its own PR
+# is frozen here, one commented entry per finding (regex on the message), and the baseline only ratchets down.
+paths:
+  .github/workflows/**/*.yml:
+    ignore: []
