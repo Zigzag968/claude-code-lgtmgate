@@ -350,8 +350,8 @@ function jobRunText(yml, job) {
   const start = lines.findIndex((l) => new RegExp(`^  ${job}:\\s*$`).test(l))
   if (start < 0) return ''
   let end = lines.length
-  for (let i = start + 1; i < lines.length; i++) {
-    if (/^  [A-Za-z0-9_-]+:\s*$/.test(lines[i])) { end = i; break }
+  for (let index = start + 1; index < lines.length; index++) {
+    if (/^  [A-Za-z0-9_-]+:\s*$/.test(lines[index])) { end = index; break }
   }
   return ymlRunText(lines.slice(start, end).join('\n'))
 }
