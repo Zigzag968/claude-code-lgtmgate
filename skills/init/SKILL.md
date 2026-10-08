@@ -33,7 +33,7 @@ Then: `chmod +x .claude/scripts/gh-pipeline-status.sh`, `chmod +x .claude/script
 
 `blocked-by-check.sh` is not fail-closed like `provision_worktree.sh` — a project with no cross-repo dependency works fine without it, this copy is just an optional install slot.
 
-Pipeline stage 1 (provisioning) is **fail-closed** on `scripts/provision_worktree.sh` — this copy is not optional: without it, the first run `exit 127`s.
+Setup (provisioning) is **fail-closed** on `scripts/provision_worktree.sh` — this copy is not optional: without it, the first run `exit 127`s.
 
 (1 `cp` command per file — no compounding.)
 
@@ -57,7 +57,7 @@ Read the template `${CLAUDE_PLUGIN_ROOT}/templates/pipeline.config.template.json
 ### Repo introspection (do this BEFORE filling in — friction F13)
 The plugin must integrate with the repo's REAL git-flow, not hardcode defaults. Detect:
 - **Default branch**: `gh repo view --json defaultBranchRef -q .defaultBranchRef.name`. If a `develop` branch exists (`git show-ref --verify --quiet refs/remotes/origin/develop`), git-flow is likely → propose `develop` as `baseBranch`, otherwise the default branch.
-- **Dominant branch prefix**: `git branch -r | sed -E 's#^ *origin/##' | grep / | cut -d/ -f1 | sort | uniq -c | sort -rn` → take the most frequent prefix (e.g. `feature` → `branchPrefix: "feature/"`). **Do NOT hardcode `features/`.** If a `.claude/rules/git-workflow.md` rule exists, its conventions take precedence.
+- **Dominant branch prefix**: `git for-each-ref --format='%(refname:lstrip=3)' refs/remotes/origin` (one command, no pipe), then count the prefix before the first `/` yourself, ignoring `HEAD` → take the most frequent prefix (e.g. `feature` → `branchPrefix: "feature/"`). **Do NOT hardcode `features/`.** If a `.claude/rules/git-workflow.md` rule exists, its conventions take precedence.
 - **CI base filters**: for each `.github/workflows/*.yml`, read `on.pull_request.branches`. **If `baseBranch` isn't in there, WARN**: "PRs to `<baseBranch>` will not trigger CI `<workflow>` → either target a covered base, or leave `ciChecks: []` (Morgan will validate on the local green bar)". Fill `ciChecks` with the check-run names of the workflows that DO trigger on the chosen base, exactly as `gh pr checks` prints them (matrix suffix included, e.g. `build (ubuntu-latest)`; a reusable workflow reads `caller / callee`).
 
 Fields to fill in:
@@ -68,7 +68,7 @@ Fields to fill in:
 - **ciChecks**: check-run names required green before LGTM, written exactly as `gh pr checks` prints them on a PR of this repo (matrix suffix included, e.g. `["build-and-test", "build (ubuntu-latest)"]`); a configured name GitHub does not report keeps the run from `ready` (the blocker names it). Take them from the workflows that trigger on `baseBranch` (cf introspection). If the chosen base is covered by no workflow → **`ciChecks: []`** (Morgan validates on the local green bar, without blocking on an absent CI).
 - **regressionGuard**: `testGlob` (e.g. `*Tests.swift`, `*.test.ts`, `test_*.py`) + `testFnPattern` (e.g. `func test`, `it(`, `def test_`).
 - **ghProject**: `number`, `id`, the "Pipeline Status" field (`fieldId`) + `statusOptions` (name→optionId map). See §5 if the field doesn't exist. If the project doesn't use a GH Project, leave `ghProject` empty — the workflow degrades gracefully (skips updateStatus).
-- **planAudit**: adversarial plan-soundness audit before Dev, default `false`. Enable it explicitly if the project wants this gate (cost: `maxAuditRounds × maxPlanAttempts` extra opus spawns in the worst case).
+- **planAudit**: adversarial plan-soundness audit before Dev, default `false`. Enable it explicitly if the project wants this gate.
 - **stack**: free-text string describing the target stack, passed to the plan auditor (e.g. `Django 5 / Python 3.12`). Empty → the auditor infers it from the worktree.
 - **oneWayDoorPaths**: optional key, deliberately absent from `pipeline.config.template.json` and default `[]` (no path-based stop). Add it only for a repo that declares one-way doors (globs, `dir/` prefixes or exact paths, `!` to exclude): a plan touching one stops at the design step before dev.
 - **oneWayDoorKinds**: optional key, deliberately absent from `pipeline.config.template.json` and default `[]` (Sam gets no kind question, no kind stops a run). Add it only for a repo whose own change kinds are one-way doors, among `status`, `agent`, `hook` and `seam`: Sam is asked to announce only the listed kinds, and an announced one stops the run at the design step before dev.

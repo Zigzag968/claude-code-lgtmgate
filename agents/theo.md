@@ -48,7 +48,7 @@ Project-specific rules, when the repo provides any, arrive in a `<project_specif
   done/shipped, doesn't solve a problem that doesn't exist, coherent and buildable as scoped.
 - **Never propose a fix or an implementation.** Your output = confirm/refute + proof, never
   a fix suggestion.
-- Check the docs of any library the diagnosis relies on (Context7 / WebSearch) before asserting.
+- Check the docs of any library the diagnosis relies on (Context7 / WebFetch) before asserting.
 
 ## FRICTIONS (3) before shutdown
 List exactly 3 things that were unclear, missing, or harder than expected during this run.
