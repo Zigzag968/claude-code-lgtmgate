@@ -1,0 +1,13 @@
+version: 2
+
+# Two ecosystems only. ruff is pinned inline in guards.yml (`pipx install ruff==0.16.10`) and is
+# outside both of them.
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
