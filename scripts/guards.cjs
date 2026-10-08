@@ -53,7 +53,7 @@
 //      tools) exists and names both files; or if any agents/*.md frontmatter sets
 //      `omitClaudeMd: true` (a subagent that would skip the project instructions).
 //   status-table (#180): the run's STATUS registry (top-level `const STATUS = Object.freeze({ ... })` in
-//      workflows/deliver-pipeline.js) and the status table of commands/deliver.md §5 name the same set:
+//      workflows/deliver-pipeline.js) and the status table of skills/deliver/SKILL.md §5 name the same set:
 //      every registry key has a row (a row's first cell may group several statuses, each in backticks)
 //      and every row names a registry key. A failure names the status.
 //
@@ -87,7 +87,7 @@
 //   GUARDS_PRACC_FILE      templates/pr-acceptance.md for sam-parity (default: templates/pr-acceptance.md)
 //   GUARDS_PRACC_COPY      its in-repo copy for sam-parity (default: .claude/rules/pr-acceptance.md)
 //   GUARDS_STATUS_JS_FILE  workflow file for status-table (default: workflows/deliver-pipeline.js)
-//   GUARDS_DELIVER_MD      Lead runbook for status-table (default: commands/deliver.md)
+//   GUARDS_DELIVER_MD      Lead runbook for status-table (default: skills/deliver/SKILL.md)
 //   GUARDS_PHASES_JS_FILE  workflow file for phase-titles (default: workflows/deliver-pipeline.js)
 //   GUARDS_INIT_STUBS      module exporting STUBS for init-stubs (default: scripts/init-specifics.cjs)
 //   GUARDS_ROOT            repo root (default: parent of scripts/)
@@ -100,7 +100,7 @@ const ROOT = process.env.GUARDS_ROOT || path.resolve(__dirname, '..')
 const WORKFLOW = 'workflows/deliver-pipeline.js'
 const MANIFEST = '.claude-plugin/plugin.json'
 const GUARDS_YML = '.github/workflows/guards.yml'
-const DELIVER_MD = 'commands/deliver.md'
+const DELIVER_MD = 'skills/deliver/SKILL.md'
 const ONLY = process.env.GUARDS_ONLY ? process.env.GUARDS_ONLY.split(',') : ['r1', 'wired', 'guard-steps', 'version', 'parity', 'budgets', 'instructions', 'status', 'phases', 'init-stubs', 'audit']
 
 // Suites that are NOT named in guards.yml, each with its reason. Add a suite here only if it is

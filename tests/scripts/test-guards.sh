@@ -469,15 +469,15 @@ Always relaunch the workflow with the same `config`.
 MD
 run_status() { OUT="$(GUARDS_ONLY=status GUARDS_STATUS_JS_FILE="$1" GUARDS_DELIVER_MD="$2" node scripts/guards.cjs 2>&1)"; RC=$?; }
 run_status "$T/st.js" "$T/st-ok.md"
-if [ "$RC" -eq 0 ] && [ "$OUT" = "PASS: status-table: 3 STATUS keys, each with a row in commands/deliver.md §5, no row without a key" ]; then ok "status-table: every key has a row (a grouped row counts each status), every row is a key -> PASS"; else ko "status-table positive (rc=$RC) $OUT"; fi
+if [ "$RC" -eq 0 ] && [ "$OUT" = "PASS: status-table: 3 STATUS keys, each with a row in skills/deliver/SKILL.md §5, no row without a key" ]; then ok "status-table: every key has a row (a grouped row counts each status), every row is a key -> PASS"; else ko "status-table positive (rc=$RC) $OUT"; fi
 grep -v '^| `ready` |' "$T/st-ok.md" > "$T/st-norow.md"; run_status "$T/st.js" "$T/st-norow.md"
-if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q "^FAIL: status-table: STATUS key 'ready' (workflows/deliver-pipeline.js) has no row in the status table of commands/deliver.md §5$"; then ok "status-table: a registry key without a row -> FAIL naming the status"; else ko "status-table key without row (rc=$RC) $OUT"; fi
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q "^FAIL: status-table: STATUS key 'ready' (workflows/deliver-pipeline.js) has no row in the status table of skills/deliver/SKILL.md §5$"; then ok "status-table: a registry key without a row -> FAIL naming the status"; else ko "status-table key without row (rc=$RC) $OUT"; fi
 awk '{ print } /^\| `ready` \|/ { print "| `ghost` | no such outcome | none |" }' "$T/st-ok.md" > "$T/st-extra.md"; run_status "$T/st.js" "$T/st-extra.md"
-if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q "^FAIL: status-table: row 'ghost' of the status table (commands/deliver.md §5) is not a STATUS key in workflows/deliver-pipeline.js$"; then ok "status-table: a row that is no registry key -> FAIL naming the row"; else ko "status-table row without key (rc=$RC) $OUT"; fi
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q "^FAIL: status-table: row 'ghost' of the status table (skills/deliver/SKILL.md §5) is not a STATUS key in workflows/deliver-pipeline.js$"; then ok "status-table: a row that is no registry key -> FAIL naming the row"; else ko "status-table row without key (rc=$RC) $OUT"; fi
 printf 'const finish = (def, extra = {}) => ({ ...def, ...extra })\n' > "$T/st-none.js"; run_status "$T/st-none.js" "$T/st-ok.md"
 if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: status-table: no top-level `const STATUS = Object.freeze({ ... })` registry in workflows/deliver-pipeline.js$'; then ok "status-table: registry absent (only agentDeathRouting's table) -> FAIL"; else ko "status-table no registry (rc=$RC) $OUT"; fi
 printf '## 5. Handle the returned status\nNo table here.\n' > "$T/st-notable.md"; run_status "$T/st.js" "$T/st-notable.md"
-if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: status-table: no table under `## 5. Handle the returned status` in commands/deliver.md$'; then ok "status-table: §5 without a table -> FAIL"; else ko "status-table no table (rc=$RC) $OUT"; fi
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: status-table: no table under `## 5. Handle the returned status` in skills/deliver/SKILL.md$'; then ok "status-table: §5 without a table -> FAIL"; else ko "status-table no table (rc=$RC) $OUT"; fi
 
 # ---- phase-titles (#141) ----
 # mkphases <file> <title>...: a workflow whose `export const meta` declares the given phase titles, followed by a decoy

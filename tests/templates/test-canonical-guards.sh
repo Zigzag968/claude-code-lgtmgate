@@ -264,7 +264,7 @@ fi
 # #83: the self-reference-preflight false-positive doctrine must be present on every doctrine
 # site, and the two pr-acceptance.md copies must stay byte-identical mirrors.
 SELF_REF_TOKEN="self-reference-preflight"
-SELF_REF_SITES="templates/pr-acceptance.md .claude/rules/pr-acceptance.md agents/sam.md agents/nick.md agents/morgan.md commands/deliver.md $WORKFLOW_FILE"
+SELF_REF_SITES="templates/pr-acceptance.md .claude/rules/pr-acceptance.md agents/sam.md agents/nick.md agents/morgan.md skills/deliver/SKILL.md $WORKFLOW_FILE"
 SELF_REF_MISSING=""
 for site in $SELF_REF_SITES; do
   if [ ! -f "$site" ] || ! grep -q "$SELF_REF_TOKEN" "$site"; then
@@ -456,7 +456,7 @@ fi
 # =============================================================================
 # #104: the read-only cross-repo `blockedBy` resolver + its offline test, wired into this
 # repo's own guard net. Static anchor (script exists, all five verdict tokens present, install
-# slot named in commands/init.md) + runs tests/templates/test-blocked-by-check.sh itself (offline, no
+# slot named in skills/init/SKILL.md) + runs tests/templates/test-blocked-by-check.sh itself (offline, no
 # network, no real `gh` — probe is BLOCKED_BY_PROBE_CMD-stubbed) and requires its own
 # "N/N PASS" summary with zero FAIL lines.
 BBC_SCRIPT="templates/blocked-by-check.sh"
@@ -469,8 +469,8 @@ elif ! grep -q 'none' "$BBC_SCRIPT" || ! grep -q 'resolved' "$BBC_SCRIPT" \
   fail "blocked-by-signal" "$BBC_SCRIPT is missing one of the five verdict tokens (none/resolved/pending/abandoned/unknown)"
 elif [ ! -f "$BBC_TEST" ]; then
   fail "blocked-by-signal" "$BBC_TEST does not exist"
-elif ! grep -q 'templates/blocked-by-check.sh' commands/init.md 2>/dev/null; then
-  fail "blocked-by-signal" "commands/init.md does not name templates/blocked-by-check.sh as an install slot"
+elif ! grep -q 'templates/blocked-by-check.sh' skills/init/SKILL.md 2>/dev/null; then
+  fail "blocked-by-signal" "skills/init/SKILL.md does not name templates/blocked-by-check.sh as an install slot"
 else
   BBC_OUT="$(bash "$BBC_TEST" 2>&1)"
   BBC_EXIT=$?
@@ -487,7 +487,7 @@ else
     if [ "$BBC_P" != "$BBC_TOT" ]; then
       fail "blocked-by-signal" "$BBC_TEST summary is not N/N (some cases failed): $BBC_LAST"
     else
-      pass "blocked-by-signal: $BBC_SCRIPT + $BBC_TEST present, install slot wired in commands/init.md, offline suite green ($BBC_LAST)"
+      pass "blocked-by-signal: $BBC_SCRIPT + $BBC_TEST present, install slot wired in skills/init/SKILL.md, offline suite green ($BBC_LAST)"
     fi
   fi
 fi

@@ -1,5 +1,7 @@
 ---
+name: context
 description: Show what project specifics each agent will receive at the next launch (table by default, one role's text on request).
+disable-model-invocation: true
 argument-hint: "[role | persona | <Role> --lane <name>]"
 allowed-tools: Bash, Read
 ---

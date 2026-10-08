@@ -51,7 +51,7 @@ component name (claude-agent-pipeline#526's trap, inverted).
 
 Until every consumer project migrates (S4), a not-yet-migrated project keeps its own copy at
 `.claude/workflows/deliver-pipeline.js`, launched by its explicit `scriptPath`, never by a bare or
-namespaced name — see `commands/deliver.md` step 1/4 for the resolution logic the Lead runbook
+namespaced name — see `skills/deliver/SKILL.md` step 1/4 for the resolution logic the Lead runbook
 follows.
 
 **Bare-name probe answer, recorded verbatim (this session, `--plugin-dir`, before 0.8.0 was
