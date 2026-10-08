@@ -298,11 +298,12 @@ ok=0; [ "$GRC" -ne 0 ] && has 'probe-pr-state: results unusable (file missing)' 
 check "run-probe-evals.sh: results of an earlier run are cleared, a run that wrote none -> FAIL" "$ok"
 
 # the CLI the eval runs on is pinned: the verify-ok grader reads the 2.1.286 trace format
-pin="$(sed -n 's/^ARG CLAUDE_CODE_VERSION=\([0-9][0-9.]*\)$/\1/p' "$ROOT/.devcontainer/Dockerfile")"
+pin="$(node -p "require('$ROOT/.devcontainer/package.json').devDependencies['@anthropic-ai/claude-code']" 2>/dev/null)"
+locked="$(node -p "require('$ROOT/.devcontainer/package-lock.json').packages['node_modules/@anthropic-ai/claude-code'].version" 2>/dev/null)"
 ok=0
-[ -n "$pin" ] && grep -q "\"CLAUDE_CODE_VERSION\": \"$pin\"" "$ROOT/.devcontainer/devcontainer.json" \
+printf '%s' "$pin" | grep -Eq '^[0-9]+(\.[0-9]+){2}$' && [ "$locked" = "$pin" ] \
   && grep -q "$pin" "$ROOT/.claude/skills/run-probe-evals/SKILL.md" && ok=1
-check "Dockerfile pins CLAUDE_CODE_VERSION to an exact version (${pin:-none}), devcontainer.json and the skill cite the same" "$ok"
+check "devcontainer manifest pins the CLI to an exact version (${pin:-none}), the lockfile resolves the same, the skill cites it" "$ok"
 
 echo "status=$([ "$fail_count" -eq 0 ] && echo pass || echo fail) pass=$pass_count fail=$fail_count"
 [ "$fail_count" -eq 0 ]
