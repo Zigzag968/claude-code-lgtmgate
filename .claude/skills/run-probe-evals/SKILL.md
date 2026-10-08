@@ -27,8 +27,8 @@ description: Run or debug the probe evals of issue #81 (`claude plugin eval` on 
 - The runner deletes each case's previous `aggregate-result.json` first, so an aborted run cannot be gated on an older pass.
 
 ## Pinned CLI version
-- `.devcontainer/Dockerfile` pins `CLAUDE_CODE_VERSION` to `2.1.286` (`.devcontainer/devcontainer.json` passes the same value): the `verify-ok` grader depends on that version's trace format, and the gate on its `aggregate-result.json` shape.
-- Bumping it: change both files and this note, rerun the whole suite (30 runs) and re-check the pinned graders against the new trace. `tests/scripts/test-probe-evals.sh` fails if the three disagree.
+- `.devcontainer/package.json` pins the CLI to `2.1.294`, its lockfile carries the integrity hash, and the Dockerfile and the `smoke-install` job install it with `npm ci`: the `verify-ok` grader depends on that version's trace format, and the gate on its `aggregate-result.json` shape.
+- Bumping it: change the manifest, regenerate the lockfile (`npm install --package-lock-only --prefix .devcontainer`) and this note, rerun the whole suite (30 runs) and re-check the pinned graders against the new trace. `tests/scripts/test-probe-evals.sh` fails if the manifest, the lockfile and this note disagree.
 
 ## Debug one case
 - Same `docker run` as the script, plus `--runs 1 --keep-temp`, and a mount on `/tmp` to keep the trace:

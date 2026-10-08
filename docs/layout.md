@@ -19,7 +19,7 @@ The root folders are enforced by `.ls-lint.yml` and `node scripts/audit.cjs --ch
 | `.claude-plugin/` | Claude Code | plugin and marketplace manifests | `plugin.json`, `marketplace.json` |
 | `.github/` | GitHub | workflows, issue and PR templates | `workflows/`, `PULL_REQUEST_TEMPLATE.md` |
 | `.githooks/` | contributors | local git hooks | `pre-commit`, `pre-push` |
-| `.devcontainer/` | contributors | development container | `devcontainer.json` |
+| `.devcontainer/` | contributors | development container and the pinned Claude Code CLI install | `devcontainer.json`, `package.json`, `package-lock.json` |
 
 ## Never
 

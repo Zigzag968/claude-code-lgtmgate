@@ -1,0 +1,8 @@
+{
+  "name": "lgtmgate-claude-cli",
+  "private": true,
+  "description": "Pins the Claude Code CLI used by CI and the devcontainer; the version moves only by a deliberate edit.",
+  "devDependencies": {
+    "@anthropic-ai/claude-code": "2.1.294"
+  }
+}
