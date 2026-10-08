@@ -1,0 +1,33 @@
+{
+  "name": "338-version-probe-command-not-run",
+  "note": "#338: the probe agent dropped the final quote of the nested-quoting command it re-typed; the shell refused it, probe-run.cjs never ran and no record exists (empty line, verify says no-record). The run ends as the documented provision-failed with probeReason command-not-run, not unparseable-line.",
+  "args": {
+    "pluginRoot": "/cache/lgtmgate/current",
+    "issue": 338,
+    "brief": "a probe command that never ran must be named command-not-run, not unparseable-line",
+    "wtPath": "/wt/root/issue-338",
+    "config": {},
+    "mode": "auto"
+  },
+  "calls": {
+    "probe-338-lines-plugin-version-r0": {
+      "line": "",
+      "verify": "VERIFY fail reason=no-record"
+    }
+  },
+  "expect": {
+    "status": "escalate",
+    "reason": "provision-failed",
+    "trace": [
+      "branch-prefix-fallback-default",
+      "probe:lines:haiku"
+    ],
+    "traceExact": true,
+    "callLabels": [
+      "probe-338-lines-plugin-version-r0"
+    ],
+    "logsInclude": [
+      "Plugin version probe failed (command-not-run)"
+    ]
+  }
+}
