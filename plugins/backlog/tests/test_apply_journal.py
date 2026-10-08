@@ -6,16 +6,16 @@ import os
 import unittest
 from unittest import mock
 
-import _support as S
-import backlog_apply as A
-import backlog_catchup as K
+import _support
+import backlog_apply
+import backlog_catchup
 
 
-class Journaled(S.ApplyBase):
+class Journaled(_support.ApplyBase):
     def setup_run(self, count, **runner_kw):
         self.issues = self.bug_issues(count)
         self.dir, self.sha = self.take_snapshot(self._copy.deepcopy(self.issues))
-        self.proposals = self.proposals_file([S.proposal(n) for n in range(1, count + 1)])
+        self.proposals = self.proposals_file([_support.proposal(n) for n in range(1, count + 1)])
         self.gh = self.new_runner(self.issues, **runner_kw)
         return self.gh
 
@@ -27,12 +27,12 @@ class Journaled(S.ApplyBase):
         return args
 
     def confirm(self):
-        rc, out = self.call(K.main, self.argv(apply=False), self.new_runner(self._copy.deepcopy(self.issues)))
+        rc, out = self.call(backlog_catchup.main, self.argv(apply=False), self.new_runner(self._copy.deepcopy(self.issues)))
         self.assertEqual(rc, 0, out)
         return self.digest(out)
 
     def run_apply(self, runner=None):
-        return self.call(K.main, self.argv(), runner or self.gh)
+        return self.call(backlog_catchup.main, self.argv(), runner or self.gh)
 
     def journal(self, name="applied.json"):
         return json.loads((self.dir / name).read_text())
@@ -188,10 +188,10 @@ class TestJournalIsBoundToItsTable(Journaled):
     def test_a_journal_of_another_table_or_snapshot_is_refused_with_zero_write(self):
         runner = self.setup_run(2)
         self.run_apply(runner)
-        other = self.proposals_file([S.proposal(1)], name="other.json")  # another table: another digest
+        other = self.proposals_file([_support.proposal(1)], name="other.json")  # another table: another digest
         self.proposals, kept = other, self.proposals
         fresh = self.new_runner(self._copy.deepcopy(self.issues))
-        rc, out = self.call(K.main, self.argv(), fresh)
+        rc, out = self.call(backlog_catchup.main, self.argv(), fresh)
         self.assertEqual(rc, 1, out)
         self.assertIn("refused: snapshot", out)
         self.assertIn("journal of another table", out)
@@ -211,7 +211,7 @@ class TestApplierSourceHasNoDeletePath(unittest.TestCase):
     FORBIDDEN = {"unlink", "remove", "rmtree", "rmdir", "removedirs", "rename"}
 
     def calls(self):
-        tree = ast.parse((S.SCRIPTS / "backlog_apply.py").read_text())
+        tree = ast.parse((_support.SCRIPTS / "backlog_apply.py").read_text())
         out = []
         for node in ast.walk(tree):
             if isinstance(node, ast.Call):
@@ -240,19 +240,19 @@ class TestApplierSourceHasNoDeletePath(unittest.TestCase):
 
 class TestJournalClass(unittest.TestCase):
     def test_a_missing_file_is_a_new_journal_and_done_only_counts_applied_and_noop(self):
-        with S.tmpdir() as tmp:
+        with _support.tmpdir() as tmp:
             path = os.path.join(tmp, "j.json")
-            journal = A.Journal.load(path, "catchup", "acme/widgets", "d", "s")
+            journal = backlog_apply.Journal.load(path, "catchup", "acme/widgets", "d", "s")
             self.assertEqual(journal.done(), set())
             journal.record("1", "applied", ["a"], [])
             journal.record("2", "partial", ["b"], [])
             journal.record("3", "noop")
-            again = A.Journal.load(path, "catchup", "acme/widgets", "d", "s")
+            again = backlog_apply.Journal.load(path, "catchup", "acme/widgets", "d", "s")
             self.assertEqual(again.done(), {"1", "3"})
             for kind, repo, digest, sha in (("rollback", "acme/widgets", "d", "s"), ("catchup", "acme/o", "d", "s"),
                                             ("catchup", "acme/widgets", "x", "s"), ("catchup", "acme/widgets", "d", "y")):
-                with self.subTest(kind=kind, repo=repo, digest=digest, sha=sha), self.assertRaises(A.Refused):
-                    A.Journal.load(path, kind, repo, digest, sha)
+                with self.subTest(kind=kind, repo=repo, digest=digest, sha=sha), self.assertRaises(backlog_apply.RefusedError):
+                    backlog_apply.Journal.load(path, kind, repo, digest, sha)
 
 
 if __name__ == "__main__":

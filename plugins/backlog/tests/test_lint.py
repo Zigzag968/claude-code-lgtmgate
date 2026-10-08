@@ -3,18 +3,18 @@ import io
 import json
 import unittest
 
-import _support as S
-import backlog_config as C
+import _support
+import backlog_config
 from backlog_gh import Gh, ModeError
 from backlog_lint import lint, main
 
-SNAPSHOT = S.FIXTURES / "backlog_issues_snapshot.json"
-EMPTY_QUEUE = S.FIXTURES / "backlog_issues_empty_queue.json"
-CFG = C.default_config("propose")
+SNAPSHOT = _support.FIXTURES / "backlog_issues_snapshot.json"
+EMPTY_QUEUE = _support.FIXTURES / "backlog_issues_empty_queue.json"
+CFG = backlog_config.default_config("propose")
 
 
 def _issue(number, *labels, state="OPEN"):
-    return S.issue(number, *labels, state=state)
+    return _support.issue(number, *labels, state=state)
 
 
 def _clean(number=1, *extra):
@@ -97,13 +97,13 @@ class TestLint(unittest.TestCase):
         self.assertEqual([(v.number, v.code) for v in first], sorted((v.number, v.code) for v in first))
 
     def test_labels_come_from_the_config_not_from_constants(self):
-        with S.tmpdir() as tmp:
-            S.write_config(
+        with _support.tmpdir() as tmp:
+            _support.write_config(
                 tmp,
                 "contract: 1\nmode: propose\nlabels:\n  size: [XS, S]\n  status: [new, todo, ready]\n"
                 "roles:\n  intake: new\n  waiting: todo\n  ready: ready\n  split: [S]\n  candidate_sizes: [XS]\ncaps:\n",
             )
-            cfg = C.load_config(tmp)
+            cfg = backlog_config.load_config(tmp)
         self.assertEqual(cfg.mode, "propose")
         codes = [v.code for v in lint([_issue(1, "type:bug", "status:ready", "exec:agent", "size:S")], cfg)]
         self.assertIn("ready-size-l", codes)  # S is the split size in this config
@@ -130,19 +130,19 @@ class TestLintCli(unittest.TestCase):
         self.assertIn("violations=0", out)
 
     def test_main_fetch_failure_returns_1(self):
-        runner = S.FakeRunner(fail=FileNotFoundError("gh"))
+        runner = _support.FakeRunner(fail=FileNotFoundError("gh"))
         rc, out = run_main([], gh=Gh(CFG, runner=runner))
         self.assertEqual(rc, 1)
         self.assertTrue(out.startswith("[backlog-lint] error:"))
         self.assertNotIn("violations=0", out)
 
     def test_main_refused_gh_returns_1(self):
-        rc, out = run_main([], gh=Gh(C.default_config("off"), runner=S.FakeRunner()))
+        rc, out = run_main([], gh=Gh(backlog_config.default_config("off"), runner=_support.FakeRunner()))
         self.assertEqual(rc, 1)
         self.assertIn("error", out)
 
     def test_fetch_passes_a_limit(self):
-        runner = S.FakeRunner()
+        runner = _support.FakeRunner()
         rc, _ = run_main([], gh=Gh(CFG, runner=runner))
         self.assertEqual(rc, 0)
         self.assertIn("--limit", runner.calls[0])

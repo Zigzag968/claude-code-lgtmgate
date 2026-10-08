@@ -248,14 +248,14 @@ class ApplyBase(__import__("unittest").TestCase):
         self._tmp.cleanup()
 
     def make_cfg(self, mode=None, repo="acme/widgets", extra=APPLY_MAPPING):
-        import backlog_config as C
+        import backlog_config
 
         self._cfg_count = getattr(self, "_cfg_count", 0) + 1
         target = self.tmp / ("cfg-%d" % self._cfg_count)
         target.mkdir()
         text = "contract: 1\nmode: %s\n%s%s" % (mode or self.MODE, "repo: %s\n" % repo if repo else "", extra)
         write_config(target, text)
-        cfg = C.load_config(str(target))
+        cfg = backlog_config.load_config(str(target))
         assert cfg.mode == (mode or self.MODE), cfg.reason
         return cfg
 
@@ -269,7 +269,7 @@ class ApplyBase(__import__("unittest").TestCase):
         """Freeze `issues` (a deep copy) with the real snapshot command; returns (directory, sha)."""
         import hashlib
 
-        import backlog_snapshot as SN
+        import backlog_snapshot
         from datetime import datetime, timezone
 
         issues_file, labels_file = self.tmp / "snap-issues.json", self.tmp / "snap-labels.json"
@@ -278,7 +278,7 @@ class ApplyBase(__import__("unittest").TestCase):
         directory = Path(target or self.snap)
         buf = __import__("io").StringIO()
         with self._contextlib.redirect_stdout(buf):
-            rc = SN.main_snapshot(
+            rc = backlog_snapshot.main_snapshot(
                 ["--issues-file", str(issues_file), "--labels-file", str(labels_file), "--snapshot-dir", str(directory)],
                 cfg or self.cfg, now=datetime(2026, 9, 19, 12, 0, 0, tzinfo=timezone.utc))
         assert rc == 0, buf.getvalue()

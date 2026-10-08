@@ -10,9 +10,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from unittest import mock
 
-import _support as S
-import backlog_config as C
-import backlog_snapshot as SN
+import _support
+import backlog_config
+import backlog_snapshot
 from backlog_gh import Gh
 
 NOW = datetime(2026, 9, 19, 12, 0, 0, tzinfo=timezone.utc)
@@ -28,14 +28,14 @@ LABELS = ["type:bug", "type:chore", "status:inbox", "status:ready", "exec:agent"
 
 class Base(unittest.TestCase):
     def setUp(self):
-        self._tmp = S.tmpdir()
+        self._tmp = _support.tmpdir()
         self.tmp = Path(self._tmp.name)
         self.project = self.tmp / "repo"
         self.project.mkdir()
         self.home = self.tmp / "home"
         self.home.mkdir()
-        S.write_repo_config(self.project, "acme/widgets")
-        self.cfg = C.load_config(str(self.project))
+        _support.write_repo_config(self.project, "acme/widgets")
+        self.cfg = backlog_config.load_config(str(self.project))
         self.assertEqual(self.cfg.mode, "propose", self.cfg.reason)
         patcher = mock.patch.dict(os.environ, {"HOME": str(self.home)})
         patcher.start()
@@ -56,7 +56,7 @@ class Base(unittest.TestCase):
 
     def snapshot(self, *extra, cfg=None, now=NOW, **kw):
         argv = ["--issues-file", str(self.issues_file), "--labels-file", str(self.labels_file)] + list(extra)
-        return self.call(SN.main_snapshot, argv, cfg, now=now, **kw)
+        return self.call(backlog_snapshot.main_snapshot, argv, cfg, now=now, **kw)
 
     def default_dir(self):
         return self.home / ".backlog-snapshots" / "acme__widgets" / "20260919T120000Z"
@@ -113,7 +113,7 @@ class TestSnapshot(Base):
     def test_refuses_a_target_under_the_project_the_plugin_or_a_git_repository(self):
         elsewhere = self.tmp / "other-repo"
         (elsewhere / ".git").mkdir(parents=True)
-        for target in (self.project / "snaps", self.project, S.PLUGIN_ROOT / "snaps", elsewhere / "snaps" / "x"):
+        for target in (self.project / "snaps", self.project, _support.PLUGIN_ROOT / "snaps", elsewhere / "snaps" / "x"):
             with self.subTest(target=str(target)):
                 rc, out = self.snapshot("--snapshot-dir", str(target))
                 self.assertEqual(rc, 1, out)
@@ -140,7 +140,7 @@ class TestSnapshot(Base):
         self.assertEqual(stat.S_IMODE(target.stat().st_mode), 0o755)
 
     def test_repo_is_required_and_the_flag_is_only_an_assertion(self):
-        rc, out = self.snapshot(cfg=C.default_config("propose"))
+        rc, out = self.snapshot(cfg=backlog_config.default_config("propose"))
         self.assertEqual(rc, 1)
         self.assertIn("`repo:` is required", out)
         rc, out = self.snapshot("--repo", "acme/other")
@@ -150,8 +150,8 @@ class TestSnapshot(Base):
         self.assertEqual(self.snapshot("--repo", "acme/widgets")[0], 0)
 
     def test_live_read_uses_gh_all_states_and_the_snapshot_fields(self):
-        runner = S.FakeRunner(issues=ISSUES, labels=LABELS)
-        rc, out = self.call(SN.main_snapshot, [], gh=Gh(self.cfg, runner=runner), now=NOW)
+        runner = _support.FakeRunner(issues=ISSUES, labels=LABELS)
+        rc, out = self.call(backlog_snapshot.main_snapshot, [], gh=Gh(self.cfg, runner=runner), now=NOW)
         self.assertEqual(rc, 0, out)
         self.assertEqual(runner.verbs(), [("issue", "list"), ("label", "list")])
         issue_call = runner.calls[0]
@@ -160,8 +160,8 @@ class TestSnapshot(Base):
         self.assertTrue(all(call[-2:] == ["-R", "acme/widgets"] for call in runner.calls))
 
     def test_a_possibly_truncated_read_writes_nothing(self):
-        runner = S.FakeRunner(issues=[{"number": n, "state": "OPEN", "labels": []} for n in range(SN.SNAPSHOT_LIMIT)], labels=LABELS)
-        rc, out = self.call(SN.main_snapshot, [], gh=Gh(self.cfg, runner=runner), now=NOW)
+        runner = _support.FakeRunner(issues=[{"number": n, "state": "OPEN", "labels": []} for n in range(backlog_snapshot.SNAPSHOT_LIMIT)], labels=LABELS)
+        rc, out = self.call(backlog_snapshot.main_snapshot, [], gh=Gh(self.cfg, runner=runner), now=NOW)
         self.assertEqual(rc, 1)
         self.assertIn("possible silent truncation", out)
         self.assertFalse(self.default_dir().exists())
@@ -184,7 +184,7 @@ class TestRollback(Base):
     def rollback(self, *extra, sha=None, cfg=None, labels=None):
         argv = ["--snapshot-dir", str(self.dir), "--expect-sha", sha or self.sha,
                 "--issues-file", str(self.live_file), "--labels-file", str(labels or self.labels_file)] + list(extra)
-        return self.call(SN.main_rollback, argv, cfg)
+        return self.call(backlog_snapshot.main_rollback, argv, cfg)
 
     def test_plan_restores_only_axis_labels_and_never_touches_protected_ones(self):
         rc, out = self.rollback()
@@ -233,21 +233,21 @@ class TestRollback(Base):
     def test_a_snapshot_of_another_repo_is_refused(self):
         other = self.tmp / "repo-b"
         other.mkdir()
-        S.write_repo_config(other, "acme/other")
-        rc, out = self.rollback(cfg=C.load_config(str(other)))
+        _support.write_repo_config(other, "acme/other")
+        rc, out = self.rollback(cfg=backlog_config.load_config(str(other)))
         self.assertEqual(rc, 1)
         self.assertIn("belongs to acme/widgets, the config targets acme/other", out)
 
     def test_repo_is_required(self):
-        rc, out = self.rollback(cfg=C.default_config("propose"))
+        rc, out = self.rollback(cfg=backlog_config.default_config("propose"))
         self.assertEqual(rc, 1)
         self.assertIn("`repo:` is required", out)
 
     def test_the_digest_is_stable_and_bound_to_the_repo(self):
         snapshot = json.loads((self.dir / "snapshot.json").read_text())["issues"]
-        a = SN.rollback_digest(snapshot, "acme/widgets")
-        self.assertEqual(a, SN.rollback_digest(snapshot, "acme/widgets"))
-        self.assertNotEqual(a, SN.rollback_digest(snapshot, "acme/other"))
+        a = backlog_snapshot.rollback_digest(snapshot, "acme/widgets")
+        self.assertEqual(a, backlog_snapshot.rollback_digest(snapshot, "acme/widgets"))
+        self.assertNotEqual(a, backlog_snapshot.rollback_digest(snapshot, "acme/other"))
         self.assertEqual(len(a), 16)
         _, out = self.rollback()
         self.assertIn("table-digest: %s" % a, out)
@@ -255,11 +255,11 @@ class TestRollback(Base):
     def test_apply_and_confirm_exist_but_no_batch_flag_does(self):
         for flag in (["--apply"], ["--confirm", "x"]):
             with self.subTest(flag=flag):
-                SN.build_rollback_parser().parse_args(["--snapshot-dir", "d", "--expect-sha", "s"] + flag)
+                backlog_snapshot.build_rollback_parser().parse_args(["--snapshot-dir", "d", "--expect-sha", "s"] + flag)
         for flag in (["--batch-size", "5"], ["--snap"]):
             with self.subTest(flag=flag), contextlib.redirect_stderr(io.StringIO()):
                 with self.assertRaises(SystemExit) as raised:
-                    SN.build_rollback_parser().parse_args(["--snapshot-dir", "d", "--expect-sha", "s"] + flag)
+                    backlog_snapshot.build_rollback_parser().parse_args(["--snapshot-dir", "d", "--expect-sha", "s"] + flag)
                 self.assertEqual(raised.exception.code, 2)
 
     def test_a_terminal_escape_in_a_snapshot_label_is_neutralized(self):
@@ -282,7 +282,7 @@ class TestModuleHasNoDeletePath(unittest.TestCase):
         # every new S1 module is covered, not only the snapshot one.
         for module in self.MODULES:
             with self.subTest(module=module):
-                tree = ast.parse((S.SCRIPTS / module).read_text())
+                tree = ast.parse((_support.SCRIPTS / module).read_text())
                 called = set()
                 for node in ast.walk(tree):
                     if isinstance(node, ast.Call):

@@ -4,12 +4,12 @@ import json
 import re
 import unittest
 
-import _support as S
-import backlog_config as C
-import backlog_triage as T
+import _support
+import backlog_config
+import backlog_triage
 from backlog_gh import Gh
 
-CFG = C.default_config("propose")
+CFG = backlog_config.default_config("propose")
 LIVE = {"type:bug", "type:feature", "type:chore", "status:inbox", "status:needs-info", "status:ready",
         "exec:agent", "exec:human", "size:S", "size:M", "size:L", "priority:0-now", "priority:1-next", "priority:2-later"}
 
@@ -19,7 +19,7 @@ def prop(issue, before, after, reason="because", confidence="high"):
 
 
 def verdicts(proposals, issues, live=LIVE, cfg=CFG):
-    results = T.validate(T.parse_proposals(proposals), issues, live, cfg)
+    results = backlog_triage.validate(backlog_triage.parse_proposals(proposals), issues, live, cfg)
     return {(r.proposal.issue, r.proposal.index): r.codes for r in results}
 
 
@@ -33,7 +33,7 @@ GOOD = prop(1, INBOX, ("type:chore", "status:ready", "exec:agent", "size:S"))
 
 class TestValidate(unittest.TestCase):
     def issue(self, labels=INBOX, number=1, state="OPEN"):
-        return S.issue(number, *labels, state=state)
+        return _support.issue(number, *labels, state=state)
 
     def test_a_good_proposal_is_accepted(self):
         self.assertEqual(codes_for(GOOD, self.issue()), [])
@@ -78,14 +78,14 @@ class TestValidate(unittest.TestCase):
 
     def test_cap_goes_to_the_lowest_issue_number(self):
         issues = [self.issue(number=n) for n in (1, 2, 3)]
-        issues += [S.issue(n, "type:chore", "status:inbox", "priority:0-now") for n in (10, 11)]
+        issues += [_support.issue(n, "type:chore", "status:inbox", "priority:0-now") for n in (10, 11)]
         proposals = [prop(n, INBOX, INBOX + ("priority:0-now",)) for n in (1, 2)]
         got = verdicts(proposals, issues)
         self.assertEqual(got[(1, 0)], ["cap-exceeded:priority:0-now"])
         self.assertEqual(got[(2, 1)], ["cap-exceeded:priority:0-now"])
 
     def test_cap_admits_up_to_the_limit_in_issue_order(self):
-        issues = [self.issue(number=n) for n in (1, 2, 3)] + [S.issue(10, "type:chore", "status:inbox", "priority:0-now")]
+        issues = [self.issue(number=n) for n in (1, 2, 3)] + [_support.issue(10, "type:chore", "status:inbox", "priority:0-now")]
         proposals = [prop(n, INBOX, INBOX + ("priority:0-now",)) for n in (3, 2)]
         got = verdicts(proposals, issues)
         self.assertEqual(got[(2, 1)], [])
@@ -93,31 +93,31 @@ class TestValidate(unittest.TestCase):
 
     def test_results_are_ordered_by_issue_number(self):
         issues = [self.issue(number=n) for n in (5, 2)]
-        results = T.validate(T.parse_proposals([prop(5, INBOX, INBOX + ("priority:2-later",)), prop(2, INBOX, INBOX + ("priority:2-later",))]), issues, LIVE, CFG)
+        results = backlog_triage.validate(backlog_triage.parse_proposals([prop(5, INBOX, INBOX + ("priority:2-later",)), prop(2, INBOX, INBOX + ("priority:2-later",))]), issues, LIVE, CFG)
         self.assertEqual([r.proposal.issue for r in results], [2, 5])
 
 
 class TestInboxAndTable(unittest.TestCase):
     def test_list_inbox_returns_intake_and_waiting_open_issues(self):
         issues = [
-            S.issue(3, "type:bug", "status:needs-info"),
-            S.issue(1, "type:bug", "status:inbox"),
-            S.issue(2, "type:bug", "status:ready", "exec:agent", "size:S"),
-            S.issue(4, "type:bug", "status:inbox", state="CLOSED"),
+            _support.issue(3, "type:bug", "status:needs-info"),
+            _support.issue(1, "type:bug", "status:inbox"),
+            _support.issue(2, "type:bug", "status:ready", "exec:agent", "size:S"),
+            _support.issue(4, "type:bug", "status:inbox", state="CLOSED"),
         ]
-        self.assertEqual([i["number"] for i in T.list_inbox(issues, CFG)], [1, 3])
+        self.assertEqual([i["number"] for i in backlog_triage.list_inbox(issues, CFG)], [1, 3])
 
     def test_render_table_and_digest(self):
-        proposals = T.parse_proposals([GOOD, prop(2, INBOX, INBOX, reason="a | b")])
-        results = T.validate(proposals, [S.issue(1, *INBOX), S.issue(2, *INBOX)], LIVE, CFG)
-        table = T.render_table(results)
+        proposals = backlog_triage.parse_proposals([GOOD, prop(2, INBOX, INBOX, reason="a | b")])
+        results = backlog_triage.validate(proposals, [_support.issue(1, *INBOX), _support.issue(2, *INBOX)], LIVE, CFG)
+        table = backlog_triage.render_table(results)
         self.assertIn("| #1 |", table)
         self.assertIn("REJECT(noop)", table)
         self.assertIn("a \\| b", table)
-        digest = T.table_digest(proposals)
+        digest = backlog_triage.table_digest(proposals)
         self.assertRegex(digest, r"^[0-9a-f]{16}$")
-        self.assertEqual(digest, T.table_digest(list(reversed(proposals))))
-        self.assertNotEqual(digest, T.table_digest(T.parse_proposals([GOOD])))
+        self.assertEqual(digest, backlog_triage.table_digest(list(reversed(proposals))))
+        self.assertNotEqual(digest, backlog_triage.table_digest(backlog_triage.parse_proposals([GOOD])))
 
 
 def run(fn, argv, gh=None, cfg=CFG):
@@ -129,51 +129,51 @@ def run(fn, argv, gh=None, cfg=CFG):
 
 class TestCli(unittest.TestCase):
     def files(self, tmp, proposals, issues):
-        tmp = S.Path(tmp)
+        tmp = _support.Path(tmp)
         (tmp / "p.json").write_text(json.dumps(proposals))
         (tmp / "i.json").write_text(json.dumps(issues))
         (tmp / "l.json").write_text(json.dumps([{"name": n} for n in sorted(LIVE)]))
         return tmp
 
     def test_triage_check_offline_prints_table_and_digest_and_writes_nothing(self):
-        with S.tmpdir() as tmp:
-            tmp = self.files(tmp, [GOOD], [S.issue(1, *INBOX)])
-            rc, out = run(T.main_check, ["--proposals", str(tmp / "p.json"), "--issues-file", str(tmp / "i.json"), "--labels-file", str(tmp / "l.json")])
+        with _support.tmpdir() as tmp:
+            tmp = self.files(tmp, [GOOD], [_support.issue(1, *INBOX)])
+            rc, out = run(backlog_triage.main_check, ["--proposals", str(tmp / "p.json"), "--issues-file", str(tmp / "i.json"), "--labels-file", str(tmp / "l.json")])
         self.assertEqual(rc, 0)
         self.assertIn("accepted=1 rejected=0", out)
         self.assertRegex(out, r"table-digest: [0-9a-f]{16}")
         self.assertIn("propose-only: nothing was written", out)
 
     def test_strict_fails_on_a_rejected_row(self):
-        with S.tmpdir() as tmp:
-            tmp = self.files(tmp, [prop(1, INBOX, INBOX)], [S.issue(1, *INBOX)])
-            rc, out = run(T.main_check, ["--proposals", str(tmp / "p.json"), "--issues-file", str(tmp / "i.json"), "--labels-file", str(tmp / "l.json"), "--strict"])
+        with _support.tmpdir() as tmp:
+            tmp = self.files(tmp, [prop(1, INBOX, INBOX)], [_support.issue(1, *INBOX)])
+            rc, out = run(backlog_triage.main_check, ["--proposals", str(tmp / "p.json"), "--issues-file", str(tmp / "i.json"), "--labels-file", str(tmp / "l.json"), "--strict"])
         self.assertEqual(rc, 1)
         self.assertIn("REJECT(noop)", out)
 
     def test_triage_check_uses_reads_only_when_fetching(self):
-        runner = S.FakeRunner(issues=[S.issue(1, *INBOX)], labels=sorted(LIVE))
-        with S.tmpdir() as tmp:
+        runner = _support.FakeRunner(issues=[_support.issue(1, *INBOX)], labels=sorted(LIVE))
+        with _support.tmpdir() as tmp:
             tmp = self.files(tmp, [GOOD], [])
-            rc, out = run(T.main_check, ["--proposals", str(tmp / "p.json")], Gh(CFG, runner=runner))
+            rc, out = run(backlog_triage.main_check, ["--proposals", str(tmp / "p.json")], Gh(CFG, runner=runner))
         self.assertEqual(rc, 0)
         self.assertEqual(runner.verbs(), [("issue", "list"), ("label", "list")])
 
     def test_fetch_failure_is_an_error(self):
-        with S.tmpdir() as tmp:
+        with _support.tmpdir() as tmp:
             tmp = self.files(tmp, [GOOD], [])
-            rc, out = run(T.main_check, ["--proposals", str(tmp / "p.json")], Gh(CFG, runner=S.FakeRunner(fail=FileNotFoundError("gh"))))
+            rc, out = run(backlog_triage.main_check, ["--proposals", str(tmp / "p.json")], Gh(CFG, runner=_support.FakeRunner(fail=FileNotFoundError("gh"))))
         self.assertEqual(rc, 1)
         self.assertIn("error", out)
 
     def test_inbox_prints_json(self):
-        runner = S.FakeRunner(issues=[S.issue(1, *INBOX), S.issue(2, "type:bug", "status:ready", "exec:agent", "size:S")])
-        rc, out = run(T.main_inbox, [], Gh(CFG, runner=runner))
+        runner = _support.FakeRunner(issues=[_support.issue(1, *INBOX), _support.issue(2, "type:bug", "status:ready", "exec:agent", "size:S")])
+        rc, out = run(backlog_triage.main_inbox, [], Gh(CFG, runner=runner))
         self.assertEqual(rc, 0)
         self.assertEqual([i["number"] for i in json.loads(out)], [1])
 
     def test_no_apply_flag_exists_anywhere(self):
-        for parser in (T.build_check_parser(), T.build_inbox_parser()):
+        for parser in (backlog_triage.build_check_parser(), backlog_triage.build_inbox_parser()):
             self.assertNotIn("--apply", parser.format_help())
             self.assertNotIn("--confirm", parser.format_help())
             with contextlib.redirect_stderr(io.StringIO()):
@@ -181,7 +181,7 @@ class TestCli(unittest.TestCase):
                     parser.parse_args(["--apply"])
 
     def test_module_has_no_write_surface(self):
-        source = (S.SCRIPTS / "backlog_triage.py").read_text(encoding="utf-8")
+        source = (_support.SCRIPTS / "backlog_triage.py").read_text(encoding="utf-8")
         self.assertEqual(re.findall(r"create_issue|write=True|confirmed", source), [])
 
 

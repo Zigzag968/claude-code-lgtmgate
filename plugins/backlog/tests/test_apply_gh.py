@@ -3,16 +3,16 @@
 import subprocess
 import unittest
 
-import _support as S
-import backlog_config as C
-import backlog_gh as G
+import _support
+import backlog_config
+import backlog_gh
 from backlog_gh import ApplyGh, ApplyGrant, Gh, ModeError, PartialApplyError
 
 ROLE_ADDS = frozenset({"status:ready", "exec:agent"})
 
 
 def cfg_for(mode="write-supervised", repo="acme/widgets"):
-    return C.default_config(mode, repo)
+    return backlog_config.default_config(mode, repo)
 
 
 def grant(repo="acme/widgets", issues=(1, 2, 3), labels=("type:bug", "status:inbox")):
@@ -21,30 +21,30 @@ def grant(repo="acme/widgets", issues=(1, 2, 3), labels=("type:bug", "status:inb
 
 
 def apply_gh(**kw):
-    runner = S.FakeRunner(issues=[S.issue(n) for n in (1, 2, 3)])
+    runner = _support.FakeRunner(issues=[_support.issue(n) for n in (1, 2, 3)])
     return ApplyGh(cfg_for(), grant(**kw), runner=runner), runner
 
 
 class TestAllowLists(unittest.TestCase):
     def test_the_apply_allow_list_and_flags_are_exact(self):
-        self.assertEqual(G.APPLY_ALLOW, frozenset({("issue", "edit"), ("label", "create")}))
+        self.assertEqual(backlog_gh.APPLY_ALLOW, frozenset({("issue", "edit"), ("label", "create")}))
         self.assertEqual(
-            {k: sorted(v) for k, v in G.APPLY_FLAGS.items()},
+            {k: sorted(v) for k, v in backlog_gh.APPLY_FLAGS.items()},
             {("issue", "edit"): ["--add-label", "--remove-label"], ("label", "create"): ["--color", "--description"]},
         )
-        self.assertEqual(G.MAX_APPLY_ISSUES, 50)
+        self.assertEqual(backlog_gh.MAX_APPLY_ISSUES, 50)
 
     def test_gh_keeps_exactly_four_reads_and_its_one_write(self):
-        self.assertEqual(G.WRITE_ALLOW, frozenset({("issue", "create")}))
-        self.assertEqual(G.READ_ALLOW, frozenset({("issue", "list"), ("issue", "view"), ("label", "list"), ("pr", "list")}))
-        self.assertTrue(G.APPLY_ALLOW.isdisjoint(G.READ_ALLOW | G.WRITE_ALLOW))
+        self.assertEqual(backlog_gh.WRITE_ALLOW, frozenset({("issue", "create")}))
+        self.assertEqual(backlog_gh.READ_ALLOW, frozenset({("issue", "list"), ("issue", "view"), ("label", "list"), ("pr", "list")}))
+        self.assertTrue(backlog_gh.APPLY_ALLOW.isdisjoint(backlog_gh.READ_ALLOW | backlog_gh.WRITE_ALLOW))
 
     def test_apply_gh_is_a_sibling_not_a_subclass(self):
         self.assertFalse(issubclass(ApplyGh, Gh))
         self.assertFalse(issubclass(Gh, ApplyGh))
 
     def test_gh_still_refuses_the_apply_verbs(self):
-        runner = S.FakeRunner()
+        runner = _support.FakeRunner()
         gh = Gh(cfg_for("free"), runner=runner, max_writes=5)
         for verb in (("issue", "edit"), ("label", "create")):
             with self.subTest(verb=verb), self.assertRaises(ModeError):
@@ -56,21 +56,21 @@ class TestConstruction(unittest.TestCase):
     def test_a_grant_is_required(self):
         for bad in (None, {"repo": "acme/widgets"}, "grant"):
             with self.subTest(bad=bad), self.assertRaises(ModeError):
-                ApplyGh(cfg_for(), bad, runner=S.FakeRunner())
+                ApplyGh(cfg_for(), bad, runner=_support.FakeRunner())
 
     def test_only_write_supervised_and_free_can_build_one(self):
         for mode in ("off", "propose"):
             with self.subTest(mode=mode), self.assertRaises(ModeError):
-                ApplyGh(cfg_for(mode), grant(), runner=S.FakeRunner())
+                ApplyGh(cfg_for(mode), grant(), runner=_support.FakeRunner())
         for mode in ("write-supervised", "free"):
             with self.subTest(mode=mode):
-                ApplyGh(cfg_for(mode), grant(), runner=S.FakeRunner())
+                ApplyGh(cfg_for(mode), grant(), runner=_support.FakeRunner())
 
     def test_the_grant_must_belong_to_the_repo_of_the_config(self):
         with self.assertRaises(ModeError):
-            ApplyGh(cfg_for(), grant(repo="acme/other"), runner=S.FakeRunner())
+            ApplyGh(cfg_for(), grant(repo="acme/other"), runner=_support.FakeRunner())
         with self.assertRaises(ModeError):
-            ApplyGh(cfg_for(repo=None), grant(), runner=S.FakeRunner())
+            ApplyGh(cfg_for(repo=None), grant(), runner=_support.FakeRunner())
 
     def test_without_a_runner_the_real_gh_is_unreachable_from_tests(self):
         # positive control of the no-live-gh guard: a valid ApplyGh with no runner fails LOUDLY in a test
@@ -162,7 +162,7 @@ class TestEditLabels(unittest.TestCase):
 
     def test_the_51st_distinct_issue_is_refused(self):
         numbers = range(1, 52)
-        runner = S.FakeRunner(issues=[S.issue(n) for n in numbers])
+        runner = _support.FakeRunner(issues=[_support.issue(n) for n in numbers])
         gh = ApplyGh(cfg_for(), grant(issues=numbers), runner=runner)
         for n in range(1, 51):
             gh.edit_labels(n, ["type:bug"], [])
@@ -172,11 +172,11 @@ class TestEditLabels(unittest.TestCase):
         self.assertEqual(len({c[3] for c in runner.calls}), 50)
 
     def test_a_failed_remove_after_a_successful_add_is_reported_as_partial(self):
-        runner = S.FakeRunner(issues=[S.issue(1)], fail_write_at=2)
+        runner = _support.FakeRunner(issues=[_support.issue(1)], fail_write_at=2)
         gh = ApplyGh(cfg_for(), grant(), runner=runner)
         with self.assertRaises(PartialApplyError):
             gh.edit_labels(1, ["type:bug"], ["bug"])
-        runner = S.FakeRunner(issues=[S.issue(1)], fail_write_at=1)
+        runner = _support.FakeRunner(issues=[_support.issue(1)], fail_write_at=1)
         gh = ApplyGh(cfg_for(), grant(), runner=runner)
         with self.assertRaises(RuntimeError) as raised:
             gh.edit_labels(1, ["type:bug"], ["bug"])
@@ -184,7 +184,7 @@ class TestEditLabels(unittest.TestCase):
         self.assertEqual(len(runner.calls), 1)  # the removal never ran
 
     def test_a_process_error_becomes_a_runtime_error(self):
-        gh = ApplyGh(cfg_for(), grant(), runner=S.FakeRunner(fail=subprocess.CalledProcessError(1, ["gh"])))
+        gh = ApplyGh(cfg_for(), grant(), runner=_support.FakeRunner(fail=subprocess.CalledProcessError(1, ["gh"])))
         with self.assertRaises(RuntimeError):
             gh.edit_labels(1, ["type:bug"], [])
 
@@ -223,7 +223,7 @@ class TestCreateLabel(unittest.TestCase):
 
     def test_at_most_fifty_creations_per_instance(self):
         names = ["l%d" % n for n in range(51)]
-        runner = S.FakeRunner()
+        runner = _support.FakeRunner()
         gh = ApplyGh(cfg_for(), grant(labels=names), runner=runner)
         for name in names[:50]:
             gh.create_label(name, "ededed")

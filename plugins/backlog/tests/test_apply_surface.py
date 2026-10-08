@@ -4,15 +4,15 @@ import ast
 import re
 import unittest
 
-import _support as S
-import backlog_config as C
-import backlog_gh as G
+import _support
+import backlog_config
+import backlog_gh
 
 
 def construction_sites(name):
     """Files of `scripts/` that CALL `name(...)` (an AST oracle, immune to comments and docstrings)."""
     sites = []
-    for path in sorted(S.SCRIPTS.glob("*.py")):
+    for path in sorted(_support.SCRIPTS.glob("*.py")):
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             if isinstance(node, ast.Call) and getattr(node.func, "id", getattr(node.func, "attr", "")) == name:
                 sites.append(path.name)
@@ -20,7 +20,7 @@ def construction_sites(name):
 
 
 def files_matching(pattern):
-    return [p.name for p in sorted(S.SCRIPTS.glob("*.py")) if re.search(pattern, p.read_text(encoding="utf-8"), re.I)]
+    return [p.name for p in sorted(_support.SCRIPTS.glob("*.py")) if re.search(pattern, p.read_text(encoding="utf-8"), re.I)]
 
 
 class TestOneWriteSurface(unittest.TestCase):
@@ -40,7 +40,7 @@ class TestOneWriteSurface(unittest.TestCase):
         self.assertEqual(files_matching(r"subprocess"), ["backlog_gh.py"])
 
     def test_gh_write_allow_is_unchanged(self):
-        self.assertEqual(G.WRITE_ALLOW, frozenset({("issue", "create")}))
+        self.assertEqual(backlog_gh.WRITE_ALLOW, frozenset({("issue", "create")}))
 
     def test_the_write_path_never_reads_the_free_text_of_an_issue(self):
         # Only these modules name an issue's free text (`body`): the config (a reserved word list), the intake that
@@ -58,7 +58,7 @@ class TestOneWriteSurface(unittest.TestCase):
         self.assertEqual(files_matching(r"\bApplyGh\b|\bApplyGrant\b"), ["backlog_apply.py", "backlog_gh.py"])
 
     def test_the_applier_names_no_label_edit_delete_or_rename_verb(self):
-        source = (S.SCRIPTS / "backlog_gh.py").read_text(encoding="utf-8")
+        source = (_support.SCRIPTS / "backlog_gh.py").read_text(encoding="utf-8")
         for forbidden in ('"delete"', '("label", "edit")', '"rename"', "--force", "--web"):
             self.assertNotIn(forbidden, source)
 
@@ -67,7 +67,7 @@ class TestNoSkillNamesTheApplier(unittest.TestCase):
     """D-A.3: promotion of the write path is a human/Lead act; no skill (which an agent follows) can reach it."""
 
     def skills(self):
-        found = sorted((S.PLUGIN_ROOT / "skills").glob("*/SKILL.md"))
+        found = sorted((_support.PLUGIN_ROOT / "skills").glob("*/SKILL.md"))
         self.assertGreaterEqual(len(found), 3)  # the glob really enumerates the skills
         return found
 
@@ -93,8 +93,8 @@ class TestNoSkillNamesTheApplier(unittest.TestCase):
 
 class TestModeIsACeilingInTheConfig(unittest.TestCase):
     def test_no_config_key_can_switch_the_write_path_on(self):
-        self.assertNotIn("apply", C.TOP_KEYS)
-        self.assertNotIn("confirm", C.TOP_KEYS)
+        self.assertNotIn("apply", backlog_config.TOP_KEYS)
+        self.assertNotIn("confirm", backlog_config.TOP_KEYS)
 
 
 if __name__ == "__main__":

@@ -3,14 +3,14 @@ import json
 import subprocess
 import unittest
 
-import _support as S
-import backlog_config as C
+import _support
+import backlog_config
 from backlog_gh import Gh, ModeError, READ_ALLOW, WRITE_ALLOW
 
 
 def gh_for(mode="free", repo=None, runner=None, **kw):
-    cfg = C.default_config(mode, repo)
-    runner = runner or S.FakeRunner()
+    cfg = backlog_config.default_config(mode, repo)
+    runner = runner or _support.FakeRunner()
     return Gh(cfg, runner=runner, **kw), runner
 
 
@@ -115,7 +115,7 @@ class TestWrapper(unittest.TestCase):
         self.assertNotIn("-R", runner.calls[0])
 
     def test_truncation_fails_closed(self):
-        runner = S.FakeRunner(issues=[{"number": n} for n in range(3)])
+        runner = _support.FakeRunner(issues=[{"number": n} for n in range(3)])
         gh, _ = gh_for("propose", runner=runner)
         with self.assertRaises(RuntimeError) as ctx:
             gh.fetch_issues("open", 3)
@@ -123,15 +123,15 @@ class TestWrapper(unittest.TestCase):
         self.assertEqual(len(gh.fetch_issues("open", 4)), 3)
 
     def test_label_list_truncation_fails_closed(self):
-        runner = S.FakeRunner(labels=["l%d" % n for n in range(200)])
+        runner = _support.FakeRunner(labels=["l%d" % n for n in range(200)])
         gh, _ = gh_for("propose", runner=runner)
         with self.assertRaises(RuntimeError):
             gh.fetch_label_names()
 
     def test_failures_fail_closed(self):
         cases = {
-            "nonzero": S.FakeRunner(fail=subprocess.CalledProcessError(1, "gh")),
-            "missing-binary": S.FakeRunner(fail=FileNotFoundError("gh")),
+            "nonzero": _support.FakeRunner(fail=subprocess.CalledProcessError(1, "gh")),
+            "missing-binary": _support.FakeRunner(fail=FileNotFoundError("gh")),
         }
         for name, runner in cases.items():
             with self.subTest(name=name):
@@ -178,11 +178,11 @@ def spawners(source):
 class TestSingleChokepoint(unittest.TestCase):
     def test_only_backlog_gh_imports_subprocess(self):
         offenders = []
-        for path in sorted(S.SCRIPTS.glob("*.py")):
+        for path in sorted(_support.SCRIPTS.glob("*.py")):
             if spawners(path.read_text(encoding="utf-8")) and path.name != "backlog_gh.py":
                 offenders.append(path.name)
         self.assertEqual(offenders, [])
-        self.assertTrue(spawners((S.SCRIPTS / "backlog_gh.py").read_text(encoding="utf-8")))
+        self.assertTrue(spawners((_support.SCRIPTS / "backlog_gh.py").read_text(encoding="utf-8")))
 
     def test_oracle_can_fail_poisoned_source_twin(self):
         for poisoned in ("import subprocess\n", "from subprocess import run\n", "import subprocess as sp\n"):
@@ -191,7 +191,7 @@ class TestSingleChokepoint(unittest.TestCase):
         self.assertEqual(spawners("import json\n"), [])
 
     def test_no_os_system_or_popen_calls_anywhere(self):
-        for path in sorted(S.SCRIPTS.glob("*.py")):
+        for path in sorted(_support.SCRIPTS.glob("*.py")):
             for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
                 if isinstance(node, ast.Attribute) and node.attr in ("system", "popen", "spawnv", "execv"):
                     self.fail("%s uses %s" % (path.name, node.attr))

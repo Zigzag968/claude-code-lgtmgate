@@ -28,7 +28,7 @@ import argparse
 import json
 from typing import List, Optional, Tuple
 
-from backlog_apply import Refused, execute_deps, execute_set, stage_one
+from backlog_apply import RefusedError, execute_deps, execute_set, stage_one
 from backlog_common import LabelEdit, is_open, label_names, positive_int, printable, repo_assertion_error
 from backlog_gh import MAX_DEP_LINKS
 from backlog_promote import check_promotion, effective_promotion, reserved_adds, wants_promotion
@@ -127,7 +127,7 @@ def main(argv: List[str], cfg, gh=None, apply_runner=None) -> int:
     if args.apply:
         try:
             stage_one(cfg, True)  # mode, repo, --apply: checked before any live read
-        except Refused as exc:
+        except RefusedError as exc:
             return _refuse(printable(exc))
 
     if gh is None:
