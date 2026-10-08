@@ -30,7 +30,7 @@ export const meta = {
 // | `branchPrefix` | top-level arg is IGNORED (config.branchPrefix wins); a differing value logs a warning + trace 'branch-prefix-arg-ignored' (#232). Use branchOverride to force a branch. config.branchPrefix absent/blank -> falls back to 'features/' and traces 'branch-prefix-fallback-default' (#267), so a caller that fails to thread the project's own branchPrefix through config is diagnosable, not silent. |
 // | `prNumber` | existing PR number; required when entryStage='review' |
 // | `mode` | 'auto' (default) \| 'semi' \| 'manual' |
-// | `entryStage` | 'plan' (default) \| 'dev' \| 'review' (skip completed phases on crash-resume) |
+// | `entryStage` | 'plan' (default) \| 'dev' \| 'review' (skip completed stages on crash-resume) |
 // | `proceedThrough` | last stage the Lead authorized to RUN on resume ('plan'\|'dev'\|'review'\|null). The pipeline PAUSES before any stage beyond it, in every mode (mode 'auto' without it runs through; #187). proceedThrough='plan' stops at plan-ready. Validated up front (#208): any other value escalates `invalid-proceedThrough`, nothing runs; echoed by dryRun. 'plan' is what resolves a design-step stop at entryStage='plan' (both triggers); a later stage does not. |
 // | `planText` | Sam's plan text, supplied on resume (entryStage='dev'\|'review') so the hand-off survives a crash without re-reading GitHub. If absent on resume, the plan is re-materialized from the artifact file (see planPath below). |
 // | `resumeReason` | optional, null by default. Set by the Lead on an entryStage:'dev' relaunch that follows a status:'escalate', reason:'mergeable-conflicting' result (#170), to thread WHY the resume happens into Nick's prompt (#183) — otherwise Nick reasons only from branch/plan content. Allow-list deliberately narrow (one value today): a branch-mismatch or plan-stale escalate doesn't resolve by relaunching Nick with this same message. |
@@ -133,7 +133,7 @@ export const meta = {
 // `version`, checked against plugin.json by tests/templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '1.2.0-beta.4', cutFrom: '721d071' }
+const BUILD = { plugin: 'lgtmgate', version: '1.2.0-beta.5', cutFrom: '285cd93' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -1379,10 +1379,10 @@ function specificsDigest(sha, refSha, key, text, lanes) {
   return sha(specificsCanonical({ refSha, role: key, text, lanes }))
 }
 
-function specificsSwitchOn(cfg) {
-  if (!cfg || typeof cfg !== 'object') return false
-  if (typeof cfg.projectSpecifics === 'string' && cfg.projectSpecifics !== '') return true
-  const ac = cfg.agentContext
+function specificsSwitchOn(pipelineConfig) {
+  if (!pipelineConfig || typeof pipelineConfig !== 'object') return false
+  if (typeof pipelineConfig.projectSpecifics === 'string' && pipelineConfig.projectSpecifics !== '') return true
+  const ac = pipelineConfig.agentContext
   return !!ac && typeof ac === 'object' && !Array.isArray(ac)
 }
 
@@ -1878,8 +1878,8 @@ function oneWayDoorSignals(plan, targetFiles, ctx = {}) {
 // everyone (smallest change, `patch-avoided:`); the engine's own vocabulary moves behind the flag.
 const SAM_PLAN_RULE = 'PLAN RULE: plan the smallest change that removes the cause class; list `patch-avoided:` with the patches you rejected.'
 const SAM_ENGINE_LAYER_RULE = 'LAYER RULE: plan the smallest change that removes the cause class; never a `simulate.*` seam; say in the plan if the diff adds a status, an `agent()`, a hook or a seam; list `patch-avoided:` with the patches you rejected.'
-const isEngineRepo = (cfg) => cfg !== null && typeof cfg === 'object' && cfg.engineRepo === true
-const samLayerRule = (cfg) => isEngineRepo(cfg) ? SAM_ENGINE_LAYER_RULE : SAM_PLAN_RULE
+const isEngineRepo = (pipelineConfig) => pipelineConfig !== null && typeof pipelineConfig === 'object' && pipelineConfig.engineRepo === true
+const samLayerRule = (pipelineConfig) => isEngineRepo(pipelineConfig) ? SAM_ENGINE_LAYER_RULE : SAM_PLAN_RULE
 // --- engineRules:end ---
 
 // --- safeAbsorbedIssues:start --- (pure & self-contained — keep extractable by the consuming project's tests)
@@ -1948,7 +1948,7 @@ function planFreshnessNote(staleFiles, baseBranch) {
 // Composes the Nick-facing resume-reason note (#183, absorbing #119/#169's second half) — same
 // shape/contract as planFreshnessNote above. Returns '' when resumeReason is not the recognized
 // value, so an ordinary plan->dev handoff (resumeReason omitted) stays byte-identical. Threads WHY a
-// dev-phase resume was launched so Nick reasons from the LIVE PR state instead of concluding
+// dev-stage resume was launched so Nick reasons from the LIVE PR state instead of concluding
 // "already done" from branch/plan content alone (the gap Theo confirmed empirically on #183: a
 // synthetic CONFLICTING-mergeState run produced a nickPrompt with zero conflict/mergeable/resum
 // signal).
@@ -2141,7 +2141,7 @@ function agentDeathRouting(role, attempt, maxAttempts = 2) {
 // plan-verification attempt, or the review round of a plan amendment. GO / NO-GO / DIE keep their meaning; no new key.
 const samAttemptFixture = (round) => { const fx = simulate.probes?.sam; return (fx !== null && typeof fx === 'object' && fx[round]) || {} }
 
-function simFixture(role, round = 0, prNum = null) {
+function simFixture(role, round = 0, pullRequestNumber = null) {
   if (!simulate) return null
   if (role === 'mia') return simulate.probes?.mia || { framing: '(simulated PM)' }
   if (role === 'sam') return {
@@ -2161,7 +2161,7 @@ function simFixture(role, round = 0, prNum = null) {
   if (role === 'nick') {
     const nickFx = simulate.probes?.nick || {}
     return {
-      prNumber: nickFx.prNumber ?? prNum ?? 999,
+      prNumber: nickFx.prNumber ?? pullRequestNumber ?? 999,
       branch: nickFx.branch ?? `${expectedBranchName}`,
       testsPass: nickFx.testsPass ?? true,
       summary: '(sim)',
@@ -2943,7 +2943,7 @@ if (entryStage === 'plan') {
 }
 
 // ---------------------------------------------------------------------------
-// Diagnose phase — MANDATORY, no opt-out (human decision, 2026-07-24). Qualifies
+// Diagnose stage — MANDATORY, no opt-out (human decision, 2026-07-24). Qualifies
 // EVERY issue BEFORE Sam plans anything on top of it — never skipped, no tag/flag
 // needed. Only reachable when entryStage='plan' (the default fresh-dispatch entry) —
 // never re-runs on resume (entryStage='dev'|'review'), since Theo already qualified
@@ -3114,7 +3114,7 @@ const samScoutPrompt = ({ fixBlock = '', auditFixBlock = '', reviewFixBlock = ''
 }
 
 // ---------------------------------------------------------------------------
-// Plan phase
+// Plan stage
 // ---------------------------------------------------------------------------
 
 if (after('plan', entryStage)) {
@@ -3382,7 +3382,7 @@ if (samPlan === null && (after('dev', entryStage) || after('review', entryStage)
   }
 }
 
-// #182 — a resume at entryStage dev/review ran no Plan phase in this process: Sam's items are rebuilt from the
+// #182 — a resume at entryStage dev/review ran no Plan stage in this process: Sam's items are rebuilt from the
 // `<!-- ac:N -->` lines of `planText` (simulate included: the arg alone decides), so Nick still gets the rendered block
 // and Morgan is still asked for `boxes` by id. A plan without ids keeps today's legacy path (items null, block '').
 if (samAcceptanceItems === null && (entryStage === 'dev' || entryStage === 'review')) {
@@ -3518,7 +3518,7 @@ if ((entryStage === 'dev' || entryStage === 'review') && !architectureDecisionAp
 }
 
 // ---------------------------------------------------------------------------
-// Dev phase
+// Dev stage
 // ---------------------------------------------------------------------------
 
 let nick = null
@@ -3540,7 +3540,7 @@ let subIssuesUncovered = []    // lgtmgate#193 — post-gate list, exposed on de
 // named failure (a missing / garbled answer stays fail-open, as before).
 const PR_READ_CLASSES = ['tls', 'auth', 'rate-limit', 'not-found', 'other']
 const namedReadFailure = (x) => (typeof x === 'string' && PR_READ_CLASSES.includes(x) ? x : null)
-const assertBranchConformance = async (prNum, nickBranchFallback) => {
+const assertBranchConformance = async (pullRequestNumber, nickBranchFallback) => {
   const expectedBranch = `${expectedBranchName}`
   let headRef = nickBranchFallback ?? null
   let rawHeadRef = null
@@ -3550,7 +3550,7 @@ const assertBranchConformance = async (prNum, nickBranchFallback) => {
   const branchProbe = async () => {
     if (!branchPfDone) {
       branchPfDone = true
-      branchPf = await preflightProbe('branch', 'branch', ['--wt', wtPath, '--pr', prNum ? String(prNum) : '', '--repo', repo || '', '--stamp', String(stamp ?? '')])
+      branchPf = await preflightProbe('branch', 'branch', ['--wt', wtPath, '--pr', pullRequestNumber ? String(pullRequestNumber) : '', '--repo', repo || '', '--stamp', String(stamp ?? '')])
     }
     return branchPf
   }
@@ -3559,7 +3559,7 @@ const assertBranchConformance = async (prNum, nickBranchFallback) => {
     // an object answer is the branch probe's own answer ({ readFailed }); a string / null keeps its old meaning
     if (sim !== null && typeof sim === 'object') readFailed = namedReadFailure(sim.readFailed)
     else if (sim !== undefined) rawHeadRef = sim
-  } else if (prNum) {
+  } else if (pullRequestNumber) {
     const pf = await branchProbe()
     if (pf) {
       readFailed = namedReadFailure(pf.readFailed)
@@ -3569,8 +3569,8 @@ const assertBranchConformance = async (prNum, nickBranchFallback) => {
   if (readFailed) {
     // The PR could not be read, for a cause the script named: stop here with it, before a reviewer is spent (#239).
     trace.push(`pr-read-failed:${readFailed}`)
-    log(`Branch guard: the read of PR #${prNum} failed (${readFailed}) — escalating pr-read-failed:${readFailed}, no review spent`)
-    return { reason: `pr-read-failed:${readFailed}`, pr: prNum ?? null, issue, trace }
+    log(`Branch guard: the read of PR #${pullRequestNumber} failed (${readFailed}) — escalating pr-read-failed:${readFailed}, no review spent`)
+    return { reason: `pr-read-failed:${readFailed}`, pr: pullRequestNumber ?? null, issue, trace }
   }
   if (rawHeadRef !== null) {
     const parsed = parseHeadRef(rawHeadRef, expectedBranch)
@@ -3599,15 +3599,15 @@ const assertBranchConformance = async (prNum, nickBranchFallback) => {
     const reconciled = branchOverrideName !== null ? null : reconcileStaleBranchPrefix(headRef, issue, realBranchPrefixRaw)
     if (reconciled) {
       trace.push('branch-check-reconciled')
-      log(`Branch guard: PR #${prNum} head "${headRef}" mismatches the caller-supplied expectedBranch "${expectedBranch}" but matches the worktree's own pipeline.config.json branchPrefix — accepting (lgtmgate#131, cross-repo config drift)`)
+      log(`Branch guard: PR #${pullRequestNumber} head "${headRef}" mismatches the caller-supplied expectedBranch "${expectedBranch}" but matches the worktree's own pipeline.config.json branchPrefix — accepting (lgtmgate#131, cross-repo config drift)`)
     } else {
-      log(`Branch mismatch: PR #${prNum} head is "${headRef}", expected "${expectedBranch}"`)
+      log(`Branch mismatch: PR #${pullRequestNumber} head is "${headRef}", expected "${expectedBranch}"`)
       trace.push(`branch-mismatch:${headRef}`)
       // The escalate payload without its status: both callers pass it to finish(STATUS['escalate'], ...).
       return {
         reason: 'branch-mismatch',
         expectedBranch, actualBranch: headRef,
-        pr: prNum ?? null, issue, trace,
+        pr: pullRequestNumber ?? null, issue, trace,
       }
     }
   }
@@ -3743,7 +3743,7 @@ if (after('dev', entryStage)) {
 }
 
 // ---------------------------------------------------------------------------
-// Review phase
+// Review stage
 // ---------------------------------------------------------------------------
 
 if (after('review', entryStage)) {
@@ -3768,7 +3768,7 @@ if (after('review', entryStage)) {
     // (permission gap, agent crash, anything), stay inside the pipeline's normal status
     // vocabulary (mirrors provision-failed/plan-stale) instead of an uncaught throw that
     // kills the run with no actionable state.
-    log('Review phase: no PR number and no delivery evidence (nick + prNumber both null) — escalating')
+    log('Review stage: no PR number and no delivery evidence (nick + prNumber both null) — escalating')
     trace.push('dev-stage-no-pr')
     await updateStatus('Blocked')
     return finish(STATUS['escalate'], { reason: 'dev-stage-no-pr', issue, trace })

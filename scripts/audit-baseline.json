@@ -104,6 +104,6 @@
     "max-lines": 1,
     "max-lines-per-function": 2,
     "no-shadow": 22,
-    "unicorn/name-replacements": 150
+    "unicorn/name-replacements": 145
   }
 }
