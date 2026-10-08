@@ -1654,7 +1654,7 @@ function reconcileStaleProjectConfig(rawJson) {
 // FIRST-matching-reason order below. Pure: no I/O, no closure over simulate/config/trace.
 // Exception: a proof with committedInPr === true (file is content of the PR head) skips the mtime checks, provided the PR's
 // changed-file list (prFiles, #229) contains its path; without a list (older script, truncated, unreadable) the flag is trusted.
-function staleArtifactBlockers(proofs, floorIso, prFiles, wtRoot) {
+function staleArtifactBlockers(proofs, floorIso, prFiles, worktreePath) {
   if (!Array.isArray(proofs) || proofs.length === 0) return []
   // Accepts an explicit UTC 'Z' or a numeric offset: Morgan stats artifacts on the local
   // machine, so a valid ISO-8601 like 2026-08-11T18:02:02+02:00 must not be rejected
@@ -1682,10 +1682,10 @@ function staleArtifactBlockers(proofs, floorIso, prFiles, wtRoot) {
     // #229: the flag is cross-checked against the PR's changed files (pr-state `files`); a path outside the list is treated as untracked
     if (p.committedInPr === true) {
       if (!Array.isArray(prFiles)) continue
-      let rel = p.path.trim()
-      if (typeof wtRoot === 'string' && wtRoot !== '' && rel.startsWith(wtRoot + '/')) rel = rel.slice(wtRoot.length + 1)
-      while (rel.startsWith('./')) rel = rel.slice(2)
-      if (prFiles.includes(rel)) continue
+      let relativePath = p.path.trim()
+      if (typeof worktreePath === 'string' && worktreePath !== '' && relativePath.startsWith(worktreePath + '/')) relativePath = relativePath.slice(worktreePath.length + 1)
+      while (relativePath.startsWith('./')) relativePath = relativePath.slice(2)
+      if (prFiles.includes(relativePath)) continue
     }
     const mtime = typeof p.mtime === 'string' ? p.mtime : ''
     if (!ISO.test(mtime)) {

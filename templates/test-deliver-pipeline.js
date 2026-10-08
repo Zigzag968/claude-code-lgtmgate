@@ -1790,11 +1790,11 @@ await testCase("T9005e a committedInPr proof must appear in the PR's changed fil
   const c1 = eq('./ spelling: status', c.status, 'ready')
   const d = await withFiles({ floor: ARTIFACT_FLOOR, files: [ARTIFACT_PROOF_PATH] }, { ...old, path: BASE.wtPath + '/' + ARTIFACT_PROOF_PATH })
   const d1 = eq('worktree-absolute spelling: status', d.status, 'ready')
-  const e = await withFiles(ARTIFACT_FLOOR)
-  const e1 = eq('no list (string seam): status', e.status, 'ready')
-  const f = await withFiles({ floor: ARTIFACT_FLOOR, files: null })
-  const f1 = eq('files null: status', f.status, 'ready')
-  return a1 || a2 || b1 || c1 || d1 || e1 || f1 || { ok: true }
+  const noList = await withFiles(ARTIFACT_FLOOR)
+  const noList1 = eq('no list (string seam): status', noList.status, 'ready')
+  const nullList = await withFiles({ floor: ARTIFACT_FLOOR, files: null })
+  const nullList1 = eq('files null: status', nullList.status, 'ready')
+  return a1 || a2 || b1 || c1 || d1 || noList1 || nullList1 || { ok: true }
 })
 
 // T9005d (#5) — source-level: both unconditional sentences of artifactProofStep carry the committed-in-PR
