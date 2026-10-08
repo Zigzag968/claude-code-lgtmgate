@@ -1,7 +1,7 @@
 # Local Linux sandbox for `claude plugin eval` (probe evals, #81).
 # Modelled on the official anthropics/claude-code .devcontainer (node base, npm-installed CLI),
 # minus the firewall and shell niceties; adds bubblewrap + socat for the eval Bash sandbox.
-FROM node:20
+FROM node:20@sha256:8f693eaa7e0a8e71560c9a82b55fd54c2ae920a2ba5d2cde28bac7d1c01c9ba5
 
 # Pinned by package.json + package-lock.json in this folder (the install checks the integrity hash); the verify-ok
 # grader reads that version's trace format. A bump needs a full rerun of the suite
