@@ -9,7 +9,7 @@
 # version. bash 3.2 safe.
 set -uo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 TMP_BASE="$(cd "${TMPDIR:-/tmp}" && pwd -P)"
 WORK="$(mktemp -d "$TMP_BASE/probe-evals-test.XXXXXX")"

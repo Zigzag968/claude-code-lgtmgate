@@ -6,7 +6,7 @@ the trust model of the delivery channel it ships through. Linked from `README.md
 ## 1. Dev loop (`--plugin-dir`)
 
 Edit `workflows/deliver-pipeline.js` (or any component) in a worktree, never on `main` directly.
-Local pre-check: `git config core.hooksPath .githooks` runs `templates/test-canonical-guards.sh`
+Local pre-check: `git config core.hooksPath .githooks` runs `tests/templates/test-canonical-guards.sh`
 on every commit (a local pre-check only — see §5 Enforcement below for why it is not the real
 gate).
 
@@ -132,7 +132,7 @@ README.md's "How it stays generic" trust warning for the full enumeration). A PR
 `pipeline.config.json` is a code-review surface, not inert data.
 
 **Enforcement is mechanical since the public switch (2026-09-29).** `.github/workflows/guards.yml`
-runs `templates/test-canonical-guards.sh` and the offline flow suite on every PR to `main`; the
+runs `tests/templates/test-canonical-guards.sh` and the offline flow suite on every PR to `main`; the
 `main-protection` ruleset (§5) requires that `guards` check to report success before a merge is
 accepted, and `guards.yml` only triggers on `pull_request` — a commit that never went through a PR
 has no status for that context, so a direct push to `main` is rejected too. A reviewed
@@ -261,7 +261,7 @@ To find out which artifact actually served a given run:
 - **`buildStamp`** on any recorded return (every terminal return of the pipeline carries it — see
   the `finish()` wrapper at the top of `workflows/deliver-pipeline.js`).
 
-`version` is the identity key (guarded by `templates/test-canonical-guards.sh`'s `stamp-parity`
+`version` is the identity key (guarded by `tests/templates/test-canonical-guards.sh`'s `stamp-parity`
 invariant); `cutFrom` is context and does **not** contain the artifact — to fetch what actually
 served a run, check out the release commit whose `.claude-plugin/plugin.json` version equals the
 stamp's `version`.

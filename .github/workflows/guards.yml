@@ -1,19 +1,15 @@
 name: guards
 
 # Runs on every PR to main. This repo is public and `guards` is a required status check of the
-# `main-protection` ruleset (see MAINTAINING.md section 5 and templates/test-canonical-guards.sh),
+# `main-protection` ruleset (see MAINTAINING.md section 5 and tests/templates/test-canonical-guards.sh),
 # so a red `guards` blocks the merge. Job `guards` runs, in order:
-#   - templates/test-canonical-guards.sh : canonical guard net (invariants 2-22) plus
+#   - tests/templates/test-canonical-guards.sh : canonical guard net (invariants 2-22) plus
 #     scripts/guards.cjs (R1 ratchet vs origin/main, all-tests-wired, version floor, and the `audit`
 #     code-quality ratchet of scripts/audit.cjs against scripts/audit-baseline.json)
 #   - scripts/run-flow-suite.cjs         : offline flow suite (templates/test-deliver-pipeline.js)
 #   - scripts/run-offline.cjs --all fixtures : record/replay harness with the real parsers
-#   - scripts/test-guards.sh, test-run-offline.sh, test-capture-incident.sh, test-publish-fixture.sh,
-#     test-redact-fixture.sh, test-agent-context.sh, test-context-print.sh, test-init-specifics.sh,
-#     test-cleanup-worktree.sh,
-#     test-verify-workflow-launch.sh, hooks/test-*.sh, templates/test-provision-worktree.sh,
-#     test-blocked-by-check.sh, test-gh-pipeline-status.sh, test-probe-evals.sh,
-#     test-gate-check.sh, test-audit.sh : per-script regression tests
+#   - per-script regression tests: tests/scripts/test-*.sh, tests/hooks/test-*.sh and
+#     tests/templates/test-*.sh (test-canonical-guards.sh runs first, above)
 #   - scripts/gate-check.sh e2 --ci      : the E2 gate metrics that are evidence in the repository
 #     (incident fixtures, eval grader pins); eval results and canary runs report SKIP here
 # Job `smoke-install` loads the plugin through the real `claude` CLI.
@@ -58,59 +54,59 @@ jobs:
           actionlint -config-file .github/actionlint.yaml
           zizmor --offline --config zizmor.yml .github/workflows
       - name: Canonical guard net
-        run: bash templates/test-canonical-guards.sh
+        run: bash tests/templates/test-canonical-guards.sh
       - name: Offline flow suite
         run: FLOW_SUITE_STRICT=1 node scripts/run-flow-suite.cjs
       - name: Offline record/replay harness (raw fixtures, real parsers)
         run: OFFLINE_STRICT=1 node scripts/run-offline.cjs --all fixtures
       - name: run-offline self-test
-        run: bash scripts/test-run-offline.sh
+        run: bash tests/scripts/test-run-offline.sh
       - name: capture-incident self-test
-        run: bash scripts/test-capture-incident.sh
+        run: bash tests/scripts/test-capture-incident.sh
       - name: redact-fixture self-test
-        run: bash scripts/test-redact-fixture.sh
+        run: bash tests/scripts/test-redact-fixture.sh
       - name: agent-context self-test
-        run: bash scripts/test-agent-context.sh
+        run: bash tests/scripts/test-agent-context.sh
       - name: context-print self-test
-        run: bash scripts/test-context-print.sh
+        run: bash tests/scripts/test-context-print.sh
       - name: init-specifics self-test
-        run: bash scripts/test-init-specifics.sh
+        run: bash tests/scripts/test-init-specifics.sh
       - name: publish-fixture self-test
-        run: bash scripts/test-publish-fixture.sh
+        run: bash tests/scripts/test-publish-fixture.sh
       - name: Stop-supervise watchdog regression test
-        run: bash hooks/test-Stop-supervise-runs.sh
+        run: bash tests/hooks/test-Stop-supervise-runs.sh
       - name: deny-destructive-git hook regression test
-        run: bash hooks/test-deny-destructive-git.sh
+        run: bash tests/hooks/test-deny-destructive-git.sh
       - name: SubagentStop worktree-cleanup hook regression test
-        run: bash hooks/test-SubagentStop-worktree-cleanup.sh
+        run: bash tests/hooks/test-SubagentStop-worktree-cleanup.sh
       - name: probe attest and stop hooks regression test
-        run: bash hooks/test-PostToolUse-probe-attest.sh
+        run: bash tests/hooks/test-PostToolUse-probe-attest.sh
       - name: probe-run runner regression test
-        run: bash templates/test-probe-run.sh
+        run: bash tests/templates/test-probe-run.sh
       - name: cleanup-worktree script regression test
-        run: bash scripts/test-cleanup-worktree.sh
+        run: bash tests/scripts/test-cleanup-worktree.sh
       - name: verify-workflow-launch regression test
-        run: bash scripts/test-verify-workflow-launch.sh
+        run: bash tests/scripts/test-verify-workflow-launch.sh
       - name: Provision worktree guard
-        run: bash templates/test-provision-worktree.sh
+        run: bash tests/templates/test-provision-worktree.sh
       - name: Blocked-by check regression test
-        run: bash templates/test-blocked-by-check.sh
+        run: bash tests/templates/test-blocked-by-check.sh
       - name: gh-pipeline-status regression test
-        run: bash templates/test-gh-pipeline-status.sh
+        run: bash tests/templates/test-gh-pipeline-status.sh
       - name: guards.cjs regression test
-        run: bash scripts/test-guards.sh
+        run: bash tests/scripts/test-guards.sh
       - name: audit self-test
-        run: bash scripts/test-audit.sh
+        run: bash tests/scripts/test-audit.sh
       - name: lead-merge script regression test
-        run: bash scripts/test-lead-merge.sh
+        run: bash tests/scripts/test-lead-merge.sh
       - name: plugin-versions script regression test
-        run: bash scripts/test-plugin-versions.sh
+        run: bash tests/scripts/test-plugin-versions.sh
       - name: block-merge-unchecked hook regression test
-        run: bash hooks/test-block-merge-unchecked.sh
+        run: bash tests/hooks/test-block-merge-unchecked.sh
       - name: probe eval cases offline validation
-        run: bash scripts/test-probe-evals.sh
+        run: bash tests/scripts/test-probe-evals.sh
       - name: gate-check script regression test
-        run: bash scripts/test-gate-check.sh
+        run: bash tests/scripts/test-gate-check.sh
       - name: E2 gate metrics, structural (eval results and canary runs are not in CI)
         run: bash scripts/gate-check.sh e2 --ci
 

@@ -39,7 +39,7 @@ The mechanism is the floor; the doctrine is the why. `SessionStart`'s injected s
 touch; resumable -> resume, 2-3 attempts max, never loop; silent past the threshold -> block and
 escalate) so an orchestrator does the right thing even before the hook would catch it.
 
-Regression test: `hooks/test-Stop-supervise-runs.sh` (bash, zero dependency — no `jq`, no `gh`, no
+Regression test: `tests/hooks/test-Stop-supervise-runs.sh` (bash, zero dependency — no `jq`, no `gh`, no
 network). Run it after any change to the hook's status vocabulary or staleness logic.
 
 ## Contamination check (opportunistic)
@@ -99,7 +99,7 @@ from `templates/blocked-by-check.sh`) — read-only, always prints a fixed trail
 | `unknown` | 20 | probe failed, or state file / `blockedBy` malformed — fail-closed on the unblock decision, stay parked |
 
 `BLOCKED_BY_PROBE_CMD` env var overrides the `gh` call with a command printing the same JSON — the
-offline test seam used by `templates/test-blocked-by-check.sh`.
+offline test seam used by `tests/templates/test-blocked-by-check.sh`.
 
 ## PR-awaiting-merge reminder
 

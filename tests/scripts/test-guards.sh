@@ -13,7 +13,7 @@
 # The audit cases really run scripts/audit.cjs: like test-audit.sh this file needs `npm ci` and ruff at the version of ruff.toml on PATH.
 # Ends with `[test-guards] status=<ok|fail> passed=<n> failed=<n>`.
 set -u
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT" || exit 1
 T="$(mktemp -d "${TMPDIR:-/tmp}/test-guards.XXXXXX")"
 trap 'rm -rf "$T"' EXIT
@@ -219,6 +219,24 @@ $WIRED_RUN
 : > "$T/w8/scripts/test-baz.sh"
 run_wired "$T/w8"
 if [ "$RC" -eq 0 ]; then ok "all-tests-wired: the same file inside a test folder, wired -> ok"; else ko "inside folder wired (rc=$RC) $OUT"; fi
+# the tests/ folder is a known test folder: an unwired suite there FAILs, a wired one is ok
+mkroot "$T/w9" "jobs:
+  g:
+    steps:
+$WIRED_RUN
+      - run: bash scripts/test-foo.sh"
+mkdir -p "$T/w9/tests/scripts" && : > "$T/w9/tests/scripts/test-bar.sh"
+run_wired "$T/w9"
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: all-tests-wired:.*tests/scripts/test-bar.sh'; then ok "all-tests-wired: a suite under tests/, not wired -> FAIL naming it"; else ko "tests/ unwired (rc=$RC) $OUT"; fi
+mkroot "$T/w10" "jobs:
+  g:
+    steps:
+$WIRED_RUN
+      - run: bash scripts/test-foo.sh
+      - run: bash tests/scripts/test-bar.sh"
+mkdir -p "$T/w10/tests/scripts" && : > "$T/w10/tests/scripts/test-bar.sh"
+run_wired "$T/w10"
+if [ "$RC" -eq 0 ]; then ok "all-tests-wired: a suite under tests/, wired -> ok"; else ko "tests/ wired (rc=$RC) $OUT"; fi
 
 # ---- guard-steps (#308) ----
 # gsyml <dir> <guards-job-steps> [extra smoke-install steps]: guards.yml with a guards job and a smoke-install job

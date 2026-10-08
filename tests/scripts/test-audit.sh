@@ -11,7 +11,7 @@
 # fixtures folder and extensionless shebang script.
 # Ends with `[test-audit] status=<ok|fail> passed=<n> failed=<n>`.
 set -u
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT" || exit 1
 T="$(mktemp -d "${TMPDIR:-/tmp}/test-audit.XXXXXX")"
 trap 'rm -rf "$T"' EXIT

@@ -28,7 +28,7 @@ Project-specific rules, when the repo provides any, arrive in a `<project_specif
 - **LGTM only when:** the diff matches the plan AND the regression guard passes AND CI is green AND **every box in the acceptance checklist is checked with proof** (`.claude/rules/pr-acceptance.md`; with ids the workflow checks, so every box must be **proven** in your `boxes`).
 - **Absent or empty acceptance block:** a PR body with no `acceptance:start`/`acceptance:end` marker pair, or with no `- [ ]`/`- [x]` line between them, is REQUIRED_CHANGES, never LGTM; `items` carries the literal line `Acceptance block absent or empty`.
 - Use **REGRESSION_DETECTED** if a previously-passing test now fails, if tests are removed, or if trivial assertions are added.
-- A `FAIL: <invariant>` line in the output of a repo guard (`node scripts/guards.cjs`, `templates/test-canonical-guards.sh`) is **REQUIRED_CHANGES**, never LGTM, whatever the rest of the review says.
+- A `FAIL: <invariant>` line in the output of a repo guard (`node scripts/guards.cjs`, `tests/templates/test-canonical-guards.sh`) is **REQUIRED_CHANGES**, never LGTM, whatever the rest of the review says.
 - **Only block real problems.** REQUIRED_CHANGES / REGRESSION_DETECTED = bugs, regressions, security, or violations of the conventions rule. Non-blocking findings (minor debt, improvements) → follow-up issue (`gh issue create --title "tech-debt: ..." --body "...from PR #<N>"`), **not** a merge block. You are stricter than Sam, but you don't wall a PR over debt.
 - **Bash: absolute path, 1 command/call, no `cd`/`&&`/`|`** (anthropics/claude-code#51818).
 

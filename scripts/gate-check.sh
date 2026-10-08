@@ -12,7 +12,7 @@
 #              `^\s*<the whole PROBE line, regex-escaped>\s*$` on the last message (name, exit, 64-hex sha,
 #              64-hex cmd, json), verify-ok is the tool_result `VERIFY ok line=PROBE name= exit= sha=` of the
 #              SAME line, neither with flags, so a generic or weakened grader fails; (b) scripts/probe-eval-gate.sh
-#              on evals/results (>= 29/30 fully passed runs). scripts/test-probe-evals.sh proves the pinned line
+#              on evals/results (>= 29/30 fully passed runs). tests/scripts/test-probe-evals.sh proves the pinned line
 #              equals the real one by running the case; (a) is the offline contract of the grader text.
 #   canary     docs/gate/e2-canary.json lists >= 2 distinct canary runs (distinct `pr`), each ending `ready`
 #              or `merged`, each with no non-terminal `.pipeline/*.json` state left. Record format, numbers

@@ -5,7 +5,7 @@
 //
 // The block between the two `prBodySplice` markers below is a BYTE-IDENTICAL copy of the same block in
 // workflows/deliver-pipeline.js (the engine copy stays: simulate previews and T87b/T113 probes use it).
-// templates/test-probe-run.sh checks the parity. Do not edit the block here without editing the engine.
+// tests/templates/test-probe-run.sh checks the parity. Do not edit the block here without editing the engine.
 //
 // CLI (used by templates/pr-write.sh, op body-splice):
 //   node pr-body-splice.cjs splice <decision-log|acceptance> <preFile> <textFile> <outFile>

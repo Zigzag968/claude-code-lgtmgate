@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Regression test for scripts/verify-workflow-launch.sh — bash only, zero dependency
-# (no jq, no gh, no network). Mirrors hooks/test-Stop-supervise-runs.sh's conventions:
+# (no jq, no gh, no network). Mirrors tests/hooks/test-Stop-supervise-runs.sh's conventions:
 # mktemp -d fixtures never reused across cases, assert_exit helper, summary line.
 #
 # Covers the exit-code contract documented in verify-workflow-launch.sh itself
@@ -9,7 +9,7 @@
 # CLAUDE.md/memory file merely discussing the injection bug must NOT trigger exit 3).
 set -uo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts" && pwd)"
 VERIFY="$SCRIPT_DIR/verify-workflow-launch.sh"
 FIXTURE_ROOT="${FIXTURE_ROOT:-${TMPDIR:-/tmp}}"
 

@@ -32,8 +32,8 @@
 # BLOCKED_BY_PROBE_CMD overrides the `gh` call with a command that prints the same JSON shape
 # (top-level "state", "stateReason", "labels": [{"name": ...}, ...]) on stdout — the offline
 # injection seam that makes this testable with zero network / zero real `gh`
-# (templates/test-blocked-by-check.sh), same idiom as MANIFEST/WORKFLOW_FILE/HEADLESS_SCRIPT in
-# templates/test-canonical-guards.sh.
+# (tests/templates/test-blocked-by-check.sh), same idiom as MANIFEST/WORKFLOW_FILE/HEADLESS_SCRIPT in
+# tests/templates/test-canonical-guards.sh.
 #
 # Deliberately does NOT `set -e`: every verdict is carried by its exit code, and the trailer
 # must always print — including on the error paths above.

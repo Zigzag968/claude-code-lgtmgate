@@ -2,7 +2,7 @@
 # Runs the probe eval cases (evals/probe-*/) through `claude plugin eval`, LOCALLY.
 # Run by the Lead at the E2 gate and whenever the probe layer changes. Never from CI: it needs the
 # Lead's own Claude login and spends tokens (cost ceiling per case below). Nothing is published.
-# CI only validates the cases offline (scripts/test-probe-evals.sh). bash 3.2 safe.
+# CI only validates the cases offline (tests/scripts/test-probe-evals.sh). bash 3.2 safe.
 # --trust-plugin: this script evaluates this repository's own plugin, launched on purpose by the Lead;
 # without it a non-interactive run (cloud session, no TTY) refuses to start.
 #

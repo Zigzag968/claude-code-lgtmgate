@@ -5,7 +5,7 @@
 # Planted values are assembled below from fragments: no token-shaped or private-path literal in this source.
 # bash 3.2 compatible. Trailer: [test-redact-fixture] status=<ok|fail> passed=<n> failed=<n>
 set -u
-cd "$(dirname "$0")/.." || exit 1
+cd "$(dirname "$0")/../.." || exit 1
 PASS=0; FAIL=0
 ok()  { PASS=$((PASS+1)); echo "ok: $1"; }
 bad() { FAIL=$((FAIL+1)); echo "FAIL: $1"; }
@@ -103,7 +103,7 @@ out=$(node -e 'const f=require(process.argv[1]);process.stdout.write(JSON.string
 if [ "$out" = '{"token":"","password":null,"secret":7,"apiKey":false}|REDACTED' ]; then ok "non-string and empty values of secret-named keys are unchanged"; else bad "empty/non-string values: $out"; fi
 present "look-alike text is unchanged" "$TMP/plant.json" smart-home-hub my-Users-guide --home-dir feat/fix-home-page
 present "placeholders are the documented ones" "$TMP/plant.json" "${SL}tmp${SL}redacted" "${SL}op""t${SL}app" "-Us""ers-you" "-ho""me-user" "-Vol""umes-disk" "${SL}Vol""umes${SL}<disk>" '"REDACTED"'
-# the machine-path rows of NO_PRIVATE_REFS_PATTERNS (templates/test-canonical-guards.sh), once its two allow-listed placeholders are removed
+# the machine-path rows of NO_PRIVATE_REFS_PATTERNS (tests/templates/test-canonical-guards.sh), once its two allow-listed placeholders are removed
 left=$(sed -e "s#${SL}Us""ers${SL}you##g" -e "s#${SL}ho""me${SL}user##g" "$TMP/plant.json" | grep -Eic "${SL}Vol""umes${SL}[A-Za-z0-9_-]|${SL}Us""ers${SL}[A-Za-z0-9._-]|${SL}ho""me${SL}[A-Za-z0-9._-]")
 if [ "$left" = 0 ]; then ok "placeholders stay outside the no-private-refs patterns"; else bad "placeholders: $left line(s) still match a machine-path pattern"; fi
 

@@ -10,7 +10,7 @@
 # The stub engines (--fp) are test doubles for the engine body; the PEM header is assembled from fragments.
 # bash 3.2 compatible. Trailer: [test-publish-fixture] status=<ok|fail> passed=<n> failed=<n>
 set -u
-cd "$(dirname "$0")/.." || exit 1
+cd "$(dirname "$0")/../.." || exit 1
 ROOT="$(pwd)"
 export ROOT
 # the repo must come out of the suite exactly as it went in: no stub engine or publisher writes into the working tree

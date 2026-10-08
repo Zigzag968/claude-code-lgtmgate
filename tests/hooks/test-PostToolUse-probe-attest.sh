@@ -3,7 +3,7 @@
 # Temp dir under $TMPDIR only, no network. Needs jq (skips with a PASS-less note otherwise).
 set -uo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../hooks" && pwd)"
 ATTEST="$SCRIPT_DIR/PostToolUse-probe-attest.sh"
 STOP="$SCRIPT_DIR/SubagentStop-probe.sh"
 REG="$SCRIPT_DIR/plugin-hooks.json"

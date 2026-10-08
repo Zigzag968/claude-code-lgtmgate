@@ -67,13 +67,13 @@ All test suites are deterministic and pinned (npm lockfile, ruff `required-versi
 ```bash
 npm ci && pipx install ruff==0.16.10         # once: pinned lint tooling
 node scripts/audit.cjs --check               # size, naming and lint ratchet (also run by guards.cjs)
-bash scripts/test-audit.sh                   # audit regression test
+bash tests/scripts/test-audit.sh                   # audit regression test
 git config core.hooksPath .githooks          # opt-in: pre-commit runs the same checks as CI
-bash templates/test-canonical-guards.sh      # this repo's own release/structure guard net
+bash tests/templates/test-canonical-guards.sh      # this repo's own release/structure guard net
 FLOW_SUITE_STRICT=1 node scripts/run-flow-suite.cjs   # offline simulation of the pipeline workflow (strict = CI mode)
-bash templates/test-provision-worktree.sh    # worktree provisioning guard
-bash hooks/test-Stop-supervise-runs.sh       # stale-run watchdog regression test
-bash scripts/test-verify-workflow-launch.sh  # workflow-launch verification regression test
+bash tests/templates/test-provision-worktree.sh    # worktree provisioning guard
+bash tests/hooks/test-Stop-supervise-runs.sh       # stale-run watchdog regression test
+bash tests/scripts/test-verify-workflow-launch.sh  # workflow-launch verification regression test
 python3 -m unittest discover plugins/backlog/tests   # backlog plugin's own suite
 ```
 

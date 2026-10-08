@@ -1,7 +1,4 @@
 {
-  "hooks/test-SubagentStop-worktree-cleanup.sh": {
-    "SC2046": 9
-  },
   "plugins/backlog/scripts/backlog_apply.py": {
     "max-lines": 1
   },
@@ -62,15 +59,6 @@
     "suppression": 1,
     "unicorn/name-replacements": 28
   },
-  "scripts/test-capture-incident.sh": {
-    "max-lines": 1
-  },
-  "scripts/test-lead-merge.sh": {
-    "max-lines": 1
-  },
-  "scripts/test-publish-fixture.sh": {
-    "max-lines": 1
-  },
   "templates/pr-body-splice.cjs": {
     "unicorn/name-replacements": 16
   },
@@ -89,15 +77,27 @@
   "templates/provision_worktree.sh": {
     "ls-lint:.sh:kebabcase": 1
   },
-  "templates/test-canonical-guards.sh": {
-    "max-lines": 1
-  },
   "templates/test-deliver-pipeline.js": {
     "max-lines": 1,
     "suppression": 10,
     "unicorn/name-replacements": 1127
   },
-  "templates/test-probe-run.sh": {
+  "tests/hooks/test-SubagentStop-worktree-cleanup.sh": {
+    "SC2046": 9
+  },
+  "tests/scripts/test-capture-incident.sh": {
+    "max-lines": 1
+  },
+  "tests/scripts/test-lead-merge.sh": {
+    "max-lines": 1
+  },
+  "tests/scripts/test-publish-fixture.sh": {
+    "max-lines": 1
+  },
+  "tests/templates/test-canonical-guards.sh": {
+    "max-lines": 1
+  },
+  "tests/templates/test-probe-run.sh": {
     "max-lines": 1
   },
   "workflows/deliver-pipeline.js": {

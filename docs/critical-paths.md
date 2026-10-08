@@ -13,7 +13,7 @@ Format: `- CP-<n> — <use case> — proof: <test id | fixture | script> — exp
 - CP-4 — a plan touching a hook file stops before any code is written — proof: `T77b` — expects: `design-step-required`
 - CP-5 — an ordinary plan is not stopped by the one-way-door signal — proof: `T77c` — expects: `plan-ready`
 - CP-6 — a stale branch prefix on a cross-repo re-route is reconciled instead of escalating — proof: `T61a` — expects: no escalation
-- CP-7 — a PR with an unchecked acceptance box is refused at merge — proof: `scripts/test-lead-merge.sh` — expects: merge refused
+- CP-7 — a PR with an unchecked acceptance box is refused at merge — proof: `tests/scripts/test-lead-merge.sh` — expects: merge refused
 - CP-8 — a probe answering in prose instead of the raw line is caught, not parsed as data — proof: `fixtures/incidents/99-gitdir-probe-prose.json` — expects: the replayed status of the fixture
 - CP-9 — a review that only asks for checklist wording or ticks does not cost a dev round — proof: `fixtures/incidents/107-checklist-only-blockers.json` — expects: `verified-untickable`
 - CP-10 — an agent cut off by a classifier outage is retried, and reported dead only once retries are exhausted — proof: `fixtures/incidents/110-classifier-outage-retry.json`, `fixtures/incidents/110-classifier-outage-exhausted.json` — expects: `ready`, then `dev-died`

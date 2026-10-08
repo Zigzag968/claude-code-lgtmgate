@@ -5,7 +5,7 @@
 # serves the PR head ($FAKE_HEAD) and the REST comments ($FAKE_COMMENTS); a bare `gh pr merge` needs the latest
 # sha-bearing review marker to name that head (default fixture: a review on the head, so the older cases are unaffected).
 set -uo pipefail
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 HOOK="$ROOT/hooks/block-merge-unchecked.sh"
 command -v jq >/dev/null 2>&1 || { echo "SKIP: jq missing"; exit 0; }
 T="$(mktemp -d "${TMPDIR:-/tmp}/bmu-test.XXXXXX")"

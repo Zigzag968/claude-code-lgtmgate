@@ -12,7 +12,7 @@
 // would still act on it is a hit, and any hit refuses. `refused: <file>: <rule> at <json path or
 // line>` goes to stderr (never the value), the exit code is 3 and nothing is written, not even
 // for the other files given.
-// Every placeholder stays outside the `no-private-refs` pattern table (templates/test-canonical-guards.sh):
+// Every placeholder stays outside the `no-private-refs` pattern table (tests/templates/test-canonical-guards.sh):
 // `/Users/you` and `/home/user` are on its allow list, the others match none of its patterns.
 // Only the shapes listed in RULES are guaranteed; private business content in a fixture is out of this script's reach (the capture and publish tooling minimizes it, #181 and #189).
 // Usage: node scripts/redact-fixture.cjs <file> [<file>...]   (rewrites in place)

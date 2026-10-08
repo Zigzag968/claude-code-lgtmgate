@@ -11,7 +11,7 @@
 # them (see .claude/rules/pr-acceptance.md on scratch vs in-place deletion).
 set -uo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../hooks" && pwd)"
 HOOK="$SCRIPT_DIR/Stop-supervise-runs.sh"
 FIXTURE_ROOT="${FIXTURE_ROOT:-${TMPDIR:-/tmp}}"
 

@@ -81,7 +81,7 @@ The full key-by-key reference, including precedence rules and edge cases, is in 
 <details>
 <summary>Engineering highlights (you can reproduce every number below by running the scripts yourself)</summary>
 
-- 936 offline test cases across 6 suites, no network or mocked API calls: `templates/test-canonical-guards.sh` (24 release invariants), `scripts/run-flow-suite.cjs` (325 pipeline-logic cases), `plugins/backlog/tests/` (503 Python unit tests), `templates/test-blocked-by-check.sh` (9), `hooks/test-Stop-supervise-runs.sh` (17), `hooks/test-deny-destructive-git.sh` (58).
+- 936 offline test cases across 6 suites, no network or mocked API calls: `tests/templates/test-canonical-guards.sh` (24 release invariants), `scripts/run-flow-suite.cjs` (325 pipeline-logic cases), `plugins/backlog/tests/` (503 Python unit tests), `tests/templates/test-blocked-by-check.sh` (9), `tests/hooks/test-Stop-supervise-runs.sh` (17), `tests/hooks/test-deny-destructive-git.sh` (58).
 - An opt-in adversarial plan audit (`planAudit`): a separate agent can challenge Sam's plan before Nick starts coding, capped at a fixed number of rounds so a disagreement can't spawn agents indefinitely.
 - A regression guard based on a SET-DIFF: Morgan captures a baseline from the pre-change branch and diffs the exact test set the change touched, rather than re-running the whole suite on every PR.
 - Every run gets its own git worktree. Theo, Sam, Nick and Morgan work inside that same worktree so plan, code and review sit on the same frozen base, and the pipeline never touches your own working checkout.
@@ -123,7 +123,7 @@ Restart the session, then in your target project run `/lgtmgate:init`. It genera
 - **Claude Code with the `Workflow` tool available** (every run is a `Workflow`).
 - **GitHub only**: issues, pull requests and `gh`; a `github.com` remote.
 - **A long macOS session**: a session open for more than about three days can lose the certificate bundle of its sandbox so that `git` and `gh` over HTTPS fail with TLS errors; restart it (details in #251).
-- **`bash`** (3.2 floor, see the `bash-3.2-floor` invariant in `templates/test-canonical-guards.sh`).
+- **`bash`** (3.2 floor, see the `bash-3.2-floor` invariant in `tests/templates/test-canonical-guards.sh`).
 
 </details>
 
