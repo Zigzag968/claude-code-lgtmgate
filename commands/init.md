@@ -101,7 +101,7 @@ The agents read the owner's rules from `.claude/lgtmgate/` (config key `projectS
 
 ## 3. GitHub snippets (optional, propose)
 Propose (AskUserQuestion) inserting the snippets to enable pm_review + the acceptance gate:
-- `${CLAUDE_PLUGIN_ROOT}/templates/github/feature-pm_review.snippet` → `pm_review` checkboxes block to add to `.github/ISSUE_TEMPLATE/feature.yml`.
+- `${CLAUDE_PLUGIN_ROOT}/templates/github/feature-pm-review.snippet` → `pm_review` checkboxes block to add to `.github/ISSUE_TEMPLATE/feature.yml`.
 - `${CLAUDE_PLUGIN_ROOT}/templates/github/pr-acceptance.snippet` → `## Acceptance checklist` section (with `<!-- acceptance:start/end -->` markers) to add to `.github/pull_request_template.md`.
 
 If the target files exist: insert the block at the right spot (Edit). Otherwise: offer to create the file from the snippet. **Never overwrite** an existing template without confirmation.

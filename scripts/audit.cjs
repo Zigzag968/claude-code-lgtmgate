@@ -11,10 +11,15 @@
 // ruff.toml, .ls-lint.yml); the TARGET is the git repository of the current directory. So a test lints a throwaway
 // repository with the real tools and configs, and the baseline can be generated from any tree.
 //
-// Tools, run concurrently: ESLint (JS), ruff (Python, version pinned by ruff.toml `required-version`), ls-lint (file
-// names), ShellCheck (shell). Two rules have no market tool and are counted here for .sh and .py: `max-lines`
-// (> 600 lines) and, for .sh only, `max-lines-per-function` (> 80). A third, `suppression`, counts the lint-disable
-// comments of each language (SUPPRESSION_PATTERNS). Files under a `fixtures/` segment are out of scope.
+// Tools, run concurrently: ESLint (JS), ruff (Python, version pinned by ruff.toml `required-version`), ls-lint
+// (twice: with the code files as arguments, for their names; without argument, for folder names, forbidden extensions and
+// non-code file names, minus the code names the first call counts and minus the paths git ignores, checked with
+// `git check-ignore`), ShellCheck (shell). Two rules have no market tool and are counted here for .sh and .py:
+// `max-lines` (> 600 lines) and, for .sh only, `max-lines-per-function` (> 80). A third, `suppression`, counts the
+// lint-disable comments of each language (SUPPRESSION_PATTERNS). A file with no extension whose first line is a
+// `#!` shell or python shebang is audited as .sh or .py (node shebang scripts are not audited: none exists).
+// Files under a `fixtures/` segment are out of scope; a `fixtures` folder anywhere but `fixtures/` and
+// `plugins/*/tests/fixtures/` is the finding `fixtures-location`, keyed by the folder.
 // The baseline only goes down: regenerate it never by hand, never to absorb new findings.
 
 const fs = require('fs')
@@ -38,6 +43,7 @@ function runCommand(command, commandArguments, options) {
     const chunks = { stdout: [], stderr: [] }
     child.stdout.on('data', (chunk) => chunks.stdout.push(chunk))
     child.stderr.on('data', (chunk) => chunks.stderr.push(chunk))
+    if (options.input !== undefined) child.stdin.end(options.input)
     child.on('error', (error) => resolve({ code: null, spawnError: error, stdout: '', stderr: '' }))
     child.on('close', (code) => resolve({ code, stdout: Buffer.concat(chunks.stdout).toString('utf8'), stderr: Buffer.concat(chunks.stderr).toString('utf8') }))
   })
@@ -65,15 +71,64 @@ function parseJson(text) {
 }
 
 // ---- file listing --------------------------------------------------------------------------
-function listFiles(target) {
+function listAllFiles(target) {
   const listed = childProcess.execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], { cwd: target, encoding: 'utf8', maxBuffer: 1 << 28 })
-  const files = new Set()
-  for (const file of listed.split('\0')) {
-    if (file === '' || !SCOPE_EXTENSIONS.has(path.extname(file))) continue
-    if (file.split('/').includes('fixtures')) continue
-    files.add(file)
+  return [...new Set(listed.split('\0').filter((file) => file !== ''))].sort()
+}
+
+const folderSegments = (file) => file.split('/').slice(0, -1)
+
+// `#!/bin/sh`, `#!/usr/bin/env bash`, `#!/usr/bin/env -S python3 -u`: the interpreter name decides the kind.
+function interpreterKind(firstLine) {
+  const words = firstLine.slice(2).trim().split(/\s+/)
+  let name = path.basename(words[0] || '')
+  if (name === 'env') name = path.basename(words.slice(1).find((word) => !word.startsWith('-')) || '')
+  if (['sh', 'bash', 'dash', 'ksh'].includes(name)) return '.sh'
+  return /^python3?$/.test(name) ? '.py' : null
+}
+
+function shebangKind(target, file) {
+  let descriptor = null
+  try {
+    descriptor = fs.openSync(path.join(target, file), 'r')
+    const buffer = Buffer.alloc(128)
+    const length = fs.readSync(descriptor, buffer, 0, buffer.length, 0)
+    const firstLine = buffer.toString('utf8', 0, length).split('\n')[0]
+    return firstLine.startsWith('#!') ? interpreterKind(firstLine) : null
+  } catch (_) {
+    return null
+  } finally {
+    if (descriptor !== null) fs.closeSync(descriptor)
   }
-  return [...files].sort()
+}
+
+// file -> '.js' | '.cjs' | '.mjs' | '.sh' | '.py' for every file in scope (outside fixtures); the others are absent.
+function scriptKinds(target, files) {
+  const kinds = new Map()
+  for (const file of files) {
+    if (file.split('/').includes('fixtures')) continue
+    const extension = path.extname(file)
+    const kind = SCOPE_EXTENSIONS.has(extension) ? extension : extension === '' ? shebangKind(target, file) : null
+    if (kind !== null) kinds.set(file, kind)
+  }
+  return kinds
+}
+
+// A `fixtures` folder is allowed at the root and under plugins/<name>/tests/ only; one finding per misplaced folder.
+function fixturesFindings(files) {
+  const found = emptyResult()
+  const seen = new Set()
+  for (const file of files) {
+    const segments = folderSegments(file)
+    const at = segments.indexOf('fixtures')
+    const allowed = at === 0 || (at === 3 && segments[0] === 'plugins' && segments[2] === 'tests')
+    if (at < 0 || allowed) continue
+    const folder = segments.slice(0, at + 1).join('/')
+    if (seen.has(folder)) continue
+    seen.add(folder)
+    addCount(found.counts, folder, 'fixtures-location')
+  }
+  return found
 }
 
 // A tracked file missing on disk is skipped; any other read error is a named red and the file is not handed to the tools.
@@ -142,23 +197,64 @@ async function runRuff(target, files) {
   return found
 }
 
+// `regex:(a|b)` -> `regex`, `exists:0 (found 3)` -> `exists:0`: the rule name, not its parameters.
+const normaliseRule = (rule) => (rule.startsWith('regex:') ? 'regex' : rule.replace(/\s*\(found \d+\)$/, ''))
+
+// ls-lint prints its JSON report on stderr: { "<path>": { "<extension>": ["<rule>"] } }; null when it cannot be read.
+function lsLintReport(result) {
+  if (result.code === 0) return {}
+  return result.code === 1 ? parseJson(result.stderr) : null
+}
+
+function addLsLintReport(found, report, keep) {
+  for (const [file, byExtension] of Object.entries(report)) {
+    for (const [extension, rules] of Object.entries(byExtension)) {
+      for (const rule of rules) {
+        if (keep(file, extension, rule)) addCount(found.counts, file, `ls-lint:${extension}:${normaliseRule(rule)}`)
+      }
+    }
+  }
+}
+
+function lsLintFailure(result) {
+  return toolFailure('ls-lint', result, result.stderr.trim().split('\n')[0] || `exit ${result.code}`)
+}
+
 async function runLsLint(target, files) {
   const found = emptyResult()
   if (files.length === 0) return found
   const configPath = path.join(TOOL_ROOT, '.ls-lint.yml')
   const result = await runCommand(toolBinary('ls-lint'), ['-config', configPath, '-error-output-format', 'json', ...files], { cwd: target })
-  if (result.code === 0) return found
-  // ls-lint prints its JSON report on stderr: { "<file>": { ".sh": ["kebabcase"] } }
-  const report = result.code === 1 ? parseJson(result.stderr) : null
+  const report = lsLintReport(result)
+  if (report === null) found.failures.push(lsLintFailure(result))
+  else addLsLintReport(found, report, () => true)
+  return found
+}
+
+// The paths among `paths` that git ignores (the global ignore file included, which .ls-lint.yml cannot know).
+async function gitIgnoredPaths(target, paths) {
+  if (paths.length === 0) return { ignored: new Set(), failure: null }
+  const result = await runCommand('git', ['check-ignore', '-z', '--stdin'], { cwd: target, input: paths.join('\0') })
+  if (result.code !== 0 && result.code !== 1) return { ignored: new Set(), failure: `${FAIL} git check-ignore failed` }
+  return { ignored: new Set(result.stdout.split('\0').filter((entry) => entry !== '')), failure: null }
+}
+
+// Second ls-lint call, no file argument: folders, forbidden extensions, non-code names. The code names are the first
+// call's (a rule on a code extension other than `exists:` is skipped), and a path under a `fixtures` folder is out of scope.
+async function runLsLintTree(target) {
+  const found = emptyResult()
+  const configPath = path.join(TOOL_ROOT, '.ls-lint.yml')
+  const result = await runCommand(toolBinary('ls-lint'), ['-config', configPath, '-error-output-format', 'json'], { cwd: target })
+  const report = lsLintReport(result)
   if (report === null) {
-    found.failures.push(toolFailure('ls-lint', result, result.stderr.trim().split('\n')[0] || `exit ${result.code}`))
+    found.failures.push(lsLintFailure(result))
     return found
   }
-  for (const [file, byExtension] of Object.entries(report)) {
-    for (const [extension, rules] of Object.entries(byExtension)) {
-      for (const rule of rules) addCount(found.counts, file, `ls-lint:${extension}:${rule}`)
-    }
-  }
+  const keep = (file, extension, rule) => !file.split('/').includes('fixtures') && !(SCOPE_EXTENSIONS.has(extension) && !rule.startsWith('exists:'))
+  addLsLintReport(found, report, keep)
+  const { ignored, failure } = await gitIgnoredPaths(target, Object.keys(found.counts))
+  if (failure) found.failures.push(failure)
+  for (const file of ignored) delete found.counts[file]
   return found
 }
 
@@ -218,21 +314,21 @@ function countSuppressions(text, extension) {
   return pattern ? (text.match(pattern) || []).length : 0
 }
 
-function sizeRules(counts, file, text) {
+function sizeRules(counts, file, text, kind) {
   if (lineCount(text) > MAX_LINES) addCount(counts, file, 'max-lines')
-  if (path.extname(file) !== '.sh') return
+  if (kind !== '.sh') return
   for (const length of shellFunctionLengths(text)) {
     if (length > MAX_FUNCTION_LINES) addCount(counts, file, 'max-lines-per-function')
   }
 }
 
-function ownRules(target, files) {
+function ownRules(target, files, kinds) {
   const counts = {}
   for (const file of files) {
-    const extension = path.extname(file)
+    const kind = kinds.get(file)
     const text = fs.readFileSync(path.join(target, file), 'utf8')
-    for (let n = countSuppressions(text, extension); n > 0; n--) addCount(counts, file, 'suppression')
-    if (extension === '.sh' || extension === '.py') sizeRules(counts, file, text)
+    for (let n = countSuppressions(text, kind); n > 0; n--) addCount(counts, file, 'suppression')
+    if (kind === '.sh' || kind === '.py') sizeRules(counts, file, text, kind)
   }
   return { counts, failures: [] }
 }
@@ -261,14 +357,18 @@ function sortedCounts(counts) {
 }
 
 async function collect(target) {
-  const { readable, failures } = checkReadable(target, listFiles(target))
-  const byExtension = (extensions) => readable.filter((file) => extensions.has(path.extname(file)))
+  const allFiles = listAllFiles(target)
+  const kinds = scriptKinds(target, allFiles)
+  const { readable, failures } = checkReadable(target, [...kinds.keys()])
+  const byKind = (extensions) => readable.filter((file) => extensions.has(kinds.get(file)))
   const results = await Promise.all([
-    runEslint(target, byExtension(SCRIPT_EXTENSIONS)),
-    runRuff(target, byExtension(new Set(['.py']))),
+    runEslint(target, byKind(SCRIPT_EXTENSIONS)),
+    runRuff(target, byKind(new Set(['.py']))),
     runLsLint(target, readable),
-    runShellcheck(target, byExtension(new Set(['.sh']))),
-    ownRules(target, readable),
+    runLsLintTree(target),
+    runShellcheck(target, byKind(new Set(['.sh']))),
+    ownRules(target, readable, kinds),
+    fixturesFindings(allFiles),
   ])
   return { counts: sortedCounts(mergeCounts(results)), failures: [...failures, ...results.flatMap((result) => result.failures)] }
 }

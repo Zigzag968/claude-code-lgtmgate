@@ -58,6 +58,8 @@ The prompt must arrive on stdin. See `MAINTAINING.md` for the full dev-loop deta
 known collision hazard when a `--plugin-dir` tree and the installed plugin cache share a component
 name — set a `-dev` suffixed version locally if you hit ambiguous results.
 
+Where files go: each root folder has one role, listed in `docs/layout.md`. Folder and file names are kebab-case (snake_case for Python). `node scripts/audit.cjs --check` rejects a new root folder, a badly named folder or file, a forbidden extension in a folder and a `fixtures/` folder outside `fixtures/` and `plugins/*/tests/fixtures/`.
+
 ## Running the tests
 
 All test suites are deterministic and pinned (npm lockfile, ruff `required-version`; no API calls):
