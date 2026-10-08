@@ -1,0 +1,8 @@
+# Ruff config of the code-quality audit (scripts/audit.cjs). Size and naming only.
+# The version is pinned here: the audit refuses any other `ruff --version`.
+required-version = "==0.16.10"
+
+[lint]
+select = ["N", "PLR0915"]
+# complexity stays off (cyclomatic complexity is a non-goal of epic #287)
+ignore = ["C901"]

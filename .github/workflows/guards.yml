@@ -4,7 +4,8 @@ name: guards
 # `main-protection` ruleset (see MAINTAINING.md section 5 and templates/test-canonical-guards.sh),
 # so a red `guards` blocks the merge. Job `guards` runs, in order:
 #   - templates/test-canonical-guards.sh : canonical guard net (invariants 2-22) plus
-#     scripts/guards.cjs (R1 ratchet vs origin/main, all-tests-wired, version floor)
+#     scripts/guards.cjs (R1 ratchet vs origin/main, all-tests-wired, version floor, and the `audit`
+#     code-quality ratchet of scripts/audit.cjs against scripts/audit-baseline.json)
 #   - scripts/run-flow-suite.cjs         : offline flow suite (templates/test-deliver-pipeline.js)
 #   - scripts/run-offline.cjs --all fixtures : record/replay harness with the real parsers
 #   - scripts/test-guards.sh, test-run-offline.sh, test-capture-incident.sh, test-publish-fixture.sh,
@@ -12,7 +13,7 @@ name: guards
 #     test-cleanup-worktree.sh,
 #     test-verify-workflow-launch.sh, hooks/test-*.sh, templates/test-provision-worktree.sh,
 #     test-blocked-by-check.sh, test-gh-pipeline-status.sh, test-probe-evals.sh,
-#     test-gate-check.sh : per-script regression tests
+#     test-gate-check.sh, test-audit.sh : per-script regression tests
 #   - scripts/gate-check.sh e2 --ci      : the E2 gate metrics that are evidence in the repository
 #     (incident fixtures, eval grader pins); eval results and canary runs report SKIP here
 # Job `smoke-install` loads the plugin through the real `claude` CLI.
@@ -21,7 +22,7 @@ name: guards
 # Trigger MUST stay `pull_request` and never `pull_request_target`: scripts/run-flow-suite.cjs
 # runs the branch's own workflows/deliver-pipeline.js through `new Function(...)`, i.e. this job
 # executes branch-authored code by design, and `pull_request_target` would give that code the
-# BASE branch's token/secrets. The runner is ubuntu-latest (tests are offline, stdlib only).
+# BASE branch's token/secrets. The runner is ubuntu-latest (tests are deterministic and pinned).
 on:
   pull_request:
     branches: [main]
@@ -33,13 +34,21 @@ jobs:
   guards:
     # #254: this job used to target the human's private, always-on machine — any external PR would
     # execute arbitrary branch-authored code (see the pull_request_target note above) on that
-    # machine now that this repo is public. Tests are 100% offline/stdlib (no external
-    # deps), so ubuntu-latest has full parity with no coverage loss.
+    # machine now that this repo is public. Tests are deterministic and pinned (lockfile, ruff
+    # `required-version`, cached installs) and need no live service, so ubuntu-latest has full parity.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
           fetch-depth: 0 # guards.cjs version floor diffs against origin/main
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install pinned tooling (audit)
+        run: |
+          npm ci
+          pipx install ruff==0.16.10
       - name: Canonical guard net
         run: bash templates/test-canonical-guards.sh
       - name: Offline flow suite
@@ -82,6 +91,8 @@ jobs:
         run: bash templates/test-gh-pipeline-status.sh
       - name: guards.cjs regression test
         run: bash scripts/test-guards.sh
+      - name: audit self-test
+        run: bash scripts/test-audit.sh
       - name: lead-merge script regression test
         run: bash scripts/test-lead-merge.sh
       - name: plugin-versions script regression test

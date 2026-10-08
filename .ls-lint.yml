@@ -1,0 +1,16 @@
+# ls-lint config of the code-quality audit (scripts/audit.cjs): file names.
+ls:
+  .js: kebab-case
+  .cjs: kebab-case
+  .mjs: kebab-case
+  .sh: kebab-case
+  .py: snake_case
+  # Hook scripts are named after the Claude Code event they handle (PostToolUse-*, Stop-*, SubagentStop-*).
+  # hooks/SessionStart/ needs no entry: ls-lint checks no directory name and its .py is snake_case.
+  hooks:
+    .sh: kebab-case | regex:(test-)?(PostToolUse|Stop|SubagentStop)-[a-z-]+
+
+ignore:
+  - .git
+  - node_modules
+  - fixtures

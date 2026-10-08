@@ -60,9 +60,13 @@ name — set a `-dev` suffixed version locally if you hit ambiguous results.
 
 ## Running the tests
 
-All test suites are offline (no network, no API calls) and dependency-free:
+All test suites are deterministic and pinned (npm lockfile, ruff `required-version`; no API calls):
 
 ```bash
+npm ci && pipx install ruff==0.16.10         # once: pinned lint tooling
+node scripts/audit.cjs --check               # size, naming and lint ratchet (also run by guards.cjs)
+bash scripts/test-audit.sh                   # audit regression test
+git config core.hooksPath .githooks          # opt-in: pre-commit runs the same checks as CI
 bash templates/test-canonical-guards.sh      # this repo's own release/structure guard net
 FLOW_SUITE_STRICT=1 node scripts/run-flow-suite.cjs   # offline simulation of the pipeline workflow (strict = CI mode)
 bash templates/test-provision-worktree.sh    # worktree provisioning guard
@@ -72,7 +76,8 @@ python3 -m unittest discover plugins/backlog/tests   # backlog plugin's own suit
 ```
 
 These are exactly the checks CI (`.github/workflows/guards.yml`) runs on every pull request — run
-them locally before opening a PR.
+them locally before opening a PR. `scripts/audit-baseline.json` is generated, never edited by hand:
+it only goes down (a finding fixed lowers it), and a change that raises it fails `guards`.
 
 ## Commit conventions
 

@@ -9,6 +9,7 @@
 # instructions-wired (imports outside code, once each, no @AGENTS.md, AGENTS.md names both, omitClaudeMd),
 # status-table (registry <-> §5 table both ways, grouped rows, missing registry or table; #180),
 # phase-titles (real titles, a 16-character title, a 17-character title, a case-insensitive prefix title either order, a whitespace-padded title, no phases list; #141).
+# audit (the default list runs the audit check: a baseline raised vs origin/main fails; #289).
 # Ends with `[test-guards] status=<ok|fail> passed=<n> failed=<n>`.
 set -u
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -415,6 +416,19 @@ printf "exports.STUBS = { sam: '<!-- run the simulate step -->' }\n" > "$T/stubs
 if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q "^FAIL: init-stubs: stub 'sam' carries the engine word 'simulate'$"; then ok "init-stubs: a stub with an engine word -> FAIL naming the stub"; else ko "init-stubs engine word (rc=$RC) $OUT"; fi
 printf "exports.STUBS = { sam: 'a rule that injects text' }\n" > "$T/stubs-text.cjs"; run_stubs "$T/stubs-text.cjs"
 if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q "^FAIL: init-stubs: stub 'sam' is not empty once comments are stripped$"; then ok "init-stubs: a stub with text outside a comment -> FAIL"; else ko "init-stubs text (rc=$RC) $OUT"; fi
+
+# ---- audit (#289) ----
+# The default list (no GUARDS_ONLY) must run the audit check: a clone whose baseline is raised vs its origin/main fails on
+# the baseline-vs-origin line. Removing 'audit' from ONLY in scripts/guards.cjs makes this case fail.
+AUD_ORIGIN="$T/aud-origin.git"; AUD_CLONE="$T/aud-clone"
+git init -q --bare "$AUD_ORIGIN" && git init -q "$AUD_CLONE" && mkdir -p "$AUD_CLONE/scripts"
+printf '{"a.sh":{"max-lines":1}}\n' > "$AUD_CLONE/scripts/audit-baseline.json"
+git -C "$AUD_CLONE" add -A && git -C "$AUD_CLONE" -c user.name=t -c user.email=t@t commit -qm base \
+  && git -C "$AUD_CLONE" branch -M main && git -C "$AUD_CLONE" remote add origin "$AUD_ORIGIN" \
+  && git -C "$AUD_CLONE" push -q origin main && git -C "$AUD_CLONE" fetch -q origin main
+printf '{"a.sh":{"max-lines":2}}\n' > "$AUD_CLONE/scripts/audit-baseline.json"
+OUT="$(GUARDS_ROOT="$AUD_CLONE" node scripts/guards.cjs 2>&1)"; RC=$?
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: audit: baseline-vs-origin a.sh max-lines 2 > origin/main 1$'; then ok "audit: the default list runs the audit check (removing the key from ONLY fails this case)"; else ko "audit default list (rc=$RC) $OUT"; fi
 
 STATUS=ok; [ "$FAIL_N" -eq 0 ] || STATUS=fail
 echo "[test-guards] status=${STATUS} passed=${PASS_N} failed=${FAIL_N}"
