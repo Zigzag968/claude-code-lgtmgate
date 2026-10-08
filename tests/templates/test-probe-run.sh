@@ -3,7 +3,7 @@
 # fixtures/probes/*.raw, plus end-to-end runs of the CLI in a temp dir. No network. bash 3.2 safe.
 set -uo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../templates" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 PR="$SCRIPT_DIR/probe-run.cjs"
 TMP_BASE="$(cd "${TMPDIR:-/tmp}" && pwd -P)"

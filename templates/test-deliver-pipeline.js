@@ -2451,7 +2451,7 @@ await testCase('T273 probe(): persona fallback wired, no-attestation and probe-r
 // T195 (#195) — a pluginRoot of another plugin version than the engine's build fails fast. The decision is
 // pluginVersionVerdict(), a pure function extracted from its source markers (no simulate seam: the probe that
 // reads the manifest has none, T273); the real command, the real probe-run.cjs and real manifests run in
-// templates/test-probe-run.sh, the replayed incident in fixtures/incidents/195-stale-plugin-root.json.
+// tests/templates/test-probe-run.sh, the replayed incident in fixtures/incidents/195-stale-plugin-root.json.
 const pluginVersionPieces = () => {
   const src = SUITE_ARGS.fpSource
   if (!src) return null

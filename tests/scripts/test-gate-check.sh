@@ -5,7 +5,7 @@
 # generic grader, 28/30 fully passed runs, one canary run. No `claude` call, no network. bash 3.2 safe.
 set -uo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 TMP_BASE="$(cd "${TMPDIR:-/tmp}" && pwd -P)"
 WORK="$(mktemp -d "$TMP_BASE/gate-check-test.XXXXXX")"
@@ -20,7 +20,7 @@ check() {
   else echo "FAIL - $name"; fail_count=$((fail_count + 1)); fi
 }
 
-# mkres.cjs <file> <case> <spec>: same helper and spec as scripts/test-probe-evals.sh ("8x1,2x0.75" = 8 clean
+# mkres.cjs <file> <case> <spec>: same helper and spec as tests/scripts/test-probe-evals.sh ("8x1,2x0.75" = 8 clean
 # runs and 2 runs at 0.75), the shape of `claude plugin eval` 2.1.286 aggregate-result.json.
 cat > "$WORK/mkres.cjs" <<'JS'
 const fs = require('fs')
@@ -275,7 +275,7 @@ check "gate-check.sh INFLIGHT equals the in-flight whitelist of hooks/Stop-super
 
 # guards CI runs this test and the gate in --ci mode, without evals/results
 ok=0
-grep -qE '^ +run: bash scripts/test-gate-check\.sh$' "$ROOT/.github/workflows/guards.yml" && grep -qE '^ +run: bash scripts/gate-check\.sh e2 --ci$' "$ROOT/.github/workflows/guards.yml" && ok=1
+grep -qE '^ +run: bash tests/scripts/test-gate-check\.sh$' "$ROOT/.github/workflows/guards.yml" && grep -qE '^ +run: bash scripts/gate-check\.sh e2 --ci$' "$ROOT/.github/workflows/guards.yml" && ok=1
 check "guards.yml has a run: step for test-gate-check.sh and one for gate-check.sh e2 --ci" "$ok"
 
 echo "status=$([ "$fail_count" -eq 0 ] && echo pass || echo fail) pass=$pass_count fail=$fail_count"

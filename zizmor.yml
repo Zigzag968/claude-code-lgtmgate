@@ -5,10 +5,10 @@ rules:
   artipacked:
     ignore:
       # guards job checkout: the credential stays persisted; the guards need no push but the cleanup is out of scope of #306.
-      - guards.yml:41
+      - guards.yml:37
       # smoke-install job checkout: same legacy finding, same reason.
-      - guards.yml:134
+      - guards.yml:130
   adhoc-packages:
     ignore:
       # smoke-install installs the Claude Code CLI under test with an exact version pin; a lockfile does not apply to it.
-      - guards.yml:140
+      - guards.yml:136

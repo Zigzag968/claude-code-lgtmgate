@@ -2,12 +2,12 @@
 # Self-test of `scripts/agent-context.cjs --print` (#268): the table (no role) and the fenced role view,
 # on a synthetic repo built from fixtures/specifics/context-src with a fully pinned commit (author,
 # committer, date, message), so the goldens in fixtures/specifics/context-golden are stable.
-#   bash scripts/test-context-print.sh                  run the checks
-#   bash scripts/test-context-print.sh --build <dir> [lanes]  build the synthetic root in <dir> (with `lanes`: the lanes tree, #271) and exit
-#   UPDATE_GOLDEN=1 bash scripts/test-context-print.sh  rewrite the goldens (read them before commit)
+#   bash tests/scripts/test-context-print.sh                  run the checks
+#   bash tests/scripts/test-context-print.sh --build <dir> [lanes]  build the synthetic root in <dir> (with `lanes`: the lanes tree, #271) and exit
+#   UPDATE_GOLDEN=1 bash tests/scripts/test-context-print.sh  rewrite the goldens (read them before commit)
 # bash 3.2 compatible. Trailer: [test-context-print] status=<ok|fail> passed=<n> failed=<n>
 set -u
-cd "$(dirname "$0")/.." || exit 1
+cd "$(dirname "$0")/../.." || exit 1
 ROOT=$(pwd)
 AC="$ROOT/scripts/agent-context.cjs"
 SRC="$ROOT/fixtures/specifics/context-src"

@@ -188,4 +188,4 @@ The pipeline's Sam and Morgan agents file non-blocking findings with a raw `gh i
 python3 -B -m unittest discover -s plugins/backlog/tests
 ```
 
-Offline: a fake `gh` shim records every invocation and no test touches the network or a real repo. `bash templates/test-canonical-guards.sh` runs this suite as its `backlog-suite` invariant.
+Offline: a fake `gh` shim records every invocation and no test touches the network or a real repo. `bash tests/templates/test-canonical-guards.sh` runs this suite as its `backlog-suite` invariant.

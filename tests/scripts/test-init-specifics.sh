@@ -6,7 +6,7 @@
 # line, materialised as empty files); nothing is written in the repository.
 # bash 3.2 compatible. Trailer: [test-init-specifics] status=<ok|fail> passed=<n> failed=<n>
 set -u
-cd "$(dirname "$0")/.." || exit 1
+cd "$(dirname "$0")/../.." || exit 1
 ROOT=$(pwd)
 IS="$ROOT/scripts/init-specifics.cjs"
 TREES="$ROOT/fixtures/specifics/init-trees"
@@ -109,9 +109,9 @@ if grep -q 'build/test tools' "$D/.claude/lgtmgate/nick.md"; then ok "nick-stub-
 # guard-no-plugin-copy-fails-on-copy
 G="$TMP/guard-copy"; mkdir -p "$G"
 cp "$ROOT/templates/pr-acceptance.md" "$G/pr-acceptance.md"
-GOUT=$(SPECIFICS_DIR="$G" bash "$ROOT/templates/test-canonical-guards.sh" 2>&1 | grep 'no-plugin-copy-in-specifics')
+GOUT=$(SPECIFICS_DIR="$G" bash "$ROOT/tests/templates/test-canonical-guards.sh" 2>&1 | grep 'no-plugin-copy-in-specifics')
 G2="$TMP/guard-clean"; mkdir -p "$G2"; printf 'owner rules\n' > "$G2/nick.md"
-GOUT2=$(SPECIFICS_DIR="$G2" bash "$ROOT/templates/test-canonical-guards.sh" 2>&1 | grep 'no-plugin-copy-in-specifics')
+GOUT2=$(SPECIFICS_DIR="$G2" bash "$ROOT/tests/templates/test-canonical-guards.sh" 2>&1 | grep 'no-plugin-copy-in-specifics')
 if printf '%s\n' "$GOUT" | grep -q '^FAIL: no-plugin-copy-in-specifics' && printf '%s\n' "$GOUT2" | grep -q '^PASS: no-plugin-copy-in-specifics'; then ok "guard-no-plugin-copy-fails-on-copy"; else bad "guard-no-plugin-copy-fails-on-copy [$GOUT] [$GOUT2]"; fi
 
 # inject-stub-hint: SessionStart stub

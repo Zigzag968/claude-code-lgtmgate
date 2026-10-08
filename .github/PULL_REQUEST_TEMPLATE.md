@@ -16,7 +16,7 @@ Closes #
 
 <details><summary>Technical detail</summary>
 
-- Test plan: `bash templates/test-canonical-guards.sh`, `node scripts/run-flow-suite.cjs`
+- Test plan: `bash tests/templates/test-canonical-guards.sh`, `node scripts/run-flow-suite.cjs`
 - Docs updated if behavior or config changed (`README.md`, `MAINTAINING.md`, or the relevant `agents/*.md`)
 - No new third-party dependency (this repo is stdlib-only)
 

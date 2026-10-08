@@ -68,7 +68,7 @@ an empty stub section) -> `## Acceptance checklist` (the block between the marke
 `<!-- acceptance:start -->`/`<!-- acceptance:end -->`) -> an EMPTY pair
 `<!-- decision-log:start -->`/`<!-- decision-log:end -->` (workflow-owned, never hand-filled) ->
 fold `<details><summary>Technical detail</summary>` (test plan / feature flag / risk). This is the
-order the `pr-body-structure` invariant (`templates/test-canonical-guards.sh`) mechanically checks
+order the `pr-body-structure` invariant (`tests/templates/test-canonical-guards.sh`) mechanically checks
 against Nick's Dev-phase prompt and against `agents/nick.md`.
 
 ### Scope pivots

@@ -4,7 +4,7 @@
 # on PATH (its `pr view` answer comes from FAKE_PR_STATE). No network, no real gh.
 set -uo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts" && pwd)"
 SCRIPT="$SCRIPT_DIR/cleanup-worktree.sh"
 
 TMP_BASE="$(cd "${TMPDIR:-/tmp}" && pwd -P)"

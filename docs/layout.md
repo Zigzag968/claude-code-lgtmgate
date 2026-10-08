@@ -7,9 +7,10 @@ The root folders are enforced by `.ls-lint.yml` and `node scripts/audit.cjs --ch
 | `workflows/` | Claude Code `Workflow` tool | the pipeline engine, one file | `deliver-pipeline.js` |
 | `agents/` | the pipeline (agent personas) | one persona per role | `sam.md`, `nick.md`, `morgan.md` |
 | `commands/` | Claude Code users | slash commands of the plugin | `deliver.md`, `init.md` |
-| `hooks/` | Claude Code (plugin hooks) | hook scripts named after their event, and their tests | `plugin-hooks.json`, `block-merge-unchecked.sh` |
+| `hooks/` | Claude Code (plugin hooks) | hook scripts named after their event | `plugin-hooks.json`, `block-merge-unchecked.sh` |
 | `templates/` | consumer repos and the engine | files copied by `/lgtmgate:init` and scripts the engine runs | `probe-run.cjs`, `pr-acceptance.md`, `pipeline.config.template.json` |
-| `scripts/` | maintainers and CI | audit, guards, merge, tests | `audit.cjs`, `guards.cjs`, `lead-merge.sh` |
+| `tests/` | maintainers and CI | every test suite, in `hooks/`, `scripts/` or `templates/` after the folder it exercises (`templates/test-deliver-pipeline.js` stays: `/lgtmgate:init` copies it) | `scripts/test-guards.sh`, `templates/test-canonical-guards.sh` |
+| `scripts/` | maintainers and CI | audit, guards, merge and CI helpers | `audit.cjs`, `guards.cjs`, `lead-merge.sh` |
 | `plugins/` | marketplace users | the second plugin of this marketplace | `backlog/` |
 | `docs/` | maintainers and readers | reference pages, no code | `supervision.md`, `critical-paths.md`, `layout.md` |
 | `evals/` | maintainers | probe evals: prompts and graders | `probe-pr-state/` |

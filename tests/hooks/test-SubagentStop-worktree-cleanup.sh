@@ -5,7 +5,7 @@
 # Needs jq for the config-layer cases (the resolver skips them without it).
 set -uo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../hooks" && pwd)"
 HOOK="$SCRIPT_DIR/SubagentStop-worktree-cleanup.sh"
 
 TMP_BASE="$(cd "${TMPDIR:-/tmp}" && pwd -P)"

@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Offline regression test for templates/blocked-by-check.sh (design: #104) — bash + python3
-# only (python3 is already a hard dependency of templates/test-canonical-guards.sh invariants
+# only (python3 is already a hard dependency of tests/templates/test-canonical-guards.sh invariants
 # 1/2/3/4/10/11, so it is proven present in CI). Zero network, zero real `gh`: every case stubs
 # the probe through BLOCKED_BY_PROBE_CMD, the resolver's own injection seam.
 #
 # Covers the five verdicts (none/resolved/pending/abandoned/unknown) plus a malformed-blockedBy
 # case, a probe-failure case, and a custom resolveOnLabel — asserting BOTH the exit code and the
-# `[blocked-by] status=...` trailer line, modeled on hooks/test-Stop-supervise-runs.sh's
+# `[blocked-by] status=...` trailer line, modeled on tests/hooks/test-Stop-supervise-runs.sh's
 # new_fixture()/write_state()/assert_exit() shape and its "${pass_count}/${total} PASS" summary.
 #
 # Fixtures are created fresh per case under mktemp -d and intentionally left in place afterwards
@@ -14,7 +14,7 @@
 # deletion).
 set -uo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../templates" && pwd)"
 RESOLVER="$SCRIPT_DIR/blocked-by-check.sh"
 FIXTURE_ROOT="${FIXTURE_ROOT:-${TMPDIR:-/tmp}}"
 

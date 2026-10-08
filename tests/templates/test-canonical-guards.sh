@@ -43,11 +43,11 @@
 # (per-clone `core.hooksPath` opt-in), not the enforcement.
 #
 # Fully offline / non-interactive. Run from anywhere; resolves the repo root itself:
-#   bash templates/test-canonical-guards.sh
+#   bash tests/templates/test-canonical-guards.sh
 
 set -u
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT" || exit 1
 
 MANIFEST="${MANIFEST:-.claude-plugin/plugin.json}"
@@ -456,11 +456,11 @@ fi
 # =============================================================================
 # #104: the read-only cross-repo `blockedBy` resolver + its offline test, wired into this
 # repo's own guard net. Static anchor (script exists, all five verdict tokens present, install
-# slot named in commands/init.md) + runs templates/test-blocked-by-check.sh itself (offline, no
+# slot named in commands/init.md) + runs tests/templates/test-blocked-by-check.sh itself (offline, no
 # network, no real `gh` — probe is BLOCKED_BY_PROBE_CMD-stubbed) and requires its own
 # "N/N PASS" summary with zero FAIL lines.
 BBC_SCRIPT="templates/blocked-by-check.sh"
-BBC_TEST="templates/test-blocked-by-check.sh"
+BBC_TEST="tests/templates/test-blocked-by-check.sh"
 if [ ! -f "$BBC_SCRIPT" ]; then
   fail "blocked-by-signal" "$BBC_SCRIPT does not exist"
 elif ! grep -q 'none' "$BBC_SCRIPT" || ! grep -q 'resolved' "$BBC_SCRIPT" \
@@ -566,7 +566,7 @@ fi
 # text (same "earlier illustrative occurrence" class Invariant 10's comment already names) —
 # THIS file is therefore excluded from the scanned set below; every other tracked *.sh file
 # is still checked in full.
-BASH32_SELF="templates/test-canonical-guards.sh"
+BASH32_SELF="tests/templates/test-canonical-guards.sh"
 BASH32_PATTERN='declare[[:space:]]+-A|\<mapfile\>|\<readarray\>|\$\{[A-Za-z_][A-Za-z0-9_]*(\[[^]]*\])?,,|\$\{[A-Za-z_][A-Za-z0-9_]*(\[[^]]*\])?\^\^|\$\{[A-Za-z_][A-Za-z0-9_]*\[-[0-9]+\]'
 BASH32_OFFENDERS=""
 for f in $(git ls-files '*.sh'); do
@@ -727,7 +727,7 @@ NPR_I=0
 while [ "$NPR_I" -lt "${#NO_PRIVATE_REFS_PATTERNS[@]}" ]; do
   NPR_PATTERN="${NO_PRIVATE_REFS_PATTERNS[$NPR_I]}"
   NPR_ALLOW="${NO_PRIVATE_REFS_ALLOW[$NPR_I]}"
-  NPR_MATCHES="$(git grep -nEi "$NPR_PATTERN" -- . ':(exclude)templates/test-canonical-guards.sh' 2>/dev/null)"
+  NPR_MATCHES="$(git grep -nEi "$NPR_PATTERN" -- . ':(exclude)tests/templates/test-canonical-guards.sh' 2>/dev/null)"
   if [ -n "$NPR_ALLOW" ] && [ -n "$NPR_MATCHES" ]; then
     NPR_MATCHES="$(echo "$NPR_MATCHES" | grep -vEi "$NPR_ALLOW")"
   fi
@@ -759,7 +759,7 @@ fi
 # out of the workflow into templates/pr-state.sh (the workflow no longer builds any `gh` command for
 # it); this is a STATIC guard (grep against that script, not a live `gh` call) and stays the durable
 # regression guard. The runtime belt-and-suspenders assertion is the script's own exact-limit check
-# (`openIssuesTruncated`, pr-state.sh), replayed in templates/test-probe-run.sh.
+# (`openIssuesTruncated`, pr-state.sh), replayed in tests/templates/test-probe-run.sh.
 RWS_FILE="${RWS_FILE:-templates/pr-state.sh}"
 if [ -f "$RWS_FILE" ]; then
   SCAN_LINE="$(grep -n 'gh issue list --state open' "$RWS_FILE" | head -1)"
@@ -912,7 +912,7 @@ else
     st_lower="$(printf '%s' "$st_id" | tr 'A-Z' 'a-z')"
     if ls "$SPECIFICS_FIXTURES_DIR"/${st_lower}-*.json >/dev/null 2>&1; then
       continue
-    elif grep -qEw -- "$st_id" scripts/test-*.sh templates/test-*.sh templates/test-*.js scripts/guards.cjs 2>/dev/null; then
+    elif grep -qEw -- "$st_id" tests/scripts/test-*.sh tests/templates/test-*.sh templates/test-*.js scripts/guards.cjs 2>/dev/null; then
       continue
     fi
     ST_MISSING="$ST_MISSING $st_id"

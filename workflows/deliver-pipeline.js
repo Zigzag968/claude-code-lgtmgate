@@ -130,10 +130,10 @@ export const meta = {
 // `source.sha`), moved by the human's publish commit (e.g. 0.8.0's cutFrom is `c040169`, its
 // catalog pin moved to `f59e4e0`). `cutFrom` is CONTEXT, never the identity key, and it is
 // deliberately UNGUARDED (release-checklist-only — see MAINTAINING.md §4). The identity key is
-// `version`, checked against plugin.json by templates/test-canonical-guards.sh, which reports
+// `version`, checked against plugin.json by tests/templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '1.1.0-beta.24', cutFrom: '5ce4866' }
+const BUILD = { plugin: 'lgtmgate', version: '1.1.0-beta.25', cutFrom: '1d242f2' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -559,7 +559,7 @@ const gate = (stage, verdict = null) => {
 // `stripExports` (scripts/run-flow-suite.cjs) strips every top-level `export`, which is why CI
 // stayed green on this — a stricter, non-permissive stripper is what the real tool runs. Exactly
 // one top-level `export` (the `meta` header) is the invariant now enforced by
-// templates/test-canonical-guards.sh's single-export check.
+// tests/templates/test-canonical-guards.sh's single-export check.
 const reviewerWindowCandidates = (issues, windowStart, windowEnd) =>
   (issues || []).filter(i => i && i.createdAt && i.createdAt >= windowStart && i.createdAt <= windowEnd)
 

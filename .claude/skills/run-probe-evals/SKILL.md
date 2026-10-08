@@ -28,7 +28,7 @@ description: Run or debug the probe evals of issue #81 (`claude plugin eval` on 
 
 ## Pinned CLI version
 - `.devcontainer/Dockerfile` pins `CLAUDE_CODE_VERSION` to `2.1.286` (`.devcontainer/devcontainer.json` passes the same value): the `verify-ok` grader depends on that version's trace format, and the gate on its `aggregate-result.json` shape.
-- Bumping it: change both files and this note, rerun the whole suite (30 runs) and re-check the pinned graders against the new trace. `scripts/test-probe-evals.sh` fails if the three disagree.
+- Bumping it: change both files and this note, rerun the whole suite (30 runs) and re-check the pinned graders against the new trace. `tests/scripts/test-probe-evals.sh` fails if the three disagree.
 
 ## Debug one case
 - Same `docker run` as the script, plus `--runs 1 --keep-temp`, and a mount on `/tmp` to keep the trace:
@@ -61,4 +61,4 @@ description: Run or debug the probe evals of issue #81 (`claude plugin eval` on 
   - 0.00 = the agent was never dispatched, so nothing ran.
   - The gate is not a score threshold: it counts fully passed runs (1.00 each), at least 29 of 30 (see The gate).
 - The pinned lines are constants: the case commands are fixed, so `sha`, `cmd` and `json` never vary (checked twice offline).
-  - If a case command or `templates/probe-run.cjs` output changes, regenerate its two graders; `scripts/test-probe-evals.sh` fails until the pinned line equals the real one.
+  - If a case command or `templates/probe-run.cjs` output changes, regenerate its two graders; `tests/scripts/test-probe-evals.sh` fails until the pinned line equals the real one.

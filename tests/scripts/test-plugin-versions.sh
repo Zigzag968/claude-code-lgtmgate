@@ -9,7 +9,7 @@
 # --plugin, and read-only (the fake only ever sees `plugin list --json`).
 set -uo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SCRIPT="$ROOT/scripts/plugin-versions.sh"
 BASE="$(mktemp -d "${TMPDIR:-/tmp}/plugin-versions-test.XXXXXX")"
 PASS=0; FAIL=0

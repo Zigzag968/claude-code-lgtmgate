@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 'use strict'
-// guards.cjs — mechanical repo guards (node, stdlib only). Run by templates/test-canonical-guards.sh
+// guards.cjs — mechanical repo guards (node, stdlib only). Run by tests/templates/test-canonical-guards.sh
 // and directly: `node scripts/guards.cjs`. Exit 0 iff every check is ok.
 //
 // Checks
@@ -20,7 +20,7 @@
 //      (origin/main) is only reported as a WARN (the branch cannot be blamed for it).
 //      Known limits (out of scope): string-literal false positives (a "/*" or "await agent(" inside
 //      a string), exotic regex forms (.search, split(re), simulate aliases).
-//   Invariant 25 all-tests-wired: every test suite under hooks/ scripts/ templates/
+//   Invariant 25 all-tests-wired: every test suite under tests/ hooks/ scripts/ templates/
 //      plugins/backlog/tests (test-*.sh|cjs|js), plus scripts/run-offline.cjs, appears inside a
 //      `run:` step (single-line or `run: |` body) of .github/workflows/guards.yml, YAML comments
 //      excluded, except the documented exemptions below.
@@ -40,7 +40,7 @@
 //   Invariant 1 (relaxed) version floor: .claude-plugin/plugin.json version >= origin/main's (semver 2.0.0
 //      precedence, prerelease included: 1.0.0-beta.2 > 1.0.0-beta.1, 1.0.0-beta.9 < 1.0.0).
 //      Since #74 (scripts/lead-merge.sh bumps at merge; bump-required is retired) this floor is
-//      the only version check besides stamp-parity in templates/test-canonical-guards.sh.
+//      the only version check besides stamp-parity in tests/templates/test-canonical-guards.sh.
 //   doc-budgets (#77): the agent-read docs stay within the maintainer's budgets — VISION.md and
 //      ARCHITECTURE.md (both imported for every agent through CLAUDE.md, see instructions-wired)
 //      <= 20 lines each, and every line of both <= 160 characters, so a long line cannot dodge the
@@ -312,7 +312,7 @@ function ymlRunText(yml) {
 }
 
 // Every test-*.sh|cjs|js file of the tree (relative path), whatever its depth. Symlinks are not followed.
-const TEST_FOLDERS = ['hooks', 'scripts', 'templates', 'plugins/backlog/tests']
+const TEST_FOLDERS = ['tests', 'hooks', 'scripts', 'templates', 'plugins/backlog/tests']
 const SKIPPED_FOLDERS = new Set(['.git', 'node_modules', '.venv', '.pipeline', '.probes', 'fixtures', '__pycache__'])
 function walkTestFiles(relative) {
   const found = []

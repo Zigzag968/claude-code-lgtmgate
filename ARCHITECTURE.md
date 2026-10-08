@@ -17,4 +17,4 @@
 - A new status, agent call, hook or seam (`oneWayDoorKinds`), or a change to a path listed in `oneWayDoorPaths`.
 ## How agents use this
 - Sam plans toward the destination and names the doctrine line he trades off; Morgan blocks on the checklist, CI, repo conventions and regression guard.
-- Checks: `node scripts/guards.cjs` and `bash templates/test-canonical-guards.sh`; a failure names its rule.
+- Checks: `node scripts/guards.cjs` and `bash tests/templates/test-canonical-guards.sh`; a failure names its rule.

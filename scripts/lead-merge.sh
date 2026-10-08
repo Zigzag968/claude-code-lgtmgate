@@ -32,7 +32,7 @@
 #      one `lead-merge: Project specifics changed` line when non-empty. Never blocks, no flag; a custom projectSpecifics folder
 #      is visible through the config-key diff only.
 #   3c. guard surface visibility (#308): the diff against origin/main of eslint.config.js, .ls-lint.yml, ruff.toml,
-#      scripts/guards.cjs, scripts/audit.cjs, .github/workflows/guards.yml and templates/test-canonical-guards.sh, and of the
+#      scripts/guards.cjs, scripts/audit.cjs, .github/workflows/guards.yml and tests/templates/test-canonical-guards.sh, and of the
 #      `commands` and `oneWayDoorPaths` keys of `.claude/pipeline.config.json`, is printed under one `lead-merge: Guard surface changed`
 #      line when non-empty. Never blocks, no flag.
 #   4. bump from the merged tree: next version over max(branch, origin/main) (semver 2.0.0 precedence: X.Y.Z -> patch+1,
@@ -471,7 +471,7 @@ fi
 # --- 3c. guard surface visibility (#308; not blocking) ----------------------------------------------------------
 # These files and config keys decide what the checks accept: a PR changing them changes the gate that judged it. Print the diff,
 # never refuse, no flag. A config file missing on either side reads as {} (consumer repos).
-guard_diff="$(git diff origin/main...HEAD -- eslint.config.js .ls-lint.yml ruff.toml scripts/guards.cjs scripts/audit.cjs .github/workflows/guards.yml templates/test-canonical-guards.sh 2>/dev/null || true)"
+guard_diff="$(git diff origin/main...HEAD -- eslint.config.js .ls-lint.yml ruff.toml scripts/guards.cjs scripts/audit.cjs .github/workflows/guards.yml tests/templates/test-canonical-guards.sh 2>/dev/null || true)"
 guard_base_cfg="$(git show origin/main:.claude/pipeline.config.json 2>/dev/null || true)"
 guard_head_cfg="$(git show HEAD:.claude/pipeline.config.json 2>/dev/null || true)"
 guard_cfg="$(GUARD_BASE_CFG="$guard_base_cfg" GUARD_HEAD_CFG="$guard_head_cfg" python3 -c '

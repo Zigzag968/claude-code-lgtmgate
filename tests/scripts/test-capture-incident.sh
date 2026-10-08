@@ -12,7 +12,7 @@
 # retried: folded under its engine label, or refused), `ok: usage ...`, `ok: buildStamp ...` (the run's own stamp decides which version-probe answer is tokenized).
 # bash 3.2 compatible. Trailer: [test-capture-incident] status=<ok|fail> passed=<n> failed=<n>
 set -u
-cd "$(dirname "$0")/.." || exit 1
+cd "$(dirname "$0")/../.." || exit 1
 ROOT="$(pwd)"
 PASS=0; FAIL=0
 ok()   { PASS=$((PASS+1)); echo "ok: $1"; }

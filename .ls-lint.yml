@@ -23,7 +23,7 @@ x-names: &names
 ls:
   <<: *names
   # Root folders allowed (dot folders included). A new root folder is a decision: add it here and in docs/layout.md.
-  .dir: regex:(\.claude|\.claude-plugin|\.devcontainer|\.githooks|\.github|agents|commands|docs|evals|fixtures|hooks|plugins|scripts|templates|workflows)
+  .dir: regex:(\.claude|\.claude-plugin|\.devcontainer|\.githooks|\.github|agents|commands|docs|evals|fixtures|hooks|plugins|scripts|templates|tests|workflows)
   # Declared folder-name exceptions (8): .claude, .claude-plugin, .devcontainer, .githooks, .github (root allowlist or own
   # block), .github/ISSUE_TEMPLATE, hooks/SessionStart, plugins/backlog/.claude-plugin (named in their parent block).
   .claude:
@@ -69,7 +69,7 @@ ls:
   hooks:
     <<: *names
     .dir: kebab-case | regex:SessionStart
-    .sh: kebab-case | regex:(test-)?(PostToolUse|Stop|SubagentStop)-[a-z-]+
+    .sh: kebab-case | regex:(PostToolUse|Stop|SubagentStop)-[a-z-]+
     .js: exists:0
     .cjs: exists:0
     .mjs: exists:0
@@ -91,6 +91,20 @@ ls:
     .dir: kebab-case
     .py: exists:0
     .mjs: exists:0
+  # Test suites mirror the folder they exercise (hooks, scripts, templates); the hook suites keep the event name.
+  tests:
+    <<: *names
+    .dir: kebab-case
+    hooks:
+      <<: *names
+      .dir: kebab-case
+      .sh: kebab-case | regex:test-(PostToolUse|Stop|SubagentStop)-[a-z-]+
+    scripts:
+      <<: *names
+      .dir: kebab-case
+    templates:
+      <<: *names
+      .dir: kebab-case
   workflows:
     <<: *names
     .dir: kebab-case

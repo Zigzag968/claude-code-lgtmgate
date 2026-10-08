@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Offline regression test for templates/gh-pipeline-status.sh (#147) — bash + jq only, zero
-# network, zero real `gh`. Modeled on templates/test-blocked-by-check.sh's shape
+# network, zero real `gh`. Modeled on tests/templates/test-blocked-by-check.sh's shape
 # (pass_count/fail_count/total counters, mktemp -d fixtures left in place).
 #
 # Covers:
@@ -10,10 +10,10 @@
 #      levels up, resolved via git rev-parse --show-toplevel (no override env var).
 #
 # Not wired into .github/workflows/guards.yml — same precedent as
-# templates/test-blocked-by-check.sh (README.md), an offline-only test file not invoked there.
+# tests/templates/test-blocked-by-check.sh (README.md), an offline-only test file not invoked there.
 set -uo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../templates" && pwd)"
 RESOLVER="$SCRIPT_DIR/gh-pipeline-status.sh"
 FIXTURE_ROOT="${FIXTURE_ROOT:-${TMPDIR:-/tmp}}"
 

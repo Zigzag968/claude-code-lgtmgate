@@ -11,7 +11,7 @@
 # no network touched.
 set -uo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../hooks" && pwd)"
 HOOK="$SCRIPT_DIR/deny-destructive-git.sh"
 
 pass_count=0

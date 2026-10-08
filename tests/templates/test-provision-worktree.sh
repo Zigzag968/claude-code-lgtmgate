@@ -13,10 +13,10 @@
 #
 # Fixtures are created fresh per case under mktemp -d and intentionally left in place afterwards
 # — nothing in this file deletes them (.claude/rules/pr-acceptance.md: scratch vs in-place
-# deletion), style modeled on templates/test-blocked-by-check.sh.
+# deletion), style modeled on tests/templates/test-blocked-by-check.sh.
 set -uo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../templates" && pwd)"
 PROVISION="$SCRIPT_DIR/provision_worktree.sh"
 FIXTURE_ROOT="${FIXTURE_ROOT:-${TMPDIR:-/tmp}}"
 
