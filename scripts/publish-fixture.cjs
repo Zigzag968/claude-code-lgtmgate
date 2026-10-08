@@ -160,6 +160,9 @@ function cmdOfPrompt(prompt) {
   if (typeof prompt !== 'string') return null
   const end = prompt.indexOf('\n2. cd ')
   if (end < 0) return null
+  // #338: the base64 form carries the same command as one bare token
+  const b64 = prompt.indexOf(' --cmd-b64 ')
+  if (b64 >= 0 && b64 < end) return Buffer.from(prompt.slice(b64 + 11, end), 'base64').toString('utf8')
   const start = prompt.indexOf(' --cmd ')
   if (start < 0 || start > end) return null
   const q = prompt.slice(start + 7, end)

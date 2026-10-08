@@ -2396,6 +2396,7 @@ const PROBE_REASON_HINTS = {
     'and the lgtmgate:probe agent type must be resolvable; fix the plugin install/session and relaunch',
   'cmd-mismatch': 'the copied PROBE line belongs to a different command than the engine composed (the copier altered the command); relaunch',
   'probe-run-not-found': 'no probe-run.cjs location: pass args.pluginRoot (absolute plugin root) or config.probeRunPath and relaunch',
+  'command-not-run': 'the probe command never ran (the shell rejected the typed command, or the plugin root probe-run.cjs predates --cmd-b64); check that pluginRoot is the current plugin and relaunch',
 }
 
 const PROBE_SCHEMA = {
@@ -2513,15 +2514,16 @@ function base64Utf8(str) {
 // The two commands the probe agent runs, in order (#82). Both start with `cd '<wtPath>' && node '<script>'`
 // (the attest hook accepts that prefix). The script is config.probeRunPath, else the plugin root's
 // templates/probe-run.cjs (arg pluginRoot), else the worktree's own copy.
-function probeCommands({ wtPath, issue, pluginRoot, probeRunPath, name, cmd, label, round, noReuse, expectCmd }) {
+function probeCommands({ wtPath, issue, pluginRoot, probeRunPath, name, cmd, label, round, noReuse, expectCmd, cmdB64 }) {
   const q = (x) => `'${String(x).split("'").join("'\\''")}'`
   const script = probeRunPath ?? (pluginRoot ? pluginRoot + '/templates/probe-run.cjs' : wtPath + '/templates/probe-run.cjs')
   const outDir = `${wtPath}/.pipeline/probes/issue-${issue}`
   const head = `cd ${q(wtPath)} && node ${q(script)} `
   const common = `--label ${label} --round ${round} --out ${q(outDir)} --parser ${name}`
   return {
+    // #338: cmdB64 (the caller's base64 of `cmd`) replaces --cmd with one bare token: no nested quoting for a copier to drop
     // #212: --expect-cmd (the sha256 of `cmd`) BEFORE --cmd: the script refuses to run a copy that does not hash to it
-    run: `${head}${common} --model haiku${noReuse ? ' --no-reuse' : ''}${expectCmd ? ` --expect-cmd ${expectCmd}` : ''} --cmd ${q(cmd)}`,
+    run: `${head}${common} --model haiku${noReuse ? ' --no-reuse' : ''}${expectCmd ? ` --expect-cmd ${expectCmd}` : ''}${cmdB64 ? ` --cmd-b64 ${cmdB64}` : ` --cmd ${q(cmd)}`}`,
     verify: `${head}--verify ${common} --attest ${q(wtPath + '/.pipeline/probe-attest.jsonl')}`,
   }
 }
@@ -2646,7 +2648,7 @@ function sessionRootVerdict({ probeFailed, exit, lines }) {
 }
 // --- sessionRoot:end ---
 
-async function probe(name, cmd, { label, round = 0, onFail, noReuse = false, gateCmd = false } = {}) {
+async function probe(name, cmd, { label, round = 0, onFail, noReuse = false, gateCmd = false, b64 = false } = {}) {
   if (!isSafeProbeToken(name) || !isSafeProbeToken(label)) {
     throw new Error(`probe: unsafe name/label (${JSON.stringify(name)} / ${JSON.stringify(label)})`)
   }
@@ -2657,7 +2659,8 @@ async function probe(name, cmd, { label, round = 0, onFail, noReuse = false, gat
   if (!config.probeRunPath && !pluginRoot) return fail('probe-run-not-found')
   const want = sha256Hex(cmd)
   // gateCmd (#212, writes): the script refuses to run a copy of the command that does not hash to `want`
-  const cmds = probeCommands({ wtPath, issue, pluginRoot, probeRunPath: config.probeRunPath, name, cmd, label, round, noReuse, expectCmd: gateCmd ? want : undefined })
+  // b64 (#338): the command travels as one bare base64 token (digest-gated), never as nested quoting a model must re-type
+  const cmds = probeCommands({ wtPath, issue, pluginRoot, probeRunPath: config.probeRunPath, name, cmd, label, round, noReuse, expectCmd: gateCmd || b64 ? want : undefined, cmdB64: b64 ? base64Utf8(cmd) : undefined })
   const prompt =
     `Run EXACTLY these two commands once each, in this order, from the worktree "${wtPath}", without editing or re-quoting them:\n\n` +
     `1. ${cmds.run}\n2. ${cmds.verify}\n\n` +
@@ -2669,7 +2672,11 @@ async function probe(name, cmd, { label, round = 0, onFail, noReuse = false, gat
     { agentType: 'lgtmgate:probe', schema: PROBE_SCHEMA, label: `probe-${issue}-${name}-${label}-r${round}`, model: 'haiku', personaFallback: PROBE_PERSONA }, round)
   if (isAgentDeath(res)) return fail('agent-death')
   const parsed = parseProbeLine(res && res.line)
-  if (!parsed) return fail('unparseable-line')
+  if (!parsed) {
+    // #338: no PROBE line and a verify that finds no record = the script never produced one: the command never ran
+    const nv = parseVerifyLine(res && res.verify)
+    return fail(nv && !nv.ok && nv.reason === 'no-record' ? 'command-not-run' : 'unparseable-line')
+  }
   if (parsed.name !== name) return fail('name-mismatch')
   if (parsed.cmd !== want) return fail('cmd-mismatch')
   const verified = parseVerifyLine(res && res.verify)
@@ -2746,7 +2753,7 @@ if (probeOnly) {
 // Only when the templates really come from pluginRoot (config.probeRunPath unset, as probeCommands and
 // probeScriptPath resolve them). A reason string on the existing escalate: no new status, agent or seam.
 if (!simulate && pluginRoot && !config.probeRunPath) {
-  const pv = await probe('lines', pluginVersionCmd(pluginRoot), { label: 'plugin-version', noReuse: true, onFail: (reason) => ({ probeFailed: reason }) })
+  const pv = await probe('lines', pluginVersionCmd(pluginRoot), { label: 'plugin-version', noReuse: true, b64: true, onFail: (reason) => ({ probeFailed: reason }) })
   if (pv.probeFailed === 'agent-death') return finish(STATUS['provision-died'], { issue, trace })
   const skew = pluginVersionVerdict({ engineVersion: BUILD.version, probeFailed: pv.probeFailed, exit: pv.exit, lines: pv.json && pv.json.lines })
   if (skew && pv.probeFailed) {
@@ -2765,7 +2772,7 @@ if (!simulate && pluginRoot && !config.probeRunPath) {
 // instructions). The Lead passes its session root; same git common dir as the worktree, else escalate before
 // provisioning. A reason on the existing escalate: no new status, agent or seam, no label written.
 if (!simulate && sessionRoot) {
-  const sr = await probe('lines', sessionRootCmd(sessionRoot, wtPath), { label: 'session-root', noReuse: true, onFail: (reason) => ({ probeFailed: reason }) })
+  const sr = await probe('lines', sessionRootCmd(sessionRoot, wtPath), { label: 'session-root', noReuse: true, b64: true, onFail: (reason) => ({ probeFailed: reason }) })
   if (sr.probeFailed === 'agent-death') return finish(STATUS['provision-died'], { issue, trace })
   const srv = sessionRootVerdict({ probeFailed: sr.probeFailed, exit: sr.exit, lines: sr.json && sr.json.lines })
   if (srv && sr.probeFailed) {

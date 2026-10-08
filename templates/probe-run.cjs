@@ -27,6 +27,11 @@
 // The digest is compared in lowercase; a malformed one (not 64 hex characters) is a REFUSAL, not a usage error. A write
 // parser (WRITE_PARSERS) with no --expect-cmd at all is refused the same way: a dropped flag never gives an unchecked write.
 // Exec mode only (with --verify: usage).
+// --cmd-b64 <token> (#338): the same command as --cmd, delivered as the standard base64 of its UTF-8 bytes (one bare
+// token, nothing to quote), so a model copying the invocation has no nested single quotes to drop. It replaces --cmd
+// (both together: usage) and REQUIRES --expect-cmd (without it: usage): the script decodes the token, then the record,
+// the digest gate and the cmd= hash all use the decoded command exactly as with --cmd. A token altered in the copy
+// decodes to another text, fails the digest and runs nothing. Exec mode only (with --verify: usage).
 // Output (exactly one line, exit 0 whenever it is printed):
 //   PROBE name=<parser> exit=<cmd exit> sha=<sha256 of record.stdout> cmd=<sha256 of the executed --cmd> json=<compact JSON>
 // Exit 2 + usage on stderr for an invalid invocation. No network, nothing read outside --out.
@@ -56,7 +61,7 @@ const { spawnSync } = require('child_process')
 const MAX_BYTES = 65536
 const TOKEN = /^[A-Za-z0-9._-]+$/
 const USAGE =
-  "usage: node probe-run.cjs --label L --round N --out /abs/dir --parser NAME [--model M] [--no-reuse] [--expect-cmd SHA256 (required by write parsers)] --cmd '<shell cmd>'\n" +
+  "usage: node probe-run.cjs --label L --round N --out /abs/dir --parser NAME [--model M] [--no-reuse] [--expect-cmd SHA256 (required by write parsers)] --cmd '<shell cmd>' | --expect-cmd SHA256 --cmd-b64 TOKEN\n" +
   '       node probe-run.cjs --verify --label L --round N --out /abs/dir --parser NAME --attest /abs/file.jsonl\n'
 
 // #239: the cause of a failed `gh` read, as templates/gh-read-class.sh names it. A closed set: a script prints a class,
@@ -275,7 +280,7 @@ function parseArgs(argv) {
     const k = argv[i]
     if (k === '--verify') out.verify = true
     else if (k === '--no-reuse') out.noReuse = true
-    else if (['--label', '--round', '--out', '--parser', '--model', '--cmd', '--attest', '--expect-cmd'].includes(k) && i + 1 < argv.length) {
+    else if (['--label', '--round', '--out', '--parser', '--model', '--cmd', '--cmd-b64', '--attest', '--expect-cmd'].includes(k) && i + 1 < argv.length) {
       out[k.slice(2)] = argv[++i]
     } else return null
   }
@@ -316,12 +321,16 @@ function main() {
   const common = a && a.label && a.parser && a.out && a.round !== undefined &&
     TOKEN.test(a.label) && TOKEN.test(a.parser) && /^\d+$/.test(a.round) && path.isAbsolute(a.out)
   const bad = !common || (a.verify
-    ? (!a.attest || !path.isAbsolute(a.attest) || a.cmd !== undefined || a.noReuse || a['expect-cmd'] !== undefined)
-    : a.cmd === undefined)
+    ? (!a.attest || !path.isAbsolute(a.attest) || a.cmd !== undefined || a['cmd-b64'] !== undefined || a.noReuse || a['expect-cmd'] !== undefined)
+    : (a['cmd-b64'] !== undefined
+      ? (a.cmd !== undefined || a['expect-cmd'] === undefined)
+      : a.cmd === undefined))
   if (bad) {
     process.stderr.write(USAGE)
     process.exit(2)
   }
+  // #338: the base64 form carries the same command as --cmd; decode once, everything below sees the plain text.
+  if (a['cmd-b64'] !== undefined) a.cmd = Buffer.from(a['cmd-b64'], 'base64').toString('utf8')
   const file = path.join(a.out, `${a.label}-r${Number(a.round)}.json`)
   if (a.verify) {
     const v = verifyRecord(a.parser, readRecord(file), readJsonl(a.attest), { label: a.label, round: Number(a.round) })
