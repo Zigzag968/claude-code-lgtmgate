@@ -127,12 +127,17 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "20"
+      # Exact pin: the validator gains rules over time, so the version moves only by a deliberate edit.
       - name: Install Claude Code CLI
-        run: npm install -g @anthropic-ai/claude-code
-      - name: Validate marketplace and plugin manifests as committed
+        run: npm install -g @anthropic-ai/claude-code@2.1.294
+      - name: Validate marketplace and plugin manifests as committed (stable, backlog, beta copy)
         run: |
           claude plugin validate ./
           claude plugin validate ./plugins/backlog
+          beta_dir="$(mktemp -d "${TMPDIR:-/tmp}/beta.XXXXXX")"
+          mkdir "$beta_dir/.claude-plugin"
+          cp .claude-plugin/marketplace-beta.json "$beta_dir/.claude-plugin/marketplace.json"
+          claude plugin validate "$beta_dir"
       - name: Point the lgtmgate entry at this checkout (CI-only, never committed)
         run: |
           python3 - <<'PY'

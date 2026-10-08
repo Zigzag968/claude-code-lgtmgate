@@ -3,6 +3,9 @@
   "owner": {
     "name": "Zigzag968"
   },
+  "metadata": {
+    "description": "Stable channel of zigzag-plugins: the lgtmgate delivery pipeline and the backlog plugin, pinned to released commits."
+  },
   "plugins": [
     {
       "name": "lgtmgate",
