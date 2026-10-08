@@ -77,7 +77,7 @@ python3 -m unittest discover plugins/backlog/tests   # backlog plugin's own suit
 
 These are exactly the checks CI (`.github/workflows/guards.yml`) runs on every pull request — run
 them locally before opening a PR. `scripts/audit-baseline.json` is generated, never edited by hand:
-it only goes down (a finding fixed lowers it), and a change that raises it fails `guards`.
+it only goes down (a finding fixed lowers it), and a change that raises it fails `guards`. A baseline count above the real count (slack) and a key naming a missing path fail too, and a renamed file keeps its budget.
 
 ## Commit conventions
 

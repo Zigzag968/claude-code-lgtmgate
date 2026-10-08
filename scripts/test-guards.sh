@@ -9,7 +9,8 @@
 # instructions-wired (imports outside code, once each, no @AGENTS.md, AGENTS.md names both, omitClaudeMd),
 # status-table (registry <-> §5 table both ways, grouped rows, missing registry or table; #180),
 # phase-titles (real titles, a 16-character title, a 17-character title, a case-insensitive prefix title either order, a whitespace-padded title, no phases list; #141).
-# audit (the default list runs the audit check: a baseline raised vs origin/main fails; #289).
+# audit (the default list runs the audit check: a baseline raised vs origin/main fails; #289; rename-aware rule 2 and NEW-RULE, #303).
+# The audit cases really run scripts/audit.cjs: like test-audit.sh this file needs `npm ci` and ruff at the version of ruff.toml on PATH.
 # Ends with `[test-guards] status=<ok|fail> passed=<n> failed=<n>`.
 set -u
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -429,6 +430,42 @@ git -C "$AUD_CLONE" add -A && git -C "$AUD_CLONE" -c user.name=t -c user.email=t
 printf '{"a.sh":{"max-lines":2}}\n' > "$AUD_CLONE/scripts/audit-baseline.json"
 OUT="$(GUARDS_ROOT="$AUD_CLONE" node scripts/guards.cjs 2>&1)"; RC=$?
 if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: audit: baseline-vs-origin a.sh max-lines 2 > origin/main 1$'; then ok "audit: the default list runs the audit check (removing the key from ONLY fails this case)"; else ko "audit default list (rc=$RC) $OUT"; fi
+
+# aud_clone <name>: a clone with a bare origin holding warn.sh (one SC2034) and the baseline {"warn.sh":{"SC2034":1}}; sets AUD_CLONE.
+aud_clone() {
+  local origin="$T/$1-origin.git"
+  AUD_CLONE="$T/$1-clone"
+  git init -q --bare "$origin" && git init -q "$AUD_CLONE" && mkdir -p "$AUD_CLONE/scripts"
+  printf '#!/usr/bin/env bash\nunused=1\n' > "$AUD_CLONE/warn.sh"
+  printf '{"warn.sh":{"SC2034":1}}\n' > "$AUD_CLONE/scripts/audit-baseline.json"
+  git -C "$AUD_CLONE" add -A && git -C "$AUD_CLONE" -c user.name=t -c user.email=t@t commit -qm base \
+    && git -C "$AUD_CLONE" branch -M main && git -C "$AUD_CLONE" remote add origin "$origin" \
+    && git -C "$AUD_CLONE" push -q origin main && git -C "$AUD_CLONE" fetch -q origin main
+}
+aud_run() { OUT="$(GUARDS_ROOT="$AUD_CLONE" GUARDS_ONLY=audit node scripts/guards.cjs 2>&1)"; RC=$?; }
+
+# Rename-aware rule 2: a git mv keeps its budget, a copy does not.
+aud_clone rename
+git -C "$AUD_CLONE" mv warn.sh moved.sh
+printf '{"moved.sh":{"SC2034":1}}\n' > "$AUD_CLONE/scripts/audit-baseline.json"
+aud_run
+if [ "$RC" -eq 0 ] && ! echo "$OUT" | grep -q 'baseline-vs-origin'; then ok "audit: rename keeps the budget of a moved baselined file"; else ko "audit rename (rc=$RC) $OUT"; fi
+aud_clone copy
+cp "$AUD_CLONE/warn.sh" "$AUD_CLONE/copy.sh" && git -C "$AUD_CLONE" add copy.sh
+printf '{"copy.sh":{"SC2034":1},"warn.sh":{"SC2034":1}}\n' > "$AUD_CLONE/scripts/audit-baseline.json"
+aud_run
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -qF 'FAIL: audit: baseline-vs-origin copy.sh SC2034 1 > origin/main 0'; then ok "audit: rename control, a copy does not inherit the budget"; else ko "audit rename control (rc=$RC) $OUT"; fi
+
+# NEW-RULE: a rule absent from the origin baseline needs a tool config change in the same branch.
+aud_clone newrule
+{ echo '#!/usr/bin/env bash'; awk 'BEGIN { for (k = 1; k <= 601; k++) print "# filler" }'; } > "$AUD_CLONE/big.sh"
+git -C "$AUD_CLONE" add big.sh
+printf '{"big.sh":{"max-lines":1},"warn.sh":{"SC2034":1}}\n' > "$AUD_CLONE/scripts/audit-baseline.json"
+aud_run
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: audit: NEW-RULE max-lines'; then ok "audit: NEW-RULE a rule absent from origin/main is red without a tool config change"; else ko "audit NEW-RULE (rc=$RC) $OUT"; fi
+printf '# config\n' > "$AUD_CLONE/ruff.toml" && git -C "$AUD_CLONE" add ruff.toml
+aud_run
+if [ "$RC" -eq 0 ]; then ok "audit: NEW-RULE enters when a tool config file changes in the same branch"; else ko "audit NEW-RULE with config (rc=$RC) $OUT"; fi
 
 STATUS=ok; [ "$FAIL_N" -eq 0 ] || STATUS=fail
 echo "[test-guards] status=${STATUS} passed=${PASS_N} failed=${FAIL_N}"
