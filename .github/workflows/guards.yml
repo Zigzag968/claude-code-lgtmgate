@@ -99,6 +99,10 @@ jobs:
         run: bash tests/scripts/test-audit.sh
       - name: lead-merge script regression test
         run: bash tests/scripts/test-lead-merge.sh
+      - name: marker spelling parity test
+        run: bash tests/scripts/test-marker-parity.sh
+      - name: tick equivalence test
+        run: bash tests/scripts/test-tick-equivalence.sh
       - name: plugin-versions script regression test
         run: bash tests/scripts/test-plugin-versions.sh
       - name: block-merge-unchecked hook regression test

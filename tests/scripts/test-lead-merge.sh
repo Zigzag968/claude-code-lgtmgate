@@ -13,7 +13,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SCRIPT="$ROOT/scripts/lead-merge.sh"
 BASE="$(mktemp -d "${TMPDIR:-/tmp}/lead-merge-test.XXXXXX")"
 RUN_FLAGS=""
-HARNESS_OK_PREFIX=PASS
+export HARNESS_OK_PREFIX=PASS
 # shellcheck source=lib/harness.sh
 . "$ROOT/tests/scripts/lib/harness.sh"
 
