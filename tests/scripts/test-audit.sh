@@ -251,6 +251,6 @@ case_layout_extra
 case_fixtures_and_shebang
 case_tool_setup
 
-STATUS=ok; [ "$FAIL_N" -eq 0 ] || STATUS=fail
-echo "[test-audit] status=${STATUS} passed=${PASS_N} failed=${FAIL_N}"
+RESULT=ok; [ "$FAIL_N" -eq 0 ] || RESULT=fail
+echo "[test-audit] status=${RESULT} passed=${PASS_N} failed=${FAIL_N}"
 [ "$FAIL_N" -eq 0 ]

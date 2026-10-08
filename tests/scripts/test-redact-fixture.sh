@@ -329,6 +329,6 @@ for f in g.json g.jsonl g.raw; do
 done
 
 rm -rf "$TMP"
-STATUS=ok; [ "$FAIL" -gt 0 ] && STATUS=fail
-echo "[test-redact-fixture] status=$STATUS passed=$PASS failed=$FAIL"
+RESULT=ok; [ "$FAIL" -gt 0 ] && RESULT=fail
+echo "[test-redact-fixture] status=$RESULT passed=$PASS failed=$FAIL"
 [ "$FAIL" -eq 0 ]

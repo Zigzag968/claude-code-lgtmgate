@@ -17,12 +17,12 @@ unset LGTMGATE_WORKTREE_ROOT
 
 MAIN="$WORK/main"
 ROOT="$WORK/root"
-WT="$ROOT/issue-1"
+WORKTREE="$ROOT/issue-1"
 OTHER_ROOT="$WORK/elsewhere"
 mkdir -p "$MAIN" "$ROOT" "$OTHER_ROOT" "$MAIN/.claude"
 git -C "$MAIN" init -q -b main
 git -C "$MAIN" commit -q --allow-empty -m init
-git -C "$MAIN" worktree add -q -b feat/issue-1 "$WT" main
+git -C "$MAIN" worktree add -q -b feat/issue-1 "$WORKTREE" main
 
 pass_count=0
 fail_count=0
@@ -40,30 +40,30 @@ run_hook() { OUT="$(cd "$1" && bash "$HOOK" 2>&1)"; RC=$?; }
 warns() { printf '%s' "$OUT" | grep -q '^WARNING: subagent stopped inside worktree'; }
 
 # 1. env root set -> WARNING
-LGTMGATE_WORKTREE_ROOT="$ROOT" run_hook "$WT"
+LGTMGATE_WORKTREE_ROOT="$ROOT" run_hook "$WORKTREE"
 check "env root: warns inside a worktree under the root" $([ "$RC" -eq 0 ] && warns && echo 1 || echo 0)
 
 # 2. env root elsewhere -> silent
-LGTMGATE_WORKTREE_ROOT="$OTHER_ROOT" run_hook "$WT"
+LGTMGATE_WORKTREE_ROOT="$OTHER_ROOT" run_hook "$WORKTREE"
 check "env root elsewhere: silent" $([ "$RC" -eq 0 ] && ! warns && echo 1 || echo 0)
 
 # 3. config root (absolute) -> WARNING; then local config beats it
 printf '{"worktreeRoot":"%s"}\n' "$ROOT" >"$MAIN/.claude/pipeline.config.json"
-run_hook "$WT"
+run_hook "$WORKTREE"
 check "config root (absolute): warns" $([ "$RC" -eq 0 ] && warns && echo 1 || echo 0)
 
 printf '{"worktreeRoot":"%s"}\n' "$OTHER_ROOT" >"$MAIN/.claude/pipeline.config.local.json"
-run_hook "$WT"
+run_hook "$WORKTREE"
 check "local config beats config: silent when local points elsewhere" $([ "$RC" -eq 0 ] && ! warns && echo 1 || echo 0)
 
 # 4. env beats local config
-LGTMGATE_WORKTREE_ROOT="$ROOT" run_hook "$WT"
+LGTMGATE_WORKTREE_ROOT="$ROOT" run_hook "$WORKTREE"
 check "env beats local config: warns" $([ "$RC" -eq 0 ] && warns && echo 1 || echo 0)
 
 # 5. relative config value is ignored -> fallback to the parent of the tree -> WARNING
 rm -f "$MAIN/.claude/pipeline.config.local.json"
 printf '{"worktreeRoot":"../worktrees/x"}\n' >"$MAIN/.claude/pipeline.config.json"
-run_hook "$WT"
+run_hook "$WORKTREE"
 check "relative config falls back to parent of the tree: warns" $([ "$RC" -eq 0 ] && warns && echo 1 || echo 0)
 
 # 6. main tree -> silent, exit 0
@@ -75,7 +75,7 @@ LGTMGATE_WORKTREE_ROOT="$ROOT" run_hook "$WORK"
 check "not a git repo: silent, exit 0" $([ "$RC" -eq 0 ] && [ -z "$OUT" ] && echo 1 || echo 0)
 
 # 8. never deletes
-check "worktree still present after all runs" $([ -d "$WT" ] && echo 1 || echo 0)
+check "worktree still present after all runs" $([ -d "$WORKTREE" ] && echo 1 || echo 0)
 
 echo "${pass_count}/${total} PASS"
 [ "$fail_count" -eq 0 ] || exit 1

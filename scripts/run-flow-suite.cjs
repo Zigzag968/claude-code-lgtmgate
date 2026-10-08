@@ -20,14 +20,14 @@
 //      titles in `args.phaseTitles` (suite scope), reset at every `workflow()` run and read by the
 //      suite right after a run (#141).
 //   3. Suite-scope injected globals — `args`, `log`, `workflow`
-//      (templates/test-deliver-pipeline.js:91-95 reads `args.fpScriptPath`; the suite
+//      (`SUITE_ARGS` / `FP_REF` in templates/test-deliver-pipeline.js read `args.fpScriptPath`; the suite
 //      never consumes `agent` or `phase` directly — it drives the pipeline only
 //      through `workflow()`; it also reads `args.phaseTitles`, the recorded phase() sequence).
 //   4. `workflow(ref, args)` resolves `ref.scriptPath` ONLY — a bare-name `ref` is a
 //      HARNESS-SIDE default (see buildWorkflowMock below), never registry resolution.
 //      If a case starts passing a bare name expecting real registry behavior, this
 //      mock and the suite's own resolution guard (`_probe` / `_gateProbe`,
-//      templates/test-deliver-pipeline.js:98-132) will disagree — that is a suite bug
+//      in templates/test-deliver-pipeline.js) will disagree — that is a suite bug
 //      to fix in the suite, not in this runner.
 //
 // Usage: node scripts/run-flow-suite.cjs [--suite <path>] [--fp <path>]
@@ -35,7 +35,7 @@
 //   (#54 — the canonical pipeline moved from templates/ to workflows/, the plugin's
 //   default-scanned workflow-component directory; the suite stays under templates/.)
 //   Passes args.fpScriptPath = <fp> to the suite so its own pin
-//   (templates/test-deliver-pipeline.js:83-105) is exercised — NEVER name resolution
+//   (`SUITE_ARGS` / `FP_REF` in templates/test-deliver-pipeline.js) is exercised — NEVER name resolution
 //   (the stale-name-resolved-copy-reads-as-broken trap).
 //
 // Last stdout line (always, trailing newline), fixed literal:
