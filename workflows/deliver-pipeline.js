@@ -133,7 +133,7 @@ export const meta = {
 // `version`, checked against plugin.json by tests/templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '1.1.0-beta.29', cutFrom: '908d7fd' }
+const BUILD = { plugin: 'lgtmgate', version: '1.1.0-beta.30', cutFrom: 'b258e7b' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -1652,8 +1652,9 @@ function reconcileStaleProjectConfig(rawJson) {
 // her verdict alone (same doctrine as acceptAlreadyDone above, one lane earlier).
 // Returns [] when nothing is wrong; otherwise one { item, reason } per rejected proof, in the
 // FIRST-matching-reason order below. Pure: no I/O, no closure over simulate/config/trace.
-// Exception: a proof with committedInPr === true (file is content of the PR head) skips the mtime checks.
-function staleArtifactBlockers(proofs, floorIso) {
+// Exception: a proof with committedInPr === true (file is content of the PR head) skips the mtime checks, provided the PR's
+// changed-file list (prFiles, #229) contains its path; without a list (older script, truncated, unreadable) the flag is trusted.
+function staleArtifactBlockers(proofs, floorIso, prFiles, worktreePath) {
   if (!Array.isArray(proofs) || proofs.length === 0) return []
   // Accepts an explicit UTC 'Z' or a numeric offset: Morgan stats artifacts on the local
   // machine, so a valid ISO-8601 like 2026-08-11T18:02:02+02:00 must not be rejected
@@ -1678,8 +1679,14 @@ function staleArtifactBlockers(proofs, floorIso) {
       blockers.push({ item, reason: 'artifact-empty' }); continue
     }
     // DEBT(#191): a file committed in the PR has an mtime that predates the PR's last commit by construction, so no-valid-mtime and artifact-stale do not apply to it (no replayed fixture; proven by flow-suite case T9005)
-    // Residual risk: committedInPr is self-attested by the reviewer; a deterministic cross-check needs a pr-state probe-output change (tracked in a follow-up)
-    if (p.committedInPr === true) continue
+    // #229: the flag is cross-checked against the PR's changed files (pr-state `files`); a path outside the list is treated as untracked
+    if (p.committedInPr === true) {
+      if (!Array.isArray(prFiles)) continue
+      let relativePath = p.path.trim()
+      if (typeof worktreePath === 'string' && worktreePath !== '' && relativePath.startsWith(worktreePath + '/')) relativePath = relativePath.slice(worktreePath.length + 1)
+      while (relativePath.startsWith('./')) relativePath = relativePath.slice(2)
+      if (prFiles.includes(relativePath)) continue
+    }
     const mtime = typeof p.mtime === 'string' ? p.mtime : ''
     if (!ISO.test(mtime)) {
       blockers.push({ item, reason: 'no-valid-mtime' }); continue
@@ -3944,11 +3951,23 @@ if (after('review', entryStage)) {
   // artifactProofs, so a run with no declared proof spends zero extra agent calls. Never throws
   // on a `gh` hiccup (mirrors reconcileMorganIssues): logs and falls through to the run stamp.
   const artifactFloorIso = async (round, endState) => {
-    if (simulate) return simulate.probes?.artifactFloor
+    if (simulate) {
+      const sf = simulate.probes?.artifactFloor
+      return sf !== null && typeof sf === 'object' ? sf.floor : sf
+    }
     const t = endState && endState.lastCommitDate
     if (t) return t
     log(`artifactFloorIso round ${round}: no last commit date from the pr-state probe, falling back to run stamp`)
     return stamp ? new Date(Number(stamp)).toISOString() : null
+  }
+
+  // #229: the PR's changed paths from the round's pr-state read (null = unknown); simulate reuses the artifactFloor seam's object form.
+  const artifactPrFiles = (endState) => {
+    if (simulate) {
+      const sf = simulate.probes?.artifactFloor
+      return sf !== null && typeof sf === 'object' && Array.isArray(sf.files) ? sf.files : null
+    }
+    return Array.isArray(endState?.files) ? endState.files : null
   }
 
   // Artifact-proof gate — the workflow re-derives the verdict from Morgan's OWN declared
@@ -4021,7 +4040,7 @@ if (after('review', entryStage)) {
     const proofs = Array.isArray(v.artifactProofs) ? v.artifactProofs : []
     if (proofs.length === 0) return await settle(v)
     const floorIso = await artifactFloorIso(round, endState)
-    const blockers = staleArtifactBlockers(proofs, floorIso)
+    const blockers = staleArtifactBlockers(proofs, floorIso, artifactPrFiles(endState), wtPath)
     if (blockers.length === 0) return await settle(v)
     // #7: an item-less LGTM whose every blocker is a defect of Morgan's OWN proof entry (empty artifact, malformed
     // entry, no path, no parsable mtime) is not repairable by a dev round: the Review call sites escalate on the mark.

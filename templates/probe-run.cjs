@@ -185,6 +185,8 @@ const PARSERS = {
       reviewCommentIds: strArr(v.reviewCommentIds),
       openIssues: issues(v.openIssues),
       openIssuesTruncated: typeof v.openIssuesTruncated === 'boolean' ? v.openIssuesTruncated : false,
+      // #229: the PR's changed paths, kept only as a list of strings; the key is absent otherwise (fixtures stay byte-identical).
+      ...(strArr(v.files) ? { files: v.files } : {}),
     }
   },
   // pr-write.sh output (E2.6a, #85): ONE JSON object {op, result, reason, bytes}. result must be one of

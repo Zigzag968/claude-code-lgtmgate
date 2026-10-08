@@ -10,7 +10,7 @@
 #   bash pr-state.sh --pr N [--wt DIR] [--repo OWNER/REPO] [--since ISO]
 #
 # -> {"now":"<ISO>","headRefName":..,"headRefOid":..,"bodyDigest":"<12 hex>","acceptanceChecked":[N,..]|null,
-#     "decisionLog":["- round N — ..",..]|null,"mergeable":..,"mergeStateStatus":..,"lastCommitDate":..,"commitCount":N,"ciState":"green|failing|pending|none"|null,"ciChecks":{"<check name>":"green|failing|pending"}|null,"reviewCommentIds":["<id>",..],
+#     "decisionLog":["- round N — ..",..]|null,"mergeable":..,"mergeStateStatus":..,"lastCommitDate":..,"commitCount":N,"ciState":"green|failing|pending|none"|null,"ciChecks":{"<check name>":"green|failing|pending"}|null,"reviewCommentIds":["<id>",..],"files":["<path>",..]|null,
 #     "openIssues":[{"number":N,"createdAt":..,"url":..}]|null,"openIssuesTruncated":false}
 # "now" comes from `date -u` HERE: the workflow script itself may not read the wall clock (harness ban on
 # argless new Date(), claude-agent-pipeline#144/#135), and no LLM interprets it any more (incident #14).
@@ -27,6 +27,9 @@
 # StatusContext .context; SKIPPED/NEUTRAL are green; one name under two workflows: the worst of the two latest entries). {} when the head has no
 # check, null when the rollup is absent. The engine reads it to judge only the checks the repo's config.ciChecks names (an
 # optional check, CodeQL for one, must not hold the ready gate); the command line stays the same, so no recorded cmd= changes.
+# files (#229): the repo-relative paths the PR changes, from the `files` field of the same `gh pr view` call (no new call, the command
+# line is unchanged). gh caps that field at 100 entries, so a list of 100 or more may be truncated and is reported null (the engine
+# then keeps its previous behaviour); null too when gh failed. The engine cross-checks a reviewer's committedInPr claim against it.
 # decisionLog (#164): the round lines (`- round ...`, trimmed) of the real decision-log block of the body (templates/pr-body-splice.cjs,
 # op entries); [] when the body holds no block; null when the body or node could not be read. The engine seeds its log from it,
 # so a relaunch at entryStage review keeps the rounds of the earlier runs in the ONE block.
@@ -59,13 +62,13 @@ main() {
   now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   [ -n "$WT" ] && cd "$WT"
 
-  pr_json='{"headRefName":null,"headRefOid":null,"bodyDigest":null,"acceptanceChecked":null,"decisionLog":null,"mergeable":null,"mergeStateStatus":null,"lastCommitDate":null,"commitCount":null,"ciState":null,"ciChecks":null,"reviewCommentIds":null}'
+  pr_json='{"headRefName":null,"headRefOid":null,"bodyDigest":null,"acceptanceChecked":null,"decisionLog":null,"mergeable":null,"mergeStateStatus":null,"lastCommitDate":null,"commitCount":null,"ciState":null,"ciChecks":null,"reviewCommentIds":null,"files":null}'
 
   if [ -n "$PR" ]; then
     if [ -n "$REPO" ]; then
-      view="$(gh pr view "$PR" -R "$REPO" --json headRefName,headRefOid,body,mergeable,mergeStateStatus,commits,comments,statusCheckRollup 2>/dev/null)"
+      view="$(gh pr view "$PR" -R "$REPO" --json headRefName,headRefOid,body,mergeable,mergeStateStatus,commits,comments,statusCheckRollup,files 2>/dev/null)"
     else
-      view="$(gh pr view "$PR" --json headRefName,headRefOid,body,mergeable,mergeStateStatus,commits,comments,statusCheckRollup 2>/dev/null)"
+      view="$(gh pr view "$PR" --json headRefName,headRefOid,body,mergeable,mergeStateStatus,commits,comments,statusCheckRollup,files 2>/dev/null)"
     fi
     if [ -n "$view" ] && printf '%s' "$view" | jq -e 'type == "object"' >/dev/null 2>&1; then
       body="$(printf '%s' "$view" | jq -r '.body // ""')"
@@ -95,9 +98,10 @@ main() {
         commitCount: (if .commits == null then null else (.commits | length) end),
         ciState: (if .statusCheckRollup == null then null elif (.statusCheckRollup | length) == 0 then "none" else (.statusCheckRollup | latest_entries | map(entry_state)) as $s | if any($s[]; IN("SUCCESS","NEUTRAL","SKIPPED","PENDING","EXPECTED") | not) then "failing" elif any($s[]; IN("PENDING","EXPECTED")) then "pending" else "green" end end),
         ciChecks: (if .statusCheckRollup == null then null else (.statusCheckRollup | latest_entries | map({k: (if .__typename == "StatusContext" then .context else .name end), v: (entry_state | entry_class)}) | map(select(.k | type == "string")) | group_by(.k) | map({key: .[0].k, value: (if any(.[]; .v == "failing") then "failing" elif any(.[]; .v == "pending") then "pending" else "green" end)}) | from_entries) end),
-        reviewCommentIds: (if .comments == null then null else [.comments[] | select(.isMinimized == false) | select((.body // "") | startswith("<!-- pipeline-review-round")) | .id] end)
+        reviewCommentIds: (if .comments == null then null else [.comments[] | select(.isMinimized == false) | select((.body // "") | startswith("<!-- pipeline-review-round")) | .id] end),
+        files: (if .files == null then null elif (.files | length) >= 100 then null else [.files[] | .path] end)
       }' 2>/dev/null)"
-      [ -n "$pr_json" ] || pr_json='{"headRefName":null,"headRefOid":null,"bodyDigest":null,"acceptanceChecked":null,"decisionLog":null,"mergeable":null,"mergeStateStatus":null,"lastCommitDate":null,"commitCount":null,"ciState":null,"ciChecks":null,"reviewCommentIds":null}'
+      [ -n "$pr_json" ] || pr_json='{"headRefName":null,"headRefOid":null,"bodyDigest":null,"acceptanceChecked":null,"decisionLog":null,"mergeable":null,"mergeStateStatus":null,"lastCommitDate":null,"commitCount":null,"ciState":null,"ciChecks":null,"reviewCommentIds":null,"files":null}'
     fi
   fi
 
