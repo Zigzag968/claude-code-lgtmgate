@@ -894,6 +894,6 @@ TREE1="$(git status --short --untracked-files=all 2>&1)"
 if [ "$TREE0" = "$TREE1" ]; then ok "the suite leaves the working tree untouched"; else bad "the suite changed the working tree: before='$TREE0' after='$TREE1'"; fi
 
 rm -rf "$TMP"
-STATUS=ok; [ "$FAIL" -gt 0 ] && STATUS=fail
-echo "[test-publish-fixture] status=$STATUS passed=$PASS failed=$FAIL"
+RESULT=ok; [ "$FAIL" -gt 0 ] && RESULT=fail
+echo "[test-publish-fixture] status=$RESULT passed=$PASS failed=$FAIL"
 [ "$FAIL" -eq 0 ]
