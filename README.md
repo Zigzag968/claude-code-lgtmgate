@@ -8,6 +8,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Claude Code Plugin](https://img.shields.io/badge/Claude%20Code-plugin-5A32FB)](https://code.claude.com/docs/en/plugins)
 [![Tests: 936 offline](https://img.shields.io/badge/tests-936%20offline-2ea043)](#engineering-highlights)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/Zigzag968/claude-code-lgtmgate/badge)](https://scorecard.dev/viewer/?uri=github.com/Zigzag968/claude-code-lgtmgate)
 
 lgtmgate is a Claude Code plugin that takes a GitHub issue through to a merge-ready pull request. A diagnosis agent checks the issue is real before anyone writes a plan for it. A reviewer checks each item on the acceptance checklist against actual evidence, a command's output or an artifact, before approving. None of the agents merge anything themselves, including when this repo ships its own releases.
 

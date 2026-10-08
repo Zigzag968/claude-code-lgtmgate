@@ -1,0 +1,44 @@
+name: scorecard
+
+# Recurring OpenSSF Scorecard posture check (epic #287, slice S3).
+# NON-REQUIRED by design: it is not part of the `main-protection` ruleset and must never become a
+# required check. Triggers are push on main, a weekly cron and manual dispatch only; never
+# `pull_request` / `pull_request_target` (this job holds `id-token: write`).
+# Known limit: the Branch-Protection check may score low or -1 with the default GITHUB_TOKEN (it
+# needs an admin PAT passed as `repo_token`); no secret is configured on purpose.
+# CodeQL stays on GitHub default setup: no codeql.yml belongs here.
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '23 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  analysis:
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      id-token: write
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          persist-credentials: false
+      - uses: ossf/scorecard-action@2d1146689b8cda280b9bc96326124645441f03bc # v2.4.4
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          publish_results: true
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: SARIF file
+          path: results.sarif
+          retention-days: 5
+      - uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        with:
+          sarif_file: results.sarif
