@@ -42,12 +42,13 @@
 //      Since #74 (scripts/lead-merge.sh bumps at merge; bump-required is retired) this floor is
 //      the only version check besides stamp-parity in tests/templates/test-canonical-guards.sh.
 //   doc-budgets (#77): the agent-read docs stay within the maintainer's budgets — VISION.md and
-//      ARCHITECTURE.md (both imported for every agent through CLAUDE.md, see instructions-wired)
+//      ARCHITECTURE.md (both imported for every agent through .claude/CLAUDE.md, see instructions-wired)
 //      <= 20 lines each, and every line of both <= 160 characters, so a long line cannot dodge the
 //      line budget. A missing file FAILS.
 //   instructions-wired (#77): agents receive the two docs natively, never through an engine prompt.
-//      FAILS unless CLAUDE.md holds exactly one line `@VISION.md` and one line `@ARCHITECTURE.md`
-//      (outside fenced code blocks and code spans; no second import of either, no `@AGENTS.md`
+//      FAILS unless .claude/CLAUDE.md holds exactly one line `@../VISION.md` and one line `@../ARCHITECTURE.md`
+//      (outside fenced code blocks and code spans; both targets must exist; a bare `@VISION.md` loads nothing
+//      from .claude/ and FAILS; no second import of either, no `@AGENTS.md`
 //      import, which would load the docs twice); unless AGENTS.md (the agents.md pointer for other
 //      tools) exists and names both files; or if any agents/*.md frontmatter sets
 //      `omitClaudeMd: true` (a subagent that would skip the project instructions).
@@ -485,17 +486,21 @@ const importRefs = (lines, name) => lines.reduce((n, l) =>
   n + (l.match(new RegExp(`(?:^|\\s)@${escapeRegExp(name)}(?![\\w./-])`, 'g')) || []).length, 0)
 function checkInstructionsWired() {
   const problems = []
-  const claude = readOr(path.join(ROOT, 'CLAUDE.md'))
-  if (claude === null) problems.push('CLAUDE.md missing')
+  const claude = readOr(path.join(ROOT, '.claude', 'CLAUDE.md'))
+  if (claude === null) problems.push('.claude/CLAUDE.md missing')
   else {
     const lines = proseLines(claude)
     for (const doc of IMPORTED_DOCS) {
-      const own = lines.filter((l) => l.replace(/[ \t]+$/, '') === `@${doc}`).length
-      const refs = importRefs(lines, doc)
-      if (own === 0) problems.push(`CLAUDE.md has no line \`@${doc}\` outside code`)
-      else if (refs > 1) problems.push(`CLAUDE.md imports ${doc} ${refs} times, keep exactly one \`@${doc}\` line`)
+      const target = `../${doc}`
+      const own = lines.filter((l) => l.replace(/[ \t]+$/, '') === `@${target}`).length
+      const refs = importRefs(lines, target)
+      if (own === 0) problems.push(`.claude/CLAUDE.md has no line \`@${target}\` outside code`)
+      else if (refs > 1) problems.push(`.claude/CLAUDE.md imports ${doc} ${refs} times, keep exactly one \`@${target}\` line`)
+      else if (!fs.existsSync(path.resolve(ROOT, '.claude', target))) problems.push(`.claude/CLAUDE.md imports @${target} but ${doc} does not exist there`)
+      // Imports resolve relative to the importing file: a bare `@VISION.md` looks inside .claude/ and loads nothing.
+      if (importRefs(lines, doc) > 0) problems.push(`.claude/CLAUDE.md has a bare \`@${doc}\` import, which loads nothing from .claude/, use \`@${target}\``)
     }
-    if (importRefs(lines, 'AGENTS.md') > 0) problems.push('CLAUDE.md imports AGENTS.md, which loads the docs twice')
+    if (importRefs(lines, 'AGENTS.md') > 0) problems.push('.claude/CLAUDE.md imports AGENTS.md, which loads the docs twice')
   }
   const agentsMd = readOr(path.join(ROOT, 'AGENTS.md'))
   if (agentsMd === null) problems.push('AGENTS.md missing')
@@ -511,7 +516,7 @@ function checkInstructionsWired() {
     if (fm && /^omitClaudeMd[ \t]*:[ \t]*["']?true["']?[ \t]*(?:#.*)?$/im.test(fm[1])) problems.push(`agents/${f} sets omitClaudeMd: true`)
   }
   if (problems.length) bad(`FAIL: instructions-wired: ${problems.join('; ')}`)
-  else out(`PASS: instructions-wired: CLAUDE.md imports ${IMPORTED_DOCS.map((d) => `@${d}`).join(' and ')} once each; AGENTS.md names both; ${personas.length} agents/*.md, none sets omitClaudeMd: true`)
+  else out(`PASS: instructions-wired: .claude/CLAUDE.md imports ${IMPORTED_DOCS.map((d) => `@../${d}`).join(' and ')} once each, targets exist; AGENTS.md names both; ${personas.length} agents/*.md, none sets omitClaudeMd: true`)
 }
 
 // ---- doc-budgets (#77) --------------------------------------------------------------------------

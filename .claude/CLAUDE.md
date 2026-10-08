@@ -1,7 +1,7 @@
 # CLAUDE.md — working on lgtmgate itself
 
-@VISION.md
-@ARCHITECTURE.md
+@../VISION.md
+@../ARCHITECTURE.md
 
 Runbook for the Lead (the session that changes this repo or dispatches its pipeline).
 - Launching and supervising a run: `commands/deliver.md`.

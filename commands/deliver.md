@@ -15,7 +15,7 @@ You are the **Lead**. You deliver a change end-to-end through the **Mia -> Sam -
 ## 0. Check the installed plugin version
 The Workflow that runs the delivery is the one of the plugin version INSTALLED for this project's scope, not the one just merged: a Lead who merges engine fixes keeps running the old engine until the plugin is updated and the session restarted (#233).
 
-A run is driven from a session opened in the target repository (agents get the launching session's CLAUDE.md/AGENTS.md as loaded at its start, anthropics/claude-code#88886), and a session is restarted after its own CLAUDE.md/AGENTS.md changes.
+A run is driven from a session opened in the target repository (agents get the launching session's .claude/CLAUDE.md/AGENTS.md as loaded at its start, anthropics/claude-code#88886), and a session is restarted after its own .claude/CLAUDE.md/AGENTS.md changes.
 - Fetch first (the script never does): `git fetch origin main`.
 - Run `bash scripts/plugin-versions.sh` from the engine checkout (from another repository: `bash <engine checkout>/scripts/plugin-versions.sh --target <version>`). It is read-only: one line per install of the plugin, and a non-zero exit when an ENABLED install differs from the version on `origin/main` (`MISMATCH`) or when two channels are enabled for the same scope and project (`CONFLICT`); exit 2 = it could not decide.
 - A non-zero exit names the install: update it with `claude plugin update <plugin>@<marketplace> --scope <scope>` and RESTART the session (a running session keeps the old engine), then run the script again.

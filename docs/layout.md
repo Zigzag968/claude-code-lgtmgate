@@ -15,7 +15,7 @@ The root folders are enforced by `.ls-lint.yml` and `node scripts/audit.cjs --ch
 | `docs/` | maintainers and readers | reference pages, no code | `supervision.md`, `critical-paths.md`, `layout.md` |
 | `evals/` | maintainers | probe evals: prompts and graders | `probe-pr-state/` |
 | `fixtures/` | tests | replayed captures and fixtures shared by the suites | `README.md` |
-| `.claude/` | the Lead working on this repo | this repo's own config and rules | `pipeline.config.json`, `rules/` |
+| `.claude/` | the Lead working on this repo | this repo's own config and rules | `CLAUDE.md`, `pipeline.config.json`, `rules/` |
 | `.claude-plugin/` | Claude Code | plugin and marketplace manifests | `plugin.json`, `marketplace.json` |
 | `.github/` | GitHub | workflows, issue and PR templates | `workflows/`, `PULL_REQUEST_TEMPLATE.md` |
 | `.githooks/` | contributors | local git hooks | `pre-commit`, `pre-push` |
