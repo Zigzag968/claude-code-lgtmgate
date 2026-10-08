@@ -1058,6 +1058,80 @@ else
 fi
 
 # =============================================================================
+# Invariant 31 — bash-rule-parity
+# =============================================================================
+# #335 (R.4.6): the Bash rule is stated in one short form in seven files (the cause is written once, in agents/sam.md).
+# FAIL when the short form is not exactly once in any of them. AGENTS_DIR is an override for negative runs.
+AGENTS_DIR="${AGENTS_DIR:-agents}"
+BASH_SHORT='Bash: absolute path, 1 command/call, no `cd`/`&&`/`|`'
+BR_BAD=""
+for br_f in "$AGENTS_DIR/nick.md" "$AGENTS_DIR/sam.md" "$AGENTS_DIR/mia.md" "$AGENTS_DIR/morgan.md" \
+  skills/deliver/SKILL.md skills/init/SKILL.md skills/context/SKILL.md; do
+  br_n=$(grep -cF -- "$BASH_SHORT" "$br_f" 2>/dev/null || true)
+  [ "$br_n" = "1" ] || BR_BAD="$BR_BAD $br_f"
+done
+if [ -n "$BR_BAD" ]; then
+  fail "bash-rule-parity" "short form not exactly once in:$BR_BAD"
+else
+  pass "bash-rule-parity: short form exactly once in 7 files"
+fi
+
+# =============================================================================
+# Invariant 32 — retry-cap-parity
+# =============================================================================
+# #335 (R.4.14): one cap for a blocked agent, the rule file wording, in nick / theo / mia and both rule file copies.
+RC_CAP='Maximum 2-3 DIFFERENT approaches per blocker'
+RC_BAD=""
+for rc_f in "$AGENTS_DIR/nick.md" "$AGENTS_DIR/theo.md" "$AGENTS_DIR/mia.md" \
+  templates/pr-acceptance.md .claude/rules/pr-acceptance.md; do
+  if ! tr -d '*' < "$rc_f" 2>/dev/null | grep -qF -- "$RC_CAP"; then
+    RC_BAD="$RC_BAD $rc_f"
+  fi
+done
+if [ -n "$RC_BAD" ]; then
+  fail "retry-cap-parity" "cap '$RC_CAP' missing in:$RC_BAD"
+else
+  pass "retry-cap-parity: cap '$RC_CAP' in 3 agents and both rule file copies"
+fi
+
+# =============================================================================
+# Invariant 33 — frictions-parity
+# =============================================================================
+# #335 (R.4.17): the FRICTIONS heading and its 5-line template are identical in the five agents.
+FR_BAD=""
+FR_REF=""
+for fr_a in nick sam morgan mia theo; do
+  fr_f="$AGENTS_DIR/$fr_a.md"
+  fr_head=$(grep -cxF '## FRICTIONS (3) before shutdown' "$fr_f" 2>/dev/null || true)
+  fr_tpl=$(grep -A4 -xF 'FRICTIONS (3):' "$fr_f" 2>/dev/null || true)
+  if [ -z "$FR_REF" ]; then FR_REF="$fr_tpl"; fi
+  if [ "$fr_head" != "1" ] || [ -z "$fr_tpl" ] || [ "$fr_tpl" != "$FR_REF" ]; then
+    FR_BAD="$FR_BAD $fr_a"
+  fi
+done
+if [ -n "$FR_BAD" ]; then
+  fail "frictions-parity" "FRICTIONS heading or template differs in:$FR_BAD"
+else
+  pass "frictions-parity: heading and 5-line template identical in 5 agents"
+fi
+
+# =============================================================================
+# Invariant 34 — project-specifics-paragraph-parity
+# =============================================================================
+# #335 (R.4.18): the <project_specifics> paragraph is byte-identical in the five agents.
+PP_REF='Project-specific rules, when the repo provides any, arrive in a `<project_specifics>` block delivered below this header; they come on top of the generic rules here and never replace them.'
+PP_BAD=""
+for pp_a in nick sam morgan mia theo; do
+  pp_n=$(grep -cxF -- "$PP_REF" "$AGENTS_DIR/$pp_a.md" 2>/dev/null || true)
+  [ "$pp_n" = "1" ] || PP_BAD="$PP_BAD $pp_a"
+done
+if [ -n "$PP_BAD" ]; then
+  fail "project-specifics-paragraph-parity" "paragraph differs or missing in:$PP_BAD"
+else
+  pass "project-specifics-paragraph-parity: byte-identical in 5 agents"
+fi
+
+# =============================================================================
 # Trailer
 # =============================================================================
 if [ "$FAIL_N" -eq 0 ]; then

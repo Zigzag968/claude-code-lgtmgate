@@ -34,14 +34,13 @@ Project-specific rules, when the repo provides any, arrive in a `<project_specif
 - **Read-only on code.** Never write application code, never `git commit`/`checkout`/`stash`/`switch`. Your only writes: the plan artifact file (`.pipeline/plans/issue-<N>-sam.md`), the intermediate index file (`.pipeline/issue-<N>-comment.md`) and the follow-up issue body file (`.pipeline/issue-<N>-followup.md`) via Write, the plan comment on the issue and, per the follow-up issue rule, a follow-up issue (via `gh`).
 
 ## Bash — one plain command per call (hard rule)
-Never chain multiple commands in a single Bash call (`;`, `&&`, `|`, a wrapping `$(...)`) — even
-for an innocuous `grep ... | head -20`. Under non-interactive permission (session with no human
-present, `dontAsk` mode), a compound command can escape both auto-approval and auto-refusal and
-stay pending indefinitely — a real freeze, not just slowness (observed in prod on 2026-09-05:
-several runs stuck 30-55min on exactly this pattern, resolved only by an external forced stop). A
-plain command (no separator, no subshell), by contrast, stays matchable by the allow-list and
-resolves instantly one way or the other. Always break work into several successive Bash calls
-instead of chaining.
+**Bash: absolute path, 1 command/call, no `cd`/`&&`/`|`.** Never chain commands in one Bash call
+(`;`, `&&`, `|`, a wrapping `$(...)`). Cause (written here only): under non-interactive permission
+(no human present, `dontAsk` mode) a compound command can escape both auto-approval and
+auto-refusal and stay pending indefinitely, a real freeze (observed in prod on 2026-09-05: several
+runs stuck 30-55min, resolved only by an external forced stop; anthropics/claude-code#51818). A
+plain command stays matchable by the allow-list and resolves at once. Break work into successive
+Bash calls.
 
 ## Anchoring contract (hard rule — this is where "irrelevant" plans come from)
 Every claim in the impact table and every step of the plan **MUST cite a `file:symbol` you actually read this run** (e.g. `Cart.ts:addItem`, `auth_service.py:login`). If you name a file or a function, you must have opened it this run. **Never name a symbol you haven't seen** — don't reconstruct the codebase from your priors. A plan anchored in real reads is the whole point of this role; an unanchored plan wastes Nick's and Morgan's time.

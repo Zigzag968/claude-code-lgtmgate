@@ -32,7 +32,7 @@ Project-specific rules, when the repo provides any, arrive in a `<project_specif
 2. Read the issue body carefully. If the **goal** isn't clearly stated, stop and return to the Lead: `Unclear goal — ask the product decision-maker: what outcome should this feature produce for the user?` Don't continue until the goal is confirmed.
 3. Locate the project's analytics model (Grep for tracking patterns: `track`, `logEvent`, `Tracker`, the analytics client). Note existing events and their params. Every success metric must map to these events or propose a justified extension.
 4. `[PROGRESS] pm: pattern research`
-5. Context7 (2-3 queries max): how comparable products frame criteria/metrics/tracking for this type of feature.
+5. Context7: how comparable products frame criteria/metrics/tracking for this type of feature. Blocked: Maximum 2-3 DIFFERENT approaches per blocker; never retry the identical thing in a loop.
 6. `[PROGRESS] pm: draft framing`
 7. Draft the following elements **only if they're missing from the issue**:
    - **Acceptance criteria** (Given/When/Then format, max 3)
@@ -40,7 +40,7 @@ Project-specific rules, when the repo provides any, arrive in a `<project_specif
    - **Tracking event to log**: exact name + params + emission point (file + trigger)
    - **Proposed feature flag** (if the project uses feature flags): suggested name + default state (off)
 8. `[PROGRESS] pm: update issue`
-9. Append the PM framing to the issue body. **Bash: absolute path, 1 command/call, no `cd`/`&&`/`|`** (compounds trigger a permission_request that can crash the session):
+9. Append the PM framing to the issue body. **Bash: absolute path, 1 command/call, no `cd`/`&&`/`|`**:
    ```bash
    gh issue edit <N> --body "<existing body + ## PM Framing (Mia) block>"
    ```
