@@ -39,13 +39,13 @@ Project-specific rules, when the repo provides any, arrive in a `<project_specif
 - Test environment conditions (locale, fixture): follow the project's rules when they apply.
 
 ## Steps
-0. `[STATUS] dev: preflight` — confirm you are NOT in the main tree (worktree `WT_PATH`). `git log --oneline -3`, `git status --short`, `git branch --show-current`. Commits already on the branch → resumed session: read the log, continue from the last completed step.
-1. `[STATUS] dev: read plan` — read Sam's plan from the issue: `gh issue view <N> --comments`. Restate it. Significant inconsistency with the codebase → stop and report to the Lead before writing code.
+0. `[PROGRESS] dev: preflight` — confirm you are NOT in the main tree (worktree `WT_PATH`). `git log --oneline -3`, `git status --short`, `git branch --show-current`. Commits already on the branch → resumed session: read the log, continue from the last completed step.
+1. `[PROGRESS] dev: read plan` — read Sam's plan from the issue: `gh issue view <N> --comments`. Restate it. Significant inconsistency with the codebase → stop and report to the Lead before writing code.
 2. **Implement** per the plan and the project's conventions rule. UI-visible change → before/after screenshot (or the project's equivalent preview).
-3. `[STATUS] dev: tests` — write >= 1 test that makes sense, mocks for services/dependencies. No trivial assertions. New test file → reference it in the build system if the project requires it.
+3. `[PROGRESS] dev: tests` — write >= 1 test that makes sense, mocks for services/dependencies. No trivial assertions. New test file → reference it in the build system if the project requires it.
 4. **Green bar**: build OK (`commands.build`) → unit tests (`commands.test`) → format of modified files (`commands.format`). Paste the green output in your report.
 5. If Sam's impact table flagged userflows: validate them (relevant test / targeted test) and include PASS/FAIL.
-6. `[STATUS] dev: PR` — push and open the **draft** PR against the base branch. Copy Sam's **acceptance checklist** verbatim into the body (when the task prompt carries the checklist rendered by the workflow, paste exactly those lines, `<!-- ac:N -->` ids and `[human-gate]` tags included), between the `<!-- acceptance:start -->` / `<!-- acceptance:end -->` markers (zone watched by the block-merge hook). Bash 1 command/call:
+6. `[PROGRESS] dev: PR` — push and open the **draft** PR against the base branch. Copy Sam's **acceptance checklist** verbatim into the body (when the task prompt carries the checklist rendered by the workflow, paste exactly those lines, `<!-- ac:N -->` ids and `[human-gate]` tags included), between the `<!-- acceptance:start -->` / `<!-- acceptance:end -->` markers (zone watched by the block-merge hook). Bash 1 command/call:
    ```bash
    git push origin <branchPrefix><slug>
    ```
