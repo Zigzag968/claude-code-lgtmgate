@@ -307,8 +307,14 @@ case "$*" in
       fi
       exit 0
     fi
+    if [ -n "${GH_FILES:-}" ]; then
+      # [229] 100 changed files, the length at which gh's cap makes a list indistinguishable from a truncated one
+      jq -nc '{headRefName:"feat/issue-84",headRefOid:"abc123",body:"hello body",commits:[],comments:[],files:[range(0;100) | {path:("f\(.).md"),additions:1,deletions:0,changeType:"ADDED"}]}'
+      exit 0
+    fi
     cat <<'JSON'
 {"headRefName":"feat/issue-84","headRefOid":"abc123","body":"hello body","mergeable":"MERGEABLE","mergeStateStatus":"CLEAN",
+ "files":[{"path":"a.md","additions":1,"deletions":1,"changeType":"MODIFIED"},{"path":"dir/b.md","additions":2,"deletions":0,"changeType":"ADDED"}],
  "statusCheckRollup":[{"__typename":"CheckRun","conclusion":"SUCCESS","name":"guards","status":"COMPLETED","workflowName":"guards"},{"__typename":"CheckRun","conclusion":"SKIPPED","name":"extra","status":"COMPLETED"}],
  "commits":[{"committedDate":"2026-01-01T00:10:00Z"},{"committedDate":"2026-01-01T00:20:00Z"}],
  "comments":[{"id":"IC_1","isMinimized":false,"body":"<!-- pipeline-review-round 1 -->\nverdict"},
@@ -364,6 +370,29 @@ GHEOF
     && [ "$(printf '%s' "$OUT4" | jq -c '[.headRefOid, .bodyDigest, .commitCount, .reviewCommentIds, .openIssues]')" = '[null,null,null,null,null]' ] \
     && printf '%s' "$OUT4" | jq -e '.now | length > 0' >/dev/null 2>&1 && ok=1
   check "pr-state.sh: failing gh -> nulls but now still set, exit 0, one line" "$ok"
+
+  # [229] files: the PR's changed paths from the same gh call; 100 or more (gh's cap) -> null; failing gh -> null
+  ok=0
+  [ "$(printf '%s' "$OUT" | jq -c '.files')" = '["a.md","dir/b.md"]' ] && ok=1
+  check "pr-state.sh: files lists the changed paths (one gh call)" "$ok"
+  OUT9="$(GH_FILES=many PATH="$PSD/bin:$PATH" bash "$PS" --pr 7 --wt "$PSD/wt" --repo o/r)"
+  ok=0
+  [ "$(printf '%s' "$OUT9" | jq -c '.files')" = 'null' ] && ok=1
+  check "pr-state.sh: 100 files (the gh cap) -> files null" "$ok"
+  ok=0
+  [ "$(printf '%s' "$OUT4" | jq -c '.files')" = 'null' ] && ok=1
+  check "pr-state.sh: failing gh -> files null" "$ok"
+  ok=0
+  out_files="$(node -e '
+    const { PARSERS } = require(process.argv[1])
+    const p = (o) => PARSERS["pr-state"](JSON.stringify(o), "", 0)
+    const has = (v) => Object.prototype.hasOwnProperty.call(v, "files")
+    const kept = p({ files: ["a.md", "b/c.md"] })
+    const dropped = [p({ files: null }), p({ files: "a.md" }), p({ files: ["a.md", 3] }), p({})]
+    process.stdout.write(JSON.stringify(kept.files) === "[\"a.md\",\"b/c.md\"]" && dropped.every((v) => !v.error && !has(v)) ? "OK" : "BAD")
+  ' "$PR")"
+  [ "$out_files" = "OK" ] && ok=1
+  check "pr-state parser keeps files (a list of strings), drops it otherwise" "$ok"
 
   # [183] acceptanceChecked: the ids ticked in the body's acceptance block (the fence-aware reader of the tick), [] without a block
   ok=0

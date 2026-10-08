@@ -1776,6 +1776,27 @@ await testCase('T9005c a committedInPr proof needs a positive numeric size (#5)'
   return eq('flagged bytes 1: status', ok.status, 'ready') || { ok: true }
 })
 
+// T9005e (#229) — committedInPr is cross-checked against the PR's changed files (pr-state `files`): a flagged path
+// outside the list is treated as untracked (mtime rules apply again); no list (older script, truncated) keeps today's behaviour.
+await testCase("T9005e a committedInPr proof must appear in the PR's changed files (#229)", async () => {
+  const old = { item: ARTIFACT_PROOF_ITEM, path: ARTIFACT_PROOF_PATH, exists: true, mtime: '2026-08-03T12:50:44Z', bytes: 4096, committedInPr: true }
+  const withFiles = (artifactFloor, proof = old) => run({ mode: 'semi', proceedThrough: 'dev', simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM', artifactProofs: [proof] }], artifactFloor } })
+  const a = await withFiles({ floor: ARTIFACT_FLOOR, files: ['other.md'] })
+  const a1 = eq('path absent from files: status', a.status, 'needs-revision')
+  const a2 = includes('path absent from files: trace', a.trace || [], 'artifact-proof-rejected:artifact-stale')
+  const b = await withFiles({ floor: ARTIFACT_FLOOR, files: [ARTIFACT_PROOF_PATH] })
+  const b1 = eq('path in files: status', b.status, 'ready')
+  const c = await withFiles({ floor: ARTIFACT_FLOOR, files: [ARTIFACT_PROOF_PATH] }, { ...old, path: './' + ARTIFACT_PROOF_PATH })
+  const c1 = eq('./ spelling: status', c.status, 'ready')
+  const d = await withFiles({ floor: ARTIFACT_FLOOR, files: [ARTIFACT_PROOF_PATH] }, { ...old, path: BASE.wtPath + '/' + ARTIFACT_PROOF_PATH })
+  const d1 = eq('worktree-absolute spelling: status', d.status, 'ready')
+  const e = await withFiles(ARTIFACT_FLOOR)
+  const e1 = eq('no list (string seam): status', e.status, 'ready')
+  const f = await withFiles({ floor: ARTIFACT_FLOOR, files: null })
+  const f1 = eq('files null: status', f.status, 'ready')
+  return a1 || a2 || b1 || c1 || d1 || e1 || f1 || { ok: true }
+})
+
 // T9005d (#5) — source-level: both unconditional sentences of artifactProofStep carry the committed-in-PR
 // qualifier, and the clause's command uses the same `git -C "<worktree>"` form as the regression-guard step.
 await testCase('T9005d artifactProofStep qualifies both freshness sentences and uses git -C for the diff (#5)', async () => {
