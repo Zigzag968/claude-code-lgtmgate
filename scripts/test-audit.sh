@@ -5,7 +5,7 @@
 # items grep. Needs `npm ci` and ruff at the version of ruff.toml on PATH.
 # Cases: P-30 size budget, P-31 function length (plain, nested, template literal), P-32 naming (identifier, abbreviation,
 # file name), P-33 baseline freeze and the hook-name exemption, P-34 ShellCheck, P-35 baseline-vs-origin (raised, bootstrap),
-# P-36 fixtures out of scope, P-37 unreadable file, P-38 default list of guards.cjs, P-39 same verdict line through
+# P-41 slack, P-42 stale key and folder, P-43 suppression comments, P-36 fixtures out of scope, P-37 unreadable file, P-38 default list of guards.cjs, P-39 same verdict line through
 # guards.cjs, P-40 clean repo (one line, timing), ruff-missing, ruff-version, baseline-missing.
 # Ends with `[test-audit] status=<ok|fail> passed=<n> failed=<n>`.
 set -u
@@ -140,6 +140,40 @@ case_origin() {
   if [ "$default_rc" -ne 0 ] && printf '%s\n' "$default_out" | grep -qF "$wanted"; then ok "P-38 the default list of guards.cjs runs the audit check"; else ko "P-38 (rc=$default_rc) $default_out"; fi
 }
 
+case_slack_stale() {
+  mkrepo slack '{"warn.sh":{"SC2034":1}}'
+  printf '#!/usr/bin/env bash\nunused=1\n' > "$REPO/warn.sh"
+  run_audit "$REPO"
+  green P-41 "a baseline count equal to the real count is green: no slack"
+  printf '{"warn.sh":{"SC2034":3}}\n' > "$REPO/scripts/audit-baseline.json"
+  run_audit "$REPO"
+  red_with P-41 "a baseline count above the real count is red, named as slack" 'FAIL: audit: warn.sh SC2034 slack 1 < baseline 3'
+  mkrepo stale '{"gone.sh":{"max-lines":1}}'
+  run_audit "$REPO"
+  red_with P-42 "a key naming an absent file is red, named as a stale key" 'FAIL: audit: gone.sh stale baseline key'
+  mkrepo folder '{"sub":{}}'
+  mkdir "$REPO/sub"
+  run_audit "$REPO"
+  green P-42 "a key naming an existing folder is not stale"
+}
+
+case_suppression() {
+  mkrepo suppression
+  printf '%s\n' '// eslint-''disable-next-line no-undef' 'module.exports = 1' > "$REPO/sup-eslint.cjs"
+  printf 'import os  # noqa: F401\n' > "$REPO/sup_noqa.py"
+  printf '%s\n' '#!/usr/bin/env bash' '# shellcheck ''disable=SC2034' 'unused=1' > "$REPO/sup-shell.sh"
+  run_audit "$REPO"
+  if [ "$RC" -eq 1 ] && has 'FAIL: audit: sup-eslint.cjs suppression 1 > baseline 0' && has 'FAIL: audit: sup_noqa.py suppression 1 > baseline 0' && has 'FAIL: audit: sup-shell.sh suppression 1 > baseline 0'; then ok "P-43 an eslint, a noqa and a shellcheck suppression comment are each counted as suppression"; else ko "P-43 (rc=$RC) $OUT"; fi
+  (cd "$REPO" && "$NODE" "$REPO_ROOT/scripts/audit.cjs" --report > "$T/suppression-baseline.json") && cp "$T/suppression-baseline.json" "$REPO/scripts/audit-baseline.json"
+  run_audit "$REPO"
+  green P-43 "the frozen suppression baseline is green"
+  mkrepo notcomment
+  printf "const text = 'eslint-disable'\nmodule.exports = text\n" > "$REPO/not-comment.cjs"
+  printf '#!/usr/bin/env bash\necho noqa\n' > "$REPO/not-comment.sh"
+  run_audit "$REPO"
+  green P-43 "strings that are not comments count 0"
+}
+
 case_tool_setup() {
   local bin="$T/nobin"
   mkdir -p "$bin" && ln -s "$NODE" "$bin/node" && ln -s "$(command -v git)" "$bin/git"
@@ -159,6 +193,8 @@ case_baseline_freeze
 case_unreadable
 case_clean_and_guards
 case_origin
+case_slack_stale
+case_suppression
 case_tool_setup
 
 STATUS=ok; [ "$FAIL_N" -eq 0 ] || STATUS=fail

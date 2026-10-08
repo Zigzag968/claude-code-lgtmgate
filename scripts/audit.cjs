@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 'use strict'
-// audit.cjs — code-quality ratchet (node, stdlib + child_process). Size and naming only.
+// audit.cjs — code-quality ratchet (node, stdlib + child_process). Size, naming and suppression comments.
 //
 //   node scripts/audit.cjs --report   print the findings as { "<file>": { "<rule>": <count> } } (the baseline format)
 //   node scripts/audit.cjs --check    compare them with <target>/scripts/audit-baseline.json: a (file, rule) count
-//                                     above its baseline (absent = 0) is red, a count at or under it is green
+//                                     above its baseline (absent = 0) is red, and so is a baseline count above the real
+//                                     count (slack) or a key naming a path absent from the tree (stale; a folder is fine)
 //
 // Roots (no env var, no seam): the TOOL root is the repository holding this script (node_modules, eslint.config.js,
 // ruff.toml, .ls-lint.yml); the TARGET is the git repository of the current directory. So a test lints a throwaway
@@ -12,7 +13,8 @@
 //
 // Tools, run concurrently: ESLint (JS), ruff (Python, version pinned by ruff.toml `required-version`), ls-lint (file
 // names), ShellCheck (shell). Two rules have no market tool and are counted here for .sh and .py: `max-lines`
-// (> 600 lines) and, for .sh only, `max-lines-per-function` (> 80). Files under a `fixtures/` segment are out of scope.
+// (> 600 lines) and, for .sh only, `max-lines-per-function` (> 80). A third, `suppression`, counts the lint-disable
+// comments of each language (SUPPRESSION_PATTERNS). Files under a `fixtures/` segment are out of scope.
 // The baseline only goes down: regenerate it never by hand, never to absorb new findings.
 
 const fs = require('fs')
@@ -202,17 +204,35 @@ function shellFunctionLengths(text) {
   return lengths
 }
 
+// One count per directive occurrence, by extension. The patterns do not match their own source.
+const SUPPRESSION_PATTERNS = {
+  '.js': /(?:\/\/|\/\*)\s*eslint-disable/g,
+  '.cjs': /(?:\/\/|\/\*)\s*eslint-disable/g,
+  '.mjs': /(?:\/\/|\/\*)\s*eslint-disable/g,
+  '.py': /#\s*noqa/g,
+  '.sh': /#\s*shellcheck\s+disable/g,
+}
+
+function countSuppressions(text, extension) {
+  const pattern = SUPPRESSION_PATTERNS[extension]
+  return pattern ? (text.match(pattern) || []).length : 0
+}
+
+function sizeRules(counts, file, text) {
+  if (lineCount(text) > MAX_LINES) addCount(counts, file, 'max-lines')
+  if (path.extname(file) !== '.sh') return
+  for (const length of shellFunctionLengths(text)) {
+    if (length > MAX_FUNCTION_LINES) addCount(counts, file, 'max-lines-per-function')
+  }
+}
+
 function ownRules(target, files) {
   const counts = {}
   for (const file of files) {
     const extension = path.extname(file)
-    if (extension !== '.sh' && extension !== '.py') continue
     const text = fs.readFileSync(path.join(target, file), 'utf8')
-    if (lineCount(text) > MAX_LINES) addCount(counts, file, 'max-lines')
-    if (extension !== '.sh') continue
-    for (const length of shellFunctionLengths(text)) {
-      if (length > MAX_FUNCTION_LINES) addCount(counts, file, 'max-lines-per-function')
-    }
+    for (let n = countSuppressions(text, extension); n > 0; n--) addCount(counts, file, 'suppression')
+    if (extension === '.sh' || extension === '.py') sizeRules(counts, file, text)
   }
   return { counts, failures: [] }
 }
@@ -253,7 +273,7 @@ async function collect(target) {
   return { counts: sortedCounts(mergeCounts(results)), failures: [...failures, ...results.flatMap((result) => result.failures)] }
 }
 
-function compare(current, baseline) {
+function overBaseline(current, baseline) {
   const gaps = []
   for (const [file, rules] of Object.entries(current)) {
     for (const [rule, count] of Object.entries(rules)) {
@@ -261,7 +281,27 @@ function compare(current, baseline) {
       if (count > allowed) gaps.push(`${FAIL} ${file} ${rule} ${count} > baseline ${allowed}`)
     }
   }
-  return gaps.sort()
+  return gaps
+}
+
+// A key naming a path absent from the tree is stale (a folder that exists is not); a count above the real one is slack.
+function slackAndStale(current, baseline, target) {
+  const gaps = []
+  for (const [file, rules] of Object.entries(baseline)) {
+    if (!fs.existsSync(path.join(target, file))) {
+      gaps.push(`${FAIL} ${file} stale baseline key, no such file or folder in the tree`)
+      continue
+    }
+    for (const [rule, allowed] of Object.entries(rules || {})) {
+      const count = (current[file] && current[file][rule]) || 0
+      if (typeof allowed === 'number' && count < allowed) gaps.push(`${FAIL} ${file} ${rule} slack ${count} < baseline ${allowed}`)
+    }
+  }
+  return gaps
+}
+
+function compare(current, baseline, target) {
+  return [...overBaseline(current, baseline), ...slackAndStale(current, baseline, target)].sort()
 }
 
 function totalFindings(counts) {
@@ -293,7 +333,7 @@ async function main() {
     console.log(`${FAIL} ${BASELINE_PATH} missing or invalid`)
     return 1
   }
-  const gaps = compare(counts, baseline)
+  const gaps = compare(counts, baseline, target)
   printFailures(gaps)
   if (gaps.length > 0) return 1
   console.log(`PASS: audit: ${totalFindings(counts)} findings, all under baseline`)
