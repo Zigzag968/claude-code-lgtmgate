@@ -23,10 +23,10 @@
 
 MODE="${1:-}"
 [ $# -gt 0 ] && shift
-WT=""; ISSUE=""; BASE=""; REPO=""; TARGETS=""; PR=""; ENGINE=""
+WORKTREE=""; ISSUE=""; BASE=""; REPO=""; TARGETS=""; PR=""; ENGINE=""
 while [ $# -gt 0 ]; do
   case "$1" in
-    --wt) WT="${2:-}" ;;
+    --wt) WORKTREE="${2:-}" ;;
     --issue) ISSUE="${2:-}" ;;
     --base) BASE="${2:-}" ;;
     --repo) REPO="${2:-}" ;;
@@ -50,28 +50,28 @@ dev() {
   local plan_stale="null" subs="null" gitdir="null" writable="null" layout="null" out total repo gd probe d bin t lout lrc tlist
 
   # planStale: files of the plan targets that moved on origin/<base> since the frozen base.
-  if [ -n "$TARGETS" ] && [ -n "$WT" ] && [ -n "$BASE" ]; then
-    git -C "$WT" fetch origin "$BASE" -q >/dev/null 2>&1
+  if [ -n "$TARGETS" ] && [ -n "$WORKTREE" ] && [ -n "$BASE" ]; then
+    git -C "$WORKTREE" fetch origin "$BASE" -q >/dev/null 2>&1
     set -f
     # shellcheck disable=SC2086
-    if out="$(git -C "$WT" diff --name-only "HEAD...origin/$BASE" -- $TARGETS 2>/dev/null)"; then
+    if out="$(git -C "$WORKTREE" diff --name-only "HEAD...origin/$BASE" -- $TARGETS 2>/dev/null)"; then
       plan_stale="$(printf '%s\n' "$out" | lines_json)"
     fi
     set +f
   fi
 
   # layout (#307): the planned paths, as empty files in a scratch tree, against the repo's ls-lint rules.
-  if [ "$ENGINE" = "true" ] && [ -n "$TARGETS" ] && [ -n "$WT" ] && [ -f "$WT/.ls-lint.yml" ]; then
+  if [ "$ENGINE" = "true" ] && [ -n "$TARGETS" ] && [ -n "$WORKTREE" ] && [ -f "$WORKTREE/.ls-lint.yml" ]; then
     bin=""
-    if [ -x "$WT/node_modules/.bin/ls-lint" ]; then bin="$WT/node_modules/.bin/ls-lint"; else bin="$(command -v ls-lint 2>/dev/null)"; fi
-    d="$WT/.pipeline/layout-probe"
+    if [ -x "$WORKTREE/node_modules/.bin/ls-lint" ]; then bin="$WORKTREE/node_modules/.bin/ls-lint"; else bin="$(command -v ls-lint 2>/dev/null)"; fi
+    d="$WORKTREE/.pipeline/layout-probe"
     if [ -n "$bin" ] && mkdir -p "$d" 2>/dev/null && find "$d" -mindepth 1 -delete 2>/dev/null; then
       IFS=' ' read -r -a tlist <<< "$TARGETS"
       for t in "${tlist[@]}"; do
         case "$t" in /*|..|../*|*/..|*/../*) continue ;; esac
         mkdir -p "$d/$(dirname "$t")" 2>/dev/null && : > "$d/$t" 2>/dev/null
       done
-      lout="$(cd "$d" && "$bin" -config "$WT/.ls-lint.yml" 2>&1)"; lrc=$?
+      lout="$(cd "$d" && "$bin" -config "$WORKTREE/.ls-lint.yml" 2>&1)"; lrc=$?
       if [ "$lrc" = "0" ]; then
         layout='{"verdict":"CONFORMING","issues":[]}'
       elif [ "$lrc" = "1" ]; then
@@ -83,8 +83,8 @@ dev() {
   # openSubIssues: open sub-issue numbers of the epic (as strings).
   if [ -n "$ISSUE" ]; then
     repo="$REPO"
-    if [ -z "$repo" ] && [ -n "$WT" ]; then
-      repo="$(cd "$WT" 2>/dev/null && gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null)"
+    if [ -z "$repo" ] && [ -n "$WORKTREE" ]; then
+      repo="$(cd "$WORKTREE" 2>/dev/null && gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null)"
     fi
     if [ -n "$repo" ] && total="$(gh issue view "$ISSUE" -R "$repo" --json subIssuesSummary --jq '.subIssuesSummary.total // 0' 2>/dev/null)"; then
       if [ "$total" = "0" ]; then
@@ -96,7 +96,7 @@ dev() {
   fi
 
   # gitDir / writable: touch + unlink a marker in the real git dir (never rm: #99).
-  if [ -n "$WT" ] && gd="$(git -C "$WT" rev-parse --absolute-git-dir 2>/dev/null)" && [ -n "$gd" ]; then
+  if [ -n "$WORKTREE" ] && gd="$(git -C "$WORKTREE" rev-parse --absolute-git-dir 2>/dev/null)" && [ -n "$gd" ]; then
     gitdir="$(jq -nc --arg g "$gd" '$g')"
     probe="$gd/.pipeline-write-probe-${ISSUE:-0}-$$"
     if touch "$probe" 2>/dev/null && unlink "$probe" 2>/dev/null; then writable="true"; else writable="false"; fi
@@ -107,10 +107,10 @@ dev() {
 }
 
 branch() {
-  local head="null" prefix="null" ref cfg errf="/dev/null" cls=""
+  local head="null" prefix="null" ref config errf="/dev/null" cls=""
 
   # The stderr of the head-ref read, kept in a file so a failure can be NAMED (never printed).
-  if [ -n "$WT" ] && [ -d "$WT" ] && mkdir -p "$WT/.pipeline" 2>/dev/null; then errf="$WT/.pipeline/preflight-branch.err"; fi
+  if [ -n "$WORKTREE" ] && [ -d "$WORKTREE" ] && mkdir -p "$WORKTREE/.pipeline" 2>/dev/null; then errf="$WORKTREE/.pipeline/preflight-branch.err"; fi
 
   # headRef: the PR head branch, straight from gh.
   if [ -n "$PR" ]; then
@@ -123,8 +123,8 @@ branch() {
   fi
 
   # branchPrefix: the worktree's own config ("" when the key is absent, null when unreadable).
-  cfg="$WT/.claude/pipeline.config.json"
-  if [ -n "$WT" ] && [ -f "$cfg" ] && ref="$(jq -r '.branchPrefix // empty' "$cfg" 2>/dev/null)"; then
+  config="$WORKTREE/.claude/pipeline.config.json"
+  if [ -n "$WORKTREE" ] && [ -f "$config" ] && ref="$(jq -r '.branchPrefix // empty' "$config" 2>/dev/null)"; then
     prefix="$(jq -nc --arg p "$ref" '$p')"
   fi
 
