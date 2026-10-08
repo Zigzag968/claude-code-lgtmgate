@@ -47,7 +47,7 @@ if [ -f "$SD/gh-read-class.sh" ]; then . "$SD/gh-read-class.sh"; else gh_read_cl
 lines_json() { jq -Rsc 'split("\n") | map(select(length > 0))'; }
 
 dev() {
-  local plan_stale="null" subs="null" gitdir="null" writable="null" layout="null" out total repo gd probe d bin t lout lrc
+  local plan_stale="null" subs="null" gitdir="null" writable="null" layout="null" out total repo gd probe d bin t lout lrc tlist
 
   # planStale: files of the plan targets that moved on origin/<base> since the frozen base.
   if [ -n "$TARGETS" ] && [ -n "$WT" ] && [ -n "$BASE" ]; then
@@ -66,13 +66,11 @@ dev() {
     if [ -x "$WT/node_modules/.bin/ls-lint" ]; then bin="$WT/node_modules/.bin/ls-lint"; else bin="$(command -v ls-lint 2>/dev/null)"; fi
     d="$WT/.pipeline/layout-probe"
     if [ -n "$bin" ] && mkdir -p "$d" 2>/dev/null && find "$d" -mindepth 1 -delete 2>/dev/null; then
-      set -f
-      # shellcheck disable=SC2086
-      for t in $TARGETS; do
+      IFS=' ' read -r -a tlist <<< "$TARGETS"
+      for t in "${tlist[@]}"; do
         case "$t" in /*|..|../*|*/..|*/../*) continue ;; esac
         mkdir -p "$d/$(dirname "$t")" 2>/dev/null && : > "$d/$t" 2>/dev/null
       done
-      set +f
       lout="$(cd "$d" && "$bin" -config "$WT/.ls-lint.yml" 2>&1)"; lrc=$?
       if [ "$lrc" = "0" ]; then
         layout='{"verdict":"CONFORMING","issues":[]}'

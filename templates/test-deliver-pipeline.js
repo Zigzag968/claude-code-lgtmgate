@@ -5394,31 +5394,31 @@ const t307Sam = (extraPlanLine, targetFiles) => ({
 await testCase('T307a a plan naming files in its table with an empty targetFiles and no `targetFiles: none` line is refused NOT_CONFORMING', async () => {
   const sam = t307Sam('', null)
   const r = await run({ mode: 'auto', simulate: { sam: { 1: sam, 2: sam }, planCheck: T182_CONFORMING } })
-  const e1 = eq('status', r.status, 'escalate')
-  const e2 = eq('reason', r.reason, 'plan-not-conforming')
-  const e3 = includes('planCheckIssues[0] names targetFiles', String((r.planCheckIssues || [])[0] || ''), 'targetFiles')
-  const e4 = (r.trace || []).some((t) => String(t).startsWith('plan-targets-refused:')) ? null : { ok: false, msg: 'no plan-targets-refused trace' }
-  return e1 || e2 || e3 || e4 || { ok: true }
+  const verdict1 = eq('status', r.status, 'escalate')
+  const verdict2 = eq('reason', r.reason, 'plan-not-conforming')
+  const verdict3 = includes('planCheckIssues[0] names targetFiles', String((r.planCheckIssues || [])[0] || ''), 'targetFiles')
+  const verdict4 = (r.trace || []).some((t) => String(t).startsWith('plan-targets-refused:')) ? null : { ok: false, msg: 'no plan-targets-refused trace' }
+  return verdict1 || verdict2 || verdict3 || verdict4 || { ok: true }
 })
 await testCase('T307b more than 25 targets are refused by name, not truncated', async () => {
-  const many = Array.from({ length: 26 }, (_, i) => `docs/file-${i}.md`)
+  const many = Array.from({ length: 26 }, (_, index) => `docs/file-${index}.md`)
   const sam = t307Sam('', many)
   const r = await run({ mode: 'auto', simulate: { sam: { 1: sam, 2: sam }, planCheck: T182_CONFORMING } })
   const issue0 = String((r.planCheckIssues || [])[0] || '')
-  const e1 = eq('status', r.status, 'escalate')
-  const e2 = eq('reason', r.reason, 'plan-not-conforming')
-  const e3 = includes('issue names the count', issue0, '26')
-  const e4 = includes('issue names the cap', issue0, 'cap of 25')
-  return e1 || e2 || e3 || e4 || { ok: true }
+  const verdict1 = eq('status', r.status, 'escalate')
+  const verdict2 = eq('reason', r.reason, 'plan-not-conforming')
+  const verdict3 = includes('issue names the count', issue0, '26')
+  const verdict4 = includes('issue names the cap', issue0, 'cap of 25')
+  return verdict1 || verdict2 || verdict3 || verdict4 || { ok: true }
 })
 await testCase('T307c controls: an explicit `targetFiles: none` line with an empty list, and exactly 25 targets, both pass the script', async () => {
   const none = t307Sam('targetFiles: none', null)
   const r1 = await run({ mode: 'semi', simulate: { sam: { 1: none }, planCheck: T182_CONFORMING } })
-  const e1 = eq('none line: status', r1.status, 'plan-ready')
-  const exactly = t307Sam('', Array.from({ length: 25 }, (_, i) => `docs/file-${i}.md`))
+  const verdict1 = eq('none line: status', r1.status, 'plan-ready')
+  const exactly = t307Sam('', Array.from({ length: 25 }, (_, index) => `docs/file-${index}.md`))
   const r2 = await run({ mode: 'semi', simulate: { sam: { 1: exactly }, planCheck: T182_CONFORMING } })
-  const e2 = eq('25 targets: status', r2.status, 'plan-ready')
-  return e1 || e2 || { ok: true }
+  const verdict2 = eq('25 targets: status', r2.status, 'plan-ready')
+  return verdict1 || verdict2 || { ok: true }
 })
 
 // T182j (#182) — state preservation: the legacy Sam shape (a checklist string, no items) and a Morgan verdict that
