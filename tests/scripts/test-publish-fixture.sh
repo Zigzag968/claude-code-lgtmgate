@@ -15,9 +15,8 @@ ROOT="$(pwd)"
 export ROOT
 # the repo must come out of the suite exactly as it went in: no stub engine or publisher writes into the working tree
 TREE0="$(git status --short --untracked-files=all 2>&1)"
-PASS=0; FAIL=0
-ok()  { PASS=$((PASS+1)); echo "ok: $1"; }
-bad() { FAIL=$((FAIL+1)); echo "FAIL: $1"; }
+# shellcheck source=lib/harness.sh
+. "$ROOT/tests/scripts/lib/harness.sh"
 TMP="${TMPDIR:-/tmp}/publish-fixture-selftest.$$"
 mkdir -p "$TMP"
 TMP="$(cd "$TMP" && pwd -P)"
@@ -720,9 +719,6 @@ fi
 # ---- #195: the plugin version probe answer follows the engine version, never the version of the day --------
 # A real run journals the LITERAL engine version in that answer and lead-merge bumps it at every merge: a fixture published
 # with the literal goes red at the next bump. The publication writes the token when the answer is the engine's version.
-bumped_engine() { # <out file>: the engine with another BUILD version
-  node -e 'const fs=require("fs");const s=fs.readFileSync(process.env.ROOT+"/workflows/deliver-pipeline.js","utf8");fs.writeFileSync(process.argv[1],s.replace(/(const BUILD = \{[^}]*\bversion: \x27)[^\x27]+/,"$19.9.9-bumped"))' "$1"
-}
 BUMPED="$TMP/engine-bumped.js"
 bumped_engine "$BUMPED"
 ENGV=$(node -e 'process.stdout.write(/const BUILD = \{[^}]*\bversion: \x27([^\x27]+)/.exec(require("fs").readFileSync(process.env.ROOT+"/workflows/deliver-pipeline.js","utf8"))[1])')

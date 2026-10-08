@@ -14,9 +14,8 @@
 set -u
 cd "$(dirname "$0")/../.." || exit 1
 ROOT="$(pwd)"
-PASS=0; FAIL=0
-ok()   { PASS=$((PASS+1)); echo "ok: $1"; }
-bad()  { FAIL=$((FAIL+1)); echo "FAIL: $1"; }
+# shellcheck source=lib/harness.sh
+. "$ROOT/tests/scripts/lib/harness.sh"
 TMP="${TMPDIR:-/tmp}/capture-incident-selftest.$$"
 mkdir -p "$TMP"
 TMP="$(cd "$TMP" && pwd -P)"
@@ -240,9 +239,6 @@ fi
 # A real run with a pluginRoot and no probeRunPath journals the LITERAL engine version in that answer; lead-merge bumps the
 # version at every merge, so a literal kept in a fixture goes red at the next bump. The capture writes the token instead
 # when the answer is the run's engine (the repo's BUILD, or the version the run's pluginRoot names).
-bumped_engine() { # <out file>: the engine with another BUILD version
-  node -e 'const fs=require("fs");const s=fs.readFileSync(process.env.ROOT+"/workflows/deliver-pipeline.js","utf8");fs.writeFileSync(process.argv[1],s.replace(/(const BUILD = \{[^}]*\bversion: \x27)[^\x27]+/,"$19.9.9-bumped"))' "$1"
-}
 BUMPED="$TMP/engine-bumped.js"
 bumped_engine "$BUMPED"
 vprobe() { # <js over the version probe entry e>: evaluates against the captured file
