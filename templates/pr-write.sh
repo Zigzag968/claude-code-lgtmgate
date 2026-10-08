@@ -50,10 +50,10 @@
 OP="${1:-}"
 [ $# -ge 1 ] && shift
 
-WT=""; REPO=""; PR=""; NUMBER=""; MARKER=""; BODY=""; ID=""; ISSUE=""; PNUM=""; PID=""; FID=""; OID=""; MODE=""; TEXT=""; TEXT_B64=""; EXPECT=""; IDS=""; KEEP=""
+WORKTREE=""; REPO=""; PR=""; NUMBER=""; MARKER=""; BODY=""; ID=""; ISSUE=""; PROJECT_NUMBER=""; PID=""; FID=""; OID=""; MODE=""; TEXT=""; TEXT_B64=""; EXPECT=""; IDS=""; KEEP=""
 while [ $# -gt 0 ]; do
   case "$1" in
-    --wt) WT="${2:-}" ;;
+    --wt) WORKTREE="${2:-}" ;;
     --repo) REPO="${2:-}" ;;
     --pr) PR="${2:-}" ;;
     --number) NUMBER="${2:-}" ;;
@@ -61,7 +61,7 @@ while [ $# -gt 0 ]; do
     --body) BODY="${2:-}" ;;
     --id) ID="${2:-}" ;;
     --issue) ISSUE="${2:-}" ;;
-    --project-number) PNUM="${2:-}" ;;
+    --project-number) PROJECT_NUMBER="${2:-}" ;;
     --project-id) PID="${2:-}" ;;
     --field-id) FID="${2:-}" ;;
     --option-id) OID="${2:-}" ;;
@@ -139,7 +139,7 @@ minimize_op() {
 
 status_op() {
   local owner name res item cur
-  if ! is_num "$ISSUE" || ! is_num "$PNUM" || [ -z "$PID" ] || [ -z "$FID" ] || [ -z "$OID" ]; then emit failed bad-args; return; fi
+  if ! is_num "$ISSUE" || ! is_num "$PROJECT_NUMBER" || [ -z "$PID" ] || [ -z "$FID" ] || [ -z "$OID" ]; then emit failed bad-args; return; fi
   if [ -n "$REPO" ]; then
     owner="${REPO%%/*}"; name="${REPO#*/}"
   else
@@ -149,9 +149,9 @@ status_op() {
   # The ISSUE's own project items, never a board scan (a scan of the board stops at its first 30 items).
   res="$(gh api graphql -f query='query($owner:String!,$repo:String!,$number:Int!){repository(owner:$owner,name:$repo){issue(number:$number){projectItems(first:20){nodes{id project{number} fieldValues(first:20){nodes{... on ProjectV2ItemFieldSingleSelectValue{optionId field{... on ProjectV2FieldCommon{id}}}}}}}}}}' \
     -f owner="$owner" -f repo="$name" -F number="$ISSUE" 2>"$ERRF")" || { read_failed; return; }
-  item="$(printf '%s' "$res" | jq -r --argjson p "$PNUM" '[.data.repository.issue.projectItems.nodes[]? | select(.project.number==$p)] | first | .id // ""' 2>/dev/null)" || { emit failed read-failed; return; }
+  item="$(printf '%s' "$res" | jq -r --argjson p "$PROJECT_NUMBER" '[.data.repository.issue.projectItems.nodes[]? | select(.project.number==$p)] | first | .id // ""' 2>/dev/null)" || { emit failed read-failed; return; }
   if [ -z "$item" ]; then emit skipped not-on-project; return; fi
-  cur="$(printf '%s' "$res" | jq -r --argjson p "$PNUM" --arg f "$FID" '[.data.repository.issue.projectItems.nodes[]? | select(.project.number==$p) | .fieldValues.nodes[]? | select((.field.id // "") == $f) | .optionId] | first // ""' 2>/dev/null)"
+  cur="$(printf '%s' "$res" | jq -r --argjson p "$PROJECT_NUMBER" --arg f "$FID" '[.data.repository.issue.projectItems.nodes[]? | select(.project.number==$p) | .fieldValues.nodes[]? | select((.field.id // "") == $f) | .optionId] | first // ""' 2>/dev/null)"
   if [ "$cur" = "$OID" ]; then emit skipped already-set; return; fi
   if gh project item-edit --id "$item" --field-id "$FID" --project-id "$PID" --single-select-option-id "$OID" >/dev/null 2>&1; then
     emit written
@@ -204,7 +204,7 @@ body_splice_op() {
 }
 
 main() {
-  [ -n "$WT" ] && cd "$WT"
+  [ -n "$WORKTREE" ] && cd "$WORKTREE"
   mkdir -p .pipeline 2>/dev/null || ERRF=/dev/null
   case "$OP" in
     issue-comment) comment_op issue "$NUMBER" ;;

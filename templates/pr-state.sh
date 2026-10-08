@@ -42,11 +42,11 @@
 REVIEWER_WINDOW_SCAN_SAFETY_LIMIT=1000
 SD="$(cd "$(dirname "$0")" 2>/dev/null && pwd)"
 
-PR=""; WT=""; REPO=""; SINCE=""
+PR=""; WORKTREE=""; REPO=""; SINCE=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --pr) PR="${2:-}" ;;
-    --wt) WT="${2:-}" ;;
+    --wt) WORKTREE="${2:-}" ;;
     --repo) REPO="${2:-}" ;;
     --since) SINCE="${2:-}" ;;
     *) ;;
@@ -60,7 +60,7 @@ main() {
   local issues_json="null" truncated="false"
 
   now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  [ -n "$WT" ] && cd "$WT"
+  [ -n "$WORKTREE" ] && cd "$WORKTREE"
 
   pr_json='{"headRefName":null,"headRefOid":null,"bodyDigest":null,"acceptanceChecked":null,"decisionLog":null,"mergeable":null,"mergeStateStatus":null,"lastCommitDate":null,"commitCount":null,"ciState":null,"ciChecks":null,"reviewCommentIds":null,"files":null}'
 
