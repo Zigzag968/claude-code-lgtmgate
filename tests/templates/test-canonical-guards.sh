@@ -320,7 +320,7 @@ fi
 # =============================================================================
 # Invariant 10 — pr-body-structure
 # =============================================================================
-# #85: both PR-body composition sites (the Dev-phase Nick prompt in $WORKFLOW_FILE, and the
+# #85: both PR-body composition sites (the Dev-stage Nick prompt in $WORKFLOW_FILE, and the
 # generic persona doc agents/nick.md) must name the artifact-first section order,
 # left-to-right: Closes #N -> ## What this ships -> ## Acceptance checklist (markers)
 # -> decision-log markers -> Technical detail fold. Character-offset (not line-number)
@@ -328,7 +328,7 @@ fi
 # today — a line-number check would tie on every token. Uses the LAST occurrence of each token
 # (str.rfind, not str.find): $WORKFLOW_FILE's decision-log composer (DECISION_LOG_START/
 # DECISION_LOG_START_RE and its own comment illustrating "## What this ships") legitimately
-# contains earlier, unrelated occurrences of two of these five tokens ABOVE the Dev-phase
+# contains earlier, unrelated occurrences of two of these five tokens ABOVE the Dev-stage
 # prompt — the exact same "earlier illustrative/example occurrence" problem
 # DECISION_LOG_START_RE itself solves by anchoring on the LAST match (see the comment at its
 # definition). The optional "## <Human> — N gestures" H2 is intentionally NOT one of the five
@@ -379,7 +379,7 @@ done
 # the winning candidate to be an ABSOLUTE path (a relative/blank winner falls through to wtPath's
 # parent instead of leaking a relative root into agent briefs). Extracts the sentinel-delimited
 # resolver window from $WORKFLOW_FILE (same python3-regex technique as invariants 2/4), asserts
-# wiring (call site + the Dev-phase `worktree root: ${worktreeRoot}` interpolation) and purity (no
+# wiring (call site + the Dev-stage `worktree root: ${worktreeRoot}` interpolation) and purity (no
 # require(/readFileSync/import fs/__dirname in the window), then runs the EXTRACTED source itself
 # (never a re-implementation) under one offline `node -e` subprocess against a resolution-order
 # case table — proving a real-world case and this run's own real case both resolve
@@ -396,7 +396,7 @@ print(m.group(0) if m else '')
   elif ! grep -q 'const worktreeRoot = resolveWorktreeRoot({ env: runtimeEnv, configLocal, config, wtPath })' "$WORKFLOW_FILE"; then
     fail "worktree-root-resolver" "call site 'const worktreeRoot = resolveWorktreeRoot({ env: runtimeEnv, configLocal, config, wtPath })' missing in $WORKFLOW_FILE"
   elif ! grep -q 'worktree root: ${worktreeRoot}' "$WORKFLOW_FILE"; then
-    fail "worktree-root-resolver" "Dev-phase interpolation 'worktree root: \${worktreeRoot}' missing in $WORKFLOW_FILE"
+    fail "worktree-root-resolver" "Dev-stage interpolation 'worktree root: \${worktreeRoot}' missing in $WORKFLOW_FILE"
   elif echo "$WRR_WINDOW" | grep -qE 'require\(|readFileSync|import fs|__dirname'; then
     fail "worktree-root-resolver" "sentinel window contains a forbidden fs/require token (require(/readFileSync/import fs/__dirname)"
   else
@@ -437,7 +437,7 @@ print(m.group(0) if m else '')
     rm -rf "$WRR_DIR"
     case "$WRR_OUT" in
       OK)
-        pass "worktree-root-resolver: sentinel body verbatim (no require/readFileSync/import fs/__dirname), call site + Dev-phase interpolation wired, 13/13 resolution-order cases pass (env wins/trimmed/blank, configLocal layer, config pin, empty-string/missing-key/relative fallthrough, wtPath-parent, filesystem-root edge, a real-world case, this run's own real case)"
+        pass "worktree-root-resolver: sentinel body verbatim (no require/readFileSync/import fs/__dirname), call site + Dev-stage interpolation wired, 13/13 resolution-order cases pass (env wins/trimmed/blank, configLocal layer, config pin, empty-string/missing-key/relative fallthrough, wtPath-parent, filesystem-root edge, a real-world case, this run's own real case)"
         ;;
       FAIL:*)
         fail "worktree-root-resolver" "${WRR_OUT#FAIL:}"
@@ -801,7 +801,7 @@ fi
 # =============================================================================
 # Invariant 22 — no-destructive-checkout
 # =============================================================================
-# #33 (RC-5): Nick's Dev-phase prompt told him to force-reset the expected branch, which
+# #33 (RC-5): Nick's Dev-stage prompt told him to force-reset the expected branch, which
 # silently discarded commits on a canonical branch. The destructive form must never come back
 # in the prompt or the agent definitions. Static grep over tracked files (test-* files excluded:
 # they spell the literal), plus $WORKFLOW_FILE explicitly so a negative test on a throwaway
@@ -1036,6 +1036,25 @@ else
   else
     pass "no-plugin-copy-in-specifics: $NP_N files, none copied from templates/"
   fi
+fi
+
+# =============================================================================
+# Invariant 30 — runbook-fail-open
+# =============================================================================
+# #334 (R.4.1): the runbook says what the code does: provisioning fails closed, the freshness / behind-count probes fail
+# open. FAIL when the runbook claims every probe fails closed, when it no longer says the freshness probe is fail-open,
+# or when the workflow no longer carries its fail-open wording. DELIVER_SKILL_FILE is an override for negative runs.
+DELIVER_SKILL_FILE="${DELIVER_SKILL_FILE:-skills/deliver/SKILL.md}"
+if [ ! -f "$DELIVER_SKILL_FILE" ] || [ ! -f "$WORKFLOW_FILE" ]; then
+  fail "runbook-fail-open" "missing $DELIVER_SKILL_FILE or $WORKFLOW_FILE"
+elif grep -qE 'fails closed, never[ ]open' "$DELIVER_SKILL_FILE"; then
+  fail "runbook-fail-open" "$DELIVER_SKILL_FILE says every probe fails closed; freshness and the behind-count fail open in $WORKFLOW_FILE"
+elif ! grep -qE 'freshness.*fail-open' "$DELIVER_SKILL_FILE"; then
+  fail "runbook-fail-open" "$DELIVER_SKILL_FILE no longer says the freshness probe is fail-open"
+elif ! grep -qF 'fail-open on any probe hiccup' "$WORKFLOW_FILE"; then
+  fail "runbook-fail-open" "$WORKFLOW_FILE no longer carries the 'fail-open on any probe hiccup' wording"
+else
+  pass "runbook-fail-open: runbook says freshness / behind-count fail open, workflow carries the fail-open wording"
 fi
 
 # =============================================================================
