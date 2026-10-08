@@ -1045,6 +1045,40 @@ node -e '
 [ "$ok" -eq 1 ] || head -n 3 "$WORK/239f.err"
 check "[239] PARSERS preflight keeps readFailed only from the closed set (branch mode) and adds no key when absent" "$ok"
 
+# [307] layout of the planned paths: preflight.sh dev --engine true runs ls-lint on empty files at the planned paths
+PF307="$SCRIPT_DIR/preflight.sh"
+if command -v jq >/dev/null 2>&1 && [ -x "$ROOT/node_modules/.bin/ls-lint" ] && [ -f "$ROOT/.ls-lint.yml" ]; then
+  W307="$WORK/layout307"; mkdir -p "$W307"
+  cp "$ROOT/.ls-lint.yml" "$W307/.ls-lint.yml"; ln -sfn "$ROOT/node_modules" "$W307/node_modules"
+  OUT="$(bash "$PF307" dev --wt "$W307" --engine true --targets 'scripts/BadName.cjs templates/ok-name.sh')"
+  ok=0
+  [ "$(printf '%s' "$OUT" | jq -r '.layout.verdict')" = "NOT_CONFORMING" ] && printf '%s' "$OUT" | jq -r '.layout.issues[]' | grep -q 'scripts/BadName.cjs failed for.*kebabcase' && ok=1
+  check "[307] preflight.sh dev --engine true: a non-conforming planned path -> layout NOT_CONFORMING quoting the rule" "$ok"
+  OUT="$(bash "$PF307" dev --wt "$W307" --engine true --targets 'templates/ok-name.sh')"
+  ok=0
+  [ "$(printf '%s' "$OUT" | jq -c '.layout')" = '{"verdict":"CONFORMING","issues":[]}' ] && ok=1
+  check "[307] preflight.sh dev --engine true: a conforming planned path -> layout CONFORMING, no issue" "$ok"
+  OUT="$(bash "$PF307" dev --wt "$W307" --targets 'scripts/BadName.cjs')"
+  ok=0
+  [ "$(printf '%s' "$OUT" | jq -c '.layout')" = "null" ] && [ "$(printf '%s\n' "$OUT" | wc -l | tr -d ' ')" = "1" ] && ok=1
+  check "[307] preflight.sh dev without --engine: layout null, still exactly one line" "$ok"
+else
+  echo "SKIP - [307] preflight.sh layout e2e needs jq and node_modules/.bin/ls-lint"
+  for n307 in a b c; do check "[307] layout e2e $n307 skipped (ls-lint absent)" 1; done
+fi
+ok=0
+node -e '
+  const assert = require("assert")
+  const { PARSERS } = require(process.argv[1])
+  const mk = (layout) => PARSERS.preflight(JSON.stringify({ mode: "dev", planStale: null, openSubIssues: null, gitDir: null, writable: null, layout }))
+  assert.deepStrictEqual(mk({ verdict: "NOT_CONFORMING", issues: ["x failed"] }).layout, { verdict: "NOT_CONFORMING", issues: ["x failed"] })
+  assert.strictEqual(mk({ verdict: "MAYBE", issues: [] }).layout, null)
+  assert.strictEqual(mk({ verdict: "CONFORMING", issues: [1] }).layout, null)
+  assert.strictEqual(mk("bad").layout, null)
+  assert.strictEqual(mk(undefined).layout, null)
+' "$PR" 2>/dev/null && ok=1
+check "[307] PARSERS preflight keeps a well-formed layout and nulls a malformed one" "$ok"
+
 BLK='/^\/\/ --- prBodySplice:start ---/,/^\/\/ --- prBodySplice:end ---/p'
 [ -n "$(sed -n "$BLK" "$ROOT/workflows/deliver-pipeline.js")" ] && [ "$(sed -n "$BLK" "$ROOT/workflows/deliver-pipeline.js")" = "$(sed -n "$BLK" "$SCRIPT_DIR/pr-body-splice.cjs")" ] && ok=1 || ok=0
 check "pr-body-splice.cjs: source identical to the engine block" "$ok"
