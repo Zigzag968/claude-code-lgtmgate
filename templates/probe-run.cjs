@@ -120,26 +120,26 @@ const PARSERS = {
     let v
     try { v = JSON.parse(String(stdout)) } catch (_) { return { error: 'bad-json' } }
     if (v === null || typeof v !== 'object' || Array.isArray(v)) return { error: 'bad-json' }
-    const strArr = (x) => (Array.isArray(x) && x.every((i) => typeof i === 'string') ? x : null)
-    const str = (x) => (typeof x === 'string' && x.length > 0 ? x : null)
+    const stringArray = (x) => (Array.isArray(x) && x.every((index) => typeof index === 'string') ? x : null)
+    const string_ = (x) => (typeof x === 'string' && x.length > 0 ? x : null)
     if (v.mode === 'dev') {
       // #307: the layout verdict of the planned paths, kept only when well formed.
       const ly = v.layout
-      const layout = ly !== null && typeof ly === 'object' && !Array.isArray(ly) && (ly.verdict === 'CONFORMING' || ly.verdict === 'NOT_CONFORMING') && strArr(ly.issues)
+      const layout = ly !== null && typeof ly === 'object' && !Array.isArray(ly) && (ly.verdict === 'CONFORMING' || ly.verdict === 'NOT_CONFORMING') && stringArray(ly.issues)
         ? { verdict: ly.verdict, issues: ly.issues }
         : null
       return {
         mode: 'dev',
-        planStale: strArr(v.planStale),
-        openSubIssues: strArr(v.openSubIssues),
-        gitDir: str(v.gitDir),
+        planStale: stringArray(v.planStale),
+        openSubIssues: stringArray(v.openSubIssues),
+        gitDir: string_(v.gitDir),
         writable: typeof v.writable === 'boolean' ? v.writable : null,
         layout,
       }
     }
     if (v.mode === 'branch') {
       // #239: `readFailed` (the named cause of a failed PR read) only from the closed set, no key when absent.
-      return { mode: 'branch', headRef: str(v.headRef), branchPrefix: typeof v.branchPrefix === 'string' ? v.branchPrefix : null, ...(readClass(v.readFailed) ? { readFailed: v.readFailed } : {}) }
+      return { mode: 'branch', headRef: string_(v.headRef), branchPrefix: typeof v.branchPrefix === 'string' ? v.branchPrefix : null, ...(readClass(v.readFailed) ? { readFailed: v.readFailed } : {}) }
     }
     return { error: 'bad-mode' }
   },
@@ -149,15 +149,15 @@ const PARSERS = {
     let v
     try { v = JSON.parse(String(stdout)) } catch (_) { return { error: 'bad-json' } }
     if (v === null || typeof v !== 'object' || Array.isArray(v)) return { error: 'bad-json' }
-    const str = (x) => (typeof x === 'string' && x.length > 0 ? x : null)
-    const strArr = (x) => (Array.isArray(x) && x.every((i) => typeof i === 'string') ? x : null)
-    const idArr = (x) => (Array.isArray(x) && x.every((i) => Number.isInteger(i) && i >= 1) ? x : null)
+    const string_ = (x) => (typeof x === 'string' && x.length > 0 ? x : null)
+    const stringArray = (x) => (Array.isArray(x) && x.every((index) => typeof index === 'string') ? x : null)
+    const idArray = (x) => (Array.isArray(x) && x.every((index) => Number.isInteger(index) && index >= 1) ? x : null)
     const issues = (x) => {
       if (!Array.isArray(x)) return null
       const out = []
-      for (const i of x) {
-        if (i === null || typeof i !== 'object' || !Number.isInteger(i.number) || typeof i.createdAt !== 'string') return null
-        out.push({ number: i.number, createdAt: i.createdAt, url: str(i.url) })
+      for (const index of x) {
+        if (index === null || typeof index !== 'object' || !Number.isInteger(index.number) || typeof index.createdAt !== 'string') return null
+        out.push({ number: index.number, createdAt: index.createdAt, url: string_(index.url) })
       }
       return out
     }
@@ -171,15 +171,15 @@ const PARSERS = {
       return out
     }
     return {
-      now: str(v.now),
-      headRefName: str(v.headRefName),
-      headRefOid: str(v.headRefOid),
-      bodyDigest: str(v.bodyDigest),
-      acceptanceChecked: idArr(v.acceptanceChecked),
-      decisionLog: strArr(v.decisionLog),
-      mergeable: str(v.mergeable),
-      mergeStateStatus: str(v.mergeStateStatus),
-      lastCommitDate: str(v.lastCommitDate),
+      now: string_(v.now),
+      headRefName: string_(v.headRefName),
+      headRefOid: string_(v.headRefOid),
+      bodyDigest: string_(v.bodyDigest),
+      acceptanceChecked: idArray(v.acceptanceChecked),
+      decisionLog: stringArray(v.decisionLog),
+      mergeable: string_(v.mergeable),
+      mergeStateStatus: string_(v.mergeStateStatus),
+      lastCommitDate: string_(v.lastCommitDate),
       commitCount: Number.isInteger(v.commitCount) && v.commitCount >= 0 ? v.commitCount : null,
       // #184: the CI state of the PR head as pr-state.sh derived it; anything else (absent, unknown) is null.
       ciState: ['green', 'failing', 'pending', 'none'].includes(v.ciState) ? v.ciState : null,
@@ -187,11 +187,11 @@ const PARSERS = {
       // only the entries whose value is in that set (a dropped entry reads as an absent check: pending for the engine);
       // a non-object or an absent field -> null; a __proto__ / constructor key is dropped, never copied.
       ciChecks: ciChecksMap(v.ciChecks),
-      reviewCommentIds: strArr(v.reviewCommentIds),
+      reviewCommentIds: stringArray(v.reviewCommentIds),
       openIssues: issues(v.openIssues),
       openIssuesTruncated: typeof v.openIssuesTruncated === 'boolean' ? v.openIssuesTruncated : false,
       // #229: the PR's changed paths, kept only as a list of strings; the key is absent otherwise (fixtures stay byte-identical).
-      ...(strArr(v.files) ? { files: v.files } : {}),
+      ...(stringArray(v.files) ? { files: v.files } : {}),
     }
   },
   // pr-write.sh output (E2.6a, #85): ONE JSON object {op, result, reason, bytes}. result must be one of
@@ -202,11 +202,11 @@ const PARSERS = {
     try { v = JSON.parse(String(stdout)) } catch (_) { return { error: 'bad-json' } }
     if (v === null || typeof v !== 'object' || Array.isArray(v)) return { error: 'bad-json' }
     if (v.result !== 'written' && v.result !== 'skipped' && v.result !== 'failed') return { error: 'bad-result' }
-    const str = (x) => (typeof x === 'string' && x.length > 0 ? x : null)
+    const string_ = (x) => (typeof x === 'string' && x.length > 0 ? x : null)
     return {
-      op: str(v.op),
+      op: string_(v.op),
       result: v.result,
-      reason: str(v.reason),
+      reason: string_(v.reason),
       bytes: Number.isInteger(v.bytes) && v.bytes >= 0 ? v.bytes : null,
       ...(readClass(v.detail) ? { detail: v.detail } : {}),
     }
@@ -215,30 +215,30 @@ const PARSERS = {
 
 const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex')
 
-function cut(buf) {
-  if (buf.length <= MAX_BYTES) return { text: buf.toString('utf8'), cut: false }
-  return { text: buf.subarray(0, MAX_BYTES).toString('utf8'), cut: true }
+function cut(buffer) {
+  if (buffer.length <= MAX_BYTES) return { text: buffer.toString('utf8'), cut: false }
+  return { text: buffer.subarray(0, MAX_BYTES).toString('utf8'), cut: true }
 }
 
 function buildRecord({ label, cmd, model }) {
   const r = spawnSync('sh', ['-c', cmd], { maxBuffer: 256 * 1024 * 1024 })
-  const o = cut(r.stdout || Buffer.alloc(0))
-  const e = cut(r.stderr || Buffer.alloc(0))
+  const stdoutCut = cut(r.stdout || Buffer.alloc(0))
+  const stderrCut = cut(r.stderr || Buffer.alloc(0))
   return {
     label,
     cmd,
     exit: typeof r.status === 'number' ? r.status : -1,
-    stdout: o.text,
-    stderr: e.text,
+    stdout: stdoutCut.text,
+    stderr: stderrCut.text,
     ts: new Date().toISOString(),
     model: model || null,
-    truncated: o.cut || e.cut,
+    truncated: stdoutCut.cut || stderrCut.cut,
   }
 }
 
 function probeLine(parser, record) {
-  const fn = Object.prototype.hasOwnProperty.call(PARSERS, parser) ? PARSERS[parser] : null
-  const json = fn ? fn(record.stdout, record.stderr, record.exit) : { error: 'unknown-parser' }
+  const function_ = Object.prototype.hasOwnProperty.call(PARSERS, parser) ? PARSERS[parser] : null
+  const json = function_ ? function_(record.stdout, record.stderr, record.exit) : { error: 'unknown-parser' }
   return `PROBE name=${parser} exit=${record.exit} sha=${sha256(record.stdout)} cmd=${sha256(String(record.cmd))} json=${JSON.stringify(json)}`
 }
 
@@ -248,12 +248,12 @@ function probeLine(parser, record) {
 function verifyRecord(parser, record, entries, bind) {
   if (!record) return { ok: false, reason: 'no-record' }
   const prefix = `PROBE name=${parser} `
-  const mine = (entries || []).filter((e) => e && typeof e.line === 'string' && e.line.startsWith(prefix) &&
-    (!bind || (e.label === bind.label && e.round === bind.round)))
+  const mine = (entries || []).filter((entry) => entry && typeof entry.line === 'string' && entry.line.startsWith(prefix) &&
+    (!bind || (entry.label === bind.label && entry.round === bind.round)))
   if (mine.length === 0) return { ok: false, reason: 'no-attestation' }
   const line = probeLine(parser, record)
-  const withAgent = mine.filter((e) => typeof e.agent_id === 'string' && e.agent_id !== '')
-  if (withAgent.length === 0) return mine.some((e) => e.line === line) ? { ok: true, line } : { ok: false, reason: 'sha-mismatch' }
+  const withAgent = mine.filter((entry) => typeof entry.agent_id === 'string' && entry.agent_id !== '')
+  if (withAgent.length === 0) return mine.some((entry) => entry.line === line) ? { ok: true, line } : { ok: false, reason: 'sha-mismatch' }
   // #83: bind to the call — the latest entry must match and postdate the record (second resolution).
   const last = withAgent[withAgent.length - 1]
   if (last.line !== line) return { ok: false, reason: 'sha-mismatch' }
@@ -274,14 +274,14 @@ function readJsonl(file) {
   return out
 }
 
-function parseArgs(argv) {
+function parseArguments(argv) {
   const out = {}
-  for (let i = 0; i < argv.length; i++) {
-    const k = argv[i]
+  for (let index = 0; index < argv.length; index++) {
+    const k = argv[index]
     if (k === '--verify') out.verify = true
     else if (k === '--no-reuse') out.noReuse = true
-    else if (['--label', '--round', '--out', '--parser', '--model', '--cmd', '--cmd-b64', '--attest', '--expect-cmd'].includes(k) && i + 1 < argv.length) {
-      out[k.slice(2)] = argv[++i]
+    else if (['--label', '--round', '--out', '--parser', '--model', '--cmd', '--cmd-b64', '--attest', '--expect-cmd'].includes(k) && index + 1 < argv.length) {
+      out[k.slice(2)] = argv[++index]
     } else return null
   }
   return out
@@ -294,10 +294,10 @@ const isSha256Hex = (s) => typeof s === 'string' && s.length === 64 && [...s].ev
 const WRITE_PARSERS = new Set(['pr-write'])
 
 // Pure: must this exec invocation be refused (nothing run)? expect = the --expect-cmd value or undefined.
-function mustRefuse(parser, cmd, expect) {
+function mustRefuse(parser, command, expect) {
   if (expect === undefined) return WRITE_PARSERS.has(parser)
   const want = String(expect).toLowerCase()
-  return !isSha256Hex(want) || sha256(cmd) !== want
+  return !isSha256Hex(want) || sha256(command) !== want
 }
 
 // Pure: the record of a command that was NOT run (its copy misses the expected digest, or the digest is missing or
@@ -312,12 +312,12 @@ function readRecord(file) {
 }
 
 // Pure: may a stored record answer this invocation without re-running? (identical cmd AND success)
-function canReuse(record, cmd) {
-  return !!record && record.cmd === cmd && record.exit === 0
+function canReuse(record, command) {
+  return !!record && record.cmd === command && record.exit === 0
 }
 
 function main() {
-  const a = parseArgs(process.argv.slice(2))
+  const a = parseArguments(process.argv.slice(2))
   const common = a && a.label && a.parser && a.out && a.round !== undefined &&
     TOKEN.test(a.label) && TOKEN.test(a.parser) && /^\d+$/.test(a.round) && path.isAbsolute(a.out)
   const bad = !common || (a.verify
@@ -342,9 +342,9 @@ function main() {
   if (refuse || a.noReuse || !canReuse(record, a.cmd)) {
     record = refuse ? refusedRecord({ label: a.label, cmd: a.cmd, model: a.model }) : buildRecord({ label: a.label, cmd: a.cmd, model: a.model })
     fs.mkdirSync(a.out, { recursive: true })
-    const tmp = `${file}.${process.pid}.tmp`
-    fs.writeFileSync(tmp, JSON.stringify(record))
-    fs.renameSync(tmp, file)
+    const temporary = `${file}.${process.pid}.tmp`
+    fs.writeFileSync(temporary, JSON.stringify(record))
+    fs.renameSync(temporary, file)
   }
   process.stdout.write(probeLine(a.parser, record) + '\n')
   process.exit(0)
