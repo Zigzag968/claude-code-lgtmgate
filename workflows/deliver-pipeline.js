@@ -1878,8 +1878,8 @@ function oneWayDoorSignals(plan, targetFiles, context = {}) {
 // everyone (smallest change, `patch-avoided:`); the engine's own vocabulary moves behind the flag.
 const SAM_PLAN_RULE = 'PLAN RULE: plan the smallest change that removes the cause class; list `patch-avoided:` with the patches you rejected.'
 const SAM_ENGINE_LAYER_RULE = 'LAYER RULE: plan the smallest change that removes the cause class; never a `simulate.*` seam; say in the plan if the diff adds a status, an `agent()`, a hook or a seam; list `patch-avoided:` with the patches you rejected.'
-const isEngineRepo = (pipelineConfig) => pipelineConfig !== null && typeof pipelineConfig === 'object' && pipelineConfig.engineRepo === true
-const samLayerRule = (pipelineConfig) => isEngineRepo(pipelineConfig) ? SAM_ENGINE_LAYER_RULE : SAM_PLAN_RULE
+const isEngineRepository = (pipelineConfig) => pipelineConfig !== null && typeof pipelineConfig === 'object' && pipelineConfig.engineRepo === true
+const samLayerRule = (pipelineConfig) => isEngineRepository(pipelineConfig) ? SAM_ENGINE_LAYER_RULE : SAM_PLAN_RULE
 // --- engineRules:end ---
 
 // --- safeAbsorbedIssues:start --- (pure & self-contained — keep extractable by the consuming project's tests)
@@ -2535,7 +2535,7 @@ function probeCommands({ wtPath: worktreePath, issue: issueNumber, pluginRoot: p
 // `lines`: the command prints exactly one line, PLUGIN-VERSION:<version> or PLUGIN-VERSION-ERROR:<cause>.
 // The reason never holds the root path (a local path pasted into GitHub is refused by the scrub hook): the
 // path travels in the result's own `pluginRoot` field.
-function pluginVersionCmd(pluginRootPath) {
+function pluginVersionCommand(pluginRootPath) {
   const q = (x) => `'${String(x).split("'").join("'\\''")}'`
   const js = 'try{const v=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).version;' +
     'console.log(typeof v==="string"&&v?"PLUGIN-VERSION:"+v:"PLUGIN-VERSION-ERROR:no-version")}' +
@@ -2622,7 +2622,7 @@ function minPluginVersionVerdict({ engineVersion, minVersion, plugin }) {
 // on another repository than the Lead session's would run under the wrong rules. A script compares the git common dir
 // of the Lead's session root with the run's worktree; the command prints exactly one line, read by the `lines` probe.
 // No model judges. The reason never holds a path (the scrub hook refuses local paths in GitHub text).
-function sessionRootCmd(sessionRootPath, worktreePath) {
+function sessionRootCommand(sessionRootPath, worktreePath) {
   const q = (x) => `'${String(x).split("'").join("'\\''")}'`
   const js = 'try{const cp=require("child_process"),fs=require("fs");' +
     'const d=(p)=>fs.realpathSync(cp.execFileSync("git",["-C",p,"rev-parse","--path-format=absolute","--git-common-dir"],{encoding:"utf8",stdio:["ignore","pipe","ignore"]}).trim());' +
@@ -2753,7 +2753,7 @@ if (probeOnly) {
 // Only when the templates really come from pluginRoot (config.probeRunPath unset, as probeCommands and
 // probeScriptPath resolve them). A reason string on the existing escalate: no new status, agent or seam.
 if (!simulate && pluginRoot && !config.probeRunPath) {
-  const pv = await probe('lines', pluginVersionCmd(pluginRoot), { label: 'plugin-version', noReuse: true, b64: true, onFail: (reason) => ({ probeFailed: reason }) })
+  const pv = await probe('lines', pluginVersionCommand(pluginRoot), { label: 'plugin-version', noReuse: true, b64: true, onFail: (reason) => ({ probeFailed: reason }) })
   if (pv.probeFailed === 'agent-death') return finish(STATUS['provision-died'], { issue, trace })
   const skew = pluginVersionVerdict({ engineVersion: BUILD.version, probeFailed: pv.probeFailed, exit: pv.exit, lines: pv.json && pv.json.lines })
   if (skew && pv.probeFailed) {
@@ -2772,7 +2772,7 @@ if (!simulate && pluginRoot && !config.probeRunPath) {
 // instructions). The Lead passes its session root; same git common dir as the worktree, else escalate before
 // provisioning. A reason on the existing escalate: no new status, agent or seam, no label written.
 if (!simulate && sessionRoot) {
-  const sr = await probe('lines', sessionRootCmd(sessionRoot, wtPath), { label: 'session-root', noReuse: true, b64: true, onFail: (reason) => ({ probeFailed: reason }) })
+  const sr = await probe('lines', sessionRootCommand(sessionRoot, wtPath), { label: 'session-root', noReuse: true, b64: true, onFail: (reason) => ({ probeFailed: reason }) })
   if (sr.probeFailed === 'agent-death') return finish(STATUS['provision-died'], { issue, trace })
   const srv = sessionRootVerdict({ probeFailed: sr.probeFailed, exit: sr.exit, lines: sr.json && sr.json.lines })
   if (srv && sr.probeFailed) {
@@ -3631,7 +3631,7 @@ if (after('dev', entryStage)) {
   const preflightDevelopment = simulate ? null : await preflightProbe('dev', 'dev', [
     '--wt', wtPath, '--issue', String(issue), '--base', baseBranch, '--repo', repository || '',
     '--targets', planTargets.join(' '), '--stamp', String(stamp ?? ''),
-    ...(isEngineRepo(config) ? ['--engine', 'true'] : []),
+    ...(isEngineRepository(config) ? ['--engine', 'true'] : []),
   ])
   if (planFreshnessMode !== 'off' && planTargets.length > 0) {
     const planStaleFilesProbe = async () => {
@@ -3707,7 +3707,7 @@ if (after('dev', entryStage)) {
   const closesLine = [epicReference, ...samAbsorbedIssues.map(n => 'Closes #' + n)].join(', ')
   // R2 (#76): deterministic — the fixture acceptance item is decided here, never by Nick's judgment.
   // Engine-repo only (#163): the fixtures dir and replay script it names exist only in this plugin's repo.
-  const r2Applies = isEngineRepo(config) && issueType === 'bug' && safePlanTargets(samTargetFiles).some(p => p.startsWith('workflows/'))
+  const r2Applies = isEngineRepository(config) && issueType === 'bug' && safePlanTargets(samTargetFiles).some(p => p.startsWith('workflows/'))
   const r2Note = r2Applies
     ? `R2 fixture rule (issue #${issue}): add this acceptance item to the checklist verbatim — "fixture \`fixtures/incidents/${issue}-*.json\` present, replayed red on base and green on the branch by \`scripts/run-offline.cjs\`". If no such fixture exists in the branch, run \`gh issue edit ${issue} -R ${repository || '<repo>'} --add-label no-fixture\` and use \`Refs #${issue}\` instead of \`Closes #${issue}\` on the first line of the PR body (the issue then stays open). `
     : ''

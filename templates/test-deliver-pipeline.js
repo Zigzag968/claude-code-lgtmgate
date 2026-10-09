@@ -2434,7 +2434,7 @@ await testCase('T272 probeCommands() extracted from source markers (#82)', async
         eq('a non-empty tick sends the short command tickIdsArgv(pr, tickIds) (#257)', source.includes('tickIdsArgv(pr, tickIds)'), true),
         eq('the empty tick keeps the text mode: the block as --text-b64 base64Utf8(rendered)', source.includes("'--text-b64', base64Utf8(rendered)"), true),
         eq('the tick no longer sends the block as --text', source.includes("'--mode', 'tick', '--text', rendered"), false),
-        eq('the plugin-version probe does not gate its command (a stale root must still answer)', source.split('\n').filter((l) => l.includes("probe('lines', pluginVersionCmd(pluginRoot)")).every((l) => !l.includes('gateCmd')), true),
+        eq('the plugin-version probe does not gate its command (a stale root must still answer)', source.split('\n').filter((l) => l.includes("probe('lines', pluginVersionCommand(pluginRoot)")).every((l) => !l.includes('gateCmd')), true),
         eq('preflightProbe does not gate its command', source.slice(source.indexOf('async function preflightProbe'), source.indexOf('async function prWrite')).includes('gateCmd'), false),
       ]
     })(),
@@ -2486,7 +2486,7 @@ const pluginVersionPieces = () => {
   const m = /const BUILD = \{[^}]*\bversion: '([^']+)'/.exec(source)
   if (!block || !m) return { missing: true, src: source }
   // minPluginVersionVerdict (#233) is undefined until the engine has it: the T195 cases never depend on it
-  const fns = new Function(block + '\nreturn { pluginVersionCmd, pluginVersionVerdict, pluginVersionOrder, minPluginVersionVerdict: typeof minPluginVersionVerdict === "function" ? minPluginVersionVerdict : undefined }')()
+  const fns = new Function(block + '\nreturn { pluginVersionCommand, pluginVersionVerdict, pluginVersionOrder, minPluginVersionVerdict: typeof minPluginVersionVerdict === "function" ? minPluginVersionVerdict : undefined }')()
   return { ...fns, src: source, V: m[1] }
 }
 await testCase('T195a pluginRoot of the engine\'s own version passes unchanged (#195)', async () => {
@@ -2644,8 +2644,8 @@ await testCase('T195d the check runs first, only when the templates come from pl
   const body = source.slice(indexGate, source.indexOf('\n}\n', indexGate))
   const checks = [
     eq('gate precedes the provision probe', indexGate < indexProvision, true),
-    eq('gate reads the manifest through probe(lines) with noReuse', body.includes("probe('lines', pluginVersionCmd(pluginRoot), { label: 'plugin-version', noReuse: true, b64: true"), true),
-    eq('the session-root probe is delivered as --cmd-b64 too (#338)', source.includes("probe('lines', sessionRootCmd(sessionRoot, wtPath), { label: 'session-root', noReuse: true, b64: true"), true),
+    eq('gate reads the manifest through probe(lines) with noReuse', body.includes("probe('lines', pluginVersionCommand(pluginRoot), { label: 'plugin-version', noReuse: true, b64: true"), true),
+    eq('the session-root probe is delivered as --cmd-b64 too (#338)', source.includes("probe('lines', sessionRootCommand(sessionRoot, wtPath), { label: 'session-root', noReuse: true, b64: true"), true),
     eq('gate escalates on the existing status', body.includes("finish(STATUS['escalate'], { reason: skew.reason"), true),
     eq('the root path travels in its own result field, not in the reason', body.includes("{ reason: skew.reason, issue, pluginRoot, trace }"), true),
     eq('a failure of the probe itself keeps the provision-failed signature', body.includes("reason: 'provision-failed', issue, missing: [], exitCode: null, probeReason: pv.probeFailed, probeHint: PROBE_REASON_HINTS[pv.probeFailed]"), true),
@@ -2662,7 +2662,7 @@ const sessionRootPieces = () => {
   if (!source) return null
   const block = extractBetween(source, '// --- sessionRoot:start ---', '// --- sessionRoot:end ---')
   if (!block) return { missing: true, src: source }
-  const fns = new Function(block + '\nreturn { sessionRootCmd, sessionRootVerdict }')()
+  const fns = new Function(block + '\nreturn { sessionRootCommand, sessionRootVerdict }')()
   return { ...fns, src: source }
 }
 await testCase('T177a the verdict on the real command: same repository passes, another one is session-root-mismatch, fail closed otherwise (#177)', async () => {
@@ -2672,7 +2672,7 @@ await testCase('T177a the verdict on the real command: same repository passes, a
     return { ok: true }
   }
   if (sp.missing) return { ok: false, msg: 'sessionRoot:start/:end markers not found in pipeline source' }
-  const { sessionRootCmd, sessionRootVerdict } = sp
+  const { sessionRootCommand, sessionRootVerdict } = sp
   const cp = process.getBuiltinModule('child_process')
   const fsm = process.getBuiltinModule('fs')
   const osm = process.getBuiltinModule('os')
@@ -2688,7 +2688,7 @@ await testCase('T177a the verdict on the real command: same repository passes, a
     const real = (sessionRoot, worktreePath) => {
       let out = ''
       let exit = 0
-      try { out = cp.execFileSync('sh', ['-c', sessionRootCmd(sessionRoot, worktreePath)], { encoding: 'utf8' }) } catch (error) { exit = error.status || 1 }
+      try { out = cp.execFileSync('sh', ['-c', sessionRootCommand(sessionRoot, worktreePath)], { encoding: 'utf8' }) } catch (error) { exit = error.status || 1 }
       return { exit, lines: out.split('\n').filter((l) => l !== '') }
     }
     const same = real(repositoryA, worktreeA)
@@ -2734,7 +2734,7 @@ await testCase('T177b the gate runs before provisioning and any agent call, only
     eq('gate follows the plugin-version gate', indexPlugin >= 0 && indexPlugin < indexGate, true),
     eq('gate precedes the provision probe', indexGate < indexProvision, true),
     eq('gate precedes the entryStage re-check', indexRecheck > indexGate, true),
-    eq('gate reads through probe(lines) with noReuse', body.includes("probe('lines', sessionRootCmd(sessionRoot, wtPath), { label: 'session-root', noReuse: true"), true),
+    eq('gate reads through probe(lines) with noReuse', body.includes("probe('lines', sessionRootCommand(sessionRoot, wtPath), { label: 'session-root', noReuse: true"), true),
     eq('gate escalates on the existing status with the verdict reason', body.includes("finish(STATUS['escalate'], { reason: srv.reason"), true),
     eq('gate writes no label and makes no agent call', body.includes('updateStatus') || body.includes('prWrite') || body.includes('agent('), false),
     eq('the reason is named in the source', source.includes("code: 'session-root-mismatch'"), true),
@@ -2872,7 +2872,7 @@ await testCase('T9233d the minPluginVersion check runs before Setup and before e
   const indexIf = source.indexOf('if (tooOld)', indexCall)
   const body = indexIf < 0 ? '' : source.slice(indexCall, source.indexOf('\n', indexIf))
   const indexSetup = source.indexOf("phase('Setup')")
-  const indexVersionProbe = source.indexOf("await probe('lines', pluginVersionCmd(")
+  const indexVersionProbe = source.indexOf("await probe('lines', pluginVersionCommand(")
   const indexProvision = source.indexOf("await probe('provision',")
   const indexProceed = source.indexOf('invalid-proceedThrough: ${JSON.stringify(proceedThrough)}')
   const checks = [
@@ -3989,14 +3989,14 @@ await testCase('T77p consumer neutrality: no engine prompt names VISION.md, ARCH
 // status/agent/hook/seam question, Nick's R2 item naming fixtures/incidents) reach a run only when the target
 // repo's own config says it IS this plugin: `engineRepo: true`. Any other value or absence is a consumer.
 const T163_ENGINE_WORDS = ['simulate', 'seam', 'agent()', 'fixtures/incidents']
-// isEngineRepo / samLayerRule, extracted from the engine's pure `engineRules` block (null when the suite does
+// isEngineRepository / samLayerRule, extracted from the engine's pure `engineRules` block (null when the suite does
 // not get the pipeline source). Sam's prompt is not observable in simulate mode, so the Sam-side cases are
 // source-anchored, as T77g, T77l, T77n and T77p are.
 const t163Block = () => {
   const source = SUITE_ARGS.fpSource
   if (!source) return null
   const block = extractBetween(source, '// --- engineRules:start ---', '// --- engineRules:end ---')
-  return block ? new Function(block + '\nreturn { isEngineRepo, samLayerRule }')() : null
+  return block ? new Function(block + '\nreturn { isEngineRepository, samLayerRule }')() : null
 }
 await testCase('T163a consumer Sam prompt: no engineRepo flag -> neutral PLAN RULE, none of simulate, seam, agent(), fixtures/incidents', async () => {
   const source = SUITE_ARGS.fpSource

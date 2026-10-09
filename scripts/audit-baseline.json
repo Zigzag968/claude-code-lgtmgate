@@ -3,7 +3,6 @@
     "max-lines": 1
   },
   "workflows/deliver-pipeline.js": {
-    "max-lines": 1,
-    "unicorn/name-replacements": 3
+    "max-lines": 1
   }
 }

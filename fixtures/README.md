@@ -52,7 +52,7 @@ increasing offsets). A label repeats only when its `calls` entry is an array. An
   the run fails closed before any agent call (`probeReason: probe-run-not-found`, see `82-provision-no-probe-run-path`).
   A fixture with `args.pluginRoot` and no `config.probeRunPath` also answers `probe-<issue>-lines-plugin-version-r0`
   (#195: the plugin-version check runs before provisioning; stdout `PLUGIN-VERSION:<version>`, command built by
-  `pluginVersionCmd(pluginRoot)`, see `195-stale-plugin-root`). The token `@@ENGINE_VERSION@@`, anywhere in a fixture,
+  `pluginVersionCommand(pluginRoot)`, see `195-stale-plugin-root`). The token `@@ENGINE_VERSION@@`, anywhere in a fixture,
   resolves to the engine's `BUILD` version (refused against an engine with none): use it in that answer's `json=` and in
   any `expect` naming the engine, so the fixture survives the version bump at merge.
   A `verify` answer of `VERIFY fail reason=no-attestation` reproduces a session whose attest hook is not enabled

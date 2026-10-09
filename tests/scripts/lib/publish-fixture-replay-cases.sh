@@ -56,7 +56,7 @@ const smoke = JSON.parse(fs.readFileSync(path.join(process.env.ROOT, "fixtures/s
 const src = fs.readFileSync(path.join(process.env.ROOT, "workflows/deliver-pipeline.js"), "utf8")
 const blk = src.slice(src.indexOf("// --- pluginVersion:start ---"), src.indexOf("// --- pluginVersion:end ---"))
 const root = "/main/checkout"
-const h = crypto.createHash("sha256").update(new Function(blk + "\nreturn pluginVersionCmd")()(root)).digest("hex")
+const h = crypto.createHash("sha256").update(new Function(blk + "\nreturn pluginVersionCommand")()(root)).digest("hex")
 const VP = "probe-123-lines-plugin-version-r0"
 for (const k of ["line", "verify"]) smoke.calls[VP][k] = smoke.calls[VP][k].split("@@ENGINE_VERSION@@").join("1.0.0-beta.3").replace(/cmd=[0-9a-f]{64}/, "cmd=" + h)
 smoke.args.pluginRoot = root

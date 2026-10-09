@@ -140,7 +140,7 @@ ok=0
 [ -n "$SAN_LINE" ] && [ "$(node -e 'const f = new Function(process.argv[1] + "; return sanitizeProbeToken")(); process.stdout.write(f("PR Ready/Merged:x"))' "$SAN_LINE" 2>/dev/null)" = "PR-Ready-Merged-x" ] && ok=1
 check "[151] sanitizeProbeToken maps 'PR Ready/Merged:x' to 'PR-Ready-Merged-x'" "$ok"
 
-# (f2) #195: the plugin-version check. The REAL pluginVersionCmd runs through the REAL probe-run.cjs (parser `lines`)
+# (f2) #195: the plugin-version check. The REAL pluginVersionCommand runs through the REAL probe-run.cjs (parser `lines`)
 # against real manifests, and the PROBE line it prints feeds the REAL pluginVersionVerdict. The roots carry a space and a
 # single quote on purpose (quoting). The engine version is read from the `const BUILD` line, never hardcoded.
 PV_BLK="$(sed -n '/^\/\/ --- pluginVersion:start ---/,/^\/\/ --- pluginVersion:end ---/p' "$ROOT/workflows/deliver-pipeline.js")"
@@ -155,8 +155,8 @@ pv_verdict() {
   node -e '
     const { spawnSync } = require("child_process")
     const [blk, pr, root, engine, out] = process.argv.slice(1)
-    const { pluginVersionCmd, pluginVersionVerdict } = new Function(blk + "\nreturn { pluginVersionCmd, pluginVersionVerdict }")()
-    const r = spawnSync("node", [pr, "--label", "pv", "--round", "0", "--out", out, "--parser", "lines", "--no-reuse", "--cmd", pluginVersionCmd(root)], { encoding: "utf8" })
+    const { pluginVersionCommand, pluginVersionVerdict } = new Function(blk + "\nreturn { pluginVersionCommand, pluginVersionVerdict }")()
+    const r = spawnSync("node", [pr, "--label", "pv", "--round", "0", "--out", out, "--parser", "lines", "--no-reuse", "--cmd", pluginVersionCommand(root)], { encoding: "utf8" })
     const m = /^PROBE name=lines exit=(\d+) .* json=(.*)$/m.exec(r.stdout || "")
     if (!m) { process.stdout.write("no-probe-line|" + r.stdout + r.stderr); process.exit(0) }
     const v = pluginVersionVerdict({ engineVersion: engine, pluginRoot: root, exit: Number(m[1]), lines: JSON.parse(m[2]).lines })
@@ -194,7 +194,7 @@ esac
 check "[195] a manifest without a version fails closed as plugin-version-unreadable (no-version)" "$ok"
 
 # (f3) #338: the plugin-version command reaches the probe as ONE bare base64 token (--cmd-b64), never as nested quoting a
-# model must re-type. The REAL probeCommands + base64Utf8 of the engine build the run line for the REAL pluginVersionCmd of a
+# model must re-type. The REAL probeCommands + base64Utf8 of the engine build the run line for the REAL pluginVersionCommand of a
 # root carrying a space and a single quote; the line runs through sh against the REAL probe-run.cjs.
 PB_BLK="$(sed -n '/^\/\/ --- probeCommands:start ---/,/^\/\/ --- probeCommands:end ---/p;/^\/\/ --- base64Utf8:start ---/,/^\/\/ --- base64Utf8:end ---/p' "$ROOT/workflows/deliver-pipeline.js")"
 PB_WT="$WORK/pb wt"
@@ -204,15 +204,15 @@ pb_line() {
   node -e '
     const crypto = require("crypto")
     const [blk, pv, pr, root, wt, mode] = process.argv.slice(1)
-    const f = new Function(blk + "\n" + pv + "\nreturn { probeCommands, base64Utf8, pluginVersionCmd }")()
-    const cmd = f.pluginVersionCmd(root)
+    const f = new Function(blk + "\n" + pv + "\nreturn { probeCommands, base64Utf8, pluginVersionCommand }")()
+    const cmd = f.pluginVersionCommand(root)
     const want = crypto.createHash("sha256").update(cmd).digest("hex")
     const o = { wtPath: wt, issue: 338, probeRunPath: pr, name: "lines", cmd, label: "pb", round: 0, noReuse: true, expectCmd: want }
     if (mode === "b64") o.cmdB64 = f.base64Utf8(cmd)
     process.stdout.write(f.probeCommands(o).run)
   ' "$PB_BLK" "$PV_BLK" "$PR" "$1" "$PB_WT" "$2" 2>/dev/null
 }
-pb_cmd() { node -e 'const f = new Function(process.argv[1] + "\nreturn pluginVersionCmd")(); process.stdout.write(f(process.argv[2]))' "$PV_BLK" "$1" 2>/dev/null; }
+pb_cmd() { node -e 'const f = new Function(process.argv[1] + "\nreturn pluginVersionCommand")(); process.stdout.write(f(process.argv[2]))' "$PV_BLK" "$1" 2>/dev/null; }
 PB_LINE="$(pb_line "$PV_ROOTS/same" b64)"
 PB_CMD="$(pb_cmd "$PV_ROOTS/same")"
 PB_TOK="${PB_LINE##* --cmd-b64 }"
