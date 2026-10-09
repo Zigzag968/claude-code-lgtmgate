@@ -1,7 +1,4 @@
 {
-  "templates/pr-body-splice.cjs": {
-    "unicorn/name-replacements": 16
-  },
   "templates/test-deliver-pipeline.js": {
     "max-lines": 1
   },
@@ -22,8 +19,6 @@
   },
   "workflows/deliver-pipeline.js": {
     "max-lines": 1,
-    "max-lines-per-function": 2,
-    "no-shadow": 22,
-    "unicorn/name-replacements": 145
+    "unicorn/name-replacements": 8
   }
 }

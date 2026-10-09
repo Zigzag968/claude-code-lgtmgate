@@ -51,20 +51,20 @@ function composeDecisionLogBlock(entries) {
 // alone on its line, INDENTED (a block whose end marker lost its column: the column-0 reading found no end and appended a
 // second block on every run, lgtmgate#164). A copy of the markers inside a fenced/indented example never starts a block
 // (column 0 only), so the T44 shape is untouched. String operations for the fallback, no new regex.
-function decisionLogSpan(src) {
+function decisionLogSpan(source) {
   let s = -1
   let m
   DECISION_LOG_START_RE.lastIndex = 0
-  while ((m = DECISION_LOG_START_RE.exec(src))) s = m.index
+  while ((m = DECISION_LOG_START_RE.exec(source))) s = m.index
   if (s === -1) return null
-  let e = -1
-  let eLen = DECISION_LOG_END.length
+  let endIndex = -1
+  let endLength = DECISION_LOG_END.length
   DECISION_LOG_END_RE.lastIndex = 0
-  while ((m = DECISION_LOG_END_RE.exec(src))) { e = m.index; eLen = m[0].length }
-  if (e > s) return { s, e, eLen }
-  for (let at = src.indexOf(DECISION_LOG_END, s); at !== -1; at = src.indexOf(DECISION_LOG_END, at + 1)) {
-    const lineStart = src.lastIndexOf('\n', at - 1) + 1
-    if (lineStart > s && src.slice(lineStart, at).trim() === '') return { s, e: at, eLen: DECISION_LOG_END.length }
+  while ((m = DECISION_LOG_END_RE.exec(source))) { endIndex = m.index; endLength = m[0].length }
+  if (endIndex > s) return { s, e: endIndex, eLen: endLength }
+  for (let at = source.indexOf(DECISION_LOG_END, s); at !== -1; at = source.indexOf(DECISION_LOG_END, at + 1)) {
+    const lineStart = source.lastIndexOf('\n', at - 1) + 1
+    if (lineStart > s && source.slice(lineStart, at).trim() === '') return { s, e: at, eLen: DECISION_LOG_END.length }
   }
   return null
 }
@@ -72,22 +72,22 @@ function decisionLogSpan(src) {
 // can hold several (lgtmgate#164, PR #146: three, each with an indented end marker). An earlier block runs from a column-0
 // start marker to the first end marker alone on its line (column 0 or indented) before the next start marker; a start with no
 // such end is not a block and is left alone. String operations only.
-function decisionLogSpans(src) {
-  const last = decisionLogSpan(src)
+function decisionLogSpans(source) {
+  const last = decisionLogSpan(source)
   if (last === null) return []
   const starts = []
-  for (let at = src.indexOf(DECISION_LOG_START); at !== -1 && at < last.s; at = src.indexOf(DECISION_LOG_START, at + 1)) {
-    const nl = src.indexOf('\n', at)
-    if ((at === 0 || src[at - 1] === '\n') && src.slice(at + DECISION_LOG_START.length, nl === -1 ? src.length : nl).trim() === '') starts.push(at)
+  for (let at = source.indexOf(DECISION_LOG_START); at !== -1 && at < last.s; at = source.indexOf(DECISION_LOG_START, at + 1)) {
+    const nl = source.indexOf('\n', at)
+    if ((at === 0 || source[at - 1] === '\n') && source.slice(at + DECISION_LOG_START.length, nl === -1 ? source.length : nl).trim() === '') starts.push(at)
   }
   const spans = []
   starts.forEach((s, k) => {
     const bound = k + 1 < starts.length ? starts[k + 1] : last.s
-    for (let at = src.indexOf(DECISION_LOG_END, s); at !== -1 && at < bound; at = src.indexOf(DECISION_LOG_END, at + 1)) {
-      const lineStart = src.lastIndexOf('\n', at - 1) + 1
-      const nl = src.indexOf('\n', at)
-      const lineEnd = nl === -1 ? src.length : nl
-      if (lineStart > s && src.slice(lineStart, at).trim() === '' && src.slice(at + DECISION_LOG_END.length, lineEnd).trim() === '') {
+    for (let at = source.indexOf(DECISION_LOG_END, s); at !== -1 && at < bound; at = source.indexOf(DECISION_LOG_END, at + 1)) {
+      const lineStart = source.lastIndexOf('\n', at - 1) + 1
+      const nl = source.indexOf('\n', at)
+      const lineEnd = nl === -1 ? source.length : nl
+      if (lineStart > s && source.slice(lineStart, at).trim() === '' && source.slice(at + DECISION_LOG_END.length, lineEnd).trim() === '') {
         spans.push({ s, e: at, eLen: lineEnd - at })
         break
       }
@@ -98,10 +98,10 @@ function decisionLogSpans(src) {
 // The round lines (`- round ...`, trimmed) the blocks of `body` hold, those of every block in body order; [] when there is no
 // block. Pure.
 function decisionLogEntries(body) {
-  const src = String(body ?? '')
+  const source = String(body ?? '')
   const out = []
-  for (const span of decisionLogSpans(src)) {
-    for (const l of src.slice(span.s + DECISION_LOG_START.length, span.e).split('\n')) if (l.trim().startsWith('- round ')) out.push(l.trim())
+  for (const span of decisionLogSpans(source)) {
+    for (const l of source.slice(span.s + DECISION_LOG_START.length, span.e).split('\n')) if (l.trim().startsWith('- round ')) out.push(l.trim())
   }
   return out
 }
@@ -112,14 +112,14 @@ function decisionLogEntries(body) {
 // PRs). Pure — extracted from upsertDecisionLog (issue #87) so the SAME splice algorithm can be embedded (via .toString())
 // into the single deterministic shell chain recordDecision runs, instead of being hand-duplicated there.
 function spliceDecisionLogBlock(body, block) {
-  const src = String(body ?? '')
-  const spans = decisionLogSpans(src)
-  if (spans.length === 0) return (src.endsWith('\n') ? src : src + '\n') + '\n' + block + '\n'
-  let out = src
-  for (let i = spans.length - 1; i >= 0; i--) {
-    const { s, e, eLen } = spans[i]
+  const source = String(body ?? '')
+  const spans = decisionLogSpans(source)
+  if (spans.length === 0) return (source.endsWith('\n') ? source : source + '\n') + '\n' + block + '\n'
+  let out = source
+  for (let index = spans.length - 1; index >= 0; index--) {
+    const { s, e, eLen } = spans[index]
     const to = e + eLen
-    out = i === spans.length - 1 ? out.slice(0, s) + block + out.slice(to) : out.slice(0, s) + out.slice(out[to] === '\n' ? to + 1 : to)
+    out = index === spans.length - 1 ? out.slice(0, s) + block + out.slice(to) : out.slice(0, s) + out.slice(out[to] === '\n' ? to + 1 : to)
   }
   return out
 }
@@ -147,10 +147,10 @@ const ACCEPTANCE_END = '<!-- acceptance:end -->'
 function spliceAcceptanceBlock(body, checklist) {
   const list = String(checklist ?? '').trim()
   if (!list) return null
-  const src = String(body ?? '')
-  const span = acceptanceSpan(src)
+  const source = String(body ?? '')
+  const span = acceptanceSpan(source)
   if (span === null) return null
-  return src.slice(0, span.from) + span.eol + list.split('\r\n').join('\n').split('\n').join(span.eol) + span.eol + src.slice(span.to)
+  return source.slice(0, span.from) + span.eol + list.split('\r\n').join('\n').split('\n').join(span.eol) + span.eol + source.slice(span.to)
 }
 // The fence a line leaves open after `fence` (the fence open before it, '' for none): a line opening with 3+ backticks or
 // tildes (up to 3 spaces of indent, no backtick in the info string of a backtick fence) opens one, a line closing it
@@ -167,26 +167,26 @@ function fenceAfter(line, fence) {
 // line break; `to`: the start of the end marker line; `eol`: the line break the body puts after the start marker, "\r\n"
 // or "\n"): the LAST marker pair outside a fenced code block (see fenceAfter), null when a marker is missing or the end
 // does not follow the start. String operations only.
-function acceptanceSpan(src) {
+function acceptanceSpan(source) {
   let s = -1
   let sEnd = -1
-  let e = -1
+  let endIndex = -1
   let fence = ''
   let pos = 0
-  for (const raw of src.split('\n')) {
+  for (const raw of source.split('\n')) {
     const line = raw.endsWith('\r') ? raw.slice(0, -1) : raw
     const next = fenceAfter(line, fence)
     if (fence === '' && next === '') {
       let end = line.length
       while (end > 0 && (line[end - 1] === ' ' || line[end - 1] === '\t')) end -= 1
       const marker = line.slice(0, end)
-      if (marker === ACCEPTANCE_START) { s = pos; sEnd = pos + line.length } else if (marker === ACCEPTANCE_END) e = pos
+      if (marker === ACCEPTANCE_START) { s = pos; sEnd = pos + line.length } else if (marker === ACCEPTANCE_END) endIndex = pos
     }
     fence = next
     pos += raw.length + 1
   }
-  if (s === -1 || e === -1 || e <= s) return null
-  return { from: sEnd, to: e, eol: src.startsWith('\r\n', sEnd) ? '\r\n' : '\n' }
+  if (s === -1 || endIndex === -1 || endIndex <= s) return null
+  return { from: sEnd, to: endIndex, eol: source.startsWith('\r\n', sEnd) ? '\r\n' : '\n' }
 }
 // The lines of the acceptance block text `text` (what acceptanceSpan delimits: it opens and closes with a line break):
 // { checkedById: Map id -> ticked, for each `- [ ]` / `- [x]` line carrying a well-formed `<!-- ac:N -->` comment (an id
@@ -222,10 +222,10 @@ function acceptanceBoxes(text) {
 // The ids of the boxes of the acceptance block of `body` that are ticked, ascending (the LAST unfenced marker pair);
 // [] when there is no block. Pure.
 function checkedAcceptanceIds(body) {
-  const src = String(body ?? '')
-  const span = acceptanceSpan(src)
+  const source = String(body ?? '')
+  const span = acceptanceSpan(source)
   if (span === null) return []
-  const { checkedById } = acceptanceBoxes(src.slice(span.from, span.to))
+  const { checkedById } = acceptanceBoxes(source.slice(span.from, span.to))
   return [...checkedById].filter(([, ticked]) => ticked).map(([id]) => id).sort((a, b) => a - b)
 }
 // Ticks the acceptance block by id (#183). Pure. `rendered` is the canonical block (every box open, `<!-- ac:N -->` ids);
@@ -237,8 +237,8 @@ function checkedAcceptanceIds(body) {
 // are the body's. null, like spliceAcceptanceBlock, when `rendered` is blank or a marker is missing. String operations only.
 function tickAcceptanceBlock(body, rendered, tickIds, keepIds) {
   const list = String(rendered ?? '').trim()
-  const src = String(body ?? '')
-  const span = acceptanceSpan(src)
+  const source = String(body ?? '')
+  const span = acceptanceSpan(source)
   if (!list || span === null) return null
   const idOf = (rest) => {
     if (!rest.startsWith('<!-- ac:')) return null
@@ -246,7 +246,7 @@ function tickAcceptanceBlock(body, rendered, tickIds, keepIds) {
     const digits = end > 0 ? rest.slice(8, end).trim() : ''
     return digits !== '' && [...digits].every((c) => c >= '0' && c <= '9') ? Number(digits) : null
   }
-  const { checkedById, foreign } = acceptanceBoxes(src.slice(span.from, span.to))
+  const { checkedById, foreign } = acceptanceBoxes(source.slice(span.from, span.to))
   const tick = Array.isArray(tickIds) ? tickIds : []
   const keep = Array.isArray(keepIds) ? keepIds : []
   const lines = list.split('\r\n').join('\n').split('\n').map((line) => {
@@ -256,7 +256,7 @@ function tickAcceptanceBlock(body, rendered, tickIds, keepIds) {
     const checked = keep.includes(id) ? checkedById.get(id) === true : tick.includes(id)
     return checked ? '- [x] ' + line.slice(6) : line
   })
-  return src.slice(0, span.from) + span.eol + [...lines, ...foreign].join(span.eol) + span.eol + src.slice(span.to)
+  return source.slice(0, span.from) + span.eol + [...lines, ...foreign].join(span.eol) + span.eol + source.slice(span.to)
 }
 
 // Post-write byte/marker guard (issue #87) — protects a PR body read-modify-write against a
@@ -265,9 +265,9 @@ function tickAcceptanceBlock(body, rendered, tickIds, keepIds) {
 // byte length AND still carry both acceptance-block markers. Scoped to the acceptance block
 // (the actual content lost in the #87 incident), not the decision-log markers the workflow
 // itself owns and always regenerates correctly.
-function bodyWriteGuardOk(preLen, newBody) {
+function bodyWriteGuardOk(preLength, newBody) {
   const b = String(newBody ?? '')
-  if (!(b.length >= preLen * 0.9)) return false
+  if (!(b.length >= preLength * 0.9)) return false
   if (!b.includes('<!-- acceptance:start -->')) return false
   if (!b.includes('<!-- acceptance:end -->')) return false
   return true
@@ -285,14 +285,14 @@ function stripOneTrailingNewline(s) {
 // absent, 5 = an id has no box in the block, 6 = an id is a `[human-gate]` box. Every id is validated before anything
 // is changed. String operations only.
 function tickIdsInBody(body, ids) {
-  const src = String(body ?? '')
-  const span = acceptanceSpan(src)
+  const source = String(body ?? '')
+  const span = acceptanceSpan(source)
   if (span === null) return { code: 3 }
   const want = Array.isArray(ids) ? ids : []
   const boxes = new Map()
   let fence = ''
   let pos = span.from
-  for (const raw of src.slice(span.from, span.to).split('\n')) {
+  for (const raw of source.slice(span.from, span.to).split('\n')) {
     const l = raw.endsWith('\r') ? raw.slice(0, -1) : raw
     const next = fenceAfter(l, fence)
     const fenced = fence !== '' || next !== ''
@@ -315,7 +315,7 @@ function tickIdsInBody(body, ids) {
   }
   for (const id of want) if (!boxes.has(id)) return { code: 5 }
   for (const id of want) if (boxes.get(id).some((b) => b.gate)) return { code: 6 }
-  const chars = src.split('')
+  const chars = source.split('')
   for (const id of want) for (const b of boxes.get(id)) chars[b.at] = 'x'
   return { out: chars.join('') }
 }
@@ -326,9 +326,9 @@ function cli(argv) {
     const pre = fs.readFileSync(argv[1], 'utf8')
     const parts = String(argv[3] ?? '').split(',')
     if (parts.length === 0 || parts.some((p) => p === '' || ![...p].every((d) => d >= '0' && d <= '9'))) return 2
-    const res = tickIdsInBody(pre, parts.map(Number))
-    if (res.code !== undefined) return res.code
-    fs.writeFileSync(argv[2], res.out)
+    const result = tickIdsInBody(pre, parts.map(Number))
+    if (result.code !== undefined) return result.code
+    fs.writeFileSync(argv[2], result.out)
     return 0
   }
   if (mode === 'splice') {
@@ -367,9 +367,9 @@ function cli(argv) {
     return 0
   }
   if (mode === 'guard') {
-    const preLen = Number(argv[1])
+    const preLength = Number(argv[1])
     const post = fs.readFileSync(argv[2], 'utf8')
-    return bodyWriteGuardOk(preLen, post) ? 0 : 1
+    return bodyWriteGuardOk(preLength, post) ? 0 : 1
   }
   return 2
 }
