@@ -150,7 +150,7 @@ let preflightFixPromptPreview = null   // #132 — simulate-only, same idiom as 
 // provisionCmdPreview (#72) — same simulate-only idiom as nickPromptPreview above: lets the
 // flow tests assert the composed provisioning command (notably PROVISION_ENV_SYMLINK) without
 // exposing it outside simulate runs.
-let provisionCmdPreview = null
+let provisionCommandPreview = null
 // #110: set by callAgent when an agent call stayed cut off by a classifier outage past its retry
 // bound; finish() then names the cause on the resulting `*-died` status.
 let classifierOutageDeath = false
@@ -165,7 +165,7 @@ let specificsOversize = null
 // targetFiles for Nick and Morgan (lanesDev), reported on finish(); declared before `const finish` like specificsPayload.
 let lanesFound = []
 let lanesSam = []
-let lanesDev = []
+let lanesDevelopment = []
 let lanesReport = null
 let lanesUnresolved = false
 let retiredKeyPath = null
@@ -205,15 +205,15 @@ const STATUS = Object.freeze({
   'ready-pending-human': { status: 'ready-pending-human', resumable: true },
   'ready': { status: 'ready' },
 })
-const finish = (def, extra = {}) => ({ buildStamp: BUILD_STAMP, ...(simulate ? { nickPromptPreview, provisionCmdPreview, preflightFixPromptPreview, prBodyPreview } : {}),
+const finish = (outcome, extra = {}) => ({ buildStamp: BUILD_STAMP, ...(simulate ? { nickPromptPreview, provisionCmdPreview: provisionCommandPreview, preflightFixPromptPreview, prBodyPreview } : {}),
   ...(boxesMapped ? { boxes: boxesMapped } : {}),
   ...(specificsLine ? { specifics: specificsLine } : {}),
   ...(specificsOversize ? { specificsOversize } : {}),
   ...(Array.isArray(lanesReport) && lanesReport.length > 0 ? { lanes: lanesReport } : {}),
   ...(lanesUnresolved ? { lanesUnresolved: true } : {}),
   ...(retiredKeyPath ? { retiredKeyPath } : {}),
-  ...(classifierOutageDeath && def.status.endsWith('-died')
-    ? { reason: 'classifier-outage: resume with resumeFromRunId' } : {}), ...def, ...extra })
+  ...(classifierOutageDeath && outcome.status.endsWith('-died')
+    ? { reason: 'classifier-outage: resume with resumeFromRunId' } : {}), ...outcome, ...extra })
 
 const argsIn = (typeof args === 'string' ? JSON.parse(args) : args) || {}
 // The removed scout arg: refuse it before anything else (zero agent call), with the remedy in the message.
@@ -233,12 +233,12 @@ const {
   pluginRoot = null,
   sessionRoot = null,
   projectSpecifics = undefined,
-  lanes: lanesArg = undefined,
+  lanes: lanesArgument = undefined,
   maxPlanAttempts = 2,
   planAudit = undefined,
   planFreshness = undefined,
   branchOverride = undefined,
-  branchPrefix: branchPrefixArg = undefined,
+  branchPrefix: branchPrefixArgument = undefined,
   maxAuditRounds = 2,
   maxAuditRoundsOverrideReason = null,
   architectureDecisionApproved = false,
@@ -260,9 +260,9 @@ if (config === null || typeof config !== 'object' || Array.isArray(config)) {
     `Pass the parsed .claude/pipeline.config.json OBJECT (not a string) as args.config — running on defaults is refused (#13).`)
 }
 // #265 — project specifics: validated once, before Setup and before any agent call (a refusal throws, like the missing config).
-const specificsErr = specificsProblem(specificsSwitchOn(config), projectSpecifics, sha256Hex)
-if (specificsErr) {
-  throw new Error(`projectSpecifics: ${specificsErr}. Pass the stdout of the specifics assembler verbatim as args.projectSpecifics (skills/deliver/SKILL.md §3bis); nothing was injected and no agent ran.`)
+const specificsError = specificsProblem(specificsSwitchOn(config), projectSpecifics, sha256Hex)
+if (specificsError) {
+  throw new Error(`projectSpecifics: ${specificsError}. Pass the stdout of the specifics assembler verbatim as args.projectSpecifics (skills/deliver/SKILL.md §3bis); nothing was injected and no agent ran.`)
 }
 if (projectSpecifics !== undefined && projectSpecifics !== null) {
   const fp = specificsFingerprint(projectSpecifics, sha256Hex)
@@ -271,7 +271,7 @@ if (projectSpecifics !== undefined && projectSpecifics !== null) {
   specificsOversize = fp.oversize.length > 0 ? fp.oversize : null
   lanesFound = specificsLanesFound(projectSpecifics)
 }
-if (lanesArg !== undefined && lanesArg !== null && (!Array.isArray(lanesArg) || lanesArg.some((n) => typeof n !== 'string'))) {
+if (lanesArgument !== undefined && lanesArgument !== null && (!Array.isArray(lanesArgument) || lanesArgument.some((n) => typeof n !== 'string'))) {
   throw new Error('Invalid arg: lanes must be an array of lane names (the `lanes` of the previous result)')
 }
 if (!['auto', 'semi', 'manual'].includes(mode)) throw new Error(`Invalid mode: ${mode}`)
@@ -336,17 +336,17 @@ if (auditBudgetOverridden && !auditBudgetOverrideReason) {
 // #70 — gates HARD preflight check 1 (see preflightPrompt below). ENUM, never interpolated:
 // the value only SELECTS a fixed literal check line, so it is NOT part of the
 // TRUSTED-OPERATOR raw-interpolation surface that preflight.envNote belongs to.
-const envSymlink = config.preflight?.envSymlink ?? 'required'
-if (!['required', 'forbidden', 'ignore'].includes(envSymlink)) {
-  throw new Error(`Invalid preflight.envSymlink: ${JSON.stringify(envSymlink)} (must be 'required' | 'forbidden' | 'ignore')`)
+const environmentSymlink = config.preflight?.envSymlink ?? 'required'
+if (!['required', 'forbidden', 'ignore'].includes(environmentSymlink)) {
+  throw new Error(`Invalid preflight.envSymlink: ${JSON.stringify(environmentSymlink)} (must be 'required' | 'forbidden' | 'ignore')`)
 }
 // models (lgtmgate#161): arg wins per-run over the project default, same `??` idiom as
 // planAudit/planFreshness above. Default 'sonnet' for all three roles; opus (or any model) stays
 // reachable per-run via models.<role>. Theo/Nick are NOT part of this resolution (out of scope).
-const modelsCfg = config.models || {}
-const scoutModel = models.scout ?? modelsCfg.scout ?? 'sonnet'
-const planAuditModel = models.planAudit ?? modelsCfg.planAudit ?? 'sonnet'
-const morganModel = models.morgan ?? modelsCfg.morgan ?? 'sonnet'
+const modelsConfig = config.models || {}
+const scoutModel = models.scout ?? modelsConfig.scout ?? 'sonnet'
+const planAuditModel = models.planAudit ?? modelsConfig.planAudit ?? 'sonnet'
+const morganModel = models.morgan ?? modelsConfig.morgan ?? 'sonnet'
 // Probe-run gate (#80): version of the PROBES registry (the call-site names declared at `const PROBES`).
 const PROBES_VERSION = 2
 if (dryRun) return finish(STATUS['dry-run-ok'], { probesVersion: PROBES_VERSION, issue, mode, entryStage, proceedThrough, planAudit: planAuditEnabled, planFreshness: planFreshnessMode, maxAuditRounds, maxAuditRoundsOverrideReason: auditBudgetOverrideReason || null, maxPlanAmendRounds, models: { scout: scoutModel, planAudit: planAuditModel, morgan: morganModel } })
@@ -384,10 +384,10 @@ if (!branchPrefixConfigured && branchOverrideName === null) {
   trace.push('branch-prefix-fallback-default')
   log(`config.branchPrefix is not set — expectedBranchName defaulted to ${JSON.stringify(expectedBranchName)}. If this project declares a branchPrefix in .claude/pipeline.config.json, verify the caller threads config through unchanged (a top-level branchPrefix arg is always ignored — #232, see branch-prefix-arg-ignored below).`)
 }
-const branchPrefixArgIgnored = typeof branchPrefixArg === 'string' && branchPrefixArg !== '' && branchPrefixArg !== branchPrefix
-if (branchPrefixArgIgnored) {
+const branchPrefixArgumentIgnored = typeof branchPrefixArgument === 'string' && branchPrefixArgument !== '' && branchPrefixArgument !== branchPrefix
+if (branchPrefixArgumentIgnored) {
   trace.push('branch-prefix-arg-ignored')
-  log(`Top-level branchPrefix arg ${JSON.stringify(branchPrefixArg)} is IGNORED (config.branchPrefix ${JSON.stringify(branchPrefix)} wins) — use branchOverride to force a branch name`)
+  log(`Top-level branchPrefix arg ${JSON.stringify(branchPrefixArgument)} is IGNORED (config.branchPrefix ${JSON.stringify(branchPrefix)} wins) — use branchOverride to force a branch name`)
 }
 // #61 — env read is guarded: the Workflow sandbox injects only args/agent/log/phase, so
 // `process` may not exist at all. Under `simulate` the ambient node `process` of
@@ -404,25 +404,25 @@ log(`worktreeRoot: ${worktreeRoot ?? '(unresolved)'} (env=${runtimeEnv.LGTMGATE_
 // checks, no-op gate) to the code repo instead of relying on the invoking cwd. Absent ->
 // gh resolves from the worktree cwd (backward-compatible; the already-done guard then
 // derives the repo from the worktree).
-const repo = config.repo || null
-const prFlag = repo ? ` -R ${repo}` : ''
+const repository = config.repo || null
+const prFlag = repository ? ` -R ${repository}` : ''
 // Sandbox-safe push (#108): SSH (port 22 / agent socket) is blocked in the agent sandbox, HTTPS to
 // github.com:443 through the gh credential helper is not. Exact command, also quoted to the Lead
 // by the delivered-no-pr escalation. `repo` absent -> Nick derives the slug from the origin URL.
-const httpsPushCmdFor = (branch) =>
-  `git -c credential.helper= -c credential.helper='!gh auth git-credential' push https://github.com/${repo || '<owner>/<repo from git remote get-url origin>'}.git refs/heads/${branch}:refs/heads/${branch}`
+const httpsPushCommandFor = (branch) =>
+  `git -c credential.helper= -c credential.helper='!gh auth git-credential' push https://github.com/${repository || '<owner>/<repo from git remote get-url origin>'}.git refs/heads/${branch}:refs/heads/${branch}`
 // A leftover convention-rule key in a consumer config is ignored, traced and handed back for init's migration (#270).
 if (typeof config.conventionsRule === 'string' && config.conventionsRule !== '') { retiredKeyPath = config.conventionsRule; trace.push(`conventionsRule-ignored:${retiredKeyPath}`) }
 const commands = config.commands || {}
-const buildCmd = commands.build || 'build the project'
-const testCmd = commands.test || 'run the unit tests'
-const formatCmd = commands.format || 'format each modified file'
+const buildCommand = commands.build || 'build the project'
+const testCommand = commands.test || 'run the unit tests'
+const formatCommand = commands.format || 'format each modified file'
 const ciChecks = Array.isArray(config.ciChecks) && config.ciChecks.length
   ? config.ciChecks : ['build-and-test']
 const regressionGuard = config.regressionGuard || {}
 const testGlob = regressionGuard.testGlob || ''
-const testFnPattern = regressionGuard.testFnPattern || 'func test'
-const baselineCmd = regressionGuard.baselineCmd || ''
+const testFunctionPattern = regressionGuard.testFnPattern || 'func test'
+const baselineCommand = regressionGuard.baselineCmd || ''
 const provisionLinks = config.provision?.extraLinks || []
 const canonicalStringBan = config.preflight?.canonicalStringBan || []
 // preflight.envNote: free-form, run-specific environment constraints from the Lead (e.g. "the browser
@@ -434,11 +434,11 @@ const canonicalStringBan = config.preflight?.canonicalStringBan || []
 // `commands.test` / `regressionGuard.baselineCmd`: a config value that reaches an agent as
 // authoritative instruction text, never sanitized or escaped by this file. See README.md
 // "How it stays generic" and MAINTAINING.md for the full consumer-facing trust warning.
-const envNote = (config.preflight?.envNote || '').trim()
+const environmentNote = (config.preflight?.envNote || '').trim()
 // Detection, never a control: this changes nothing about whether envNote reaches the agent — it
 // is a forensics trail only, truncated so it cannot duplicate a secret into the run journal or
 // flood it (no hashing primitive is reachable here without a module import, which this slice forbids).
-if (envNote) log(`Preflight: operator ENVIRONMENT NOTE injected (${envNote.length} chars): ${envNote.slice(0, 120)}${envNote.length > 120 ? '…[truncated]' : ''}`)
+if (environmentNote) log(`Preflight: operator ENVIRONMENT NOTE injected (${environmentNote.length} chars): ${environmentNote.slice(0, 120)}${environmentNote.length > 120 ? '…[truncated]' : ''}`)
 // Stack is a property of the repo, not of a run — no per-run arg. Absent -> the audit
 // prompt tells the auditor to infer it from the worktree.
 const auditStack = config.stack || ''
@@ -521,9 +521,9 @@ let acceptanceBlock = ''       // renderChecklist(samAcceptanceItems): the lines
 // ---------------------------------------------------------------------------
 
 const STAGES = ['plan', 'dev', 'review']
-const stageIdx = (s) => STAGES.indexOf(s)
-const reached = (s) => s ? stageIdx(s) : -1
-const after = (stage, entry) => stageIdx(stage) >= stageIdx(entry)
+const stageIndex = (s) => STAGES.indexOf(s)
+const reached = (s) => s ? stageIndex(s) : -1
+const after = (stage, entry) => stageIndex(stage) >= stageIndex(entry)
 
 // gate() — PURE: depends only on mode / proceedThrough / stage / verdict.
 // Returns true when the workflow should pause (early return) at this checkpoint.
@@ -540,8 +540,8 @@ const gate = (stage, verdict = null) => {
   // (`>=`) lets it loop freely. (proceedThrough='plan' must STOP at the plan checkpoint.)
   const authorizedPast =
     stage === 'review'
-      ? reached(proceedThrough) >= stageIdx(stage)
-      : reached(proceedThrough) > stageIdx(stage)
+      ? reached(proceedThrough) >= stageIndex(stage)
+      : reached(proceedThrough) > stageIndex(stage)
   if (authorizedPast) return false
   if (mode === 'manual') return true
   if (stage === 'plan') return true
@@ -561,7 +561,7 @@ const gate = (stage, verdict = null) => {
 // one top-level `export` (the `meta` header) is the invariant now enforced by
 // tests/templates/test-canonical-guards.sh's single-export check.
 const reviewerWindowCandidates = (issues, windowStart, windowEnd) =>
-  (issues || []).filter(i => i && i.createdAt && i.createdAt >= windowStart && i.createdAt <= windowEnd)
+  (issues || []).filter(item => item && item.createdAt && item.createdAt >= windowStart && item.createdAt <= windowEnd)
 
 // Decision log — durable counterpart to the comment-collapse pass above. Pure body composer.
 // --- prBodySplice:start --- (pure & self-contained: templates/pr-body-splice.cjs carries a byte-identical copy, parity-tested)
@@ -585,20 +585,20 @@ function composeDecisionLogBlock(entries) {
 // alone on its line, INDENTED (a block whose end marker lost its column: the column-0 reading found no end and appended a
 // second block on every run, lgtmgate#164). A copy of the markers inside a fenced/indented example never starts a block
 // (column 0 only), so the T44 shape is untouched. String operations for the fallback, no new regex.
-function decisionLogSpan(src) {
+function decisionLogSpan(source) {
   let s = -1
   let m
   DECISION_LOG_START_RE.lastIndex = 0
-  while ((m = DECISION_LOG_START_RE.exec(src))) s = m.index
+  while ((m = DECISION_LOG_START_RE.exec(source))) s = m.index
   if (s === -1) return null
-  let e = -1
-  let eLen = DECISION_LOG_END.length
+  let endIndex = -1
+  let endLength = DECISION_LOG_END.length
   DECISION_LOG_END_RE.lastIndex = 0
-  while ((m = DECISION_LOG_END_RE.exec(src))) { e = m.index; eLen = m[0].length }
-  if (e > s) return { s, e, eLen }
-  for (let at = src.indexOf(DECISION_LOG_END, s); at !== -1; at = src.indexOf(DECISION_LOG_END, at + 1)) {
-    const lineStart = src.lastIndexOf('\n', at - 1) + 1
-    if (lineStart > s && src.slice(lineStart, at).trim() === '') return { s, e: at, eLen: DECISION_LOG_END.length }
+  while ((m = DECISION_LOG_END_RE.exec(source))) { endIndex = m.index; endLength = m[0].length }
+  if (endIndex > s) return { s, e: endIndex, eLen: endLength }
+  for (let at = source.indexOf(DECISION_LOG_END, s); at !== -1; at = source.indexOf(DECISION_LOG_END, at + 1)) {
+    const lineStart = source.lastIndexOf('\n', at - 1) + 1
+    if (lineStart > s && source.slice(lineStart, at).trim() === '') return { s, e: at, eLen: DECISION_LOG_END.length }
   }
   return null
 }
@@ -606,22 +606,22 @@ function decisionLogSpan(src) {
 // can hold several (lgtmgate#164, PR #146: three, each with an indented end marker). An earlier block runs from a column-0
 // start marker to the first end marker alone on its line (column 0 or indented) before the next start marker; a start with no
 // such end is not a block and is left alone. String operations only.
-function decisionLogSpans(src) {
-  const last = decisionLogSpan(src)
+function decisionLogSpans(source) {
+  const last = decisionLogSpan(source)
   if (last === null) return []
   const starts = []
-  for (let at = src.indexOf(DECISION_LOG_START); at !== -1 && at < last.s; at = src.indexOf(DECISION_LOG_START, at + 1)) {
-    const nl = src.indexOf('\n', at)
-    if ((at === 0 || src[at - 1] === '\n') && src.slice(at + DECISION_LOG_START.length, nl === -1 ? src.length : nl).trim() === '') starts.push(at)
+  for (let at = source.indexOf(DECISION_LOG_START); at !== -1 && at < last.s; at = source.indexOf(DECISION_LOG_START, at + 1)) {
+    const nl = source.indexOf('\n', at)
+    if ((at === 0 || source[at - 1] === '\n') && source.slice(at + DECISION_LOG_START.length, nl === -1 ? source.length : nl).trim() === '') starts.push(at)
   }
   const spans = []
   starts.forEach((s, k) => {
     const bound = k + 1 < starts.length ? starts[k + 1] : last.s
-    for (let at = src.indexOf(DECISION_LOG_END, s); at !== -1 && at < bound; at = src.indexOf(DECISION_LOG_END, at + 1)) {
-      const lineStart = src.lastIndexOf('\n', at - 1) + 1
-      const nl = src.indexOf('\n', at)
-      const lineEnd = nl === -1 ? src.length : nl
-      if (lineStart > s && src.slice(lineStart, at).trim() === '' && src.slice(at + DECISION_LOG_END.length, lineEnd).trim() === '') {
+    for (let at = source.indexOf(DECISION_LOG_END, s); at !== -1 && at < bound; at = source.indexOf(DECISION_LOG_END, at + 1)) {
+      const lineStart = source.lastIndexOf('\n', at - 1) + 1
+      const nl = source.indexOf('\n', at)
+      const lineEnd = nl === -1 ? source.length : nl
+      if (lineStart > s && source.slice(lineStart, at).trim() === '' && source.slice(at + DECISION_LOG_END.length, lineEnd).trim() === '') {
         spans.push({ s, e: at, eLen: lineEnd - at })
         break
       }
@@ -632,10 +632,10 @@ function decisionLogSpans(src) {
 // The round lines (`- round ...`, trimmed) the blocks of `body` hold, those of every block in body order; [] when there is no
 // block. Pure.
 function decisionLogEntries(body) {
-  const src = String(body ?? '')
+  const source = String(body ?? '')
   const out = []
-  for (const span of decisionLogSpans(src)) {
-    for (const l of src.slice(span.s + DECISION_LOG_START.length, span.e).split('\n')) if (l.trim().startsWith('- round ')) out.push(l.trim())
+  for (const span of decisionLogSpans(source)) {
+    for (const l of source.slice(span.s + DECISION_LOG_START.length, span.e).split('\n')) if (l.trim().startsWith('- round ')) out.push(l.trim())
   }
   return out
 }
@@ -646,14 +646,14 @@ function decisionLogEntries(body) {
 // PRs). Pure — extracted from upsertDecisionLog (issue #87) so the SAME splice algorithm can be embedded (via .toString())
 // into the single deterministic shell chain recordDecision runs, instead of being hand-duplicated there.
 function spliceDecisionLogBlock(body, block) {
-  const src = String(body ?? '')
-  const spans = decisionLogSpans(src)
-  if (spans.length === 0) return (src.endsWith('\n') ? src : src + '\n') + '\n' + block + '\n'
-  let out = src
-  for (let i = spans.length - 1; i >= 0; i--) {
-    const { s, e, eLen } = spans[i]
+  const source = String(body ?? '')
+  const spans = decisionLogSpans(source)
+  if (spans.length === 0) return (source.endsWith('\n') ? source : source + '\n') + '\n' + block + '\n'
+  let out = source
+  for (let index = spans.length - 1; index >= 0; index--) {
+    const { s, e, eLen } = spans[index]
     const to = e + eLen
-    out = i === spans.length - 1 ? out.slice(0, s) + block + out.slice(to) : out.slice(0, s) + out.slice(out[to] === '\n' ? to + 1 : to)
+    out = index === spans.length - 1 ? out.slice(0, s) + block + out.slice(to) : out.slice(0, s) + out.slice(out[to] === '\n' ? to + 1 : to)
   }
   return out
 }
@@ -681,10 +681,10 @@ const ACCEPTANCE_END = '<!-- acceptance:end -->'
 function spliceAcceptanceBlock(body, checklist) {
   const list = String(checklist ?? '').trim()
   if (!list) return null
-  const src = String(body ?? '')
-  const span = acceptanceSpan(src)
+  const source = String(body ?? '')
+  const span = acceptanceSpan(source)
   if (span === null) return null
-  return src.slice(0, span.from) + span.eol + list.split('\r\n').join('\n').split('\n').join(span.eol) + span.eol + src.slice(span.to)
+  return source.slice(0, span.from) + span.eol + list.split('\r\n').join('\n').split('\n').join(span.eol) + span.eol + source.slice(span.to)
 }
 // The fence a line leaves open after `fence` (the fence open before it, '' for none): a line opening with 3+ backticks or
 // tildes (up to 3 spaces of indent, no backtick in the info string of a backtick fence) opens one, a line closing it
@@ -701,26 +701,26 @@ function fenceAfter(line, fence) {
 // line break; `to`: the start of the end marker line; `eol`: the line break the body puts after the start marker, "\r\n"
 // or "\n"): the LAST marker pair outside a fenced code block (see fenceAfter), null when a marker is missing or the end
 // does not follow the start. String operations only.
-function acceptanceSpan(src) {
+function acceptanceSpan(source) {
   let s = -1
   let sEnd = -1
-  let e = -1
+  let endIndex = -1
   let fence = ''
   let pos = 0
-  for (const raw of src.split('\n')) {
+  for (const raw of source.split('\n')) {
     const line = raw.endsWith('\r') ? raw.slice(0, -1) : raw
     const next = fenceAfter(line, fence)
     if (fence === '' && next === '') {
       let end = line.length
       while (end > 0 && (line[end - 1] === ' ' || line[end - 1] === '\t')) end -= 1
       const marker = line.slice(0, end)
-      if (marker === ACCEPTANCE_START) { s = pos; sEnd = pos + line.length } else if (marker === ACCEPTANCE_END) e = pos
+      if (marker === ACCEPTANCE_START) { s = pos; sEnd = pos + line.length } else if (marker === ACCEPTANCE_END) endIndex = pos
     }
     fence = next
     pos += raw.length + 1
   }
-  if (s === -1 || e === -1 || e <= s) return null
-  return { from: sEnd, to: e, eol: src.startsWith('\r\n', sEnd) ? '\r\n' : '\n' }
+  if (s === -1 || endIndex === -1 || endIndex <= s) return null
+  return { from: sEnd, to: endIndex, eol: source.startsWith('\r\n', sEnd) ? '\r\n' : '\n' }
 }
 // The lines of the acceptance block text `text` (what acceptanceSpan delimits: it opens and closes with a line break):
 // { checkedById: Map id -> ticked, for each `- [ ]` / `- [x]` line carrying a well-formed `<!-- ac:N -->` comment (an id
@@ -756,10 +756,10 @@ function acceptanceBoxes(text) {
 // The ids of the boxes of the acceptance block of `body` that are ticked, ascending (the LAST unfenced marker pair);
 // [] when there is no block. Pure.
 function checkedAcceptanceIds(body) {
-  const src = String(body ?? '')
-  const span = acceptanceSpan(src)
+  const source = String(body ?? '')
+  const span = acceptanceSpan(source)
   if (span === null) return []
-  const { checkedById } = acceptanceBoxes(src.slice(span.from, span.to))
+  const { checkedById } = acceptanceBoxes(source.slice(span.from, span.to))
   return [...checkedById].filter(([, ticked]) => ticked).map(([id]) => id).sort((a, b) => a - b)
 }
 // Ticks the acceptance block by id (#183). Pure. `rendered` is the canonical block (every box open, `<!-- ac:N -->` ids);
@@ -771,8 +771,8 @@ function checkedAcceptanceIds(body) {
 // are the body's. null, like spliceAcceptanceBlock, when `rendered` is blank or a marker is missing. String operations only.
 function tickAcceptanceBlock(body, rendered, tickIds, keepIds) {
   const list = String(rendered ?? '').trim()
-  const src = String(body ?? '')
-  const span = acceptanceSpan(src)
+  const source = String(body ?? '')
+  const span = acceptanceSpan(source)
   if (!list || span === null) return null
   const idOf = (rest) => {
     if (!rest.startsWith('<!-- ac:')) return null
@@ -780,7 +780,7 @@ function tickAcceptanceBlock(body, rendered, tickIds, keepIds) {
     const digits = end > 0 ? rest.slice(8, end).trim() : ''
     return digits !== '' && [...digits].every((c) => c >= '0' && c <= '9') ? Number(digits) : null
   }
-  const { checkedById, foreign } = acceptanceBoxes(src.slice(span.from, span.to))
+  const { checkedById, foreign } = acceptanceBoxes(source.slice(span.from, span.to))
   const tick = Array.isArray(tickIds) ? tickIds : []
   const keep = Array.isArray(keepIds) ? keepIds : []
   const lines = list.split('\r\n').join('\n').split('\n').map((line) => {
@@ -790,7 +790,7 @@ function tickAcceptanceBlock(body, rendered, tickIds, keepIds) {
     const checked = keep.includes(id) ? checkedById.get(id) === true : tick.includes(id)
     return checked ? '- [x] ' + line.slice(6) : line
   })
-  return src.slice(0, span.from) + span.eol + [...lines, ...foreign].join(span.eol) + span.eol + src.slice(span.to)
+  return source.slice(0, span.from) + span.eol + [...lines, ...foreign].join(span.eol) + span.eol + source.slice(span.to)
 }
 
 // Post-write byte/marker guard (issue #87) — protects a PR body read-modify-write against a
@@ -799,9 +799,9 @@ function tickAcceptanceBlock(body, rendered, tickIds, keepIds) {
 // byte length AND still carry both acceptance-block markers. Scoped to the acceptance block
 // (the actual content lost in the #87 incident), not the decision-log markers the workflow
 // itself owns and always regenerates correctly.
-function bodyWriteGuardOk(preLen, newBody) {
+function bodyWriteGuardOk(preLength, newBody) {
   const b = String(newBody ?? '')
-  if (!(b.length >= preLen * 0.9)) return false
+  if (!(b.length >= preLength * 0.9)) return false
   if (!b.includes('<!-- acceptance:start -->')) return false
   if (!b.includes('<!-- acceptance:end -->')) return false
   return true
@@ -821,7 +821,7 @@ const AC_BLOCK_START = '<!-- acceptance:start -->'
 const AC_BLOCK_END = '<!-- acceptance:end -->'
 // Sam's validated entries -> items { id, text, humanGate }. Key order is part of the contract (JSON-compared).
 function numberItems(entries) {
-  return entries.map((e, i) => ({ id: i + 1, text: e.text.trim(), humanGate: e.humanGate === true }))
+  return entries.map((entry, index) => ({ id: index + 1, text: entry.text.trim(), humanGate: entry.humanGate === true }))
 }
 function renderLine(item, withId = true) {
   return `- [ ] ${withId ? `${AC_ID_OPEN}${item.id} --> ` : ''}${item.humanGate ? `${AC_TAG} ` : ''}${item.text}`
@@ -837,9 +837,9 @@ function parseChecklist(text) {
   const lines = String(text ?? '').split('\n').map((l) => (l.endsWith('\r') ? l.slice(0, -1) : l))
   let from = -1
   let to = -1
-  lines.forEach((l, i) => {
+  lines.forEach((l, index) => {
     const t = l.trimEnd()
-    if (t === AC_BLOCK_START) { from = i; to = -1 } else if (t === AC_BLOCK_END && from >= 0 && to < 0) to = i
+    if (t === AC_BLOCK_START) { from = index; to = -1 } else if (t === AC_BLOCK_END && from >= 0 && to < 0) to = index
   })
   const scope = from < 0 ? lines : (to > from ? lines.slice(from + 1, to) : [])
   const items = []
@@ -901,7 +901,7 @@ function onlyHumanGateLines(items, lines) {
 // tick the write probe refused (already { id, item, proof }); with `opts.checklistKind` (plan amendment off, #107) a
 // 'checklist-wording-defect' owner with a non-empty proof on a non-gate line of `lines` is parked too, matched by key.
 // { untickable: [{ id?, item, proof }], rest: the lines not parked }.
-function parkUntickable(items, lines, itemOwners, refused, opts) {
+function parkUntickable(items, lines, itemOwners, refused, options) {
   const all = Array.isArray(lines) ? lines : []
   const untickable = []
   const parked = new Set()
@@ -910,7 +910,7 @@ function parkUntickable(items, lines, itemOwners, refused, opts) {
     parked.add('ac:' + r.id)
     untickable.push({ id: r.id, item: r.item, proof: r.proof })
   }
-  if (opts && opts.checklistKind) {
+  if (options && options.checklistKind) {
     for (const o of Array.isArray(itemOwners) ? itemOwners : []) {
       if (!o || typeof o !== 'object' || o.itemOwner !== 'checklist-wording-defect') continue
       const proof = typeof o.proof === 'string' ? o.proof.trim() : ''
@@ -931,12 +931,12 @@ function parkUntickable(items, lines, itemOwners, refused, opts) {
 // id of a box line, else the normalised text), so the open box ids and the code blockers are ONE set. A previous round
 // with nothing to compare, or one blocker of it gone from `cur`: 'progress'; the very same blockers: 'flat'; every previous
 // blocker still there plus a new one: 'regressed'.
-function reviewProgress(prev, cur) {
-  const before = new Set((Array.isArray(prev) ? prev : []).map(lineKey))
+function reviewProgress(previous, current) {
+  const before = new Set((Array.isArray(previous) ? previous : []).map(lineKey))
   if (before.size === 0) return 'progress'
-  const after = new Set((Array.isArray(cur) ? cur : []).map(lineKey))
-  for (const key of before) if (!after.has(key)) return 'progress'
-  for (const key of after) if (!before.has(key)) return 'regressed'
+  const afterBody = new Set((Array.isArray(current) ? current : []).map(lineKey))
+  for (const key of before) if (!afterBody.has(key)) return 'progress'
+  for (const key of afterBody) if (!before.has(key)) return 'regressed'
   return 'flat'
 }
 // ciScope(overall, checks, names): the CI state the ready gate judges. `overall` is the pr-state probe's state over EVERY check
@@ -984,15 +984,15 @@ function ciBlocker(ciState, morganCiGreen, absentNames) {
 // array of declared string items holding a non-string. Structure only: no parsing, no model call.
 function verdictProblem(v, schema) {
   if (v === null || typeof v !== 'object' || Array.isArray(v)) return 'not-an-object'
-  const props = schema.properties
-  if (!props.verdict.enum.includes(v.verdict)) return 'verdict'
-  for (const key of Object.keys(props)) {
+  const properties = schema.properties
+  if (!properties.verdict.enum.includes(v.verdict)) return 'verdict'
+  for (const key of Object.keys(properties)) {
     if (key === 'verdict' || v[key] === undefined) continue
-    const decl = props[key]
-    if (decl.type === 'array') {
+    const declaration = properties[key]
+    if (declaration.type === 'array') {
       if (!Array.isArray(v[key])) return key
-      if (decl.items && decl.items.type === 'string' && v[key].some((x) => typeof x !== 'string')) return key
-    } else if (decl.type === 'boolean' && typeof v[key] !== 'boolean') return key
+      if (declaration.items && declaration.items.type === 'string' && v[key].some((x) => typeof x !== 'string')) return key
+    } else if (declaration.type === 'boolean' && typeof v[key] !== 'boolean') return key
   }
   return null
 }
@@ -1018,7 +1018,7 @@ function itemsFromPlan(plan) {
   const sequences = checklists.map((run) => parseChecklist(run.join('\n')))
   if (sequences.length === 0 || sequences.some((seq) => JSON.stringify(seq) !== JSON.stringify(sequences[0]))) return null
   const items = sequences[0]
-  return items.length > 0 && items.every((item, i) => item.id === i + 1) ? items : null
+  return items.length > 0 && items.every((item, index) => item.id === index + 1) ? items : null
 }
 // The deterministic plan-check for Sam's `acceptanceItems` (#182, #169): [] when the entries are valid, else one
 // sentence per problem, appended to Sam's next prompt by the plan-verification loop. It checks STRUCTURE only: a
@@ -1027,19 +1027,19 @@ function itemsFromPlan(plan) {
 function validateAcceptanceItems(entries) {
   if (!Array.isArray(entries) || entries.length === 0) return ['acceptanceItems must be a non-empty array: one entry per acceptance item']
   const issues = []
-  entries.forEach((e, i) => {
-    const n = i + 1
-    if (!e || typeof e !== 'object' || typeof e.text !== 'string') { issues.push(`item ${n}: must be an object with a string text`); return }
-    const text = e.text.trim()
+  entries.forEach((entry, index) => {
+    const n = index + 1
+    if (!entry || typeof entry !== 'object' || typeof entry.text !== 'string') { issues.push(`item ${n}: must be an object with a string text`); return }
+    const text = entry.text.trim()
     if (text === '' || text.includes('\n') || text.includes('\r')) { issues.push(`item ${n}: text must be one non-empty line`); return }
     if (text.startsWith('- [') || text.includes(AC_ID_OPEN) || text.toLowerCase().includes(AC_TAG)) {
       issues.push(`item ${n}: text must not carry the "- [ ]" prefix, an "<!-- ac:N -->" id or the ${AC_TAG} tag (the workflow renders those): write the bare text and set humanGate instead`)
       return
     }
-    if (e.humanGate !== undefined && typeof e.humanGate !== 'boolean') { issues.push(`item ${n}: humanGate must be true or false`); return }
-    if (e.command !== undefined && typeof e.command !== 'string') { issues.push(`item ${n}: command must be a string`); return }
-    const command = typeof e.command === 'string' ? e.command.trim() : ''
-    if (e.humanGate === true && command) {
+    if (entry.humanGate !== undefined && typeof entry.humanGate !== 'boolean') { issues.push(`item ${n}: humanGate must be true or false`); return }
+    if (entry.command !== undefined && typeof entry.command !== 'string') { issues.push(`item ${n}: command must be a string`); return }
+    const command = typeof entry.command === 'string' ? entry.command.trim() : ''
+    if (entry.humanGate === true && command) {
       issues.push(`item ${n}: flagged humanGate but carries the command \`${command}\`; a command can decide it, so it is not a human gate. Drop humanGate and prove the item with that command, or drop the command if only a person can judge it`)
     }
   })
@@ -1066,8 +1066,8 @@ function mapBoxes(items, boxes, checked) {
     if (!item) { unknown.push(b && b.id !== undefined ? String(b.id) : '?'); continue }
     const proof = typeof b.proof === 'string' ? b.proof : ''
     const proven = b.proven === true && proof.trim() !== ''
-    const prev = seen.get(b.id)
-    if (prev) { if (!proven) prev.proven = false; continue }
+    const previous = seen.get(b.id)
+    if (previous) { if (!proven) previous.proven = false; continue }
     seen.set(b.id, { id: item.id, text: item.text, humanGate: item.humanGate, proven, proof })
   }
   const ticked = Array.isArray(checked) ? checked : []
@@ -1375,8 +1375,8 @@ function specificsCanonical(v) {
 }
 
 // `key` is 'shared' or the capitalised role; `lanes` is [] for shared. `sha` is the caller's SHA-256 hex function.
-function specificsDigest(sha, refSha, key, text, lanes) {
-  return sha(specificsCanonical({ refSha, role: key, text, lanes }))
+function specificsDigest(sha, referenceSha, key, text, lanes) {
+  return sha(specificsCanonical({ refSha: referenceSha, role: key, text, lanes }))
 }
 
 function specificsSwitchOn(pipelineConfig) {
@@ -1449,9 +1449,9 @@ function specificsLanesFound(ps) {
     const rb = ps.roles[role]
     if (!rb || !Array.isArray(rb.lanes)) continue
     for (const l of rb.lanes) {
-      let e = out.find((x) => x.name === l.name)
-      if (!e) { e = { name: l.name }; out.push(e) }
-      for (const f of ['persona', 'paths', 'hint']) if (e[f] === undefined && l[f] !== undefined) e[f] = l[f]
+      let entry = out.find((x) => x.name === l.name)
+      if (!entry) { entry = { name: l.name }; out.push(entry) }
+      for (const f of ['persona', 'paths', 'hint']) if (entry[f] === undefined && l[f] !== undefined) entry[f] = l[f]
     }
   }
   return out.sort((x, y) => (x.name < y.name ? -1 : x.name > y.name ? 1 : 0))
@@ -1474,9 +1474,9 @@ function laneNameOk(n) {
 }
 
 // The lanes persisted in a plan: the LAST line starting `lanes:` (`lanes: ios,web`); [] when absent or any name is invalid.
-function lanesFromPlanText(planText) {
+function lanesFromPlanText(planBody) {
   let line = null
-  for (const l of String(planText ?? '').split('\n')) if (l.startsWith('lanes:')) line = l
+  for (const l of String(planBody ?? '').split('\n')) if (l.startsWith('lanes:')) line = l
   if (line === null) return []
   const names = line.slice('lanes:'.length).split(',').map((n) => n.trim())
   return names.every(laneNameOk) ? names : []
@@ -1493,10 +1493,10 @@ function lanePathHits(found, targetFiles) {
   const files = safePlanTargets(targetFiles)
   const hits = []
   for (const l of found) {
-    const entries = Array.isArray(l.paths) ? l.paths.filter((e) => typeof e === 'string' && e.trim() !== '').map((e) => e.trim()) : []
-    const excluded = entries.filter((e) => e.startsWith('!')).map((e) => e.slice(1))
-    const included = entries.filter((e) => !e.startsWith('!'))
-    if (files.some((f) => !excluded.some((e) => pathEntryHit(e, f)) && included.some((e) => pathEntryHit(e, f)))) hits.push(l.name)
+    const entries = Array.isArray(l.paths) ? l.paths.filter((entry) => typeof entry === 'string' && entry.trim() !== '').map((entry) => entry.trim()) : []
+    const excluded = entries.filter((entry) => entry.startsWith('!')).map((entry) => entry.slice(1))
+    const included = entries.filter((entry) => !entry.startsWith('!'))
+    if (files.some((f) => !excluded.some((entry) => pathEntryHit(entry, f)) && included.some((entry) => pathEntryHit(entry, f)))) hits.push(l.name)
   }
   return hits
 }
@@ -1574,7 +1574,7 @@ function acceptAlreadyDone(guard, expectedHead, asOfIso) {
 // of trusting the agent's prose verbatim as a ref (lgtmgate#71: the incident's real answer
 // was "PR #776 is on branch `feat/issue-760`." — a sentence, not a ref). Returns the bare ref on a
 // single unambiguous read, otherwise null (ambiguous/unreadable → caller falls back to nick.branch).
-function parseHeadRef(raw, expectedBranch) {
+function parseHeadReference(raw, expectedBranch) {
   const s = String(raw ?? '').trim()
   if (!s) return null
   const isCandidate = c => /^[A-Za-z0-9._/-]+$/.test(c) && (c === expectedBranch || /[/-]/.test(c))
@@ -1613,11 +1613,11 @@ function parseHeadRef(raw, expectedBranch) {
 // reconciled ref on an EXACT match, otherwise null — deliberately no partial/prefix leniency: an
 // empty string or the 'ERROR' sentinel must never be accepted as a valid prefix (either would let
 // `${''}issue-${issue}` or `${'ERROR'}issue-${issue}` accidentally match a real headRef).
-function reconcileStaleBranchPrefix(headRef, issue, realBranchPrefixRaw) {
+function reconcileStaleBranchPrefix(headReference, issueNumber, realBranchPrefixRaw) {
   const raw = String(realBranchPrefixRaw ?? '').trim()
   if (!raw || raw === 'ERROR' || !/^[A-Za-z0-9._/-]+$/.test(raw)) return null
-  const reconciled = `${raw}issue-${issue}`
-  return headRef === reconciled ? reconciled : null
+  const reconciled = `${raw}issue-${issueNumber}`
+  return headReference === reconciled ? reconciled : null
 }
 // --- reconcileStaleBranchPrefix:end ---
 
@@ -1638,7 +1638,7 @@ function reconcileStaleProjectConfig(rawJson) {
   let parsed
   try {
     parsed = JSON.parse(String(rawJson ?? ''))
-  } catch (e) {
+  } catch (error) {
     parsed = null
   }
   return {
@@ -1707,18 +1707,18 @@ function staleArtifactBlockers(proofs, floorIso, prFiles, worktreePath) {
 // `<worktreeRoot>/<slug>` by construction (skills/deliver/SKILL.md:35) — so the brief
 // never carries a relative root. No candidate and no absolute wtPath -> null, which is
 // exactly the pre-#61 `config.worktreeRoot || null` behaviour (clause omitted).
-function resolveWorktreeRoot({ env = {}, configLocal = {}, config = {}, wtPath = '' }) {
+function resolveWorktreeRoot({ env: environment = {}, configLocal: localConfig = {}, config: primaryConfig = {}, wtPath: worktreePath = '' }) {
   const pick = (v) => (typeof v === 'string' && v.trim() ? v.trim() : null)
   const strip = (p) => (p.length > 1 ? p.replace(/\/+$/, '') : p)
   const abs = (v) => (v && v.startsWith('/') ? strip(v) : null)
-  const parentOfWt = (() => {
-    const p = abs(pick(wtPath))
+  const parentOfWorktree = (() => {
+    const p = abs(pick(worktreePath))
     if (!p) return null
-    const i = p.lastIndexOf('/')
-    return i >= 0 ? (p.slice(0, i) || '/') : null
+    const index = p.lastIndexOf('/')
+    return index >= 0 ? (p.slice(0, index) || '/') : null
   })()
-  const candidate = pick(env.LGTMGATE_WORKTREE_ROOT) || pick(configLocal.worktreeRoot) || pick(config.worktreeRoot)
-  return abs(candidate) || parentOfWt
+  const candidate = pick(environment.LGTMGATE_WORKTREE_ROOT) || pick(localConfig.worktreeRoot) || pick(primaryConfig.worktreeRoot)
+  return abs(candidate) || parentOfWorktree
 }
 // --- resolveWorktreeRoot:end ---
 
@@ -1726,16 +1726,16 @@ function resolveWorktreeRoot({ env = {}, configLocal = {}, config = {}, wtPath =
 // Composes the reviewer-facing staleness warning for a shared worktree whose base is behind the
 // remote base branch. Pure: no I/O, no closure over simulate/config/trace. Returns '' when
 // the worktree is fresh or the count is unknown — so a fresh run's prompts are byte-identical.
-function worktreeFreshnessNote(behind, baseBranch) {
+function worktreeFreshnessNote(behind, baseBranchName) {
   const n = Number(behind)
   if (!Number.isFinite(n) || n <= 0) return ''
   return (
     `WORKTREE FRESHNESS WARNING: this shared worktree's frozen base is ${n} commit${n === 1 ? '' : 's'} ` +
-    `behind origin/${baseBranch}. Because of this: ` +
+    `behind origin/${baseBranchName}. Because of this: ` +
     `1) the local HEAD suite runs an older base while CI runs the merge ref, so a test-count / ` +
     `test-inventory difference between the local run and CI is expected by construction, not a ` +
     `regression; ` +
-    `2) the regression baseline is captured from a freshly fetched origin/${baseBranch} overlay, so a ` +
+    `2) the regression baseline is captured from a freshly fetched origin/${baseBranchName} overlay, so a ` +
     `test name present in the baseline log but absent from the HEAD run is a base-staleness artifact, ` +
     `never a HEAD regression — the HEAD minus baseline set-diff direction stays authoritative; ` +
     `3) when local and CI disagree, the CI raw log is the source of truth (gh run view <run-id> --log), ` +
@@ -1800,7 +1800,7 @@ function planTargetIssues(plan, files) {
 const ONE_WAY_DOOR_KINDS = ['status', 'agent', 'hook', 'seam']
 // The declared kinds, in canonical order: unknown words, non-strings and duplicates are dropped.
 function oneWayDoorKindsOf(raw) {
-  const given = (Array.isArray(raw) ? raw : []).filter(e => typeof e === 'string').map(e => e.trim().toLowerCase())
+  const given = (Array.isArray(raw) ? raw : []).filter(entry => typeof entry === 'string').map(entry => entry.trim().toLowerCase())
   return ONE_WAY_DOOR_KINDS.filter(k => given.includes(k))
 }
 // Sam's announcement instruction for the declared kinds only; '' when the repo declares none.
@@ -1838,19 +1838,19 @@ function pathEntryHit(entry, f) {
   return entry.endsWith('/') ? f.startsWith(entry)
     : (entry.includes('*') || entry.includes('?')) ? globMatch(entry, f) : f === entry
 }
-function oneWayDoorSignals(plan, targetFiles, ctx = {}) {
+function oneWayDoorSignals(plan, targetFiles, context = {}) {
   const entryHit = pathEntryHit
-  const entries = (Array.isArray(ctx.paths) ? ctx.paths : [])
-    .filter(e => typeof e === 'string' && e.trim() !== '').map(e => e.trim())
-  const excluded = entries.filter(e => e.startsWith('!')).map(e => e.slice(1))
-  const included = entries.filter(e => !e.startsWith('!'))
+  const entries = (Array.isArray(context.paths) ? context.paths : [])
+    .filter(entry => typeof entry === 'string' && entry.trim() !== '').map(entry => entry.trim())
+  const excluded = entries.filter(entry => entry.startsWith('!')).map(entry => entry.slice(1))
+  const included = entries.filter(entry => !entry.startsWith('!'))
   const found = new Map() // kind -> evidence line
   for (const f of safePlanTargets(targetFiles)) {
-    if (excluded.some(e => entryHit(e, f))) continue
-    const hit = included.find(e => entryHit(e, f))
+    if (excluded.some(entry => entryHit(entry, f))) continue
+    const hit = included.find(entry => entryHit(entry, f))
     if (hit !== undefined && !found.has('path')) found.set('path', `targetFiles: ${f} (oneWayDoorPaths: ${hit})`)
   }
-  const declared = oneWayDoorKindsOf(ctx.kinds)
+  const declared = oneWayDoorKindsOf(context.kinds)
   // guards:parser-begin
   const announced = declared.length === 0 ? []
     : String(plan ?? '').match(/^[ \t>*-]*`?one-way-door:[ \t]*(?:status|agent|hook|seam)\b[^\n]*/gim) || []
@@ -1862,9 +1862,9 @@ function oneWayDoorSignals(plan, targetFiles, ctx = {}) {
   // guards:parser-end
   const kinds = [...found.keys()]
   const summary = kinds.length === 0 ? [] : [
-    `R3 one-way-door: the plan for issue #${ctx.issue ?? '?'} hits a one-way door (${kinds.join(' + ')}).`,
+    `R3 one-way-door: the plan for issue #${context.issue ?? '?'} hits a one-way door (${kinds.join(' + ')}).`,
     ...kinds.map(k => `- ${k}: ${found.get(k)}`),
-    `Plan artifact: ${ctx.planPath || '(none)'}`,
+    `Plan artifact: ${context.planPath || '(none)'}`,
     'Stopped at the design step (design-step-required): the maintainer decides before dev.',
     `Relaunch with architectureDecisionApproved:true once the decision is recorded.`,
   ].slice(0, 10)
@@ -1929,13 +1929,13 @@ function subIssuesGate(openSubIssues, absorbedIssues) {
 // Composes the Nick-facing plan-freshness warning (#103) — same shape/contract as
 // worktreeFreshnessNote above: pure, no I/O, no closure over simulate/config/trace. Returns ''
 // when staleFiles is not a non-empty array, so an unaffected run's Dev prompt stays byte-identical.
-function planFreshnessNote(staleFiles, baseBranch) {
+function planFreshnessNote(staleFiles, baseBranchName) {
   if (!Array.isArray(staleFiles) || staleFiles.length === 0) return ''
   const list = staleFiles.map(f => `- ${f}`).join('\n')
   return (
     `PLAN FRESHNESS WARNING (#103): the following file(s) this plan targets changed on ` +
-    `origin/${baseBranch} since this worktree's frozen base:\n${list}\n` +
-    `Read the upstream version of each with \`git show origin/${baseBranch}:<file>\` — read-only, ` +
+    `origin/${baseBranchName} since this worktree's frozen base:\n${list}\n` +
+    `Read the upstream version of each with \`git show origin/${baseBranchName}:<file>\` — read-only, ` +
     `no worktree mutation. If the plan's premise for that file no longer holds (it plans to ` +
     `delete/rewrite content that moved upstream), STOP and report it in your return summary ` +
     `instead of opening the PR. If the premise still holds, implement as planned. Do not rebase, ` +
@@ -1952,15 +1952,15 @@ function planFreshnessNote(staleFiles, baseBranch) {
 // "already done" from branch/plan content alone (the gap Theo confirmed empirically on #183: a
 // synthetic CONFLICTING-mergeState run produced a nickPrompt with zero conflict/mergeable/resum
 // signal).
-function resumeReasonNote(resumeReason, prNumberArg, baseBranch) {
-  if (resumeReason !== 'mergeable-conflicting') return ''
-  const prRef = prNumberArg ? `PR #${prNumberArg}` : 'the existing PR for this branch'
+function resumeReasonNote(resumeReasonValue, prNumberArgument, baseBranchName) {
+  if (resumeReasonValue !== 'mergeable-conflicting') return ''
+  const prReference = prNumberArgument ? `PR #${prNumberArgument}` : 'the existing PR for this branch'
   return (
     `RESUME REASON (#183): this dev-phase resume was triggered by a mergeable-conflicting escalate ` +
     `(lgtmgate#170), NOT a fresh plan->dev handoff. Do NOT conclude "already done" from the ` +
-    `branch/plan content alone. Before doing anything else, re-check ${prRef}'s LIVE state: ` +
-    `\`gh pr view ${prNumberArg || '<PR>'} --json mergeable,mergeStateStatus,headRefName\`. If ` +
-    `mergeable is still CONFLICTING, reconcile the branch against origin/${baseBranch} per this ` +
+    `branch/plan content alone. Before doing anything else, re-check ${prReference}'s LIVE state: ` +
+    `\`gh pr view ${prNumberArgument || '<PR>'} --json mergeable,mergeStateStatus,headRefName\`. If ` +
+    `mergeable is still CONFLICTING, reconcile the branch against origin/${baseBranchName} per this ` +
     `project's own git-workflow rule before re-pushing — a conflict is real work to do, not a stale ` +
     `read.\n\n`
   )
@@ -1971,14 +1971,14 @@ function resumeReasonNote(resumeReason, prNumberArg, baseBranch) {
 // Composes the Nick-facing sub-issues-gate note (lgtmgate#193) — same shape/contract as
 // planFreshnessNote/resumeReasonNote above. Returns '' when uncovered is not a non-empty array,
 // so the overwhelmingly common zero-sub-issue dispatch keeps a byte-identical Dev prompt.
-function subIssuesGateNote(uncovered, issueArg) {
+function subIssuesGateNote(uncovered, issueArgument) {
   if (!Array.isArray(uncovered) || uncovered.length === 0) return ''
   const list = uncovered.map(n => `#${n}`).join(', ')
   return (
-    `SUB-ISSUES GATE (lgtmgate#193): #${issueArg} has ${uncovered.length} open GitHub ` +
+    `SUB-ISSUES GATE (lgtmgate#193): #${issueArgument} has ${uncovered.length} open GitHub ` +
     `sub-issue(s) not covered by this run's bundle (${list}) — the first line above intentionally ` +
-    `uses "(see #${issueArg})" instead of "Closes #${issueArg}" for THAT issue only (absorbed ` +
-    `children, if any, still close normally). Do NOT describe #${issueArg} or the epic as fully ` +
+    `uses "(see #${issueArgument})" instead of "Closes #${issueArgument}" for THAT issue only (absorbed ` +
+    `children, if any, still close normally). Do NOT describe #${issueArgument} or the epic as fully ` +
     `resolved anywhere else in the PR body. `
   )
 }
@@ -2017,14 +2017,14 @@ function composeAuditFixBlock(findings) {
     'finding in by rewriting the affected step, not by bolting on a caveat; for each NOTE either ' +
     'fold it in or state in the plan why it is declined; verify technical claims against current ' +
     'docs yourself, never from memory.'
-  const entries = list.map((f, i) => {
+  const entries = list.map((f, index) => {
     const sev = f && f.severity === 'note' ? 'NOTE' : 'BLOCKING'
     const debtClass = f && f.debtClass ? `[${f.debtClass}]` : ''
     const title = f && f.title ? f.title : '(untitled finding)'
     const finding = f && f.finding ? f.finding : ''
     const fix = f && f.fix ? f.fix : ''
     const sources = Array.isArray(f && f.sources) && f.sources.length ? `\nsources: ${f.sources.join(', ')}` : ''
-    return `${i + 1}. [${sev}]${debtClass} ${title} — ${finding}\nFIX: ${fix}${sources}`
+    return `${index + 1}. [${sev}]${debtClass} ${title} — ${finding}\nFIX: ${fix}${sources}`
   })
   return `${header}\n\n${entries.join('\n\n')}`
 }
@@ -2058,7 +2058,7 @@ function classifyBlockers(items, itemOwners, acceptanceItems) {
     planRoutes.push({ item, itemOwner: owner, proof })
     routed.add(k)
   }
-  const codeItems = allItems.filter(i => !routed.has(lineKey(i)))
+  const codeItems = allItems.filter(index => !routed.has(lineKey(index)))
   return { planRoutes, codeItems }
 }
 // --- classifyBlockers:end ---
@@ -2078,7 +2078,7 @@ function composeReviewFixBlock(routes) {
     'the affected step/line IN PLACE (REWRITE IN PLACE — accretion is the defect); never re-scope ' +
     'beyond what each item names. Return the FULL amended checklist in `acceptanceItems` (same ' +
     'contract as above) and write the amended lines in the artifact.'
-  const entries = list.map((r, i) => `${i + 1}. ${r.item}\nMorgan's proof: ${r.proof}`)
+  const entries = list.map((r, index) => `${index + 1}. ${r.item}\nMorgan's proof: ${r.proof}`)
   return `${header}\n\n${entries.join('\n\n')}`
 }
 // --- composeReviewFixBlock:end ---
@@ -2116,7 +2116,7 @@ function agentDeathRouting(role, attempt, maxAttempts = 2) {
     'provision', 'theo', 'mia', 'sam', 'planCheck', 'audit', 'alreadyDoneCheck', 'preflight', 'probe',
   ])
   // probe is RETRY_SAFE: side-effect free, probe-run.cjs reuses the stored record on a retry (#82)
-  const STATUS = {
+  const statusTable = {
     provision: 'provision-died',
     theo: 'diagnose-died',
     sam: 'plan-died',
@@ -2129,7 +2129,7 @@ function agentDeathRouting(role, attempt, maxAttempts = 2) {
   const a = Number.isInteger(attempt) ? attempt : 1
   const max = Number.isInteger(maxAttempts) && maxAttempts >= 1 ? maxAttempts : 2
   if (RETRY_SAFE.has(role) && a < max) return { action: 'retry' }
-  return { action: 'fail', status: STATUS[role] || 'agent-died', resumable: true }
+  return { action: 'fail', status: statusTable[role] || 'agent-died', resumable: true }
 }
 // --- agentDeathRouting:end ---
 
@@ -2236,31 +2236,31 @@ async function callAgent(role, prompt, opts, round = 0, attempt = 1) {
   // Normalize bare role names to lgtmgate:<Name> so agent() can resolve them.
   // `personaFallback` is a #54-only option this DSL never declared — it is destructured away
   // before calling the harness so it never travels on a normal call.
-  let harnessOpts = opts
+  let harnessOptions = opts
   if (opts) {
     const { personaFallback: _pf, ...rest } = opts
-    harnessOpts = rest.agentType ? { ...rest, agentType: normalizeAgentType(rest.agentType) } : rest
+    harnessOptions = rest.agentType ? { ...rest, agentType: normalizeAgentType(rest.agentType) } : rest
   }
   // #265: one composition point. The persona is prefixed only on the registry-gap retry (personaFallback kept, agentType removed).
   const finalPrompt = composeAgentPrompt({
     persona: opts && opts.personaFallback && !opts.agentType ? opts.personaFallback : '',
-    specifics: opts && (opts.agentType || opts.personaFallback) ? specificsBlockFor(specificsPayload, role, role === 'sam' ? lanesSam : role === 'nick' || role === 'morgan' ? lanesDev : []) : '',
+    specifics: opts && (opts.agentType || opts.personaFallback) ? specificsBlockFor(specificsPayload, role, role === 'sam' ? lanesSam : role === 'nick' || role === 'morgan' ? lanesDevelopment : []) : '',
     prompt,
     mandate: opts && opts.schema ? STRUCTURED_OUTPUT_MANDATE : '',
   })
   // #110: a turn cut off by an auto-mode classifier outage ("no safety verdict") is transient —
   // retry the same call (bounded, with backoff) before callAgentSafe may call the step dead. The
   // single agent() call stays here; bounds come from config.classifierOutage.
-  const outageCfg = (config && config.classifierOutage) || {}
-  const maxOutageRetries = Number.isInteger(outageCfg.retries) && outageCfg.retries >= 0 ? outageCfg.retries : 1
-  const outageBackoffMs = Number.isFinite(outageCfg.backoffMs) && outageCfg.backoffMs >= 0 ? outageCfg.backoffMs : 15000
+  const outageConfig = (config && config.classifierOutage) || {}
+  const maxOutageRetries = Number.isInteger(outageConfig.retries) && outageConfig.retries >= 0 ? outageConfig.retries : 1
+  const outageBackoffMs = Number.isFinite(outageConfig.backoffMs) && outageConfig.backoffMs >= 0 ? outageConfig.backoffMs : 15000
   for (let n = 0; ; n++) {
     let out
-    let err = null
-    try { out = await agent(finalPrompt, harnessOpts) } catch (e) { err = e }
-    const text = err ? (err.message || String(err)) : (typeof out === 'string' ? out : '')
+    let error = null
+    try { out = await agent(finalPrompt, harnessOptions) } catch (error_) { error = error_ }
+    const text = error ? (error.message || String(error)) : (typeof out === 'string' ? out : '')
     if (!isClassifierOutage(text)) {
-      if (err) throw err
+      if (error) throw error
       return out
     }
     if (n >= maxOutageRetries) {
@@ -2305,7 +2305,7 @@ const THEO_PERSONA =
 // death is routed through the pure agentDeathRouting(): retry once for side-effect-free roles,
 // else return the AGENT_DEATH sentinel — never silent, every death leaves a trace entry + a log
 // line so Morgan (and a human reading the trace) can prove which path was taken.
-async function callAgentSafe(role, prompt, opts, round = 0, maxAttempts = 2) {
+async function callAgentSafe(role, prompt, options, round = 0, maxAttempts = 2) {
   let attempt = 0
   let degraded = false
   while (true) {
@@ -2314,11 +2314,11 @@ async function callAgentSafe(role, prompt, opts, round = 0, maxAttempts = 2) {
     let died = false
     let cause = ''
     try {
-      out = await callAgent(role, prompt, opts, round, attempt)
+      out = await callAgent(role, prompt, options, round, attempt)
       if (out == null) { died = true; cause = 'null-result' }
-    } catch (e) {
+    } catch (error) {
       died = true
-      cause = e && e.message ? e.message : String(e)
+      cause = error && error.message ? error.message : String(error)
     }
     if (!died) return out
     const decision = agentDeathRouting(role, attempt, maxAttempts)
@@ -2328,12 +2328,12 @@ async function callAgentSafe(role, prompt, opts, round = 0, maxAttempts = 2) {
     // #54 registry-gap fallback. Gated on decision.action === 'retry' so it can NEVER buy an
     // extra spawn: it SPENDS the ordinary retry the budget already granted. On the LAST attempt
     // it deliberately does not fire and the run terminates <stage>-died — budget beats degradation.
-    if (decision.action === 'retry' && !degraded && opts && opts.agentType &&
-        opts.personaFallback && AGENT_TYPE_UNRESOLVED.test(cause)) {
+    if (decision.action === 'retry' && !degraded && options && options.agentType &&
+        options.personaFallback && AGENT_TYPE_UNRESOLVED.test(cause)) {
       degraded = true
       trace.push(`agent-type-unresolved:${role}`)
-      const { agentType: _drop, ...rest } = opts        // REMOVE the key, never set it undefined; callAgent prefixes the persona
-      opts = rest
+      const { agentType: _drop, ...rest } = options        // REMOVE the key, never set it undefined; callAgent prefixes the persona
+      options = rest
       log(`callAgentSafe: ${role} — agent type did not resolve (${cause}); retrying persona-in-prompt ` +
           `on the remaining attempt budget. Gate preserved, registry gap recorded in trace.`)
       continue
@@ -2436,9 +2436,9 @@ const isSafeProbeToken = (s) => typeof s === 'string' && SAFE_PROBE_TOKEN.test(s
 const shellSingleQuote = (s) => `'${String(s).split("'").join("'\\''")}'`
 
 // --- sha256Hex:start --- (pure & self-contained: SHA-256 of the UTF-8 bytes, lowercase hex; must equal probe-run.cjs sha256)
-function sha256Hex(str) {
+function sha256Hex(string_) {
   const bytes = []
-  for (const ch of String(str)) {
+  for (const ch of String(string_)) {
     const cp = ch.codePointAt(0)
     const c = cp >= 0xd800 && cp <= 0xdfff ? 0xfffd : cp   // a lone surrogate encodes as U+FFFD (EF BF BD), like Buffer.from
     if (c < 0x80) bytes.push(c)
@@ -2457,31 +2457,31 @@ function sha256Hex(str) {
     0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
   ]
   const H = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19]
-  const bitLen = bytes.length * 8
+  const bitLength = bytes.length * 8
   bytes.push(0x80)
   while (bytes.length % 64 !== 56) bytes.push(0)
-  const hi = Math.floor(bitLen / 0x100000000)
-  const lo = bitLen >>> 0
+  const hi = Math.floor(bitLength / 0x100000000)
+  const lo = bitLength >>> 0
   bytes.push((hi >>> 24) & 255, (hi >>> 16) & 255, (hi >>> 8) & 255, hi & 255, (lo >>> 24) & 255, (lo >>> 16) & 255, (lo >>> 8) & 255, lo & 255)
   const rotr = (x, n) => (x >>> n) | (x << (32 - n))
   for (let off = 0; off < bytes.length; off += 64) {
     const w = new Array(64)
-    for (let i = 0; i < 16; i++) w[i] = ((bytes[off + 4 * i] << 24) | (bytes[off + 4 * i + 1] << 16) | (bytes[off + 4 * i + 2] << 8) | bytes[off + 4 * i + 3]) | 0
-    for (let i = 16; i < 64; i++) {
-      const s0 = rotr(w[i - 15], 7) ^ rotr(w[i - 15], 18) ^ (w[i - 15] >>> 3)
-      const s1 = rotr(w[i - 2], 17) ^ rotr(w[i - 2], 19) ^ (w[i - 2] >>> 10)
-      w[i] = (w[i - 16] + s0 + w[i - 7] + s1) | 0
+    for (let index = 0; index < 16; index++) w[index] = ((bytes[off + 4 * index] << 24) | (bytes[off + 4 * index + 1] << 16) | (bytes[off + 4 * index + 2] << 8) | bytes[off + 4 * index + 3]) | 0
+    for (let index = 16; index < 64; index++) {
+      const s0 = rotr(w[index - 15], 7) ^ rotr(w[index - 15], 18) ^ (w[index - 15] >>> 3)
+      const s1 = rotr(w[index - 2], 17) ^ rotr(w[index - 2], 19) ^ (w[index - 2] >>> 10)
+      w[index] = (w[index - 16] + s0 + w[index - 7] + s1) | 0
     }
-    let [a, b, c, d, e, f, g, h] = H
-    for (let i = 0; i < 64; i++) {
-      const S1 = rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25)
-      const t1 = (h + S1 + ((e & f) ^ (~e & g)) + K[i] + w[i]) | 0
+    let [a, b, c, d, hashE, f, g, h] = H
+    for (let index = 0; index < 64; index++) {
+      const S1 = rotr(hashE, 6) ^ rotr(hashE, 11) ^ rotr(hashE, 25)
+      const t1 = (h + S1 + ((hashE & f) ^ (~hashE & g)) + K[index] + w[index]) | 0
       const S0 = rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22)
       const t2 = (S0 + ((a & b) ^ (a & c) ^ (b & c))) | 0
-      h = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0
+      h = g; g = f; f = hashE; hashE = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0
     }
     H[0] = (H[0] + a) | 0; H[1] = (H[1] + b) | 0; H[2] = (H[2] + c) | 0; H[3] = (H[3] + d) | 0
-    H[4] = (H[4] + e) | 0; H[5] = (H[5] + f) | 0; H[6] = (H[6] + g) | 0; H[7] = (H[7] + h) | 0
+    H[4] = (H[4] + hashE) | 0; H[5] = (H[5] + f) | 0; H[6] = (H[6] + g) | 0; H[7] = (H[7] + h) | 0
   }
   return H.map((x) => (x >>> 0).toString(16).padStart(8, '0')).join('')
 }
@@ -2490,9 +2490,9 @@ function sha256Hex(str) {
 // --- base64Utf8:start --- (pure & self-contained: standard padded base64 of the UTF-8 bytes, one line; the runtime has no Buffer)
 // #212: a long multi-line block travels on a command line as ONE token a copier cannot reflow; pr-write.sh decodes it
 // (--text-b64). Same UTF-8 byte loop as sha256Hex; no regex.
-function base64Utf8(str) {
+function base64Utf8(string_) {
   const bytes = []
-  for (const ch of String(str)) {
+  for (const ch of String(string_)) {
     const cp = ch.codePointAt(0)
     const c = cp >= 0xd800 && cp <= 0xdfff ? 0xfffd : cp   // a lone surrogate encodes as U+FFFD (EF BF BD), like Buffer.from
     if (c < 0x80) bytes.push(c)
@@ -2502,9 +2502,9 @@ function base64Utf8(str) {
   }
   const A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
   let out = ''
-  for (let i = 0; i < bytes.length; i += 3) {
-    const n = (bytes[i] << 16) | ((bytes[i + 1] || 0) << 8) | (bytes[i + 2] || 0)
-    out += A[(n >> 18) & 63] + A[(n >> 12) & 63] + (i + 1 < bytes.length ? A[(n >> 6) & 63] : '=') + (i + 2 < bytes.length ? A[n & 63] : '=')
+  for (let index = 0; index < bytes.length; index += 3) {
+    const n = (bytes[index] << 16) | ((bytes[index + 1] || 0) << 8) | (bytes[index + 2] || 0)
+    out += A[(n >> 18) & 63] + A[(n >> 12) & 63] + (index + 1 < bytes.length ? A[(n >> 6) & 63] : '=') + (index + 2 < bytes.length ? A[n & 63] : '=')
   }
   return out
 }
@@ -2514,17 +2514,17 @@ function base64Utf8(str) {
 // The two commands the probe agent runs, in order (#82). Both start with `cd '<wtPath>' && node '<script>'`
 // (the attest hook accepts that prefix). The script is config.probeRunPath, else the plugin root's
 // templates/probe-run.cjs (arg pluginRoot), else the worktree's own copy.
-function probeCommands({ wtPath, issue, pluginRoot, probeRunPath, name, cmd, label, round, noReuse, expectCmd, cmdB64 }) {
+function probeCommands({ wtPath: worktreePath, issue: issueNumber, pluginRoot: pluginRootPath, probeRunPath, name, cmd, label, round, noReuse, expectCmd, cmdB64 }) {
   const q = (x) => `'${String(x).split("'").join("'\\''")}'`
-  const script = probeRunPath ?? (pluginRoot ? pluginRoot + '/templates/probe-run.cjs' : wtPath + '/templates/probe-run.cjs')
-  const outDir = `${wtPath}/.pipeline/probes/issue-${issue}`
-  const head = `cd ${q(wtPath)} && node ${q(script)} `
-  const common = `--label ${label} --round ${round} --out ${q(outDir)} --parser ${name}`
+  const script = probeRunPath ?? (pluginRootPath ? pluginRootPath + '/templates/probe-run.cjs' : worktreePath + '/templates/probe-run.cjs')
+  const outDirectory = `${worktreePath}/.pipeline/probes/issue-${issueNumber}`
+  const head = `cd ${q(worktreePath)} && node ${q(script)} `
+  const common = `--label ${label} --round ${round} --out ${q(outDirectory)} --parser ${name}`
   return {
     // #338: cmdB64 (the caller's base64 of `cmd`) replaces --cmd with one bare token: no nested quoting for a copier to drop
     // #212: --expect-cmd (the sha256 of `cmd`) BEFORE --cmd: the script refuses to run a copy that does not hash to it
     run: `${head}${common} --model haiku${noReuse ? ' --no-reuse' : ''}${expectCmd ? ` --expect-cmd ${expectCmd}` : ''}${cmdB64 ? ` --cmd-b64 ${cmdB64}` : ` --cmd ${q(cmd)}`}`,
-    verify: `${head}--verify ${common} --attest ${q(wtPath + '/.pipeline/probe-attest.jsonl')}`,
+    verify: `${head}--verify ${common} --attest ${q(worktreePath + '/.pipeline/probe-attest.jsonl')}`,
   }
 }
 // --- probeCommands:end ---
@@ -2535,12 +2535,12 @@ function probeCommands({ wtPath, issue, pluginRoot, probeRunPath, name, cmd, lab
 // `lines`: the command prints exactly one line, PLUGIN-VERSION:<version> or PLUGIN-VERSION-ERROR:<cause>.
 // The reason never holds the root path (a local path pasted into GitHub is refused by the scrub hook): the
 // path travels in the result's own `pluginRoot` field.
-function pluginVersionCmd(pluginRoot) {
+function pluginVersionCmd(pluginRootPath) {
   const q = (x) => `'${String(x).split("'").join("'\\''")}'`
   const js = 'try{const v=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).version;' +
     'console.log(typeof v==="string"&&v?"PLUGIN-VERSION:"+v:"PLUGIN-VERSION-ERROR:no-version")}' +
     'catch(e){console.log("PLUGIN-VERSION-ERROR:"+(e&&e.code==="ENOENT"?"missing":"unreadable"))}'
-  return `node -e ${q(js)} ${q(pluginRoot + '/.claude-plugin/plugin.json')}`
+  return `node -e ${q(js)} ${q(pluginRootPath + '/.claude-plugin/plugin.json')}`
 }
 // Order of two x.y.z[-pre.N][+build] versions (semver precedence, numeric per field: beta.9 < beta.10); -1 | 0 | 1,
 // null when either is not of that form. Used ONLY to word the remedy: whether the root is the engine's version is
@@ -2563,16 +2563,16 @@ function pluginVersionOrder(a, b) {
   const x = parse(a)
   const y = parse(b)
   if (!x || !y) return null
-  for (let i = 0; i < 3; i++) if (x.nums[i] !== y.nums[i]) return x.nums[i] < y.nums[i] ? -1 : 1
+  for (let index = 0; index < 3; index++) if (x.nums[index] !== y.nums[index]) return x.nums[index] < y.nums[index] ? -1 : 1
   if (!x.pre && !y.pre) return 0
   if (!x.pre) return 1
   if (!y.pre) return -1
-  for (let i = 0; i < Math.min(x.pre.length, y.pre.length); i++) {
-    const n = all(x.pre[i], DIGITS)
-    const m = all(y.pre[i], DIGITS)
-    if (n && m) { if (Number(x.pre[i]) !== Number(y.pre[i])) return Number(x.pre[i]) < Number(y.pre[i]) ? -1 : 1 }
+  for (let index = 0; index < Math.min(x.pre.length, y.pre.length); index++) {
+    const n = all(x.pre[index], DIGITS)
+    const m = all(y.pre[index], DIGITS)
+    if (n && m) { if (Number(x.pre[index]) !== Number(y.pre[index])) return Number(x.pre[index]) < Number(y.pre[index]) ? -1 : 1 }
     else if (n !== m) return n ? -1 : 1
-    else if (x.pre[i] !== y.pre[i]) return x.pre[i] < y.pre[i] ? -1 : 1
+    else if (x.pre[index] !== y.pre[index]) return x.pre[index] < y.pre[index] ? -1 : 1
   }
   return x.pre.length === y.pre.length ? 0 : x.pre.length < y.pre.length ? -1 : 1
 }
@@ -2590,9 +2590,9 @@ function pluginVersionVerdict({ engineVersion, probeFailed, exit, lines }) {
     if (found === engineVersion) return null
     // the remedy follows the direction: an older root is the stale one (pass the current root); a newer root means
     // the ENGINE is the stale one (an old session registry or local copy); a doubtful order gets the neutral one
-    const dir = pluginVersionOrder(found, engineVersion)
-    const skewRemedy = dir === -1 ? remedy
-      : dir === 1 ? 'the engine is older than the plugin root: relaunch the workflow at the current version (reload the session, or refresh the local copy of the engine)'
+    const order = pluginVersionOrder(found, engineVersion)
+    const skewRemedy = order === -1 ? remedy
+      : order === 1 ? 'the engine is older than the plugin root: relaunch the workflow at the current version (reload the session, or refresh the local copy of the engine)'
         : 'align the plugin root and the engine version, then relaunch'
     return { code: 'plugin-version-skew', reason: `plugin-version-skew: the plugin root holds lgtmgate ${found} but this engine is ${engineVersion}; ${skewRemedy}` }
   }
@@ -2605,11 +2605,11 @@ function pluginVersionVerdict({ engineVersion, probeFailed, exit, lines }) {
 // -> null when there is no minimum or the engine meets it, else { code, reason }.
 function minPluginVersionVerdict({ engineVersion, minVersion, plugin }) {
   if (minVersion === undefined || minVersion === null) return null
-  const dir = typeof minVersion === 'string' ? pluginVersionOrder(engineVersion, minVersion) : null
-  if (dir === null) {
+  const order = typeof minVersion === 'string' ? pluginVersionOrder(engineVersion, minVersion) : null
+  if (order === null) {
     throw new Error(`Invalid minPluginVersion: ${JSON.stringify(minVersion)} (must be a version x.y.z, optionally with a -prerelease)`)
   }
-  if (dir >= 0) return null
+  if (order >= 0) return null
   return {
     code: 'plugin-version-too-old',
     reason: `plugin-version-too-old: this engine is ${engineVersion}, below the minPluginVersion ${minVersion} this repository asks for; nothing ran. Update the plugin (claude plugin update ${plugin}@<marketplace> --scope <scope>), restart the session, then relaunch`,
@@ -2622,13 +2622,13 @@ function minPluginVersionVerdict({ engineVersion, minVersion, plugin }) {
 // on another repository than the Lead session's would run under the wrong rules. A script compares the git common dir
 // of the Lead's session root with the run's worktree; the command prints exactly one line, read by the `lines` probe.
 // No model judges. The reason never holds a path (the scrub hook refuses local paths in GitHub text).
-function sessionRootCmd(sessionRoot, wtPath) {
+function sessionRootCmd(sessionRootPath, worktreePath) {
   const q = (x) => `'${String(x).split("'").join("'\\''")}'`
   const js = 'try{const cp=require("child_process"),fs=require("fs");' +
     'const d=(p)=>fs.realpathSync(cp.execFileSync("git",["-C",p,"rev-parse","--path-format=absolute","--git-common-dir"],{encoding:"utf8",stdio:["ignore","pipe","ignore"]}).trim());' +
     'console.log(d(process.argv[1])===d(process.argv[2])?"SESSION-ROOT:same":"SESSION-ROOT:differs")}' +
     'catch(e){console.log("SESSION-ROOT-ERROR:unreadable")}'
-  return `node -e ${q(js)} ${q(sessionRoot)} ${q(wtPath)}`
+  return `node -e ${q(js)} ${q(sessionRootPath)} ${q(worktreePath)}`
 }
 // -> null when the session root is the repository of the worktree, else { code, reason }; fails closed on anything else.
 function sessionRootVerdict({ probeFailed, exit, lines }) {
@@ -2648,7 +2648,7 @@ function sessionRootVerdict({ probeFailed, exit, lines }) {
 }
 // --- sessionRoot:end ---
 
-async function probe(name, cmd, { label, round = 0, onFail, noReuse = false, gateCmd = false, b64 = false } = {}) {
+async function probe(name, command, { label, round = 0, onFail, noReuse = false, gateCmd: gateCommand = false, b64 = false } = {}) {
   if (!isSafeProbeToken(name) || !isSafeProbeToken(label)) {
     throw new Error(`probe: unsafe name/label (${JSON.stringify(name)} / ${JSON.stringify(label)})`)
   }
@@ -2657,10 +2657,10 @@ async function probe(name, cmd, { label, round = 0, onFail, noReuse = false, gat
     throw new Error(`probe ${name}/${label}: ${reason}`)
   }
   if (!config.probeRunPath && !pluginRoot) return fail('probe-run-not-found')
-  const want = sha256Hex(cmd)
+  const want = sha256Hex(command)
   // gateCmd (#212, writes): the script refuses to run a copy of the command that does not hash to `want`
   // b64 (#338): the command travels as one bare base64 token (digest-gated), never as nested quoting a model must re-type
-  const cmds = probeCommands({ wtPath, issue, pluginRoot, probeRunPath: config.probeRunPath, name, cmd, label, round, noReuse, expectCmd: gateCmd || b64 ? want : undefined, cmdB64: b64 ? base64Utf8(cmd) : undefined })
+  const cmds = probeCommands({ wtPath, issue, pluginRoot, probeRunPath: config.probeRunPath, name, cmd: command, label, round, noReuse, expectCmd: gateCommand || b64 ? want : undefined, cmdB64: b64 ? base64Utf8(command) : undefined })
   const prompt =
     `Run EXACTLY these two commands once each, in this order, from the worktree "${wtPath}", without editing or re-quoting them:\n\n` +
     `1. ${cmds.run}\n2. ${cmds.verify}\n\n` +
@@ -2668,24 +2668,24 @@ async function probe(name, cmd, { label, round = 0, onFail, noReuse = false, gat
     `The second prints exactly one line starting with "VERIFY ": answer it verbatim as "verify". ` +
     `Never judge or retry; if a command printed no such line, answer "" for that field.`
   trace.push(`probe:${name}:haiku`)
-  const res = await callAgentSafe('probe', prompt,
+  const result = await callAgentSafe('probe', prompt,
     { agentType: 'lgtmgate:probe', schema: PROBE_SCHEMA, label: `probe-${issue}-${name}-${label}-r${round}`, model: 'haiku', personaFallback: PROBE_PERSONA }, round)
-  if (isAgentDeath(res)) return fail('agent-death')
-  const parsed = parseProbeLine(res && res.line)
+  if (isAgentDeath(result)) return fail('agent-death')
+  const parsed = parseProbeLine(result && result.line)
   if (!parsed) {
     // #338: no PROBE line and a verify that finds no record = the script never produced one: the command never ran
-    const nv = parseVerifyLine(res && res.verify)
+    const nv = parseVerifyLine(result && result.verify)
     return fail(nv && !nv.ok && nv.reason === 'no-record' ? 'command-not-run' : 'unparseable-line')
   }
   if (parsed.name !== name) return fail('name-mismatch')
   if (parsed.cmd !== want) return fail('cmd-mismatch')
-  const verified = parseVerifyLine(res && res.verify)
+  const verified = parseVerifyLine(result && result.verify)
   if (!verified) return fail('unparseable-verify')
   if (!verified.ok) return fail(verified.reason === 'no-attestation' ? 'no-attestation' : `verify-${verified.reason}`)
   const vp = parseProbeLine(verified.line)
   if (!vp || vp.sha !== parsed.sha) return fail('sha-mismatch')
   if (vp.cmd !== want) return fail('cmd-mismatch')
-  if (verified.line !== String(res.line).trim()) return fail('line-mismatch')
+  if (verified.line !== String(result.line).trim()) return fail('line-mismatch')
   return parsed
 }
 
@@ -2697,18 +2697,18 @@ const probeScriptPath = (file) => {
   return runPath.slice(0, runPath.lastIndexOf('/') + 1) + file
 }
 
-async function preflightProbe(mode, label, argv) {
+async function preflightProbe(modeName, label, argv) {
   try {
     const script = probeScriptPath('preflight.sh')
-    const cmd = 'bash ' + shellSingleQuote(script) + ' ' + mode + ' ' + argv.map(shellSingleQuote).join(' ')
+    const cmd = 'bash ' + shellSingleQuote(script) + ' ' + modeName + ' ' + argv.map(shellSingleQuote).join(' ')
     const r = await probe('preflight', cmd, {
       label,
       noReuse: true,   // live state: a stored record from an earlier launch must never answer (#83)
-      onFail: (reason) => { log(`preflight probe (${mode}): ${reason} — fail-open`); return null },
+      onFail: (reason) => { log(`preflight probe (${modeName}): ${reason} — fail-open`); return null },
     })
-    return r && r.json && !r.json.error && r.json.mode === mode ? r.json : null
-  } catch (e) {
-    log(`preflight probe (${mode}) failed (${e.message}) — fail-open`)
+    return r && r.json && !r.json.error && r.json.mode === modeName ? r.json : null
+  } catch (error) {
+    log(`preflight probe (${modeName}) failed (${error.message}) — fail-open`)
     return null
   }
 }
@@ -2723,8 +2723,8 @@ async function prWrite(op, label, round, argv) {
   prWriteFailure = null
   try {
     const script = probeScriptPath('pr-write.sh')
-    const args = [...argv, '--wt', wtPath, ...(repo ? ['--repo', repo] : [])]
-    const cmd = 'bash ' + shellSingleQuote(script) + ' ' + op + ' ' + args.map((a) => shellSingleQuote(String(a))).join(' ')
+    const arguments_ = [...argv, '--wt', wtPath, ...(repository ? ['--repo', repository] : [])]
+    const cmd = 'bash ' + shellSingleQuote(script) + ' ' + op + ' ' + arguments_.map((a) => shellSingleQuote(String(a))).join(' ')
     const r = await probe('pr-write', cmd, {
       label,
       round,
@@ -2734,9 +2734,9 @@ async function prWrite(op, label, round, argv) {
     })
     if (r && r.json && !r.json.error) out = r.json
     else if (r) { prWriteFailure = 'unusable-result'; log(`pr-write ${op} (${label}, round ${round}): unusable result (${r.json && r.json.error}) — fail-open`) }
-  } catch (e) {
+  } catch (error) {
     prWriteFailure = 'probe-error'
-    log(`pr-write ${op} (${label}, round ${round}): failed (${e.message}) — fail-open`)
+    log(`pr-write ${op} (${label}, round ${round}): failed (${error.message}) — fail-open`)
   }
   if (out) log(`pr-write ${op} (${label}, round ${round}): ${out.result}${out.reason ? ' — ' + out.reason : ''}${out.detail ? ' (' + out.detail + ')' : ''}`)
   return out
@@ -2852,16 +2852,16 @@ if (entryStage !== 'plan') {
   // (tests/test_provision_missing_script_gate.py); tracked as claude-agent-pipeline#64. Pinned
   // locally by F3 (templates/test-deliver-pipeline.js) until the upstream fix lands —
   // update BOTH F3 and the upstream pin in the same pass, never one without the other.
-  const provisionArgs = provisionLinks.filter(l => l.optional !== true).map(l => ` "${l.src}" "${l.dst}"`).join('')
+  const provisionArguments = provisionLinks.filter(l => l.optional !== true).map(l => ` "${l.src}" "${l.dst}"`).join('')
   const provisionScript = `${wtPath}/scripts/provision-worktree.sh`
   // DEBT(#364): consumers initialised before the rename still carry the snake_case copy; used only when the kebab-case one is absent
   const legacyProvisionScript = `${wtPath}/scripts/provision_worktree.sh`
   const noScriptBranch = provisionLinks.length === 0
     ? `echo "PROVISION-SKIPPED-NO-SCRIPT $SCRIPT (no provision.extraLinks configured - nothing to link)"; exit 0`
     : `echo "PROVISION-NO-SCRIPT $SCRIPT (${provisionLinks.length} hard link(s) configured - cannot provision)" >&2; exit 2`
-  const provisionCmd =
-    `SCRIPT="${provisionScript}"; LEGACY_SCRIPT="${legacyProvisionScript}"; if [ ! -f "$SCRIPT" ] && [ -f "$LEGACY_SCRIPT" ]; then SCRIPT="$LEGACY_SCRIPT"; fi; if [ -f "$SCRIPT" ]; then PROVISION_ENV_SYMLINK="${envSymlink}" bash "$SCRIPT" "${wtPath}"${provisionArgs}; else ${noScriptBranch}; fi`
-  if (simulate) provisionCmdPreview = provisionCmd
+  const provisionCommand =
+    `SCRIPT="${provisionScript}"; LEGACY_SCRIPT="${legacyProvisionScript}"; if [ ! -f "$SCRIPT" ] && [ -f "$LEGACY_SCRIPT" ]; then SCRIPT="$LEGACY_SCRIPT"; fi; if [ -f "$SCRIPT" ]; then PROVISION_ENV_SYMLINK="${environmentSymlink}" bash "$SCRIPT" "${wtPath}"${provisionArguments}; else ${noScriptBranch}; fi`
+  if (simulate) provisionCommandPreview = provisionCommand
   // #82: the call goes through probe() (probe-run gate): probe-run.cjs executes the command and keeps
   // the raw output, PARSERS.provision derives linked/missing/skipped in the script, the exit code
   // travels as `exit=` in the PROBE line and is never LLM-judged. `2>&1` so MISSING-SRC (stderr)
@@ -2870,15 +2870,15 @@ if (entryStage !== 'plan') {
   const provision = simulate
     ? simulate.probes?.provision
     : await (async () => {
-        const res = await probe('provision', `(${provisionCmd}) 2>&1`,
+        const result = await probe('provision', `(${provisionCommand}) 2>&1`,
           { label: 'provision', onFail: (reason) => ({ probeFailed: reason }) })
-        if (res.probeFailed) return res
+        if (result.probeFailed) return result
         return {
-          ok: res.exit === 0 && !res.json.error,
-          exitCode: res.exit,
-          linked: res.json.linked || [],
-          missing: res.json.missing || [],
-          skipped: res.json.skipped === true,
+          ok: result.exit === 0 && !result.json.error,
+          exitCode: result.exit,
+          linked: result.json.linked || [],
+          missing: result.json.missing || [],
+          skipped: result.json.skipped === true,
         }
       })()
   if (provision?.probeFailed === 'agent-death') {
@@ -2925,10 +2925,10 @@ if (entryStage === 'plan') {
   const provisionFresh = simulate
     ? { state: 'legacy', behind: simulate.probes?.provisionBehindCount, own: null }
     : await (async () => {
-        const res = await probe('provision-freshness',
+        const result = await probe('provision-freshness',
           `cd "${wtPath}" && git fetch origin ${baseBranch} -q 2>/dev/null; B=$(git rev-list --count HEAD..origin/${baseBranch}); O=$(git rev-list --count origin/${baseBranch}..HEAD); if [ "$B" -gt 0 ] && [ "$O" -eq 0 ] && git merge --ff-only origin/${baseBranch} -q >/dev/null 2>&1; then echo "PROVISION-FRESHNESS:ffwd:$B"; elif [ "$B" -eq 0 ]; then echo "PROVISION-FRESHNESS:fresh:0:$O"; else echo "PROVISION-FRESHNESS:stale:$B:$O"; fi`,
           { label: 'provision-freshness', onFail: (reason) => { log(`provisionBehindCount: probe failed (${reason}), skipping staleness preflight`); return null } })
-        return res && res.json && !res.json.error ? res.json : null
+        return result && result.json && !result.json.error ? result.json : null
       })()
   if (provisionFresh?.state === 'ffwd') {
     log(`Provision-freshness: worktree was ${provisionFresh.behind} commit(s) behind origin/${baseBranch} with no commit of its own — fast-forwarded, continuing`)
@@ -3165,7 +3165,7 @@ if (after('plan', entryStage)) {
       const planPhase = planPass > 1 ? `Plan ${planPass}` : 'Plan'
       if (planPass > 1) phase(planPhase)
       const fixBlock = checkIssues.length
-        ? `\n\nPLAN-VERIFICATION GATE FLAGGED THIS PLAN (attempt ${planAttempt}) — fix ALL of these before resubmitting:\n${checkIssues.map(i => `- ${i}`).join('\n')}`
+        ? `\n\nPLAN-VERIFICATION GATE FLAGGED THIS PLAN (attempt ${planAttempt}) — fix ALL of these before resubmitting:\n${checkIssues.map(index => `- ${index}`).join('\n')}`
         : ''
 
       sam = await callAgentSafe(
@@ -3329,10 +3329,10 @@ if (after('plan', entryStage)) {
   // #271: Nick and Morgan get Theo's lanes plus the lanes whose `paths` hit Sam's targetFiles; the union is persisted in the plan.
   if (lanesFound.length > 0) {
     const pathLanes = lanePathHits(lanesFound, sam.targetFiles)
-    lanesDev = lanesFound.map((l) => l.name).filter((n) => lanesSam.includes(n) || pathLanes.includes(n))
+    lanesDevelopment = lanesFound.map((l) => l.name).filter((n) => lanesSam.includes(n) || pathLanes.includes(n))
     trace.push(`lanes:theo=${lanesSam.join('+') || '-'},paths=${pathLanes.join('+') || '-'}`)
-    lanesReport = lanesDev
-    sam.plan = appendLanesLine(sam.plan, lanesDev)
+    lanesReport = lanesDevelopment
+    sam.plan = appendLanesLine(sam.plan, lanesDevelopment)
     samPlan = sam.plan
   }
   const oneWayDoor = oneWayDoorSignals(sam.plan, sam.targetFiles, { issue, planPath, paths: config.oneWayDoorPaths, kinds: config.oneWayDoorKinds })
@@ -3395,8 +3395,8 @@ if (samAcceptanceItems === null && (entryStage === 'dev' || entryStage === 'revi
 
 // #271 — a resume at entryStage dev/review runs no Theo: the lanes come from the `lanes` arg, else from the `lanes:` line of
 // planText. A name that is no lane found throws; none with lane files present = base only, flagged unresolved.
-if ((entryStage === 'dev' || entryStage === 'review') && (lanesFound.length > 0 || (Array.isArray(lanesArg) && lanesArg.length > 0))) {
-  const asked = Array.isArray(lanesArg) ? lanesArg : lanesFromPlanText(planText)
+if ((entryStage === 'dev' || entryStage === 'review') && (lanesFound.length > 0 || (Array.isArray(lanesArgument) && lanesArgument.length > 0))) {
+  const asked = Array.isArray(lanesArgument) ? lanesArgument : lanesFromPlanText(planText)
   const unknown = asked.filter((n) => !lanesFound.some((l) => l.name === n))
   if (unknown.length > 0) {
     throw new Error(`lanes: ${unknown.join(', ')} is not in the lanes found (${lanesFound.map((l) => l.name).join(', ') || 'none'}); nothing ran`)
@@ -3405,10 +3405,10 @@ if ((entryStage === 'dev' || entryStage === 'review') && (lanesFound.length > 0 
     lanesUnresolved = true
     trace.push('lanes-unresolved')
   } else {
-    lanesDev = lanesFound.map((l) => l.name).filter((n) => asked.includes(n))
-    lanesSam = lanesDev
-    lanesReport = lanesDev
-    trace.push(`lanes:${lanesDev.join('+')}`)
+    lanesDevelopment = lanesFound.map((l) => l.name).filter((n) => asked.includes(n))
+    lanesSam = lanesDevelopment
+    lanesReport = lanesDevelopment
+    trace.push(`lanes:${lanesDevelopment.join('+')}`)
   }
 }
 
@@ -3438,8 +3438,8 @@ if (entryStage === 'dev' || entryStage === 'review') {
     'alreadyDoneCheck',
     `Check whether issue #${issue} is already done. Target the correct repo — gh resolves the wrong ` +
     `repo from an unrelated cwd, causing a false already-done:\n` +
-    (repo
-      ? `0. REPO="${repo}" (from config.repo).\n`
+    (repository
+      ? `0. REPO="${repository}" (from config.repo).\n`
       : `0. cd into "${wtPath}"; REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner) — if this fails, run steps 1-2 from within "${wtPath}" (cwd-scoped, still correct).\n`) +
     `1. gh issue view ${issue} -R "$REPO" --json state,createdAt — report issueState and issueCreatedAt ` +
     `VERBATIM from that output's .state and .createdAt (CLOSED → issue is done).\n` +
@@ -3544,15 +3544,15 @@ const PR_READ_CLASSES = ['tls', 'auth', 'rate-limit', 'not-found', 'other']
 const namedReadFailure = (x) => (typeof x === 'string' && PR_READ_CLASSES.includes(x) ? x : null)
 const assertBranchConformance = async (pullRequestNumber, nickBranchFallback) => {
   const expectedBranch = `${expectedBranchName}`
-  let headRef = nickBranchFallback ?? null
-  let rawHeadRef = null
+  let headReference = nickBranchFallback ?? null
+  let rawHeadReference = null
   let readFailed = null   // #239: the named cause when the PR read of the branch probe failed
   let branchPf = null   // one preflight 'branch' probe per guard call, shared by the head-ref and prefix reads
   let branchPfDone = false
   const branchProbe = async () => {
     if (!branchPfDone) {
       branchPfDone = true
-      branchPf = await preflightProbe('branch', 'branch', ['--wt', wtPath, '--pr', pullRequestNumber ? String(pullRequestNumber) : '', '--repo', repo || '', '--stamp', String(stamp ?? '')])
+      branchPf = await preflightProbe('branch', 'branch', ['--wt', wtPath, '--pr', pullRequestNumber ? String(pullRequestNumber) : '', '--repo', repository || '', '--stamp', String(stamp ?? '')])
     }
     return branchPf
   }
@@ -3560,12 +3560,12 @@ const assertBranchConformance = async (pullRequestNumber, nickBranchFallback) =>
     const sim = simulate.probes?.branchCheckRaw
     // an object answer is the branch probe's own answer ({ readFailed }); a string / null keeps its old meaning
     if (sim !== null && typeof sim === 'object') readFailed = namedReadFailure(sim.readFailed)
-    else if (sim !== undefined) rawHeadRef = sim
+    else if (sim !== undefined) rawHeadReference = sim
   } else if (pullRequestNumber) {
     const pf = await branchProbe()
     if (pf) {
       readFailed = namedReadFailure(pf.readFailed)
-      rawHeadRef = pf.headRef ?? ''
+      rawHeadReference = pf.headRef ?? ''
     } else log(`Branch guard: preflight branch probe unavailable — falling back to nick.branch`)
   }
   if (readFailed) {
@@ -3574,20 +3574,20 @@ const assertBranchConformance = async (pullRequestNumber, nickBranchFallback) =>
     log(`Branch guard: the read of PR #${pullRequestNumber} failed (${readFailed}) — escalating pr-read-failed:${readFailed}, no review spent`)
     return { reason: `pr-read-failed:${readFailed}`, pr: pullRequestNumber ?? null, issue, trace }
   }
-  if (rawHeadRef !== null) {
-    const parsed = parseHeadRef(rawHeadRef, expectedBranch)
+  if (rawHeadReference !== null) {
+    const parsed = parseHeadReference(rawHeadReference, expectedBranch)
     if (parsed) {
-      headRef = parsed
-      if (parsed !== String(rawHeadRef).trim()) {
+      headReference = parsed
+      if (parsed !== String(rawHeadReference).trim()) {
         trace.push('branch-check-normalized')
-        log(`Branch guard: normalized raw answer "${String(rawHeadRef).slice(0, 120)}" -> "${parsed}"`)
+        log(`Branch guard: normalized raw answer "${String(rawHeadReference).slice(0, 120)}" -> "${parsed}"`)
       }
     } else {
       trace.push('branch-check-unparsed')
-      log(`Branch guard: unparsed raw answer "${String(rawHeadRef).slice(0, 120)}" — falling back to nick.branch`)
+      log(`Branch guard: unparsed raw answer "${String(rawHeadReference).slice(0, 120)}" — falling back to nick.branch`)
     }
   }
-  if (headRef !== expectedBranch) {
+  if (headReference !== expectedBranch) {
     let realBranchPrefixRaw = null
     if (branchOverrideName !== null) {
       // #232: an explicit override is authoritative — never accept a config-prefix branch.
@@ -3598,17 +3598,17 @@ const assertBranchConformance = async (pullRequestNumber, nickBranchFallback) =>
       if (pf) realBranchPrefixRaw = pf.branchPrefix
       else log(`Branch guard: preflight branch probe unavailable — escalating as before`)
     }
-    const reconciled = branchOverrideName !== null ? null : reconcileStaleBranchPrefix(headRef, issue, realBranchPrefixRaw)
+    const reconciled = branchOverrideName !== null ? null : reconcileStaleBranchPrefix(headReference, issue, realBranchPrefixRaw)
     if (reconciled) {
       trace.push('branch-check-reconciled')
-      log(`Branch guard: PR #${pullRequestNumber} head "${headRef}" mismatches the caller-supplied expectedBranch "${expectedBranch}" but matches the worktree's own pipeline.config.json branchPrefix — accepting (lgtmgate#131, cross-repo config drift)`)
+      log(`Branch guard: PR #${pullRequestNumber} head "${headReference}" mismatches the caller-supplied expectedBranch "${expectedBranch}" but matches the worktree's own pipeline.config.json branchPrefix — accepting (lgtmgate#131, cross-repo config drift)`)
     } else {
-      log(`Branch mismatch: PR #${pullRequestNumber} head is "${headRef}", expected "${expectedBranch}"`)
-      trace.push(`branch-mismatch:${headRef}`)
+      log(`Branch mismatch: PR #${pullRequestNumber} head is "${headReference}", expected "${expectedBranch}"`)
+      trace.push(`branch-mismatch:${headReference}`)
       // The escalate payload without its status: both callers pass it to finish(STATUS['escalate'], ...).
       return {
         reason: 'branch-mismatch',
-        expectedBranch, actualBranch: headRef,
+        expectedBranch, actualBranch: headReference,
         pr: pullRequestNumber ?? null, issue, trace,
       }
     }
@@ -3628,19 +3628,19 @@ if (after('dev', entryStage)) {
   planTargetsChecked = planTargets.length
   // #83: the three pre-Dev reads (plan freshness, open sub-issues, git-dir writable) are ONE probe.
   // null = probe unavailable -> each read below takes its existing fail-open skip.
-  const preflightDev = simulate ? null : await preflightProbe('dev', 'dev', [
-    '--wt', wtPath, '--issue', String(issue), '--base', baseBranch, '--repo', repo || '',
+  const preflightDevelopment = simulate ? null : await preflightProbe('dev', 'dev', [
+    '--wt', wtPath, '--issue', String(issue), '--base', baseBranch, '--repo', repository || '',
     '--targets', planTargets.join(' '), '--stamp', String(stamp ?? ''),
     ...(isEngineRepo(config) ? ['--engine', 'true'] : []),
   ])
   if (planFreshnessMode !== 'off' && planTargets.length > 0) {
     const planStaleFilesProbe = async () => {
       if (simulate) return simulate.probes?.planStaleFiles
-      if (!preflightDev || !Array.isArray(preflightDev.planStale)) {
+      if (!preflightDevelopment || !Array.isArray(preflightDevelopment.planStale)) {
         log(`planStaleFilesProbe: no preflight result, skipping plan-freshness check`)
         return null
       }
-      return preflightDev.planStale
+      return preflightDevelopment.planStale
     }
     planStaleFiles = await planStaleFilesProbe()
     if (Array.isArray(planStaleFiles) && planStaleFiles.length > 0) {
@@ -3655,7 +3655,7 @@ if (after('dev', entryStage)) {
 
   // #307: the layout check is a gate (always refuses). The probe already received the sanitized list, so
   // pathEntryHit is not needed here. A null layout (probe unavailable, no ls-lint) skips, never refuses.
-  const layout = preflightDev && preflightDev.layout
+  const layout = preflightDevelopment && preflightDevelopment.layout
   if (planTargets.length > 0 && layout && layout.verdict === 'NOT_CONFORMING') {
     trace.push('plan-layout:' + layout.issues.length)
     log(`Plan layout: ${layout.issues.length} planned path(s) break the layout rules — ${layout.issues.join(' | ')}`)
@@ -3665,11 +3665,11 @@ if (after('dev', entryStage)) {
 
   const openSubIssuesProbe = async () => {
     if (simulate) return simulate.probes?.openSubIssues
-    if (!preflightDev || !Array.isArray(preflightDev.openSubIssues)) {
+    if (!preflightDevelopment || !Array.isArray(preflightDevelopment.openSubIssues)) {
       log(`openSubIssuesProbe: no preflight result, skipping sub-issues gate (fail-open, mirrors planStaleFilesProbe)`)
       return null
     }
-    return preflightDev.openSubIssues
+    return preflightDevelopment.openSubIssues
   }
   openSubIssues = await openSubIssuesProbe()
   const subGate = Array.isArray(openSubIssues)
@@ -3687,29 +3687,29 @@ if (after('dev', entryStage)) {
   // worktree checkout path itself) — touches/unlinks a marker file there (unlink, never rm: a repo denying Bash(rm *) refuses the whole probe, #99), never wtPath or any
   // tracked file. Ungated by entryStage (unlike the fresh-dispatch provision-stale preflight
   // above): a resumed run can hit the same external sandbox-grant gap as a fresh one.
-  const gitDirWritableProbe = async () => {
+  const gitDirectoryWritableProbe = async () => {
     if (simulate) return simulate.probes?.gitDirWritable
-    if (!preflightDev || typeof preflightDev.writable !== 'boolean') {
+    if (!preflightDevelopment || typeof preflightDevelopment.writable !== 'boolean') {
       log(`gitDirWritableProbe: no preflight result, skipping worktree write-access preflight (fail-open)`)
       return null
     }
-    return { writable: preflightDev.writable, gitDir: preflightDev.gitDir }
+    return { writable: preflightDevelopment.writable, gitDir: preflightDevelopment.gitDir }
   }
-  const gitDirProbe = await gitDirWritableProbe()
-  if (gitDirProbe && gitDirProbe.writable === false) {
-    trace.push(`worktree-git-dir-not-writable:${gitDirProbe.gitDir || 'unknown'}`)
-    log(`Worktree write-access preflight: git-dir "${gitDirProbe.gitDir}" is not writable — escalating before Nick spawn`)
+  const gitDirectoryProbe = await gitDirectoryWritableProbe()
+  if (gitDirectoryProbe && gitDirectoryProbe.writable === false) {
+    trace.push(`worktree-git-dir-not-writable:${gitDirectoryProbe.gitDir || 'unknown'}`)
+    log(`Worktree write-access preflight: git-dir "${gitDirectoryProbe.gitDir}" is not writable — escalating before Nick spawn`)
     await updateStatus('Blocked')
-    return finish(STATUS['escalate'], { reason: 'worktree-git-dir-not-writable', gitDir: gitDirProbe.gitDir, issue, wtPath, trace })
+    return finish(STATUS['escalate'], { reason: 'worktree-git-dir-not-writable', gitDir: gitDirectoryProbe.gitDir, issue, wtPath, trace })
   }
 
-  const epicRef = subGate.blocked ? `(see #${issue})` : 'Closes #' + issue
-  const closesLine = [epicRef, ...samAbsorbedIssues.map(n => 'Closes #' + n)].join(', ')
+  const epicReference = subGate.blocked ? `(see #${issue})` : 'Closes #' + issue
+  const closesLine = [epicReference, ...samAbsorbedIssues.map(n => 'Closes #' + n)].join(', ')
   // R2 (#76): deterministic — the fixture acceptance item is decided here, never by Nick's judgment.
   // Engine-repo only (#163): the fixtures dir and replay script it names exist only in this plugin's repo.
   const r2Applies = isEngineRepo(config) && issueType === 'bug' && safePlanTargets(samTargetFiles).some(p => p.startsWith('workflows/'))
   const r2Note = r2Applies
-    ? `R2 fixture rule (issue #${issue}): add this acceptance item to the checklist verbatim — "fixture \`fixtures/incidents/${issue}-*.json\` present, replayed red on base and green on the branch by \`scripts/run-offline.cjs\`". If no such fixture exists in the branch, run \`gh issue edit ${issue} -R ${repo || '<repo>'} --add-label no-fixture\` and use \`Refs #${issue}\` instead of \`Closes #${issue}\` on the first line of the PR body (the issue then stays open). `
+    ? `R2 fixture rule (issue #${issue}): add this acceptance item to the checklist verbatim — "fixture \`fixtures/incidents/${issue}-*.json\` present, replayed red on base and green on the branch by \`scripts/run-offline.cjs\`". If no such fixture exists in the branch, run \`gh issue edit ${issue} -R ${repository || '<repo>'} --add-label no-fixture\` and use \`Refs #${issue}\` instead of \`Closes #${issue}\` on the first line of the PR body (the issue then stays open). `
     : ''
   const nickPrompt = (
     `Work in the shared worktree "${wtPath}" (cd into it; it already exists${worktreeRoot ? `; worktree root: ${worktreeRoot}` : ''}). ` +
@@ -3719,11 +3719,11 @@ if (after('dev', entryStage)) {
         `Run \`git -C "${wtPath}" rev-parse --abbrev-ref HEAD\`; if it is not exactly \`${expectedBranchName}\`, ` +
         `if the branch already exists locally (\`git -C "${wtPath}" rev-parse --verify --quiet refs/heads/${expectedBranchName}\` succeeds) run \`git -C "${wtPath}" switch ${expectedBranchName}\`, otherwise run \`git -C "${wtPath}" switch -c ${expectedBranchName}\`; never reset or force the branch (no \`-B\`/\`-C\`, no \`reset --hard\`), and if the switch is refused because of a dirty tree, stop and report instead of forcing. Then re-run \`git -C "${wtPath}" rev-parse --abbrev-ref HEAD\` to confirm. ` +
         `Every commit, the push and the PR head MUST be \`${expectedBranchName}\`. ` +
-        `Implement the plan on that branch. Write meaningful tests and get the green bar: build via \`${buildCmd}\`, run unit tests via \`${testCmd}\`, and format each modified file via \`${formatCmd}\`. ` +
+        `Implement the plan on that branch. Write meaningful tests and get the green bar: build via \`${buildCommand}\`, run unit tests via \`${testCommand}\`, and format each modified file via \`${formatCommand}\`. ` +
       `When deleting repo-tracked files, use \`git rm <file>\` instead of bare \`rm\` — bare rm is sandbox-denied and burns permission rounds. ` +
       `${SANDBOX_INSTALL_HINT} ` +
       `Push the branch explicitly before opening the PR: \`git push origin ${expectedBranchName}\` (no upstream flag — the sandbox cannot write the worktree's .git/config, CC bug #51818; see .claude/rules/git-workflow.md). ` +
-      `If that push fails because the SSH remote is unreachable in the sandbox (\`ssh_dispatch_run_fatal\`, \`Broken pipe\`, \`Connection refused\`, \`Could not resolve hostname\`; CC issues #30619, #33300), retry ONCE over HTTPS through the gh credential helper (github.com:443 is reachable, SSH is not): \`${httpsPushCmdFor(expectedBranchName)}\` (explicit refspec, no upstream flag, no sandbox bypass). If the HTTPS push fails too, do not bypass the sandbox and do not open a PR: stop, return prNumber 0 with a summary that quotes the failing command and its error. ` +
+      `If that push fails because the SSH remote is unreachable in the sandbox (\`ssh_dispatch_run_fatal\`, \`Broken pipe\`, \`Connection refused\`, \`Could not resolve hostname\`; CC issues #30619, #33300), retry ONCE over HTTPS through the gh credential helper (github.com:443 is reachable, SSH is not): \`${httpsPushCommandFor(expectedBranchName)}\` (explicit refspec, no upstream flag, no sandbox bypass). If the HTTPS push fails too, do not bypass the sandbox and do not open a PR: stop, return prNumber 0 with a summary that quotes the failing command and its error. ` +
       `Open a PR (draft) with EXPLICIT refs — gh resolves HEAD from the invoking cwd, not the worktree branch: \`gh pr create --draft${prFlag} --base ${baseBranch} --head ${expectedBranchName} ...\`. ` +
       `${r2Note}` +
       `Compose the PR body in this order (artifact-first structure): first line \`${closesLine}\` — one \`Closes #N\` per fully-resolved issue (the epic plus every issue Sam's plan explicitly named as fully resolved by this bundle; never for an issue flagged partial/residual in the plan — that one stays open, with a forward-reference comment on the child issue instead, as already practiced); ${subIssuesGateNote(subIssuesUncovered, issue)}then a \`## What this ships\` H2 with a bullet summary of the diff; then, ONLY IF the acceptance checklist below contains a \`[human-gate]\` item, an optional \`## <Human> — N gestures\` H2 listing those manual human actions (omit this H2 entirely when no \`[human-gate]\` item exists — never ship an empty stub section); then a \`## Acceptance checklist\` H2. Copy the acceptance checklist into the PR body between \`<!-- acceptance:start -->\`/\`<!-- acceptance:end -->\`. ${nickBlockNote(acceptanceBlock)}Leave an EMPTY \`<!-- decision-log:start -->\`/\`<!-- decision-log:end -->\` marker pair right after the acceptance block — workflow-owned, never hand-fill it. Close with a \`<details><summary>Technical detail</summary>\` fold holding the test plan / feature flag / risk notes. Post a comment on issue #${issue} linking the PR, then idle.`
@@ -3762,7 +3762,7 @@ if (after('review', entryStage)) {
     if (noPrDelivery) {
       log('No-PR terminal delivery: nick reported testsPass=true with a summary and no PR — skipping Review')
       trace.push('delivered-no-pr')
-      const leadAction = `Lead: if the branch was not pushed (SSH blocked in the sandbox, #108), push it with \`${httpsPushCmdFor(expectedBranchName)}\`, then open the PR with \`gh pr create --draft${prFlag} --base ${baseBranch} --head ${expectedBranchName}\` and relaunch with entryStage:"review" + prNumber.`
+      const leadAction = `Lead: if the branch was not pushed (SSH blocked in the sandbox, #108), push it with \`${httpsPushCommandFor(expectedBranchName)}\`, then open the PR with \`gh pr create --draft${prFlag} --base ${baseBranch} --head ${expectedBranchName}\` and relaunch with entryStage:"review" + prNumber.`
       log(`delivered-no-pr: ${leadAction}`)
       return finish(STATUS['delivered-no-pr'], { issue, summary: nick.summary, leadAction, trace })
     }
@@ -3828,18 +3828,18 @@ if (after('review', entryStage)) {
   const prState = async (label, round, { since } = {}) => {
     try {
       const argv = ['--pr', String(pr), '--wt', wtPath]
-      if (repo) argv.push('--repo', repo)
+      if (repository) argv.push('--repo', repository)
       if (since) argv.push('--since', since)
-      const cmd = 'bash ' + shellSingleQuote(probeScriptPath('pr-state.sh')) + ' ' + argv.map(shellSingleQuote).join(' ')
-      const r = await probe('pr-state', cmd, {
+      const command = 'bash ' + shellSingleQuote(probeScriptPath('pr-state.sh')) + ' ' + argv.map(shellSingleQuote).join(' ')
+      const r = await probe('pr-state', command, {
         label,
         round,
         noReuse: true,   // live state: a stored record from an earlier launch must never answer (#83)
         onFail: (reason) => { log(`pr-state probe (${label}, round ${round}): ${reason} — fail-open`); return null },
       })
       return r && r.json && !r.json.error ? r.json : null
-    } catch (e) {
-      log(`pr-state probe (${label}, round ${round}) failed (${e.message}) — fail-open`)
+    } catch (error) {
+      log(`pr-state probe (${label}, round ${round}) failed (${error.message}) — fail-open`)
       return null
     }
   }
@@ -3884,16 +3884,16 @@ if (after('review', entryStage)) {
     }
     const flagged = []
     for (const it of candidates) {
-      const num = typeof it === 'number' ? it : it.number
-      trace.push(`reviewer-window-issue-flagged:${num}`)
-      flagged.push({ number: num, url: it && it.url ? it.url : null })
+      const number_ = typeof it === 'number' ? it : it.number
+      trace.push(`reviewer-window-issue-flagged:${number_}`)
+      flagged.push({ number: number_, url: it && it.url ? it.url : null })
       if (simulate) continue
       // Non-destructive by design (see the header note above): a single comment on the
       // candidate itself, no copied title/body, and never a close-the-issue call — closing an
       // unattributed issue is exactly the defect this replaces. pr-write.sh skips it when a comment
       // carrying the marker is already there (idempotent across a re-run of the same round).
-      await prWrite('issue-comment', 'rw-flag-' + num, round, [
-        '--number', num,
+      await prWrite('issue-comment', 'rw-flag-' + number_, round, [
+        '--number', number_,
         '--marker', `<!-- pipeline-reviewer-window pr=${pr} -->`,
         '--body',
         `<!-- pipeline-reviewer-window pr=${pr} -->\n` +
@@ -3979,26 +3979,46 @@ if (after('review', entryStage)) {
     return Array.isArray(endState?.files) ? endState.files : null
   }
 
+  // #182: Morgan's boxes mapped by id to the rendered items (finish() then carries them as `boxes`; a round whose
+  // verdict has none clears the previous round's). An id no item carries is dropped and traced, so is an item she
+  // returned no box for. #183: the boxes then drive the tick (tickAcceptanceBoxes).
+  const mapMorganBoxes = (v, endState) => {
+    boxesMapped = null
+    boxesGates = []
+    if (samAcceptanceItems) {
+      // A verdict with no `boxes` is a verdict with no box proven: a non-gate box is settled by the proof Morgan returns
+      // in this round only. The ids ticked in the body (read now, after Morgan ran) matter for the human gates alone.
+      const ticked = simulate
+        ? checkedAcceptanceIds(simBody() ?? '')
+        : (endState && Array.isArray(endState.acceptanceChecked) ? endState.acceptanceChecked : [])
+      const mapped = mapBoxes(samAcceptanceItems, v.boxes, ticked)
+      boxesMapped = mapped.boxes
+      boxesGates = mapped.gates
+      for (const id of mapped.unknown) trace.push(`boxes-unknown-id:${id}`)
+      for (const id of mapped.missing) trace.push(`boxes-missing:${id}`)
+    }
+  }
+
   // Artifact-proof gate — the workflow re-derives the verdict from Morgan's OWN declared
   // proofs, never trusting her LGTM alone. No-op when artifactProofs is absent/empty — every
   // pre-existing flow is unchanged.
-  const callMorganGuarded = async (prompt, opts, round) => {
+  const callMorganGuarded = async (prompt, options, round) => {
     const windowStart = await reviewerWindowStart(round)
     // #249: the human-gate boxes a person already ticked are settled; say so, so the reviewer does not list them.
-    const tickedGates = (samAcceptanceItems || []).filter((i) => i.humanGate && windowTickedIds.includes(i.id)).map((i) => i.id)
+    const tickedGates = (samAcceptanceItems || []).filter((item) => item.humanGate && windowTickedIds.includes(item.id)).map((item) => item.id)
     if (tickedGates.length > 0) {
       prompt += `\n\nHuman-gate box(es) ${tickedGates.join(', ')} already ticked by a person in the PR body: settled, do not list them in items.`
     }
     let v
     try {
-      v = await callAgent('morgan', prompt, opts, round)
-    } catch (e) {
+      v = await callAgent('morgan', prompt, options, round)
+    } catch (error) {
       // A thrown Morgan death is contained here and folded into the SAME null contract
       // the two review-died branches below already handle — Morgan is deliberately NOT routed
       // through callAgentSafe (see the header note near "COPIES-ALIGNED"): the flow suite's
       // null-Morgan case and simFixture's `if (m === null) return null` depend on `null` staying
       // the one death signal for this role.
-      log(`callMorganGuarded round ${round}: Morgan threw (${e && e.message ? e.message : e}) — treating as death (null)`)
+      log(`callMorganGuarded round ${round}: Morgan threw (${error && error.message ? error.message : error}) — treating as death (null)`)
       v = null
     }
     // ONE pr-state probe per Morgan round serves the window end, the issue scan and the artifact floor.
@@ -4029,23 +4049,7 @@ if (after('review', entryStage)) {
       log(`callMorganGuarded round ${round}: LGTM with CI not green — REQUIRED_CHANGES (${line})`)
       return { ...settled, verdict: 'REQUIRED_CHANGES', items: [...(settled.items || []), line] }
     }
-    // #182: Morgan's boxes mapped by id to the rendered items (finish() then carries them as `boxes`; a round whose
-    // verdict has none clears the previous round's). An id no item carries is dropped and traced, so is an item she
-    // returned no box for. #183: the boxes then drive the tick (tickAcceptanceBoxes).
-    boxesMapped = null
-    boxesGates = []
-    if (samAcceptanceItems) {
-      // A verdict with no `boxes` is a verdict with no box proven: a non-gate box is settled by the proof Morgan returns
-      // in this round only. The ids ticked in the body (read now, after Morgan ran) matter for the human gates alone.
-      const ticked = simulate
-        ? checkedAcceptanceIds(simBody() ?? '')
-        : (endState && Array.isArray(endState.acceptanceChecked) ? endState.acceptanceChecked : [])
-      const mapped = mapBoxes(samAcceptanceItems, v.boxes, ticked)
-      boxesMapped = mapped.boxes
-      boxesGates = mapped.gates
-      for (const id of mapped.unknown) trace.push(`boxes-unknown-id:${id}`)
-      for (const id of mapped.missing) trace.push(`boxes-missing:${id}`)
-    }
+    mapMorganBoxes(v, endState)
     const proofs = Array.isArray(v.artifactProofs) ? v.artifactProofs : []
     if (proofs.length === 0) return await settle(v)
     const floorIso = await artifactFloorIso(round, endState)
@@ -4079,6 +4083,40 @@ if (after('review', entryStage)) {
     return await settle({ ...v, verdict: 'REQUIRED_CHANGES', items: merged })
   }
 
+  // Removes (in place, by id) the lines of the human-gate boxes a person ticked; true when it removed one.
+  const dropSettledGateLines = (items) => {
+    let dropped = false
+    for (let k = items.length - 1; k >= 0; k--) {
+      const id = boxLineId(items[k])
+      if (id !== null && boxesGates.includes(id)) {
+        items.splice(k, 1)
+        trace.push(`human-gate-settled:${id}`)
+        dropped = true
+      }
+    }
+    return dropped
+  }
+
+  // The simulated tick (simulate.probes.acceptanceSync): false (refused), a reason string, or a list of those answered one
+  // per try (true / absent: the real tickAcceptanceBlock on the body). Returns { reason, detail }, reason null when it landed.
+  const simulatedTick = (tries, rendered, tickIds, keepIds) => {
+    const sim = simulate.probes?.acceptanceSync
+    const answers = Array.isArray(sim) ? sim : [sim]
+    const answer = answers[Math.min(tries, answers.length - 1)]
+    if (answer === false) return { reason: 'write-failed', detail: null }
+    if (typeof answer === 'string') return { reason: answer, detail: null }
+    if (answer !== null && typeof answer === 'object') {
+      // the probe's own answer shape { reason, detail }
+      return { reason: typeof answer.reason === 'string' && answer.reason ? answer.reason : 'write-failed', detail: namedReadFailure(answer.detail) }
+    }
+    const base = simBody()
+    if (base === undefined || base === null) return { reason: null, detail: null }
+    const out = tickAcceptanceBlock(base, rendered, tickIds, keepIds)
+    if (out === null) return { reason: 'no-markers', detail: null }
+    prBodyPreview = out
+    return { reason: null, detail: null }
+  }
+
   // tickAcceptanceBoxes (#183) — the workflow ticks, Morgan only returns `boxes`. In an id run (items from Sam; a verdict
   // with no `boxes` is a verdict with none proven) one pr-write call re-splices the rendered block with the proven
   // non-gate boxes `[x]` by id (a human-gate id keeps the state the body has: the engine never writes a gate `[x]`; a
@@ -4098,7 +4136,7 @@ if (after('review', entryStage)) {
     const proven = boxesMapped.filter((b) => b.proven)
     const tickBoxes = proven.filter((b) => !b.humanGate)
     const tickIds = tickBoxes.map((b) => b.id)
-    const keepIds = samAcceptanceItems.filter((i) => i.humanGate).map((i) => i.id)
+    const keepIds = samAcceptanceItems.filter((item) => item.humanGate).map((item) => item.id)
     const rendered = renderChecklist(samAcceptanceItems)
     // One try: null when the tick landed, else the reason it did not. simulate.probes.acceptanceSync: false (refused),
     // a reason string, or a list of those answered one per try (true / absent: the real tickAcceptanceBlock on the body).
@@ -4107,31 +4145,18 @@ if (after('review', entryStage)) {
     const tryTick = async (label) => {
       tickDetail = null
       if (simulate) {
-        const sim = simulate.probes?.acceptanceSync
-        const answers = Array.isArray(sim) ? sim : [sim]
-        const answer = answers[Math.min(tries, answers.length - 1)]
+        const simulated = simulatedTick(tries, rendered, tickIds, keepIds)
         tries += 1
-        if (answer === false) return 'write-failed'
-        if (typeof answer === 'string') return answer
-        if (answer !== null && typeof answer === 'object') {
-          // the probe's own answer shape { reason, detail }
-          tickDetail = namedReadFailure(answer.detail)
-          return typeof answer.reason === 'string' && answer.reason ? answer.reason : 'write-failed'
-        }
-        const base = simBody()
-        if (base === undefined || base === null) return null
-        const out = tickAcceptanceBlock(base, rendered, tickIds, keepIds)
-        if (out === null) return 'no-markers'
-        prBodyPreview = out
-        return null
+        tickDetail = simulated.detail
+        return simulated.reason
       }
       // #257: a non-empty tick is the short command (ids only); the empty tick keeps the text mode, which reopens a stale [x].
-      const res = await prWrite('body-splice', label, round, tickIds.length > 0
+      const result = await prWrite('body-splice', label, round, tickIds.length > 0
         ? tickIdsArgv(pr, tickIds)
         : ['--pr', pr, '--mode', 'tick', '--text-b64', base64Utf8(rendered), '--ids', tickIds.join(','), '--keep', keepIds.join(',')])
-      if (res && (res.result === 'written' || res.result === 'skipped')) return null
-      tickDetail = res ? namedReadFailure(res.detail) : null
-      return res ? (res.reason || 'write-failed') : (prWriteFailure || 'probe-unavailable')
+      if (result && (result.result === 'written' || result.result === 'skipped')) return null
+      tickDetail = result ? namedReadFailure(result.detail) : null
+      return result ? (result.reason || 'write-failed') : (prWriteFailure || 'probe-unavailable')
     }
     let reason = await tryTick('acceptance-tick')
     if (reason === 'stale-read' || reason === 'cmd-mismatch') {
@@ -4145,10 +4170,10 @@ if (after('review', entryStage)) {
     const addLine = (item) => { if (!items.some((l) => lineKey(l) === 'ac:' + item.id)) { items.push(renderLine(item)); changed = true } }
     if (verdict === 'LGTM') {
       const settled = [...tickIds, ...boxesGates]
-      const open = samAcceptanceItems.filter((i) => !settled.includes(i.id))
+      const open = samAcceptanceItems.filter((item) => !settled.includes(item.id))
       if (open.length > 0) {
         trace.push(`acceptance-open-lgtm:${round}`)
-        log(`tickAcceptanceBoxes round ${round}: LGTM with ${open.length} box(es) not proven (${open.map((i) => i.id).join(',')}) — REQUIRED_CHANGES`)
+        log(`tickAcceptanceBoxes round ${round}: LGTM with ${open.length} box(es) not proven (${open.map((item) => item.id).join(',')}) — REQUIRED_CHANGES`)
         verdict = 'REQUIRED_CHANGES'
         changed = true
         open.forEach(addLine)
@@ -4158,16 +4183,9 @@ if (after('review', entryStage)) {
     // #249: a human-gate box a person ticked in the body is settled, whatever the verdict says: its line leaves `items`
     // (by id, boxLineId). A REQUIRED_CHANGES left with nothing else, every non-gate box proven, is the LGTM it should be.
     const before = items.length
-    for (let k = items.length - 1; k >= 0; k--) {
-      const id = boxLineId(items[k])
-      if (id !== null && boxesGates.includes(id)) {
-        items.splice(k, 1)
-        trace.push(`human-gate-settled:${id}`)
-        changed = true
-      }
-    }
+    if (dropSettledGateLines(items)) changed = true
     if (verdict === 'REQUIRED_CHANGES' && before > 0 && items.length === 0 &&
-      samAcceptanceItems.every((i) => i.humanGate || tickIds.includes(i.id))) {
+      samAcceptanceItems.every((item) => item.humanGate || tickIds.includes(item.id))) {
       verdict = 'LGTM'
     }
     let untickable
@@ -4181,7 +4199,7 @@ if (after('review', entryStage)) {
       if (verdict === 'LGTM') { verdict = 'REQUIRED_CHANGES'; changed = true }
       tickReason = reason
       untickable = tickBoxes.map((b) => {
-        const item = samAcceptanceItems.find((i) => i.id === b.id)
+        const item = samAcceptanceItems.find((item_) => item_.id === b.id)
         addLine(item)
         return { id: b.id, item: renderLine(item), proof: b.proof }
       })
@@ -4190,15 +4208,15 @@ if (after('review', entryStage)) {
   }
 
   // Regression guard — baseline SET-DIFF, not a grep/function-count check.
-  const regressionGuardStep = baselineCmd
+  const regressionGuardStep = baselineCommand
     ? `run the REGRESSION GUARD as a baseline SET-DIFF (no checkout/stash beyond what the command does):\n` +
-      `  1) capture the ${baseBranch} baseline by running this exact command (it writes the baseline test log) — export WORKTREE="${wtPath}" and BASE_BRANCH="${baseBranch}" first:\n     ${baselineCmd}\n` +
+      `  1) capture the ${baseBranch} baseline by running this exact command (it writes the baseline test log) — export WORKTREE="${wtPath}" and BASE_BRANCH="${baseBranch}" first:\n     ${baselineCommand}\n` +
       `  2) list the files the PR adds, which survive the baseline overlay: \`git -C "${wtPath}" diff --name-only --diff-filter=ACR origin/${baseBranch}...HEAD\`\n` +
-      `  3) run the suite on HEAD via \`${testCmd}\` and collect its {failures, errors} by fully-qualified test NAME;\n` +
+      `  3) run the suite on HEAD via \`${testCommand}\` and collect its {failures, errors} by fully-qualified test NAME;\n` +
       `  4) DIFF the {failures, errors} SETS (HEAD minus baseline) by test name. ANY test name that fails or errors on HEAD but is NOT in the baseline log is a NEW regression => verdict REQUIRED_CHANGES (REGRESSION_DETECTED if a previously-passing test now fails).\n` +
       `  BRANCH-ONLY-FILES RULE (mandatory): \`git checkout origin/${baseBranch} -- .\` overlays baseline content but does NOT delete files the PR adds, so a brand-new test file ALSO executes during baseline capture and its failures land in the baseline log. A failing/erroring test whose SOURCE FILE appears in the step-2 added-files list is NEW, regardless of whether its name appears in the baseline log.\n` +
       `  A failure/error may be dismissed as 'pre-existing' ONLY if BOTH hold: its EXACT fully-qualified test name appears in the baseline log AND its source file is NOT in the step-2 added-files list — and you MUST cite both the baseline line and the added-files check. You MUST actually run both suites; do NOT grep test-function counts as a substitute. `
-    : `run the unit suite via \`${testCmd}\` and treat ANY failing or erroring test as REQUIRED_CHANGES (no regression baseline configured; do NOT grep test-function counts as a substitute). `
+    : `run the unit suite via \`${testCommand}\` and treat ANY failing or erroring test as REQUIRED_CHANGES (no regression baseline configured; do NOT grep test-function counts as a substitute). `
 
   // Artifact-proof gate — lane-agnostic, shared by both Morgan prompts below (initial +
   // loop). Post-mortem (real incident): only a PREVIOUS-day report was on disk while the box claimed a
@@ -4233,12 +4251,12 @@ if (after('review', entryStage)) {
   const worktreeBehindCount = async () => {
     if (simulate) return simulate.probes?.behindCount
     try {
-      const res = await probe('git-rev-list-count',
+      const result = await probe('git-rev-list-count',
         `cd "${wtPath}" && git fetch origin ${baseBranch} -q 2>/dev/null; git rev-list --count HEAD..origin/${baseBranch}`,
         { label: `worktree-behind-${pr}`, onFail: () => null })
-      return res && res.json && Number.isFinite(res.json.count) ? res.json.count : null
-    } catch (e) {
-      log(`worktreeBehindCount: probe failed (${e.message}), skipping freshness note`)
+      return result && result.json && Number.isFinite(result.json.count) ? result.json.count : null
+    } catch (error) {
+      log(`worktreeBehindCount: probe failed (${error.message}), skipping freshness note`)
       return null
     }
   }
@@ -4254,35 +4272,35 @@ if (after('review', entryStage)) {
   let preflightCallCount = 0
   let preflightPromptPreview = null   // simulate-only: lets the flow tests assert the composed preflight prompt
   // Report-only forensics: logs what check-3 actually ran, never feeds pass/issues.
-  const logTestCmdRun = (p) => {
+  const logTestCommandRun = (p) => {
     const ran = String(p?.testCommandRun ?? '').trim()
     if (!ran) {
       log('Preflight: no testCommandRun reported — check-3 drift undetectable')
       return
     }
     log(`Preflight check-3 command as run: ${ran}`)
-    const head = String(testCmd).split(';')[0].trim()
+    const head = String(testCommand).split(';')[0].trim()
     if (head && !ran.includes(head)) log(`WARNING: preflight check-3 drift — reported command does not contain the configured head "${head}"`)
   }
   const preflightPrompt = () => {
     const banPattern = canonicalStringBan.length > 0
       ? canonicalStringBan.map(s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')
       : null
-    const hardRange = envSymlink === 'ignore' ? '2-3' : '1-3'
+    const hardRange = environmentSymlink === 'ignore' ? '2-3' : '1-3'
     const p = (
       // envNote is TRUSTED-OPERATOR input, injected unescaped ahead of the hard checks — this is
       // detection/documentation, never a control (see the const's own comment above). The note
       // outranks HARD check 3's own "opaque command" hardening below by wording and by position;
       // that widening of an existing trust assumption is accepted, not silently shipped.
-      (envNote
-        ? `ENVIRONMENT NOTE (from the Lead, authoritative — apply to every command below): ${envNote}\n`
+      (environmentNote
+        ? `ENVIRONMENT NOTE (from the Lead, authoritative — apply to every command below): ${environmentNote}\n`
         : '') +
       `Run pre-Morgan preflight checks on worktree "${wtPath}" and PR #${pr} ` +
       `(best-effort; aggregate results into pass/issues):\n` +
       `HARD checks (local, always enforced):\n` +
-      (envSymlink === 'ignore'
+      (environmentSymlink === 'ignore'
         ? ''
-        : envSymlink === 'forbidden'
+        : environmentSymlink === 'forbidden'
           ? `1. test ! -e "${wtPath}/.env" — env file/symlink MUST be ABSENT (this project runs envless by contract)\n`
           : `1. test -L "${wtPath}/.env" — env symlink present\n`) +
       `2. git -C "${wtPath}" diff --cached --name-only | head -5 — no stray staged files\n` +
@@ -4293,7 +4311,7 @@ if (after('review', entryStage)) {
       `if it is not the block below, check 3 FAILS.\n` +
       `--- BEGIN TEST COMMAND (run verbatim) ---\n` +
       `cd "${wtPath}"\n` +
-      `${testCmd}\n` +
+      `${testCommand}\n` +
       `--- END TEST COMMAND ---\n` +
       `ADVISORY checks (require live GitHub/gh access):\n` +
       (banPattern
@@ -4347,7 +4365,7 @@ if (after('review', entryStage)) {
       preflightCallCount,
     )
     preflightCallCount++
-    logTestCmdRun(pf)
+    logTestCommandRun(pf)
     if (isAgentDeath(pf)) {
       return finish(STATUS['preflight-died'], { pr, issue, round: currentRound, trace })
     }
@@ -4358,7 +4376,7 @@ if (after('review', entryStage)) {
     log(`Preflight failed (attempt ${preflightCallCount - 1}): ${foldedIssues.join(', ')}`)
     const nickFixPrompt = (
       `Pre-Morgan preflight failed on worktree "${wtPath}" (PR #${pr}). Fix these mechanical issues and push:\n` +
-      `${foldedIssues.map(i => `- ${i}`).join('\n')}\n` +
+      `${foldedIssues.map(index => `- ${index}`).join('\n')}\n` +
       `${SANDBOX_INSTALL_HINT} ` +
       `Do NOT change any product code — fix only the listed mechanical issues; reinstalling deps is NOT ` +
       `product code and is allowed. If the install cannot succeed under the sandbox, stop and report it ` +
@@ -4387,7 +4405,7 @@ if (after('review', entryStage)) {
       preflightCallCount,
     )
     preflightCallCount++
-    logTestCmdRun(pf2)
+    logTestCommandRun(pf2)
     if (isAgentDeath(pf2)) {
       return finish(STATUS['preflight-died'], { pr, issue, round: currentRound, trace })
     }
@@ -4397,7 +4415,7 @@ if (after('review', entryStage)) {
     return finish(STATUS['preflight-stuck'], { pr, issue, round: currentRound, issues: foldFailedChecks(pf2), trace })
   }
 
-  let prevRoundItems = null
+  let previousRoundItems = null
   let round = 0
 
   // The lines of the WHOLE decision-log block: the ones the body already held first (a relaunch at entryStage review,
@@ -4463,9 +4481,9 @@ if (after('review', entryStage)) {
     // chat reply. #85: read, splice, write, re-read, guard and restore run in templates/pr-write.sh
     // (op body-splice); the agent only copies a PROBE line, and the block text is the only content that
     // passes through the probe command.
-    const res = await prWrite('body-splice', 'decision-log', r, ['--pr', pr, '--mode', 'decision-log', '--text', composeDecisionLogBlock(decisionLog)])
-    if (!res) { log(`recordDecision round ${r}: sync failed (probe unavailable), skipping`); return }
-    if (res.result === 'failed') log(`recordDecision round ${r}: ${res.reason || 'failed'}`)
+    const result = await prWrite('body-splice', 'decision-log', r, ['--pr', pr, '--mode', 'decision-log', '--text', composeDecisionLogBlock(decisionLog)])
+    if (!result) { log(`recordDecision round ${r}: sync failed (probe unavailable), skipping`); return }
+    if (result.result === 'failed') log(`recordDecision round ${r}: ${result.reason || 'failed'}`)
   }
 
   // reviewParkedTerminal(v, round) (issues #228, #183) — every remaining box is proven or a human gate, but the engine
@@ -4476,18 +4494,18 @@ if (after('review', entryStage)) {
   // Returns null (legacy path, byte-identical) unless EVERY non-human-gate item is parked. Never ticks anything itself
   // (D4): the Lead re-verifies each proof and ticks. A run without ids (samAcceptanceItems null) parks only the
   // checklist-wording blockers and knows no human gate.
-  const reviewParkedTerminal = async (v, round) => {
+  const reviewParkedTerminal = async (v, roundNumber) => {
     if (!v || v.verdict !== 'REQUIRED_CHANGES' || v.ciGreen === false) return null
     const { untickable, rest } = parkUntickable(samAcceptanceItems, v.items, v.itemOwners, v.untickable, { checklistKind: maxPlanAmendRounds === 0 })
     if (untickable.length === 0) return null
-    if (rest.some(i => !humanGateLine(samAcceptanceItems, i))) return null   // a real blocker remains → Nick loop
-    trace.push(`verified-untickable:${round}`)
+    if (rest.some(index => !humanGateLine(samAcceptanceItems, index))) return null   // a real blocker remains → Nick loop
+    trace.push(`verified-untickable:${roundNumber}`)
     log(`Verified-untickable: ${untickable.length} box(es) proven but not tickable — parking for the Lead, no Nick round${rest.length > 0 ? ` (+ ${rest.length} human-gate)` : ''}`)
     await updateStatus('Pending Tick')   // best-effort; logs + skips if the option is unconfigured
     if (rest.length === 0) {
-      return finish(STATUS['verified-untickable'], { pr, issue, round, untickableItems: untickable, ...(v.tickReason ? { tickReason: v.tickReason } : {}), ...(v.tickDetail ? { tickDetail: v.tickDetail } : {}), trace, decisionLog })
+      return finish(STATUS['verified-untickable'], { pr, issue, round: roundNumber, untickableItems: untickable, ...(v.tickReason ? { tickReason: v.tickReason } : {}), ...(v.tickDetail ? { tickDetail: v.tickDetail } : {}), trace, decisionLog })
     }
-    return finish(STATUS['ready-pending-human'], { pr, issue, round, humanGateItems: rest, untickableItems: untickable, ...(v.tickReason ? { tickReason: v.tickReason } : {}), ...(v.tickDetail ? { tickDetail: v.tickDetail } : {}), trace, decisionLog })
+    return finish(STATUS['ready-pending-human'], { pr, issue, round: roundNumber, humanGateItems: rest, untickableItems: untickable, ...(v.tickReason ? { tickReason: v.tickReason } : {}), ...(v.tickDetail ? { tickDetail: v.tickDetail } : {}), trace, decisionLog })
   }
 
   // syncAcceptanceBlock (issue #97) — deterministic, FAIL-CLOSED sync of Sam's amended acceptance
@@ -4509,9 +4527,9 @@ if (after('review', entryStage)) {
     // #85: the chain (read, splice, write, re-read, guard, restore) lives in templates/pr-write.sh; the
     // checklist never transits a model reply, the agent only copies a PROBE line. Never appends: absent
     // markers come back as failed/no-markers.
-    const res = await prWrite('body-splice', 'acceptance-sync', r, ['--pr', pr, '--mode', 'acceptance', '--text', list])
-    if (res && (res.result === 'written' || res.result === 'skipped')) { trace.push(`acceptance-synced:${r}`); return true }
-    log(`syncAcceptanceBlock round ${r}: ${res ? (res.reason || res.result) : 'probe unavailable'}`)
+    const result = await prWrite('body-splice', 'acceptance-sync', r, ['--pr', pr, '--mode', 'acceptance', '--text', list])
+    if (result && (result.result === 'written' || result.result === 'skipped')) { trace.push(`acceptance-synced:${r}`); return true }
+    log(`syncAcceptanceBlock round ${r}: ${result ? (result.reason || result.result) : 'probe unavailable'}`)
     return false
   }
 
@@ -4568,16 +4586,16 @@ if (after('review', entryStage)) {
   await minimizeSupersededReviewComments(0)
 
   // #184: the verdict failed the structure check (callMorganGuarded): escalate at once, before anything reads its fields.
-  const escalateMalformed = async (bad, round) => {
+  const escalateMalformed = async (bad, roundNumber) => {
     await updateStatus('Blocked')
-    return finish(STATUS['escalate'], { reason: 'verdict-malformed', problem: bad.malformed, pr, issue, round, trace })
+    return finish(STATUS['escalate'], { reason: 'verdict-malformed', problem: bad.malformed, pr, issue, round: roundNumber, trace })
   }
 
   // #7: an item-less LGTM whose own artifact proof is unusable (callMorganGuarded marks it): no dev round can repair it.
   // DEBT(#191): no replayed fixture (the incident journal predates the probe labels and the current engine cannot replay it); proven by flow-suite case T9007
-  const escalateArtifactRejected = async (bad, round) => {
+  const escalateArtifactRejected = async (bad, roundNumber) => {
     await updateStatus('Blocked')
-    return finish(STATUS['escalate'], { reason: 'artifact-proof-rejected', pr, issue, round, trace, blockers: bad.artifactProofRejected })
+    return finish(STATUS['escalate'], { reason: 'artifact-proof-rejected', pr, issue, round: roundNumber, trace, blockers: bad.artifactProofRejected })
   }
 
   let v = await callMorganGuarded(
@@ -4628,7 +4646,7 @@ if (after('review', entryStage)) {
     if (gate('review', v.verdict)) {
       return finish(STATUS['needs-revision'], { round, items: v.items, pr, issue, ...(v.tickReason ? { tickReason: v.tickReason } : {}), ...(v.tickDetail ? { tickDetail: v.tickDetail } : {}), trace })
     }
-    prevRoundItems = v.items || []
+    previousRoundItems = v.items || []
     round++
     // #141 — each extra review round gets its own progress box (`Review 2`, …) holding that round's fix, preflight and review.
     const roundPhase = `Review ${round + 1}`
@@ -4665,11 +4683,11 @@ if (after('review', entryStage)) {
         await updateStatus('Blocked')
         return finish(STATUS['no-go'], { reason: samAmend.rationale, plan: samAmend.plan, trace })
       }
-      samPlan = appendLanesLine(samAmend.plan, lanesDev)
+      samPlan = appendLanesLine(samAmend.plan, lanesDevelopment)
       refreshPlanBlock()
       // The amendment renumbers the boxes (an id is a position): the blockers of the rounds before it are not the same
       // boxes as the ones after it, so the history that reviewProgress compares is dropped.
-      prevRoundItems = null
+      previousRoundItems = null
       // #182: the amended checklist as items, checked and rendered like the first one; the legacy string is the fallback.
       const amendEntries = Array.isArray(samAmend.acceptanceItems) ? samAmend.acceptanceItems : null
       const amendIssues = amendEntries ? validateAcceptanceItems(amendEntries) : []
@@ -4702,22 +4720,22 @@ if (after('review', entryStage)) {
       const before = await prSignature('before', round)
       const nickFixRound = await callAgentSafe(
         'nick',
-        `Work in the shared worktree "${wtPath}". Read Morgan's review on PR #${pr} (gh pr view ${pr}${prFlag} --comments), address every REQUIRED_CHANGES item${planRouted ? ' listed below (the other blockers on this PR are handled by a plan amendment — do NOT touch them)' : ''} while staying faithful to the plan below, re-run the green bar (\`${buildCmd}\` + \`${testCmd}\`, format modified files via \`${formatCmd}\`), and push. When deleting repo-tracked files, use \`git rm <file>\` instead of bare \`rm\` — bare rm is sandbox-denied and burns permission rounds. ${SANDBOX_INSTALL_HINT} After pushing, post a ONE-LINE push-note comment on PR #${pr} (only there, not on the issue) prefixed EXACTLY with the pipeline-review-round marker \`${reviewMarker}\` as its own first line, summarizing the change you just made.${planRouted ? `\n\nItems to address:\n${nickItems.map(i => `- ${i}`).join('\n')}` : ''}\n\n${planBlock}`,
+        `Work in the shared worktree "${wtPath}". Read Morgan's review on PR #${pr} (gh pr view ${pr}${prFlag} --comments), address every REQUIRED_CHANGES item${planRouted ? ' listed below (the other blockers on this PR are handled by a plan amendment — do NOT touch them)' : ''} while staying faithful to the plan below, re-run the green bar (\`${buildCommand}\` + \`${testCommand}\`, format modified files via \`${formatCommand}\`), and push. When deleting repo-tracked files, use \`git rm <file>\` instead of bare \`rm\` — bare rm is sandbox-denied and burns permission rounds. ${SANDBOX_INSTALL_HINT} After pushing, post a ONE-LINE push-note comment on PR #${pr} (only there, not on the issue) prefixed EXACTLY with the pipeline-review-round marker \`${reviewMarker}\` as its own first line, summarizing the change you just made.${planRouted ? `\n\nItems to address:\n${nickItems.map(index => `- ${index}`).join('\n')}` : ''}\n\n${planBlock}`,
         { agentType: 'Nick', phase: roundPhase, label: `nick-pr-${issue}-${pr}`, model: 'sonnet' },
         round,
       )
       if (isAgentDeath(nickFixRound)) {
         return finish(STATUS['dev-died'], { pr, issue, round, trace })
       }
-      const after = await prSignature('after', round)
-      if (after.sha === before.sha && after.body === before.body) {
-        log(`Round ${round}: Nick no-op — SHA+body unchanged (${after.sha}). Escalating without re-review.`)
+      const afterBody = await prSignature('after', round)
+      if (afterBody.sha === before.sha && afterBody.body === before.body) {
+        log(`Round ${round}: Nick no-op — SHA+body unchanged (${afterBody.sha}). Escalating without re-review.`)
         await updateStatus('Blocked')
-        return finish(STATUS['escalate'], { reason: 'nick-no-op', round, pr, issue, trace, sha: after.sha })
+        return finish(STATUS['escalate'], { reason: 'nick-no-op', round, pr, issue, trace, sha: afterBody.sha })
       }
-      if (after.sha === before.sha) {
+      if (afterBody.sha === before.sha) {
         trace.push(`nick-body-only-fix:${round}`)
-        log(`Round ${round}: Nick fixed via PR body only (SHA unchanged: ${after.sha}) — continuing to re-review`)
+        log(`Round ${round}: Nick fixed via PR body only (SHA unchanged: ${afterBody.sha}) — continuing to re-review`)
       }
       // --- fin no-op gate ---
     }
@@ -4789,7 +4807,7 @@ if (after('review', entryStage)) {
     // 'flat' (the very same blockers) and 'regressed' (every previous blocker still there, plus new ones) both stop the
     // loop; the round caps stay constants.
     if (round > 0 && v.verdict === 'REQUIRED_CHANGES') {
-      const progress = reviewProgress(prevRoundItems, v.items)
+      const progress = reviewProgress(previousRoundItems, v.items)
       if (progress !== 'progress') {
         trace.push(`review-${progress}:${round}`)
         log(`No-progress: round ${round} is ${progress} against round ${round - 1} — escalating`)
@@ -4811,30 +4829,30 @@ if (after('review', entryStage)) {
   // minted after the new head, and one predating it is the defect the gate exists to catch.
   const squashBeforeHandoff = async () => {
     if (!squashEnabled) return
-    let headRefName, commitCount
+    let headReferenceName, commitCount
     if (simulate) {
       if (simulate.probes?.squashCommits === undefined) return
       commitCount = simulate.probes?.squashCommits
       const hrFx = simulate.probes?.headRefName
-      headRefName = hrFx ?? `${expectedBranchName}`
+      headReferenceName = hrFx ?? `${expectedBranchName}`
     } else {
       const st = await prState('squash', round)
       if (!st || typeof st.commitCount !== 'number') { log('squashBeforeHandoff: scan failed, skipping'); return }
-      headRefName = st.headRefName            // REUSE the provided field — never rebuild it
+      headReferenceName = st.headRefName            // REUSE the provided field — never rebuild it
       commitCount = st.commitCount
     }
-    if (!headRefName || commitCount <= squashMaxCommits) return
+    if (!headReferenceName || commitCount <= squashMaxCommits) return
     trace.push(`commit-squashed:${pr}`)
     if (simulate) return
     await callAgentSafe(
       'nick',
       `Pre-handoff commit-hygiene squash for PR #${pr} (issue #${issue}) — this repo merges with merge commits, so a branch with more than ${squashMaxCommits} commits lands ALL of them verbatim on ${baseBranch}. Squash it to 2-3 LOGICAL commits before handoff:\n` +
       `1. cd "${wtPath}"; git fetch origin ${baseBranch}.\n` +
-      `2. ABORT (do nothing, report skipped) if ANY of: \`git rev-parse --abbrev-ref HEAD\` != \`${headRefName}\`; \`git status --porcelain\` is non-empty; \`git rev-list --merges --count $(git merge-base HEAD origin/${baseBranch})..HEAD\` != 0.\n` +
+      `2. ABORT (do nothing, report skipped) if ANY of: \`git rev-parse --abbrev-ref HEAD\` != \`${headReferenceName}\`; \`git status --porcelain\` is non-empty; \`git rev-list --merges --count $(git merge-base HEAD origin/${baseBranch})..HEAD\` != 0.\n` +
       `3. OLD=$(git rev-parse HEAD); MB=$(git merge-base HEAD origin/${baseBranch}).\n` +
       `4. git reset --soft "$MB", then create 2-3 Conventional-Commits commits (per the project specifics, if any) splitting the work LOGICALLY — never one commit per review round.\n` +
       `5. Tree-identity proof (mandatory): \`git diff "$OLD" HEAD --stat\` must print NOTHING. If it prints anything: \`git reset --hard "$OLD"\`, push nothing, report squashed:false with the diff.\n` +
-      `6. git push --force-with-lease origin "${headRefName}".\n` +
+      `6. git push --force-with-lease origin "${headReferenceName}".\n` +
       `7. Post ONE comment on PR #${pr}, prefixed with \`${reviewVerdictMarker}\` as its own first line, replacing \`<HEAD_SHA>\` with the NEW head (\`git rev-parse HEAD\` after the push, full 40-hex): it re-attests the review onto the squashed head. State the old and new head SHAs and that \`git diff <old> <new>\` is empty (the LGTM still holds).\n` +
       `Never use bare --force. Never push to ${baseBranch}/main. Never merge this PR yourself — merging is an external gesture handled outside the pipeline. Never throw — the handoff must complete either way.`,
       { agentType: 'Nick', label: `nick-squash-${issue}-${pr}`, model: 'sonnet' },
