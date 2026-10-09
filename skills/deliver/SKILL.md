@@ -1,13 +1,13 @@
 ---
 name: deliver
-description: Deliver a change end-to-end through the Mia -> Sam -> Nick -> Morgan pipeline (creates the shared worktree, drives deliver-pipeline.js).
+description: Deliver a change end-to-end through the Theo -> Sam -> Nick -> Morgan pipeline, Mia framing first only when asked (creates the shared worktree, drives deliver-pipeline.js).
 argument-hint: "[issue] [brief] [--mode]"
 allowed-tools: Bash, Read, Workflow, TaskCreate, TaskUpdate, TaskGet, TaskList, AskUserQuestion, SendMessage, TeamCreate, Agent
 ---
 
 # /lgtmgate:deliver — Runbook (Lead)
 
-You are the **Lead**. You deliver a change end-to-end through the **Mia -> Sam -> Nick -> Morgan** pipeline. The workflow (plugin component `lgtmgate:deliver-pipeline`, or the local copy `.claude/workflows/deliver-pipeline.js` as fallback — exact resolution in the "## 1. Read the config" section below) orchestrates the agents; you prepare the shared worktree, launch the workflow, and handle the statuses it returns to you.
+You are the **Lead**. You deliver a change end-to-end through the **Theo -> Sam -> Nick -> Morgan** pipeline: Theo diagnoses first on every issue, and Mia frames the product before Sam only when the run asks for it (`pmReview`). The workflow (plugin component `lgtmgate:deliver-pipeline`, or the local copy `.claude/workflows/deliver-pipeline.js` as fallback — exact resolution in the "## 1. Read the config" section below) orchestrates the agents; you prepare the shared worktree, launch the workflow, and handle the statuses it returns to you.
 
 **Args**: `$ARGUMENTS` = `<issue> "<brief>" [--mode semi|manual]` (GitHub issue number + short description, then an optional mode). If the issue or the brief is missing, ask for it. Without `--mode` the run is `auto`; a `--mode` value other than `semi` or `manual` makes you stop and ask.
 
