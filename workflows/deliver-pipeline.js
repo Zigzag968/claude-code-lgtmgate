@@ -1115,7 +1115,7 @@ function tickIdsArgv(pr, ids) {
 // ---------------------------------------------------------------------------
 
 const ghProject = config.ghProject || {}
-const STATUS_OPTIONS = ghProject.statusOptions || {}
+const PROJECT_STATUS_OPTIONS = ghProject.statusOptions || {}
 
 // ---------------------------------------------------------------------------
 // Schemas (verbatim from origin/develop)
@@ -2344,7 +2344,7 @@ async function callAgentSafe(role, prompt, options, round = 0, maxAttempts = 2) 
 }
 
 async function updateStatus(name) {
-  const optionId = STATUS_OPTIONS[name]
+  const optionId = PROJECT_STATUS_OPTIONS[name]
   if (!optionId) { log(`updateStatus: unknown "${name}", skipping`); return }
   if (!ghProject.projectId || !ghProject.fieldId || !ghProject.owner || !ghProject.projectNumber) {
     log(`updateStatus: incomplete ghProject config, skipping "${name}"`); return
