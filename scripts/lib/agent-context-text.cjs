@@ -4,7 +4,7 @@
 // frontmatter parsing, the content screen and the digest. Pure functions, no git, no file system.
 
 const crypto = require('crypto')
-const { SECRET_REWRITES, PEM_RULE } = require('./secret-rules.cjs')
+const { SECRET_REWRITES, PEM_RULE } = require('./redaction-rules.cjs')
 
 const FM_MAX = 1024
 const FM_KEYS = ['lane', 'persona', 'hint', 'paths']
