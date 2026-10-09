@@ -38,7 +38,7 @@ const ENGINE = /const BUILD = \{[^}]*\bversion: '([^']+)'/.exec(engineSrc)[1]
 const sha = (x) => require('crypto').createHash('sha256').update(x).digest('hex')
 const cmdFor = (root) => {
   const blk = engineSrc.slice(engineSrc.indexOf('// --- pluginVersion:start ---'), engineSrc.indexOf('// --- pluginVersion:end ---'))
-  return new Function(blk + '\nreturn pluginVersionCmd')()(root)
+  return new Function(blk + '\nreturn pluginVersionCommand')()(root)
 }
 const OLDROOT = '/cache/lgtmgate/1.0.0-beta.3'
 const live = {

@@ -100,7 +100,7 @@ export const meta = {
 // (`agent-died:<role>:<attempt>`) and a `log()` line, never silent.
 //
 // Prophylaxis (works regardless of catchability): `callAgent` appends a
-// `STRUCTURED_OUTPUT_MANDATE` to the prompt of every call carrying `opts.schema`, stating as
+// `STRUCTURED_OUTPUT_MANDATE` to the prompt of every call carrying `options.schema`, stating as
 // fact that prose is not an answer and that a nudge claiming the tool call was already made is
 // FACT — pre-empting a real observed hallucination ("I have already called
 // StructuredOutput").
@@ -133,7 +133,7 @@ export const meta = {
 // `version`, checked against plugin.json by tests/templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '1.2.0-beta.14', cutFrom: 'ce7ae83' }
+const BUILD = { plugin: 'lgtmgate', version: '1.2.0-beta.15', cutFrom: 'b4996da' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -215,9 +215,9 @@ const finish = (outcome, extra = {}) => ({ buildStamp: BUILD_STAMP, ...(simulate
   ...(classifierOutageDeath && outcome.status.endsWith('-died')
     ? { reason: 'classifier-outage: resume with resumeFromRunId' } : {}), ...outcome, ...extra })
 
-const argsIn = (typeof args === 'string' ? JSON.parse(args) : args) || {}
+const argumentsIn = (typeof args === 'string' ? JSON.parse(args) : args) || {}
 // The removed scout arg: refuse it before anything else (zero agent call), with the remedy in the message.
-if (argsIn.scoutAgent !== undefined) throw new Error('removed: declare lanes with a `lane:` frontmatter in `.claude/lgtmgate/<role>.<lane>.md`; start a fresh run at the wanted entryStage')
+if (argumentsIn.scoutAgent !== undefined) throw new Error('removed: declare lanes with a `lane:` frontmatter in `.claude/lgtmgate/<role>.<lane>.md`; start a fresh run at the wanted entryStage')
 const {
   issue, brief, pmReview = false, issueType = null, wtPath,
   config,
@@ -246,7 +246,7 @@ const {
   models = {},
   simulate = null,
   stamp = null,
-} = argsIn
+} = argumentsIn
 
 if (!issue || !brief || !wtPath) throw new Error('Missing required args: issue, brief, wtPath')
 // #13/#12 — `config` is REQUIRED and must be an object: the workflow sandbox has no filesystem, so
@@ -395,11 +395,11 @@ if (branchPrefixArgumentIgnored) {
 // LGTMGATE_WORKTREE_ROOT in a dev shell must not leak into a flow case.
 // resolveWorktreeRoot() itself is defined below (see its :start/:end sentinel block) — hoisted,
 // so this call resolves fine despite the definition appearing later in the file.
-const runtimeEnv = simulate
+const runtimeEnvironment = simulate
   ? (simulate.probes?.env || {})
   : ((typeof process !== 'undefined' && process && process.env) ? process.env : {})
-const worktreeRoot = resolveWorktreeRoot({ env: runtimeEnv, configLocal, config, wtPath })
-log(`worktreeRoot: ${worktreeRoot ?? '(unresolved)'} (env=${runtimeEnv.LGTMGATE_WORKTREE_ROOT ? 'set' : 'unset'}, local=${configLocal.worktreeRoot ? 'set' : 'unset'}, config=${config.worktreeRoot ? 'set' : 'unset'})`)
+const worktreeRoot = resolveWorktreeRoot({ env: runtimeEnvironment, configLocal, config, wtPath })
+log(`worktreeRoot: ${worktreeRoot ?? '(unresolved)'} (env=${runtimeEnvironment.LGTMGATE_WORKTREE_ROOT ? 'set' : 'unset'}, local=${configLocal.worktreeRoot ? 'set' : 'unset'}, config=${config.worktreeRoot ? 'set' : 'unset'})`)
 // Code repo "owner/repo" for cross-repo runs: scopes the gh calls (guard, PR-create,
 // checks, no-op gate) to the code repo instead of relying on the invoking cwd. Absent ->
 // gh resolves from the worktree cwd (backward-compatible; the already-done guard then
@@ -898,7 +898,7 @@ function onlyHumanGateLines(items, lines) {
   return Array.isArray(lines) && lines.length > 0 && lines.every((line) => humanGateLine(items, line))
 }
 // The boxes of a verdict that stay open without being a code defect (#183, #228): `refused` are the proven boxes whose
-// tick the write probe refused (already { id, item, proof }); with `opts.checklistKind` (plan amendment off, #107) a
+// tick the write probe refused (already { id, item, proof }); with `options.checklistKind` (plan amendment off, #107) a
 // 'checklist-wording-defect' owner with a non-empty proof on a non-gate line of `lines` is parked too, matched by key.
 // { untickable: [{ id?, item, proof }], rest: the lines not parked }.
 function parkUntickable(items, lines, itemOwners, refused, options) {
@@ -1878,8 +1878,8 @@ function oneWayDoorSignals(plan, targetFiles, context = {}) {
 // everyone (smallest change, `patch-avoided:`); the engine's own vocabulary moves behind the flag.
 const SAM_PLAN_RULE = 'PLAN RULE: plan the smallest change that removes the cause class; list `patch-avoided:` with the patches you rejected.'
 const SAM_ENGINE_LAYER_RULE = 'LAYER RULE: plan the smallest change that removes the cause class; never a `simulate.*` seam; say in the plan if the diff adds a status, an `agent()`, a hook or a seam; list `patch-avoided:` with the patches you rejected.'
-const isEngineRepo = (pipelineConfig) => pipelineConfig !== null && typeof pipelineConfig === 'object' && pipelineConfig.engineRepo === true
-const samLayerRule = (pipelineConfig) => isEngineRepo(pipelineConfig) ? SAM_ENGINE_LAYER_RULE : SAM_PLAN_RULE
+const isEngineRepository = (pipelineConfig) => pipelineConfig !== null && typeof pipelineConfig === 'object' && pipelineConfig.engineRepo === true
+const samLayerRule = (pipelineConfig) => isEngineRepository(pipelineConfig) ? SAM_ENGINE_LAYER_RULE : SAM_PLAN_RULE
 // --- engineRules:end ---
 
 // --- safeAbsorbedIssues:start --- (pure & self-contained — keep extractable by the consuming project's tests)
@@ -2218,14 +2218,14 @@ const CLASSIFIER_OUTAGE = /no safety verdict|classifier[^.\n]{0,80}(unavailable|
 const isClassifierOutage = (t) => typeof t === 'string' && t.length > 0 && t.length < 600 && CLASSIFIER_OUTAGE.test(t)
 // guards:parser-end
 
-async function callAgent(role, prompt, opts, round = 0, attempt = 1) {
+async function callAgent(role, prompt, options, round = 0, attempt = 1) {
   if (simulate) {
     // #54 seam A — replay P1's captured harness signature on the NAMED attempt numbers.
     // Per-attempt (never a module-scope fire-once Set): correctness must not depend on the
     // runner re-evaluating the body per case, which the Workflow-tool path does not do.
     const spec = simulate.probes?.agentTypeUnresolved && simulate.probes?.agentTypeUnresolved[role]
-    if (Array.isArray(spec) && spec.includes(attempt) && opts && opts.agentType) {
-      throw new Error(`agent({agentType}): agent type '${normalizeAgentType(opts.agentType)}' ` +
+    if (Array.isArray(spec) && spec.includes(attempt) && options && options.agentType) {
+      throw new Error(`agent({agentType}): agent type '${normalizeAgentType(options.agentType)}' ` +
         `not found. Available agents: (simulated)`)
     }
     // #54 seam B — the plain-death lever. A null role fixture CANNOT work: the suite's run() applies
@@ -2236,17 +2236,17 @@ async function callAgent(role, prompt, opts, round = 0, attempt = 1) {
   // Normalize bare role names to lgtmgate:<Name> so agent() can resolve them.
   // `personaFallback` is a #54-only option this DSL never declared — it is destructured away
   // before calling the harness so it never travels on a normal call.
-  let harnessOptions = opts
-  if (opts) {
-    const { personaFallback: _pf, ...rest } = opts
+  let harnessOptions = options
+  if (options) {
+    const { personaFallback: _pf, ...rest } = options
     harnessOptions = rest.agentType ? { ...rest, agentType: normalizeAgentType(rest.agentType) } : rest
   }
   // #265: one composition point. The persona is prefixed only on the registry-gap retry (personaFallback kept, agentType removed).
   const finalPrompt = composeAgentPrompt({
-    persona: opts && opts.personaFallback && !opts.agentType ? opts.personaFallback : '',
-    specifics: opts && (opts.agentType || opts.personaFallback) ? specificsBlockFor(specificsPayload, role, role === 'sam' ? lanesSam : role === 'nick' || role === 'morgan' ? lanesDevelopment : []) : '',
+    persona: options && options.personaFallback && !options.agentType ? options.personaFallback : '',
+    specifics: options && (options.agentType || options.personaFallback) ? specificsBlockFor(specificsPayload, role, role === 'sam' ? lanesSam : role === 'nick' || role === 'morgan' ? lanesDevelopment : []) : '',
     prompt,
-    mandate: opts && opts.schema ? STRUCTURED_OUTPUT_MANDATE : '',
+    mandate: options && options.schema ? STRUCTURED_OUTPUT_MANDATE : '',
   })
   // #110: a turn cut off by an auto-mode classifier outage ("no safety verdict") is transient —
   // retry the same call (bounded, with backoff) before callAgentSafe may call the step dead. The
@@ -2535,7 +2535,7 @@ function probeCommands({ wtPath: worktreePath, issue: issueNumber, pluginRoot: p
 // `lines`: the command prints exactly one line, PLUGIN-VERSION:<version> or PLUGIN-VERSION-ERROR:<cause>.
 // The reason never holds the root path (a local path pasted into GitHub is refused by the scrub hook): the
 // path travels in the result's own `pluginRoot` field.
-function pluginVersionCmd(pluginRootPath) {
+function pluginVersionCommand(pluginRootPath) {
   const q = (x) => `'${String(x).split("'").join("'\\''")}'`
   const js = 'try{const v=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).version;' +
     'console.log(typeof v==="string"&&v?"PLUGIN-VERSION:"+v:"PLUGIN-VERSION-ERROR:no-version")}' +
@@ -2622,7 +2622,7 @@ function minPluginVersionVerdict({ engineVersion, minVersion, plugin }) {
 // on another repository than the Lead session's would run under the wrong rules. A script compares the git common dir
 // of the Lead's session root with the run's worktree; the command prints exactly one line, read by the `lines` probe.
 // No model judges. The reason never holds a path (the scrub hook refuses local paths in GitHub text).
-function sessionRootCmd(sessionRootPath, worktreePath) {
+function sessionRootCommand(sessionRootPath, worktreePath) {
   const q = (x) => `'${String(x).split("'").join("'\\''")}'`
   const js = 'try{const cp=require("child_process"),fs=require("fs");' +
     'const d=(p)=>fs.realpathSync(cp.execFileSync("git",["-C",p,"rev-parse","--path-format=absolute","--git-common-dir"],{encoding:"utf8",stdio:["ignore","pipe","ignore"]}).trim());' +
@@ -2700,8 +2700,8 @@ const probeScriptPath = (file) => {
 async function preflightProbe(modeName, label, argv) {
   try {
     const script = probeScriptPath('preflight.sh')
-    const cmd = 'bash ' + shellSingleQuote(script) + ' ' + modeName + ' ' + argv.map(shellSingleQuote).join(' ')
-    const r = await probe('preflight', cmd, {
+    const command = 'bash ' + shellSingleQuote(script) + ' ' + modeName + ' ' + argv.map(shellSingleQuote).join(' ')
+    const r = await probe('preflight', command, {
       label,
       noReuse: true,   // live state: a stored record from an earlier launch must never answer (#83)
       onFail: (reason) => { log(`preflight probe (${modeName}): ${reason} — fail-open`); return null },
@@ -2724,8 +2724,8 @@ async function prWrite(op, label, round, argv) {
   try {
     const script = probeScriptPath('pr-write.sh')
     const arguments_ = [...argv, '--wt', wtPath, ...(repository ? ['--repo', repository] : [])]
-    const cmd = 'bash ' + shellSingleQuote(script) + ' ' + op + ' ' + arguments_.map((a) => shellSingleQuote(String(a))).join(' ')
-    const r = await probe('pr-write', cmd, {
+    const command = 'bash ' + shellSingleQuote(script) + ' ' + op + ' ' + arguments_.map((a) => shellSingleQuote(String(a))).join(' ')
+    const r = await probe('pr-write', command, {
       label,
       round,
       noReuse: true,   // a write is never replayed from a stored record (#85)
@@ -2753,7 +2753,7 @@ if (probeOnly) {
 // Only when the templates really come from pluginRoot (config.probeRunPath unset, as probeCommands and
 // probeScriptPath resolve them). A reason string on the existing escalate: no new status, agent or seam.
 if (!simulate && pluginRoot && !config.probeRunPath) {
-  const pv = await probe('lines', pluginVersionCmd(pluginRoot), { label: 'plugin-version', noReuse: true, b64: true, onFail: (reason) => ({ probeFailed: reason }) })
+  const pv = await probe('lines', pluginVersionCommand(pluginRoot), { label: 'plugin-version', noReuse: true, b64: true, onFail: (reason) => ({ probeFailed: reason }) })
   if (pv.probeFailed === 'agent-death') return finish(STATUS['provision-died'], { issue, trace })
   const skew = pluginVersionVerdict({ engineVersion: BUILD.version, probeFailed: pv.probeFailed, exit: pv.exit, lines: pv.json && pv.json.lines })
   if (skew && pv.probeFailed) {
@@ -2772,7 +2772,7 @@ if (!simulate && pluginRoot && !config.probeRunPath) {
 // instructions). The Lead passes its session root; same git common dir as the worktree, else escalate before
 // provisioning. A reason on the existing escalate: no new status, agent or seam, no label written.
 if (!simulate && sessionRoot) {
-  const sr = await probe('lines', sessionRootCmd(sessionRoot, wtPath), { label: 'session-root', noReuse: true, b64: true, onFail: (reason) => ({ probeFailed: reason }) })
+  const sr = await probe('lines', sessionRootCommand(sessionRoot, wtPath), { label: 'session-root', noReuse: true, b64: true, onFail: (reason) => ({ probeFailed: reason }) })
   if (sr.probeFailed === 'agent-death') return finish(STATUS['provision-died'], { issue, trace })
   const srv = sessionRootVerdict({ probeFailed: sr.probeFailed, exit: sr.exit, lines: sr.json && sr.json.lines })
   if (srv && sr.probeFailed) {
@@ -3631,7 +3631,7 @@ if (after('dev', entryStage)) {
   const preflightDevelopment = simulate ? null : await preflightProbe('dev', 'dev', [
     '--wt', wtPath, '--issue', String(issue), '--base', baseBranch, '--repo', repository || '',
     '--targets', planTargets.join(' '), '--stamp', String(stamp ?? ''),
-    ...(isEngineRepo(config) ? ['--engine', 'true'] : []),
+    ...(isEngineRepository(config) ? ['--engine', 'true'] : []),
   ])
   if (planFreshnessMode !== 'off' && planTargets.length > 0) {
     const planStaleFilesProbe = async () => {
@@ -3707,7 +3707,7 @@ if (after('dev', entryStage)) {
   const closesLine = [epicReference, ...samAbsorbedIssues.map(n => 'Closes #' + n)].join(', ')
   // R2 (#76): deterministic — the fixture acceptance item is decided here, never by Nick's judgment.
   // Engine-repo only (#163): the fixtures dir and replay script it names exist only in this plugin's repo.
-  const r2Applies = isEngineRepo(config) && issueType === 'bug' && safePlanTargets(samTargetFiles).some(p => p.startsWith('workflows/'))
+  const r2Applies = isEngineRepository(config) && issueType === 'bug' && safePlanTargets(samTargetFiles).some(p => p.startsWith('workflows/'))
   const r2Note = r2Applies
     ? `R2 fixture rule (issue #${issue}): add this acceptance item to the checklist verbatim — "fixture \`fixtures/incidents/${issue}-*.json\` present, replayed red on base and green on the branch by \`scripts/run-offline.cjs\`". If no such fixture exists in the branch, run \`gh issue edit ${issue} -R ${repository || '<repo>'} --add-label no-fixture\` and use \`Refs #${issue}\` instead of \`Closes #${issue}\` on the first line of the PR body (the issue then stays open). `
     : ''

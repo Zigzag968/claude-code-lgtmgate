@@ -58,7 +58,7 @@ if (variant === 'liveversion' || variant === 'skew') {
   if (variant === 'skew') {
     const root = '/cache/lgtmgate/1.0.0-beta.3'
     const blk = src.slice(src.indexOf('// --- pluginVersion:start ---'), src.indexOf('// --- pluginVersion:end ---'))
-    const cmd = new Function(blk + '\nreturn pluginVersionCmd')()(root)
+    const cmd = new Function(blk + '\nreturn pluginVersionCommand')()(root)
     const h = require('crypto').createHash('sha256').update(cmd).digest('hex')
     for (const k of ['line', 'verify']) e[k] = e[k].replace(/cmd=[0-9a-f]{64}/, 'cmd=' + h)
     f.args.pluginRoot = root
