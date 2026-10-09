@@ -46,7 +46,7 @@ export const valueAt = (fr, t) => {
 
 // ---------------------------------------------------------------- geometry the keyframes read
 export const BH = 20, PHt = 52, TOPY = BH + PHt;
-export const HOIST = 150, DROP = 60;
+export const HOIST = 136, DROP = 60;
 export const LAMP = { off: '#DCD8E8', o: '#F5A524', g: '#22C55E', r: '#F04438' };
 
 // ---------------------------------------------------------------- timelines (each line on its own local clock)

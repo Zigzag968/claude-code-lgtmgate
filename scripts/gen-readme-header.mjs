@@ -319,16 +319,16 @@ function floor() {
   for (const z of [-60, 150, 300, 480]) { const l = P(340, 0, z), r = P(1330, 0, z); g += `<line x1="${f2(l[0])}" y1="${f2(l[1])}" x2="${f2(r[0])}" y2="${f2(r[1])}" stroke="#E9E6EF" stroke-width="1"/>`; }
   return g;
 }
-const LOGO_Y = OPT.logoY ?? 46;
+const LOGO_Y = OPT.logoY ?? 46, LOGO_X = OPT.logoX ?? 26;   // the block ends left of the back line's issue parcel (x 497), which drops through its second tagline line otherwise
 function brand() {
-  return `<g transform="translate(48 ${LOGO_Y})"><g transform="translate(44 44)">
+  return `<g transform="translate(${LOGO_X} ${LOGO_Y})"><g transform="translate(44 44)">
     <rect class="a halo" x="-44" y="-44" width="88" height="88" rx="22" fill="none" stroke="#22C55E" stroke-width="2"/>
     <g class="a bump"><rect x="-44" y="-44" width="88" height="88" rx="22" fill="#1E1B3C"/><rect x="-32" y="-32" width="64" height="64" rx="13" fill="#0B0A18"/>
       <rect class="a sglow" x="-32" y="-32" width="64" height="64" rx="13" fill="url(#gS)"/>
       <path d="M-13 -5 l9 9 l17 -18" fill="none" stroke="#3DDC84" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
       <text x="0" y="21" text-anchor="middle" class="mono" font-size="9.5" font-weight="700" letter-spacing="2" fill="#3DDC84">LGTM</text></g></g></g>
-  <text x="152" y="${LOGO_Y + 44}" class="wm"><tspan fill="#5B3FE1">lgtm</tspan><tspan fill="#1E1B3B">gate</tspan></text>
-  <text x="153" y="${LOGO_Y + 70}" class="tag">An LGTM you can trust</text><text x="153" y="${LOGO_Y + 89}" class="tag">Several issues at once, five agents, one mergeable PR</text>`;
+  <text x="${LOGO_X + 104}" y="${LOGO_Y + 44}" class="wm"><tspan fill="#5B3FE1">lgtm</tspan><tspan fill="#1E1B3B">gate</tspan></text>
+  <text x="${LOGO_X + 105}" y="${LOGO_Y + 70}" class="tag">An LGTM you can trust</text><text x="${LOGO_X + 105}" y="${LOGO_Y + 89}" class="tag">Several issues at once, five agents, one mergeable PR</text>`;
 }
 const operator = makeOperator({ C, pts, f2, INK, KX, KY, opts: OPT });   // the human at the desk: scripts/readme-header-operator.mjs
 
