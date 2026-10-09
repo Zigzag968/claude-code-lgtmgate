@@ -2421,7 +2421,7 @@ await testCase('T272 probeCommands() extracted from source markers (#82)', async
       ]
     })(),
     eq('noReuse never reaches the verify command', pc({ ...base, pluginRoot: '/plug', noReuse: true }).verify.includes('--no-reuse'), false),
-    eq('preflightProbe passes noReuse: true to probe() (live state, #83)', /async function preflightProbe[\s\S]*?probe\('preflight', cmd, \{[\s\S]*?noReuse: true/.test(source), true),
+    eq('preflightProbe passes noReuse: true to probe() (live state, #83)', /async function preflightProbe[\s\S]*?probe\('preflight', command, \{[\s\S]*?noReuse: true/.test(source), true),
     // #212: the digest the engine composed travels to the script, which refuses a copy that does not hash to it
     ...(() => {
       const digest = 'a'.repeat(63) + 'b'
@@ -2430,7 +2430,7 @@ await testCase('T272 probeCommands() extracted from source markers (#82)', async
         eq('expectCmd run carries --expect-cmd <digest> BEFORE --cmd (cmdOfPrompt still finds the command)', gated.run.includes(` --expect-cmd ${digest} --cmd `), true),
         eq('expectCmd never reaches the verify command', gated.verify.includes('--expect-cmd'), false),
         eq('the default run has no --expect-cmd', withRoot.run.includes('--expect-cmd'), false),
-        eq('prWrite gates the command (gateCmd: true)', /async function prWrite[\s\S]*?probe\('pr-write', cmd, \{[\s\S]*?gateCmd: true/.test(source), true),
+        eq('prWrite gates the command (gateCmd: true)', /async function prWrite[\s\S]*?probe\('pr-write', command, \{[\s\S]*?gateCmd: true/.test(source), true),
         eq('a non-empty tick sends the short command tickIdsArgv(pr, tickIds) (#257)', source.includes('tickIdsArgv(pr, tickIds)'), true),
         eq('the empty tick keeps the text mode: the block as --text-b64 base64Utf8(rendered)', source.includes("'--text-b64', base64Utf8(rendered)"), true),
         eq('the tick no longer sends the block as --text', source.includes("'--mode', 'tick', '--text', rendered"), false),
@@ -2910,7 +2910,7 @@ await testCase('T214e STRUCTURED_OUTPUT_MANDATE text + schema-gated finalPrompt 
   }
   const error1 = includes('mandate sentinel', source, 'FINAL-OUTPUT MANDATE (hard):')
   const error2 = includes('schema-gated mandate in the composed prompt', source,
-    "mandate: opts && opts.schema ? STRUCTURED_OUTPUT_MANDATE : ''")
+    "mandate: options && options.schema ? STRUCTURED_OUTPUT_MANDATE : ''")
   return (error1 || error2) ? (error1 || error2) : { ok: true }
 })
 

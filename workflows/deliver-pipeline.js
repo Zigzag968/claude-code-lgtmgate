@@ -100,7 +100,7 @@ export const meta = {
 // (`agent-died:<role>:<attempt>`) and a `log()` line, never silent.
 //
 // Prophylaxis (works regardless of catchability): `callAgent` appends a
-// `STRUCTURED_OUTPUT_MANDATE` to the prompt of every call carrying `opts.schema`, stating as
+// `STRUCTURED_OUTPUT_MANDATE` to the prompt of every call carrying `options.schema`, stating as
 // fact that prose is not an answer and that a nudge claiming the tool call was already made is
 // FACT — pre-empting a real observed hallucination ("I have already called
 // StructuredOutput").
@@ -898,7 +898,7 @@ function onlyHumanGateLines(items, lines) {
   return Array.isArray(lines) && lines.length > 0 && lines.every((line) => humanGateLine(items, line))
 }
 // The boxes of a verdict that stay open without being a code defect (#183, #228): `refused` are the proven boxes whose
-// tick the write probe refused (already { id, item, proof }); with `opts.checklistKind` (plan amendment off, #107) a
+// tick the write probe refused (already { id, item, proof }); with `options.checklistKind` (plan amendment off, #107) a
 // 'checklist-wording-defect' owner with a non-empty proof on a non-gate line of `lines` is parked too, matched by key.
 // { untickable: [{ id?, item, proof }], rest: the lines not parked }.
 function parkUntickable(items, lines, itemOwners, refused, options) {
@@ -2218,14 +2218,14 @@ const CLASSIFIER_OUTAGE = /no safety verdict|classifier[^.\n]{0,80}(unavailable|
 const isClassifierOutage = (t) => typeof t === 'string' && t.length > 0 && t.length < 600 && CLASSIFIER_OUTAGE.test(t)
 // guards:parser-end
 
-async function callAgent(role, prompt, opts, round = 0, attempt = 1) {
+async function callAgent(role, prompt, options, round = 0, attempt = 1) {
   if (simulate) {
     // #54 seam A — replay P1's captured harness signature on the NAMED attempt numbers.
     // Per-attempt (never a module-scope fire-once Set): correctness must not depend on the
     // runner re-evaluating the body per case, which the Workflow-tool path does not do.
     const spec = simulate.probes?.agentTypeUnresolved && simulate.probes?.agentTypeUnresolved[role]
-    if (Array.isArray(spec) && spec.includes(attempt) && opts && opts.agentType) {
-      throw new Error(`agent({agentType}): agent type '${normalizeAgentType(opts.agentType)}' ` +
+    if (Array.isArray(spec) && spec.includes(attempt) && options && options.agentType) {
+      throw new Error(`agent({agentType}): agent type '${normalizeAgentType(options.agentType)}' ` +
         `not found. Available agents: (simulated)`)
     }
     // #54 seam B — the plain-death lever. A null role fixture CANNOT work: the suite's run() applies
@@ -2236,17 +2236,17 @@ async function callAgent(role, prompt, opts, round = 0, attempt = 1) {
   // Normalize bare role names to lgtmgate:<Name> so agent() can resolve them.
   // `personaFallback` is a #54-only option this DSL never declared — it is destructured away
   // before calling the harness so it never travels on a normal call.
-  let harnessOptions = opts
-  if (opts) {
-    const { personaFallback: _pf, ...rest } = opts
+  let harnessOptions = options
+  if (options) {
+    const { personaFallback: _pf, ...rest } = options
     harnessOptions = rest.agentType ? { ...rest, agentType: normalizeAgentType(rest.agentType) } : rest
   }
   // #265: one composition point. The persona is prefixed only on the registry-gap retry (personaFallback kept, agentType removed).
   const finalPrompt = composeAgentPrompt({
-    persona: opts && opts.personaFallback && !opts.agentType ? opts.personaFallback : '',
-    specifics: opts && (opts.agentType || opts.personaFallback) ? specificsBlockFor(specificsPayload, role, role === 'sam' ? lanesSam : role === 'nick' || role === 'morgan' ? lanesDevelopment : []) : '',
+    persona: options && options.personaFallback && !options.agentType ? options.personaFallback : '',
+    specifics: options && (options.agentType || options.personaFallback) ? specificsBlockFor(specificsPayload, role, role === 'sam' ? lanesSam : role === 'nick' || role === 'morgan' ? lanesDevelopment : []) : '',
     prompt,
-    mandate: opts && opts.schema ? STRUCTURED_OUTPUT_MANDATE : '',
+    mandate: options && options.schema ? STRUCTURED_OUTPUT_MANDATE : '',
   })
   // #110: a turn cut off by an auto-mode classifier outage ("no safety verdict") is transient —
   // retry the same call (bounded, with backoff) before callAgentSafe may call the step dead. The
@@ -2700,8 +2700,8 @@ const probeScriptPath = (file) => {
 async function preflightProbe(modeName, label, argv) {
   try {
     const script = probeScriptPath('preflight.sh')
-    const cmd = 'bash ' + shellSingleQuote(script) + ' ' + modeName + ' ' + argv.map(shellSingleQuote).join(' ')
-    const r = await probe('preflight', cmd, {
+    const command = 'bash ' + shellSingleQuote(script) + ' ' + modeName + ' ' + argv.map(shellSingleQuote).join(' ')
+    const r = await probe('preflight', command, {
       label,
       noReuse: true,   // live state: a stored record from an earlier launch must never answer (#83)
       onFail: (reason) => { log(`preflight probe (${modeName}): ${reason} — fail-open`); return null },
@@ -2724,8 +2724,8 @@ async function prWrite(op, label, round, argv) {
   try {
     const script = probeScriptPath('pr-write.sh')
     const arguments_ = [...argv, '--wt', wtPath, ...(repository ? ['--repo', repository] : [])]
-    const cmd = 'bash ' + shellSingleQuote(script) + ' ' + op + ' ' + arguments_.map((a) => shellSingleQuote(String(a))).join(' ')
-    const r = await probe('pr-write', cmd, {
+    const command = 'bash ' + shellSingleQuote(script) + ' ' + op + ' ' + arguments_.map((a) => shellSingleQuote(String(a))).join(' ')
+    const r = await probe('pr-write', command, {
       label,
       round,
       noReuse: true,   // a write is never replayed from a stored record (#85)
