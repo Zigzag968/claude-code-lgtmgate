@@ -16,6 +16,7 @@
 // - the LGTM gate opens only when its CI light and checklist light are both green
 // - one Lead arm on an endless rail sets each approved PR on main, under a hanging "main" sign
 import { writeFileSync } from 'fs';
+import { T, SHIFT, f2, modulo, glob, E, KF, kf, tx, ty, txy, rot, op, moves, valueAt, BH, PHt, TOPY, HOIST, DROP, LAMP, TB, TA, ARM, CAR, MOVES, MERGE, lineKF } from './readme-header-motion.mjs';
 const OUT = process.argv[2];
 const OPT = JSON.parse(process.argv[3] || '{}');
 const THEME = OPT.theme === 'dark' ? 'dark' : 'light';             // '{"theme":"dark"}' writes the variant for GitHub's dark theme
@@ -36,16 +37,11 @@ const DARK = {
   '#1E1B3B': '#E6EDF3', '#1E1B3C': '#2B2850', '#1E1B3D': '#E6EDF3', '#55506F': '#8B93A7', '#5B6472': '#8B949E',                 // wordmark, logo, labels
   '#5B3FE0': '#8B7BFF', '#7B63F0': '#A396FF', '#4A31C4': '#6A58E8', '#5B3DF5': '#9486FF', '#8C93A0': '#5A6072',
 };
-const themed = str => THEME === 'dark' ? str.replace(/#[0-9A-Fa-f]{6}\b/g, h => DARK[h.toUpperCase()] || h) : str;
+const themed = text => THEME === 'dark' ? text.replace(/#[0-9A-Fa-f]{6}\b/g, h => DARK[h.toUpperCase()] || h) : text;
 
 // ---------------------------------------------------------------- canvas / clock
-const W = 1280, H = 344, T = 18;
+const W = 1280, H = 344;
 const COLD = OPT.cold ?? 7.9;                 // opens as the operator presses MERGE and the Lead comes down for #143
-const SHIFT = { A: 12.1, B: 0.8 };       // each line runs on its own clock: global = local + SHIFT
-const f2 = n => Math.round(n * 100) / 100;
-const mod = (a, n) => ((a % n) + n) % n;
-const glob = (p, t) => mod(t + SHIFT[p], T);
-const loc = (p, g) => mod(g - SHIFT[p], T);
 
 // ---------------------------------------------------------------- projection (cabinet oblique, 45°, depth x0.5)
 const KX = 0.3536, KY = 0.3536, FLOOR = 316;
@@ -74,69 +70,17 @@ const box = (x, y, z, w, h, d, m) => {
   return `<polygon fill="${C[m + '-r']}" points="${pts(r)}"/><polygon fill="${C[m + '-t']}" points="${pts(t)}"/><polygon fill="${C[m + '-f']}" points="${pts(f)}"/>`;
 };
 
-// ---------------------------------------------------------------- keyframes (+ a numeric model of the same curves)
-const E = {
-  move: 'cubic-bezier(.77,0,.175,1)', out: 'cubic-bezier(.23,1,.32,1)', back: 'cubic-bezier(.34,1.56,.64,1)',
-  slam: 'cubic-bezier(.7,0,1,.6)', io: 'cubic-bezier(.65,0,.35,1)', drop: 'cubic-bezier(.55,0,.85,.55)',
-};
-const KF = [];
-const pc = t => `${Math.round((t / T) * 100000) / 1000}%`;
-const kf = (name, frames) => KF.push(`@keyframes ${name}{${frames.map(([t, css, e]) => `${pc(t)}{${css}${e ? `;animation-timing-function:${e}` : ''}}`).join('')}}`);
-const tx = x => `transform:translateX(${f2(x)}px)`;
-const ty = y => `transform:translateY(${f2(y)}px)`;
-const txy = (x, y) => `transform:translate(${f2(x)}px,${f2(y)}px)`;
-const rot = a => `transform:rotate(${f2(a)}deg)`;
-const op = o => `opacity:${o}`;
-const moves = (v0, steps, fmt, ease = E.move) => {
-  const fr = [[0, fmt(v0)]]; let v = v0;
-  for (const [a, b, nv, e] of steps) { fr.push([a, fmt(v), e || ease], [b, fmt(nv)]); v = nv; }
-  if (fr[fr.length - 1][0] < T) fr.push([T, fmt(v)]);
-  return fr;
-};
-// numeric twin: frames [[t, value, easing?]]; CSS applies a frame's easing until the next frame (default `ease`)
-const bez = spec => {
-  const [x1, y1, x2, y2] = spec.slice(spec.indexOf('(') + 1, spec.lastIndexOf(')')).split(',').map(Number);   // not a regex: 'cubic-bezier' has a '-'
-  const cx = s => 3 * (1 - s) ** 2 * s * x1 + 3 * (1 - s) * s * s * x2 + s ** 3;
-  const cy = s => 3 * (1 - s) ** 2 * s * y1 + 3 * (1 - s) * s * s * y2 + s ** 3;
-  return u => { let lo = 0, hi = 1, s = u; for (let i = 0; i < 50; i++) { s = (lo + hi) / 2; if (cx(s) < u) lo = s; else hi = s; } return cy(s); };
-};
-const EASE_DEFAULT = 'cubic-bezier(.25,.1,.25,1)';
-const valueAt = (fr, t) => {
-  for (let i = 0; i < fr.length - 1; i++) {
-    const [a, va, e] = fr[i], [b, vb] = fr[i + 1];
-    if (t >= a && t < b) return va + (vb - va) * (va === vb ? 0 : bez(e || EASE_DEFAULT)((t - a) / (b - a)));
-  }
-  return fr[fr.length - 1][1];
-};
 
 // ---------------------------------------------------------------- geometry (world units; x along the line, y up, z depth)
-const BX0 = 360, BX1 = 930, BH = 20, BD = 64;
-const PW = 70, PHt = 52, PD = 50, ZF = (BD - PD) / 2, ZC = ZF + PD / 2, TOPY = BH + PHt;
+const BX0 = 360, BX1 = 930, BD = 64;
+const PW = 70, PD = 50, ZF = (BD - PD) / 2, ZC = ZF + PD / 2;
 const SP = 100, INT = 400, TREAD = 20;
 const XS = { int: INT, plan: INT + SP, dev: INT + 2 * SP, rev: INT + 3 * SP, lgtm: INT + 4 * SP, pick: INT + 4 * SP + 80 };
 const DX = [0, SP, 2 * SP, 3 * SP, 4 * SP, 4 * SP + 80];           // 480 = 24 treads -> seamless
 const XG = XS.lgtm + PW / 2 + 8;                                   // gate plane; its stack light (and the LGTM label) at XG + 2.5
 const ZL = { A: 350, B: 0 };                                       // A = back line, B = front line
-const HOIST = 150, DROP = 60;
 
 
-// ---------------------------------------------------------------- timelines (each line on its own local clock)
-const TB = { pop: [.40, .75], drop: [.85, 1.65], m1: [2.05, 2.60], plan: [2.60, 3.60], rows: [2.85, 3.15, 3.45], m2: [3.60, 4.15],
-  work: [[4.25, 5.55]], stamp: 5.75, ci: [[5.80, 7.30]], m3: [6.15, 6.70], read: [6.70, 8.05], ticks: [7.15, 7.48, 7.81],
-  m4: [8.00, 8.55], hold: [8.55, 9.35], flip: 9.35, door: [9.40, 9.80], m5: [9.85, 10.40], grip: 11.05, reset: 11.30, doorDown: [11.30, 11.70] };
-const TA = { pop: [0, .35], drop: [.45, 1.25], m1: [1.35, 1.90], plan: [1.90, 2.90], rows: [2.15, 2.45, 2.75], m2: [2.90, 3.45],
-  work: [[3.55, 4.85], [8.10, 9.00]], stamp: 5.05, stamp2: 9.20, ci: [[5.10, 6.60], [9.25, 10.60]],   // the fix is a new push: CI runs again
-  m3: [5.45, 6.00], read1: [6.05, 7.15], tick1: 6.45, fail: 6.85,
-  back: [7.40, 8.00],                                                // the workflow runs the belt backwards: REVIEW -> DEV
-  m3b: [9.55, 10.10], read2: [10.15, 11.35], ticks2: [10.70, 11.05], m4: [11.35, 11.90], hold: [11.90, 12.70], flip: 12.70,
-  door: [12.75, 13.15], m5: [13.15, 13.70], grip: 14.30, reset: 14.55, doorDown: [14.55, 14.95] };
-TA.red = [TA.fail + .03, TA.ticks2[1] + .02];                      // REVIEW light red until the second review passes
-// the Lead and main (global clock): the arm serves the back line first, then the front line
-const ARM = { A: { down: [8.0, 8.4], swing: [8.5, 9.4], back: [9.5, 10.1] },
-  B: { down: [11.45, 11.85], swing: [11.95, 12.85], back: [12.95, 13.55] } };
-const CAR = { toB: [10.2, 11.35], toA: [13.7, 14.85] };
-const MOVES = [[2.0, 2.75], [5.6, 6.35], [9.7, 10.45], [14.9, 15.65]];   // A's gap waits at z=350 (6.35-9.7), B's at z=0 (10.45-14.9)
-const MERGE = { A: 7.85, B: 11.3 };                                  // the operator's go-ahead, just before the Lead comes down
 
 // ---------------------------------------------------------------- the parcel (drawn at x = 0, depth offset z0)
 // PR label: grey while draft, red once Morgan requests changes, green once his review passes (and on main)
@@ -144,21 +88,21 @@ const PRC = { draft: '#6E7781', changes: '#CF222E', ready: '#1F883D' };  // fill
 const OKC = '#1F883D', KOC = '#CF222E';                              // Morgan's marks: green tick, red cross
 const prLabel = (bg, cls) => `<g${cls ? ` class="a ${cls}"` : ''}><rect x="-13.5" y="-7.5" width="27" height="15" rx="4" fill="${bg}"/><text x="0" y="3.6" text-anchor="middle" class="mono" fill="#fff" font-size="10" font-weight="800">PR</text></g>`;
 // modes: 'live' (label layers animate, class suffix p), 'final' (ticked, PR ready: carried or on main), 'plain'
-function parcel(num, mode, z0, p = '') {
+function parcel(prNumber, mode, z0, p = '') {
   const [fx, fy] = P(-PW / 2, TOPY, ZF + z0);
   const cx = fx + 6, cy = fy + 7;
   const tape = [P(-7, TOPY, ZF + z0), P(7, TOPY, ZF + z0), P(7, TOPY, ZF + PD + z0), P(-7, TOPY, ZF + PD + z0)];
   let s = box(-PW / 2, BH, ZF + z0, PW, PHt, PD, 'kr');
   s += `<polygon fill="#E3C38F" points="${pts(tape)}"/><rect fill="#E3C38F" x="${f2(fx + PW / 2 - 7)}" y="${f2(fy)}" width="14" height="5"/>`;
   s += `<rect fill="#fff" x="${f2(cx)}" y="${f2(cy)}" width="46" height="38" rx="2.5"/>`;
-  s += `<text class="mono" fill="${INK}" x="${f2(cx + 4)}" y="${f2(cy + 10)}" font-size="9" font-weight="700">${num}</text>`;
+  s += `<text class="mono" fill="${INK}" x="${f2(cx + 4)}" y="${f2(cy + 10)}" font-size="9" font-weight="700">${prNumber}</text>`;
   if (mode === 'plain') return s;
   const live = mode === 'live';
-  [0, 1, 2].forEach(i => {
-    const y = cy + 16 + i * 7.5, w = [24, 19, 22][i];
-    s += `<g${live ? ` class="a row${i + 1}${p}" style="transform-origin:${f2(cx + 4)}px 0"` : ''}><rect x="${f2(cx + 4)}" y="${f2(y)}" width="6" height="6" rx="1.2" fill="none" stroke="${INK}" stroke-width="1.2"/><line x1="${f2(cx + 14)}" y1="${f2(y + 3)}" x2="${f2(cx + 14 + w)}" y2="${f2(y + 3)}" stroke="#C5C8D2" stroke-width="2.2" stroke-linecap="round"/></g>`;
-    s += `<path${live ? ` class="a tk${i + 1}${p}"` : ''} d="M${f2(cx + 3)},${f2(y + 2.6)} l2.6,2.8 l5.4,-7" fill="none" stroke="${OKC}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="14"${live ? '' : ' stroke-dashoffset="0"'}/>`;
-    if (live && p === 'A' && i === 1) s += `<g class="a x2A" style="transform-origin:${f2(cx + 7)}px ${f2(y + 3)}px"><path d="M${f2(cx + 4.3)},${f2(y + .3)} l5.4,5.4 M${f2(cx + 9.7)},${f2(y + .3)} l-5.4,5.4" stroke="${KOC}" stroke-width="1.9" stroke-linecap="round"/></g>`;
+  [0, 1, 2].forEach(index => {
+    const y = cy + 16 + index * 7.5, w = [24, 19, 22][index];
+    s += `<g${live ? ` class="a row${index + 1}${p}" style="transform-origin:${f2(cx + 4)}px 0"` : ''}><rect x="${f2(cx + 4)}" y="${f2(y)}" width="6" height="6" rx="1.2" fill="none" stroke="${INK}" stroke-width="1.2"/><line x1="${f2(cx + 14)}" y1="${f2(y + 3)}" x2="${f2(cx + 14 + w)}" y2="${f2(y + 3)}" stroke="#C5C8D2" stroke-width="2.2" stroke-linecap="round"/></g>`;
+    s += `<path${live ? ` class="a tk${index + 1}${p}"` : ''} d="M${f2(cx + 3)},${f2(y + 2.6)} l2.6,2.8 l5.4,-7" fill="none" stroke="${OKC}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="14"${live ? '' : ' stroke-dashoffset="0"'}/>`;
+    if (live && p === 'A' && index === 1) s += `<g class="a x2A" style="transform-origin:${f2(cx + 7)}px ${f2(y + 3)}px"><path d="M${f2(cx + 4.3)},${f2(y + .3)} l5.4,5.4 M${f2(cx + 9.7)},${f2(y + .3)} l-5.4,5.4" stroke="${KOC}" stroke-width="1.9" stroke-linecap="round"/></g>`;
   });
   const lab = live ? `<g class="a stamp${p}">${prLabel(PRC.draft)}${p === 'A' ? prLabel(PRC.changes, 'chg' + p) : ''}${prLabel(PRC.ready, 'ready' + p)}</g>` : prLabel(PRC.ready);
   s += `<g transform="translate(${f2(fx + PW - 11)},${f2(fy + 10)}) rotate(-12)">${lab}</g>`;
@@ -168,7 +112,6 @@ function parcel(num, mode, z0, p = '') {
 // ---------------------------------------------------------------- stations (v4): a column behind the belt, a violet tool arm over it
 const lensRest = p => P(XS.rev - 7, 84, ZL[p] + 3);
 const lampAt = (p, x) => P(x, 110.8, ZL[p] + 9);
-const LAMP = { off: '#DCD8E8', o: '#F5A524', g: '#22C55E', r: '#F04438' };
 const cloudAt = p => { const [fx, fy] = P(XS.dev - PW / 2, TOPY, ZF + ZL[p]); return [fx + PW / 2 + 9, fy + 9]; };
 const GEAR = `<circle r="5.6" fill="none" stroke="#8069FF" stroke-width="3.4" stroke-dasharray="2.3 2.1"/><circle r="3.4" fill="#8069FF"/><circle r="1.4" fill="#fff"/>`;
 const SYMS = [                                                      // [glyph, flight vector, spin]
@@ -191,8 +134,8 @@ function tools(p) {                                                 // the parts
     s += `<polygon class="a fan${p}" fill="#7C66FF" fill-opacity=".16" points="${pts([hb[0], hb[1], [fx + PW + 4, fy + PHt + 2], [fx - 4, fy + PHt + 2]])}"/>`;
     s += `<g class="a scan${p}"><line x1="${f2(fx - 3)}" y1="${f2(fy + 1)}" x2="${f2(fx + PW + 3)}" y2="${f2(fy + 1)}" stroke="#7C66FF" stroke-width="2" stroke-linecap="round"/><line x1="${f2(fx - 3)}" y1="${f2(fy + 1)}" x2="${f2(fx + PW + 3)}" y2="${f2(fy + 1)}" stroke="#7C66FF" stroke-width="7" stroke-linecap="round" opacity=".25"/></g>`;
     s += box(x - 18, 84, z0 + 14, 36, 12, 30, 'ag');
-    const e = [P(x - 13, 84, z0 + 14), P(x + 13, 84, z0 + 14)];
-    s += `<line class="a emit${p}" x1="${f2(e[0][0])}" y1="${f2(e[0][1] - 1)}" x2="${f2(e[1][0])}" y2="${f2(e[1][1] - 1)}" stroke="#C9C0FF" stroke-width="2.5" stroke-linecap="round"/>`;
+    const edge = [P(x - 13, 84, z0 + 14), P(x + 13, 84, z0 + 14)];
+    s += `<line class="a emit${p}" x1="${f2(edge[0][0])}" y1="${f2(edge[0][1] - 1)}" x2="${f2(edge[1][0])}" y2="${f2(edge[1][1] - 1)}" stroke="#C9C0FF" stroke-width="2.5" stroke-linecap="round"/>`;
   }
   { // DEV: Nick's workshop. The head comes down, the parcel shakes and squashes while code and tools fly out of it,
     // then a small burst: the PR opens
@@ -200,7 +143,7 @@ function tools(p) {                                                 // the parts
     s += `<clipPath id="press${p}"><rect x="0" y="${f2(rod[1])}" width="1400" height="400"/></clipPath>`;
     s += `<g clip-path="url(#press${p})"><g class="a press${p}"><line x1="${f2(rod[0])}" y1="${f2(rod[1] - 40)}" x2="${f2(rod[0])}" y2="${f2(rod[1] + 16)}" stroke="#C9C6D5" stroke-width="6"/>${box(x - 26, 82, z0 + 12, 52, 14, 38, 'ag')}</g></g>`;
     const [cx, cy] = cloudAt(p);
-    SYMS.forEach(([glyph], i) => { s += `<g transform="translate(${f2(cx)} ${f2(cy)})"><g class="a sym${i}${p}">${glyph}</g></g>`; });
+    SYMS.forEach(([glyph], index) => { s += `<g transform="translate(${f2(cx)} ${f2(cy)})"><g class="a sym${index}${p}">${glyph}</g></g>`; });
     s += `<g transform="translate(${f2(cx)} ${f2(cy)})"><g class="a boom${p}" stroke="#5B3DF5" stroke-width="3" stroke-linecap="round">${[...Array(10)].map((_, k) => { const t = (k * 36 + 18) * Math.PI / 180; return `<line x1="${f2(Math.cos(t) * 50)}" y1="${f2(Math.sin(t) * 38)}" x2="${f2(Math.cos(t) * 60)}" y2="${f2(Math.sin(t) * 46)}"/>`; }).join('')}</g></g>`;
   }
   { // REVIEW: Morgan's lens reads each criterion and ticks it
@@ -244,7 +187,7 @@ function gate(p) {
 }
 // ---------------------------------------------------------------- one production line
 function line(p) {
-  const z0 = ZL[p], num = p === 'A' ? '#143' : '#142';
+  const z0 = ZL[p], prNumber = p === 'A' ? '#143' : '#142';
   let s = '';
   s += box(INT - 36, HOIST + 10, z0 + ZC - 8, 72, 6, 16, 'st') + box(INT - 11, HOIST, z0 + ZC - 9, 22, 10, 18, 'ac');
   s += stations(p);
@@ -257,7 +200,7 @@ function line(p) {
   const hk = P(INT, HOIST, z0 + ZC);
   s += `<g transform="translate(${f2(hk[0])} ${f2(hk[1])})"><rect class="a cable${p}" x="-.8" y="0" width="1.6" height="${HOIST - TOPY}" fill="#8C93A0" style="transform-origin:0 0"/><g class="a hook${p}"><path d="M-4.5 -2 h9 l-4.5 5 z" fill="#2B2748"/></g></g>`;
   const piv = P(0, BH, ZF + z0), topc = P(0, TOPY, ZC + z0);
-  s += `<g transform="translate(${INT} 0)"><g class="a vis${p}"><g class="a mx${p}"><g class="a my${p}"><g transform="translate(${f2(piv[0])} ${f2(piv[1])})"><g class="a sq${p}"><g transform="translate(${f2(-piv[0])} ${f2(-piv[1])})"><g class="a pop${p}" style="transform-origin:${f2(topc[0])}px ${f2(topc[1])}px">${parcel(num, 'live', z0, p)}</g></g></g></g></g></g></g></g>`;
+  s += `<g transform="translate(${INT} 0)"><g class="a vis${p}"><g class="a mx${p}"><g class="a my${p}"><g transform="translate(${f2(piv[0])} ${f2(piv[1])})"><g class="a sq${p}"><g transform="translate(${f2(-piv[0])} ${f2(-piv[1])})"><g class="a pop${p}" style="transform-origin:${f2(topc[0])}px ${f2(topc[1])}px">${parcel(prNumber, 'live', z0, p)}</g></g></g></g></g></g></g></g>`;
   s += tools(p) + gate(p);
   return `<g class="p${p}">${s}</g>`;
 }
@@ -295,13 +238,13 @@ function mainLane() {
 // in each layer it visits, switched on/off in step.
 const ZG = 420;                                                     // the main sign's depth: behind both landing points and the carriage
 const STRIP_J = [];
-for (let j = 5; j >= -6; j--) {
-  const m = mod(j, 4), who = WHO[m] || null;
-  if (who && j < LAND[who]) continue;                               // still a gap: that PR has not been merged yet
-  if ((j + 4) * PITCH < -400 || j * PITCH > 900) continue;          // never on screen during the loop
+for (let slot = 5; slot >= -6; slot--) {
+  const m = modulo(slot, 4), who = WHO[m] || null;
+  if (who && slot < LAND[who]) continue;                               // still a gap: that PR has not been merged yet
+  if ((slot + 4) * PITCH < -400 || slot * PITCH > 900) continue;          // never on screen during the loop
   const lay = [];
-  for (let k = 0; k < T * 200; k++) { const t = k / 200, z = (j + valueAt(NSTRIP, t)) * PITCH; lay.push(z + ZC >= ZG ? 'far' : z < valueAt(ZCAR, t) - .5 ? 'front' : 'back'); }
-  STRIP_J.push({ j, who, lay });
+  for (let k = 0; k < T * 200; k++) { const t = k / 200, z = (slot + valueAt(NSTRIP, t)) * PITCH; lay.push(z + ZC >= ZG ? 'far' : z < valueAt(ZCAR, t) - .5 ? 'front' : 'back'); }
+  STRIP_J.push({ slot, who, lay });
 }
 const DYN = [];                                                     // animation names created on the fly
 function stepKF(name, states) {                                     // boolean samples (every 5 ms) -> opacity steps
@@ -313,14 +256,14 @@ function stepKF(name, states) {                                     // boolean s
 }
 function mainStrip(layer) {
   let s = '';
-  for (const { j, who, lay } of STRIP_J) {
+  for (const { slot, who, lay } of STRIP_J) {
     const on = lay.map(l => l === layer);
     if (!on.some(Boolean)) continue;
-    const always = on.every(Boolean), cls = `ly${{ far: 'R', back: 'B', front: 'F' }[layer]}${j + 10}`;
+    const always = on.every(Boolean), cls = `ly${{ far: 'R', back: 'B', front: 'F' }[layer]}${slot + 10}`;
     if (!always) stepKF(cls, on);
-    const landing = who && j === LAND[who];
-    const [dx, dy] = slotShift(j), piv = P(MXC, BH, ZF);
-    const body = parcel(who === 'A' ? '#143' : who === 'B' ? '#142' : OTHERS[mod(j, 4)], 'final', 0);
+    const landing = who && slot === LAND[who];
+    const [dx, dy] = slotShift(slot), piv = P(MXC, BH, ZF);
+    const body = parcel(who === 'A' ? '#143' : who === 'B' ? '#142' : OTHERS[modulo(slot, 4)], 'final', 0);
     s += `<g transform="translate(${f2(dx)} ${f2(dy)})"${always ? '' : ` class="a ${cls}"`}><g${landing ? ` class="a land${who}"` : ''}><g transform="translate(${f2(piv[0])} ${f2(piv[1])})"><g${landing ? ` class="a msq${who}"` : ''}><g transform="translate(${f2(-piv[0])} ${f2(-piv[1])})"><g transform="translate(${MXC} 0)">${body}</g></g></g></g></g></g>`;
   }
   return `<g class="a mstrip">${s}</g>`;
@@ -345,7 +288,7 @@ function ik(sh, [tx_, ty_], prefer) {
   const t2 = prefer * Math.acos(c), t1 = Math.atan2(dy, dx) - Math.atan2(L2 * Math.sin(t2), L1 + L2 * Math.cos(t2));
   return { t1: t1 * 180 / Math.PI, t2: t2 * 180 / Math.PI };
 }
-const near = (a, ref) => a + 360 * Math.round((ref - a) / 360);
+const near = (a, reference) => a + 360 * Math.round((reference - a) / 360);
 const SH = P(XA, 46, ZC);                                           // drawn in the front line's plane; the carriage moves it
 const POSE = (() => {
   const pick = P(XS.pick, TOPY, ZC), place = P(MXC, TOPY, ZC), home = [SH[0] + 6, pick[1] - 14];
@@ -362,7 +305,7 @@ function rail() {
     + `<path d="M${f2(a[0])} ${f2(a[1])}L${f2(b[0])} ${f2(b[1])}M${f2(c[0])} ${f2(c[1])}L${f2(d[0])} ${f2(d[1])}" stroke="#B3ADC8" stroke-width="2" stroke-linecap="round"/>`;
 }
 function lead() {
-  const cap = (len, th) => `<rect x="${-th / 2}" y="${-th / 2}" width="${len + th}" height="${th}" rx="${th / 2}" fill="#2B2748"/>`;
+  const cap = (length, th) => `<rect x="${-th / 2}" y="${-th / 2}" width="${length + th}" height="${th}" rx="${th / 2}" fill="#2B2748"/>`;
   const joint = r => `<circle r="${r}" fill="#8069FF"/><circle r="${r * .34}" fill="#2B2748"/>`;
   const topC = P(0, TOPY, ZC);
   const card = ['B', 'A'].map(p => `<g class="a carry${p}"><g transform="translate(${f2(-topC[0])} ${f2(GRIP - topC[1])})">${parcel(p === 'A' ? '#143' : '#142', 'final', 0)}</g></g>`).join('');
@@ -422,7 +365,7 @@ function operator() {
   for (const p of ['A', 'B']) {
     const y = ROWY[p];
     s += `<g class="p${p}"><g class="a rv${p}"><line x1="${NODE_X[0]}" y1="${y}" x2="${NODE_X[3]}" y2="${y}" stroke="#2E2A4A" stroke-width="2.4" stroke-linecap="round"/>`
-      + ['pl', 'dv', 'rv', 'lg'].map((k, i) => `<circle class="a nd${k}${p}" cx="${NODE_X[i]}" cy="${y}" r="4.4" fill="#3A3657"/>`).join('')
+      + ['pl', 'dv', 'rv', 'lg'].map((k, index) => `<circle class="a nd${k}${p}" cx="${NODE_X[index]}" cy="${y}" r="4.4" fill="#3A3657"/>`).join('')
       + `<rect x="76" y="${y - 5}" width="24" height="10" rx="5" fill="none" stroke="#4A4568" stroke-width=".9"/><text x="88" y="${y + 1.7}" text-anchor="middle" class="mono" font-size="4.8" font-weight="800" fill="#6E6A8A">MERGE</text>`
       + `<g class="a mg${p}">${pill(y, '#1F883D', 'MERGE')}</g><g class="a mgd${p}">${pill(y, '#1F883D', 'MERGED')}</g></g></g>`;
   }
@@ -439,105 +382,16 @@ function operator() {
 }
 
 // ---------------------------------------------------------------- animations shared by both lines (each on its own clock)
-const stampsOf = t => t.stamp2 ? [t.stamp, t.stamp2] : [t.stamp];
-function lineKF(p, t) {
-  const cable0 = f2((HOIST - TOPY - DROP) / (HOIST - TOPY));
-  kf(`cable${p}`, [[0, `transform:scaleY(${cable0})`], [t.drop[0], `transform:scaleY(${cable0})`, E.drop], [t.drop[1], 'transform:scaleY(1)'], [t.drop[1] + .15, 'transform:scaleY(1)', E.out], [t.drop[1] + .7, `transform:scaleY(${cable0})`], [T, `transform:scaleY(${cable0})`]]);
-  kf(`hook${p}`, [[0, ty(HOIST - TOPY - DROP)], [t.drop[0], ty(HOIST - TOPY - DROP), E.drop], [t.drop[1], ty(HOIST - TOPY)], [t.drop[1] + .15, ty(HOIST - TOPY), E.out], [t.drop[1] + .7, ty(HOIST - TOPY - DROP)], [T, ty(HOIST - TOPY - DROP)]]);
-  kf(`fan${p}`, [[0, op(0)], [t.plan[0] + .05, op(0)], [t.plan[0] + .2, op(1)], [t.plan[1] - .15, op(1)], [t.plan[1], op(0)], [T, op(0)]]);
-  kf(`emit${p}`, [[0, op(.25)], [t.plan[0], op(.25)], [t.plan[0] + .15, op(1)], [t.plan[1] - .1, op(1)], [t.plan[1], op(.25)], [T, op(.25)]]);
-  const r = t.rows;
-  kf(`scan${p}`, [[0, `${ty(0)};opacity:0`], [t.plan[0] + .18, `${ty(0)};opacity:0`], [t.plan[0] + .2, `${ty(0)};opacity:1`, E.io], [r[1] + .05, `${ty(PHt - 2)};opacity:1`, E.io], [t.plan[1] - .15, `${ty(0)};opacity:1`], [t.plan[1] - .05, `${ty(0)};opacity:0`], [T, `${ty(0)};opacity:0`]]);
-  r.forEach((x, i) => kf(`row${i + 1}${p}`, [[0, 'opacity:0;transform:scaleX(0)'], [x, 'opacity:0;transform:scaleX(0)', E.out], [x + .22, 'opacity:1;transform:scaleX(1)'], [t.reset, 'opacity:1;transform:scaleX(1)'], [t.reset + .001, 'opacity:0;transform:scaleX(0)'], [T, 'opacity:0;transform:scaleX(0)']]));
-  // the PR opens (grey, draft) when Nick's work is done; a later push bumps it; Morgan's LGTM turns it green
-  const st = [[0, 'opacity:0;transform:scale(1.5)'], [t.stamp - .001, 'opacity:0;transform:scale(1.5)'], [t.stamp, 'opacity:1;transform:scale(1.5)', E.back], [t.stamp + .22, 'opacity:1;transform:scale(1)']];
-  const bumps = [...(t.fail ? [t.fail] : []), ...(t.stamp2 ? [t.stamp2] : []), p === 'A' ? t.ticks2[1] : t.ticks[2]];
-  for (const b of bumps) st.push([b, 'opacity:1;transform:scale(1)', E.out], [b + .1, 'opacity:1;transform:scale(1.25)', E.io], [b + .35, 'opacity:1;transform:scale(1)']);
-  st.push([t.reset, 'opacity:1;transform:scale(1)'], [t.reset + .001, 'opacity:0;transform:scale(1.5)'], [T, 'opacity:0;transform:scale(1.5)']);
-  kf(`stamp${p}`, st);
-  const pass = p === 'A' ? t.ticks2[1] : t.ticks[2];                 // Morgan's review passes: the PR is ready to merge
-  kf(`ready${p}`, [[0, op(0)], [pass - .001, op(0)], [pass, op(1)], [t.reset, op(1)], [t.reset + .001, op(0)], [T, op(0)]]);   // a clean switch (a cross-fade would go muddy)
-  if (t.fail) {
-    kf(`chg${p}`, [[0, op(0)], [t.fail - .001, op(0)], [t.fail, op(1)], [pass, op(1)], [pass + .001, op(0)], [T, op(0)]]);
-    kf(`x2${p}`, [[0, 'opacity:0;transform:scale(.4)'], [t.fail - .001, 'opacity:0;transform:scale(.4)'], [t.fail, 'opacity:1;transform:scale(.4)', E.back], [t.fail + .2, 'opacity:1;transform:scale(1)'], [t.ticks2[0] - .12, 'opacity:1;transform:scale(1)'], [t.ticks2[0] - .02, 'opacity:0;transform:scale(1)'], [T, 'opacity:0;transform:scale(1)']]);
-  }
-  // Nick's workshop: the head dives into a cartoon work cloud that boils while code and tools fly out; it pops, the PR opens
-  const pr = [[0, ty(0)]], bm = [[0, 'opacity:0;transform:scale(.6)']];
-  const sy = SYMS.map(() => [[0, 'opacity:0;transform:translate(0px,0px) scale(.3) rotate(0deg)']]);
-  t.work.forEach(([w0, w1], k) => {
-    const st0 = stampsOf(t)[k];
-    pr.push([w0 - .2, ty(0), E.out], [w0, ty(4)]);
-    for (let x = w0 + .12, i = 0; x < w1 - .06; x += .12, i++) pr.push([x, ty(i % 2 ? 4 : 2.5)]);
-    pr.push([w1, ty(4), E.out], [st0 - .08, ty(-4), E.slam], [st0, ty(10)], [st0 + .15, ty(10), E.out], [st0 + .55, ty(0)]);
-    sy.forEach((a, i) => {
-      const [v, spin] = [SYMS[i][1], SYMS[i][2]];
-      for (const off of [.18 + i * .11, .18 + i * .11 + (w1 - w0) * .5]) {
-        const x = w0 + off; if (x + .62 > st0) continue;
-        a.push([x, 'opacity:0;transform:translate(0px,0px) scale(.3) rotate(0deg)', E.out], [x + .14, `opacity:1;transform:translate(${f2(v[0] * .4)}px,${f2(v[1] * .4)}px) scale(1.3) rotate(${spin / 3}deg)`, E.out], [x + .45, `opacity:1;transform:translate(${f2(v[0] * .85)}px,${f2(v[1] * .85)}px) scale(1.1) rotate(${f2(spin * .8)}deg)`], [x + .62, `opacity:0;transform:translate(${v[0]}px,${v[1]}px) scale(.9) rotate(${spin}deg)`]);
-      }
-    });
-    bm.push([st0 - .1, 'opacity:0;transform:scale(.6)', E.out], [st0 - .02, 'opacity:1;transform:scale(1)'], [st0 + .22, 'opacity:0;transform:scale(1.35)']);
-  });
-  pr.push([T, ty(0)]); bm.push([T, 'opacity:0;transform:scale(1.35)']);
-  kf(`press${p}`, pr); kf(`boom${p}`, bm);
-  sy.forEach((a, i) => kf(`sym${i}${p}`, [...a, [T, 'opacity:0;transform:translate(0px,0px) scale(.3) rotate(0deg)']]));
-  // the gate: CI light (amber while CI runs, green once it passes) and checklist light (red while held, green on LGTM)
-  const ciA = [[0, op(0)]], ciG = [[0, op(0)]];
-  t.ci.forEach(([a, b], k) => {
-    ciA.push([a - .001, op(0)], [a, op(1)]);
-    for (let x = a + .35, i = 0; x < b - .1; x += .35, i++) ciA.push([x, op(i % 2 ? 1 : .35), E.io]);
-    ciA.push([b - .001, op(1)], [b, op(0)]);
-    ciG.push([a - .001, op(k ? 1 : 0)], [a, op(0)], [b - .001, op(0)], [b, op(1)]);
-  });
-  ciG.push([t.reset, op(1)], [t.reset + .001, op(0)], [T, op(0)]); ciA.push([T, op(0)]);
-  kf(`ciA${p}`, ciA); kf(`ciG${p}`, ciG);
-  kf(`ciGlowA${p}`, ciA.map(([x, css, e]) => [x, css.replace(/opacity:([\d.]+)/, (m0, v) => `opacity:${f2(v * .8)}`), e]));
-  kf(`ciGlowG${p}`, ciG.map(([x, css, e]) => [x, css.replace(/opacity:([\d.]+)/, (m0, v) => `opacity:${f2(v * .6)}`), e]));
-  kf(`door${p}`, [[0, ty(0)], [t.door[0], ty(0), E.out], [t.door[1], ty(-74)], [t.doorDown[0], ty(-74), E.io], [t.doorDown[1], ty(0)], [T, ty(0)]]);
-  kf(`lampR${p}`, [[0, op(0)], [t.hold[0], op(0)], [t.hold[0] + .03, op(1)], [t.hold[0] + .23, op(.2)], [t.hold[0] + .4, op(1)], [t.hold[0] + .57, op(.2)], [t.hold[0] + .74, op(1)], [t.flip, op(0)], [T, op(0)]]);
-  kf(`lampG${p}`, [[0, op(0)], [t.flip - .01, op(0)], [t.flip + .03, op(1)], [t.reset, op(1)], [t.reset + .3, op(0)], [T, op(0)]]);
-  kf(`glow${p}`, [[0, 'opacity:0;transform:scale(.5)'], [t.flip, 'opacity:0;transform:scale(.5)', E.out], [t.flip + .3, 'opacity:1;transform:scale(1.25)', E.io], [t.flip + .85, 'opacity:.55;transform:scale(1)'], [t.m5[1] + .3, 'opacity:.55;transform:scale(1)'], [t.m5[1] + .6, 'opacity:0;transform:scale(.8)'], [T, 'opacity:0;transform:scale(.8)']]);
-  // station lights: orange in progress, green done (on to the next step), red error, off idle; the monitor mirrors them
-  const merge = loc(p, MERGE[p]), merged = loc(p, ARM[p].swing[1]);
-  const L = p === 'B'
-    ? { pl: [[t.plan[0], t.plan[1], 'o'], [t.plan[1], t.m2[1], 'g']], dv: [[t.m2[1], t.stamp, 'o'], [t.stamp, t.m3[1], 'g']],
-        rv: [[t.read[0], t.ticks[2], 'o'], [t.ticks[2], t.m4[1], 'g']], lg: [[t.hold[0], t.flip, 'o'], [t.flip, merged, 'g']] }
-    : { pl: [[t.plan[0], t.plan[1], 'o'], [t.plan[1], t.m2[1], 'g']],
-        dv: [[t.m2[1], t.stamp, 'o'], [t.stamp, t.m3[1], 'g'], [t.back[1], t.stamp2, 'o'], [t.stamp2, t.m3b[1], 'g']],
-        rv: [[t.read1[0], t.fail, 'o'], [t.fail, t.read2[0], 'r'], [t.read2[0], t.ticks2[1], 'o'], [t.ticks2[1], t.m4[1], 'g']],
-        lg: [[t.hold[0], t.flip, 'o'], [t.flip, merged, 'g']] };
-  const fillKF = (segs, off) => {
-    const ev = [];
-    segs.forEach(([a, b, c], i) => { ev.push([a, LAMP[c]]); const nx = segs[i + 1]; if (!nx || Math.abs(nx[0] - b) > 1e-6) ev.push([b, off]); });
-    const fr = [[0, `fill:${off}`]]; let cur = off;
-    for (const [x, col] of ev) { fr.push([x - .001, `fill:${cur}`], [x, `fill:${col}`]); cur = col; }
-    fr.push([T, `fill:${cur}`]); return fr;
-  };
-  const glowKF = (segs, c) => {
-    const fr = [[0, op(0)]];
-    for (const [a, b, cc] of segs) if (cc === c) {
-      fr.push([a - .001, op(0)], [a + .08, op(1)]);
-      if (c !== 'g') for (let x = a + .45, i = 0; x < b - .2; x += .45, i++) fr.push([x, op(i % 2 ? 1 : .45), E.io]);
-      fr.push([b - .001, op(c === 'g' ? .8 : 1)], [b, op(0)]);
-    }
-    fr.push([T, op(0)]); return fr;
-  };
-  for (const k of ['pl', 'dv', 'rv']) { kf(`lm${k}${p}`, fillKF(L[k], LAMP.off)); for (const c of ['o', 'g', 'r']) kf(`l${c}${k}${p}`, glowKF(L[k], c)); }
-  for (const k of ['pl', 'dv', 'rv', 'lg']) kf(`nd${k}${p}`, fillKF(L[k], '#3A3657'));
-  kf(`rv${p}`, [[0, op(0)], [t.pop[0], op(0), E.out], [t.pop[0] + .3, op(1)], [merged + .6, op(1), E.out], [merged + .9, op(0)], [T, op(0)]]);
-  kf(`mg${p}`, [[0, 'opacity:0;transform:scale(1)'], [merge - .001, 'opacity:0;transform:scale(1)'], [merge, 'opacity:1;transform:scale(1.35)', E.back], [merge + .25, 'opacity:1;transform:scale(1)'], [merged - .001, 'opacity:1;transform:scale(1)'], [merged, 'opacity:0;transform:scale(1)'], [T, 'opacity:0;transform:scale(1)']]);
-  kf(`mgd${p}`, [[0, op(0)], [merged - .001, op(0)], [merged, op(1)], [T, op(1)]]);
-}
-lineKF('B', TB); lineKF('A', TA);
+lineKF('B', TB, SYMS); lineKF('A', TA, SYMS);
 const SQ = (p, events, wobble = []) => {
   const one = 'transform:scale(1,1) rotate(0deg)', fr = [[0, one]];
   const all = [...events.map(([at, k]) => ({ at, k })), ...wobble.map(([at, b]) => ({ at, b }))].sort((x, y) => x.at - y.at);
-  for (const e of all) {
-    if (e.b === undefined) fr.push([e.at - .02, one], [e.at + .05, `transform:scale(${1 + .06 * e.k},${1 - .12 * e.k}) rotate(0deg)`, E.out], [e.at + .2, `transform:scale(${1 - .015 * e.k},${1 + .03 * e.k}) rotate(0deg)`], [e.at + .36, one]);
+  for (const entry of all) {
+    if (entry.b === undefined) fr.push([entry.at - .02, one], [entry.at + .05, `transform:scale(${1 + .06 * entry.k},${1 - .12 * entry.k}) rotate(0deg)`, E.out], [entry.at + .2, `transform:scale(${1 - .015 * entry.k},${1 + .03 * entry.k}) rotate(0deg)`], [entry.at + .36, one]);
     else {                                                           // the parcel shakes, squashes and stretches while Nick works on it
-      fr.push([e.at, one]);
-      for (let x = e.at + .09, i = 0; x < e.b - .05; x += .09, i++) fr.push([x, i % 2 ? 'transform:scale(.93,1.08) rotate(2.6deg)' : 'transform:scale(1.08,.9) rotate(-2.6deg)', E.io]);
-      fr.push([e.b, one]);
+      fr.push([entry.at, one]);
+      for (let x = entry.at + .09, index = 0; x < entry.b - .05; x += .09, index++) fr.push([x, index % 2 ? 'transform:scale(.93,1.08) rotate(2.6deg)' : 'transform:scale(1.08,.9) rotate(-2.6deg)', E.io]);
+      fr.push([entry.b, one]);
     }
   }
   fr.push([T, one]); kf(`sq${p}`, fr);
@@ -545,7 +399,7 @@ const SQ = (p, events, wobble = []) => {
 const tickKF = (name, x, reset) => kf(name, [[0, 'stroke-dashoffset:14'], [x - .12, 'stroke-dashoffset:14', E.out], [x + .02, 'stroke-dashoffset:0'], [reset, 'stroke-dashoffset:0'], [reset + .001, 'stroke-dashoffset:14'], [T, 'stroke-dashoffset:14']]);
 const lensGeo = p => {
   const [fx, fy] = P(XS.rev - PW / 2, TOPY, ZF + ZL[p]), lr = lensRest(p);
-  return { r: i => fy + 7 + 16 + i * 7.5 + 3 - lr[1], x0: fx + 6 + 7 - lr[0], x1: fx + 6 + 36 - lr[0] };
+  return { r: index => fy + 7 + 16 + index * 7.5 + 3 - lr[1], x0: fx + 6 + 7 - lr[0], x1: fx + 6 + 36 - lr[0] };
 };
 // front line B: the happy path
 {
@@ -557,7 +411,7 @@ const lensGeo = p => {
   kf(`vis${p}`, [[0, op(0)], [t.pop[0] - .001, op(0)], [t.pop[0], op(1)], [t.grip - .001, op(1)], [t.grip, op(0)], [T, op(0)]]);
   kf(`pop${p}`, [[0, 'transform:scale(0)'], [t.pop[0], 'transform:scale(0)', E.back], [t.pop[1], 'transform:scale(1)'], [T, 'transform:scale(1)']]);
   SQ(p, [[t.drop[1], 1], [t.stamp, 1.1]], t.work);
-  t.ticks.forEach((x, i) => tickKF(`tk${i + 1}${p}`, x, t.reset));
+  t.ticks.forEach((x, index) => tickKF(`tk${index + 1}${p}`, x, t.reset));
   const { r, x0, x1 } = lensGeo(p), k = t.ticks;
   kf(`lens${p}`, [[0, txy(0, 0)], [t.read[0], txy(0, 0), E.out], [t.read[0] + .2, txy(x0, r(0)), E.io], [k[0], txy(x1, r(0)), E.io], [k[0] + .1, txy(x0, r(1)), E.io], [k[1], txy(x1, r(1)), E.io],
     [k[1] + .1, txy(x0, r(2)), E.io], [k[2], txy(x1, r(2)), E.out], [t.read[1], txy(0, 0)], [T, txy(0, 0)]]);
@@ -572,7 +426,7 @@ const lensGeo = p => {
   kf(`vis${p}`, [[0, op(1)], [t.grip - .001, op(1)], [t.grip, op(0)], [T, op(0)]]);        // back on at the loop boundary, while pop is at scale 0
   kf(`pop${p}`, [[0, 'transform:scale(0)', E.back], [t.pop[1], 'transform:scale(1)'], [T, 'transform:scale(1)']]);
   SQ(p, [[t.drop[1], 1], [t.stamp, 1.1], [t.stamp2, 1.1]], t.work);
-  [t.tick1, ...t.ticks2].forEach((x, i) => tickKF(`tk${i + 1}${p}`, x, t.reset));
+  [t.tick1, ...t.ticks2].forEach((x, index) => tickKF(`tk${index + 1}${p}`, x, t.reset));
   const { r, x0, x1 } = lensGeo(p), k = t.ticks2;
   kf(`lens${p}`, [[0, txy(0, 0)], [t.read1[0], txy(0, 0), E.out], [t.read1[0] + .2, txy(x0, r(0)), E.io], [t.tick1, txy(x1, r(0)), E.io], [t.tick1 + .1, txy(x0, r(1)), E.io], [t.fail, txy(x1, r(1))],
     [t.fail + .1, txy(x1, r(1)), E.io], [t.read1[1], txy(0, 0)],
@@ -587,13 +441,13 @@ const lensGeo = p => {
   };
   kf('sh', seq(q => q.t1)); kf('el', seq(q => q.t2)); kf('wr', seq(q => -(q.t1 + q.t2)));
   for (const p of ['A', 'B']) {
-    const a = ARM[p], rel = a.swing[1];
-    kf(`carry${p}`, [[0, op(0)], [a.down[1] - .001, op(0)], [a.down[1], op(1)], [rel - .001, op(1)], [rel, op(0)], [T, op(0)]]);
-    kf(`land${p}`, [[0, op(0)], [rel - .001, op(0)], [rel, op(1)], [T, op(1)]]);
-    kf(`msq${p}`, [[0, 'transform:scale(1,1)'], [rel, 'transform:scale(1,1)'], [rel + .06, 'transform:scale(1.05,.92)', E.out], [rel + .24, 'transform:scale(.99,1.02)'], [rel + .4, 'transform:scale(1,1)'], [T, 'transform:scale(1,1)']]);
+    const a = ARM[p], released = a.swing[1];
+    kf(`carry${p}`, [[0, op(0)], [a.down[1] - .001, op(0)], [a.down[1], op(1)], [released - .001, op(1)], [released, op(0)], [T, op(0)]]);
+    kf(`land${p}`, [[0, op(0)], [released - .001, op(0)], [released, op(1)], [T, op(1)]]);
+    kf(`msq${p}`, [[0, 'transform:scale(1,1)'], [released, 'transform:scale(1,1)'], [released + .06, 'transform:scale(1.05,.92)', E.out], [released + .24, 'transform:scale(.99,1.02)'], [released + .4, 'transform:scale(1,1)'], [T, 'transform:scale(1,1)']]);
   }
-  kf('car', ZCAR.map(([t, z, e]) => [t, txy(z * KX, -z * KY), e]));
-  kf('mstrip', NSTRIP.map(([t, n, e]) => [t, txy(...slotShift(n)), e]));
+  kf('car', ZCAR.map(([t, z, easing]) => [t, txy(z * KX, -z * KY), easing]));
+  kf('mstrip', NSTRIP.map(([t, n, easing]) => [t, txy(...slotShift(n)), easing]));
 }
 // labels (front line clock) + logo pulses on both verdicts (global clock)
 {
@@ -616,14 +470,14 @@ const BODY = [floor(), `<g>${brand()}</g>`, operator(), `<g mask="url(#railMask)
   `<g mask="url(#mainMask)">${mainLane()}${mainStrip('far')}</g>`, gantry(), mainStrip('back'), line('B'), lead(), mainStrip('front'),
   `<rect x="980" y="${H - 22}" width="${W - 980}" height="22" fill="url(#nearFade)"/>`];
 const per = ['cable', 'hook', 'fan', 'emit', 'scan', 'row1', 'row2', 'row3', 'stamp', 'ready', 'press', 'boom',
-  ...SYMS.map((_, i) => `sym${i}`),
+  ...SYMS.map((_, index) => `sym${index}`),
   'lens', 'door', 'lampR', 'lampG', 'glow', 'ciA', 'ciG', 'ciGlowA', 'ciGlowG', 'mx', 'belt', 'my', 'vis', 'pop', 'sq', 'tk1', 'tk2', 'tk3',
   ...['pl', 'dv', 'rv'].flatMap(k => [`lm${k}`, `lo${k}`, `lg${k}`, `lr${k}`]), ...['pl', 'dv', 'rv', 'lg'].map(k => `nd${k}`), 'rv', 'mg', 'mgd'];
 const names = [...per.flatMap(n => [n + 'A', n + 'B']), 'sh', 'el', 'wr', 'carryA', 'carryB', 'landA', 'landB', 'msqA', 'msqB', 'car', 'mstrip',
   'halo', 'bump', 'sglow', ...['int', 'plan', 'dev', 'rev'].flatMap(k => [`lbl-${k}`, `pip-${k}`]), 'chgA', 'x2A', ...DYN];
 const css = `
-.a{animation-duration:${T}s;animation-iteration-count:infinite;animation-fill-mode:both;animation-delay:${f2(-mod(COLD, T))}s}
-.pA .a{animation-delay:${f2(-mod(COLD - SHIFT.A, T))}s}.pB .a{animation-delay:${f2(-mod(COLD - SHIFT.B, T))}s}
+.a{animation-duration:${T}s;animation-iteration-count:infinite;animation-fill-mode:both;animation-delay:${f2(-modulo(COLD, T))}s}
+.pA .a{animation-delay:${f2(-modulo(COLD - SHIFT.A, T))}s}.pB .a{animation-delay:${f2(-modulo(COLD - SHIFT.B, T))}s}
 .mono{font-family:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace}
 .wm{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Helvetica,Arial,sans-serif;font-size:42px;font-weight:700;letter-spacing:-1.5px}
 .tag{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Helvetica,Arial,sans-serif;font-size:14.5px;fill:#5B6472}
