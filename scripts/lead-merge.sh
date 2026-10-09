@@ -228,7 +228,17 @@ PY
   printf '%s\n' "$body" > "$tick_tmp/body.txt"
   python3 - "$tick_tmp/body.txt" "$tick_tmp/review.txt" > "$tick_tmp/newbody.txt" <<'PY' || die "tick step failed"
 import re, sys
-body = open(sys.argv[1]).read().rstrip("\n").split("\n")
+rows = open(sys.argv[1], newline="").read().split("\n")
+def fence_after(line, fence):
+    t = line.lstrip()
+    c = t[:1]
+    run = 0
+    if c in ("`", "~") and len(line) - len(t) <= 3:
+        while run < len(t) and t[run] == c:
+            run += 1
+    if fence != "":
+        return "" if run >= len(fence) and c == fence[0] and t[run:].strip() == "" else fence
+    return c * run if run >= 3 and not (c == "`" and "`" in t[run:]) else ""
 review = open(sys.argv[2]).read().replace("\r", "").split("\n")
 def norm(s):
     return re.sub(r"\s+", " ", s.replace("**", "").replace("`", "")).strip()
@@ -246,11 +256,25 @@ for line in review:
     n = norm(raw)
     proven.append(n)
 suffix = " — ticked by lead-merge from Morgan's review"
-out, inblock = [], False
-for line in body:
-    if re.search(r"<!--\s*acceptance:end\s*-->", line):
-        inblock = False
-    m = re.match(r"^(\s*-\s*)\[ \](\s*)(.*)$", line) if inblock else None
+fenced, start, end, fence = [], -1, -1, ""
+for i, raw in enumerate(rows):
+    line = raw[:-1] if raw.endswith("\r") else raw
+    nxt = fence_after(line, fence)
+    fenced.append(fence != "" or nxt != "")
+    if fence == "" and nxt == "":
+        marker = line.rstrip(" \t")
+        if marker == "<!-- acceptance:start -->":
+            start = i
+        elif marker == "<!-- acceptance:end -->":
+            end = i
+    fence = nxt
+if end <= start:
+    start = end = -1  # no block: nothing is ticked
+out = []
+for i, raw in enumerate(rows):
+    cr = "\r" if raw.endswith("\r") else ""
+    line = raw[:-1] if cr else raw
+    m = re.match(r"^(\s*-\s*)\[ \](\s*)(.*)$", line) if start < i < end and not fenced[i] else None
     if m:
         text = m.group(3)
         if re.search(r"\[human-gate\]", text, re.I):
@@ -267,10 +291,8 @@ for line in body:
                 print("ticked: " + bn, file=sys.stderr)
             else:
                 print("left open (no proof in the review): " + bn, file=sys.stderr)
-    out.append(line)
-    if re.search(r"<!--\s*acceptance:start\s*-->", line):
-        inblock = True
-print("\n".join(out))
+    out.append(line + cr)
+sys.stdout.write("\n".join(out))
 PY
   if ! cmp -s "$tick_tmp/body.txt" "$tick_tmp/newbody.txt"; then
     gh api -X PATCH "repos/$REPO/pulls/$PR" -F "body=@$tick_tmp/newbody.txt" >/dev/null || die "cannot PATCH the PR #$PR body"
