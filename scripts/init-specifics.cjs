@@ -95,14 +95,14 @@ const byCode = (a, b) => (a < b ? -1 : a > b ? 1 : 0)
 // Bounded walk, no symlink followed: every relative path (files and directories) found down to MAX_DEPTH.
 function walk(root) {
   const out = []
-  const visit = (rel, depth) => {
+  const visit = (relative, depth) => {
     let ents
-    try { ents = fs.readdirSync(nodePath.join(root, rel), { withFileTypes: true }) } catch (e) { return }
-    for (const e of ents) {
-      if (SKIP.has(e.name)) continue
-      const r = rel ? `${rel}/${e.name}` : e.name
-      out.push({ rel: r, dir: e.isDirectory() })
-      if (e.isDirectory() && depth < MAX_DEPTH) visit(r, depth + 1)
+    try { ents = fs.readdirSync(nodePath.join(root, relative), { withFileTypes: true }) } catch (error) { return }
+    for (const entry of ents) {
+      if (SKIP.has(entry.name)) continue
+      const r = relative ? `${relative}/${entry.name}` : entry.name
+      out.push({ rel: r, dir: entry.isDirectory() })
+      if (entry.isDirectory() && depth < MAX_DEPTH) visit(r, depth + 1)
     }
   }
   visit('', 0)
@@ -113,23 +113,23 @@ function hasPathsKey(file) {
   let fd
   try {
     fd = fs.openSync(file, 'r')
-    const buf = Buffer.alloc(512)
-    const n = fs.readSync(fd, buf, 0, 512, 0)
-    const text = buf.subarray(0, n).toString('utf8')
+    const buffer = Buffer.alloc(512)
+    const n = fs.readSync(fd, buffer, 0, 512, 0)
+    const text = buffer.subarray(0, n).toString('utf8')
     if (!text.startsWith('---\n')) return false
     const end = text.indexOf('\n---', 4)
     const fm = end < 0 ? text.slice(4) : text.slice(4, end)
     return /^paths:/m.test(fm)
-  } catch (e) {
+  } catch (error) {
     return false
   } finally {
-    if (fd !== undefined) try { fs.closeSync(fd) } catch (e) { /* ignore */ }
+    if (fd !== undefined) try { fs.closeSync(fd) } catch (error) { /* ignore */ }
   }
 }
 
 function detect(root) {
   const all = walk(root)
-  const relSet = new Set(all.map((x) => x.rel))
+  const relativeSet = new Set(all.map((x) => x.rel))
   const stacks = new Set()
   for (const x of all) {
     const segs = x.rel.split('/')
@@ -149,27 +149,27 @@ function detect(root) {
       const st = fs.lstatSync(nodePath.join(root, p))
       present = true
       if (st.isFile()) pristine = fs.readFileSync(nodePath.join(root, p), 'utf8') === STUBS[r]
-    } catch (e) { /* absent */ }
+    } catch (error) { /* absent */ }
     return { path: p, present, pristine }
   })
   const stackList = [...stacks].sort(byCode)
   const laneFiles = []
-  let dirEnts = []
-  try { dirEnts = fs.readdirSync(nodePath.join(root, DIR), { withFileTypes: true }) } catch (e) { /* no folder yet */ }
-  for (const e of dirEnts.map((x) => x).sort((a, b) => byCode(a.name, b.name))) {
-    const m = /^(sam|nick|morgan|theo|mia)\.([a-z0-9-]{1,24})\.md$/.exec(e.name)
-    if (!m || !e.isFile()) continue
+  let directoryEntries = []
+  try { directoryEntries = fs.readdirSync(nodePath.join(root, DIR), { withFileTypes: true }) } catch (error) { /* no folder yet */ }
+  for (const entry of directoryEntries.map((x) => x).sort((a, b) => byCode(a.name, b.name))) {
+    const m = /^(sam|nick|morgan|theo|mia)\.([a-z0-9-]{1,24})\.md$/.exec(entry.name)
+    if (!m || !entry.isFile()) continue
     let pristine = false
-    try { pristine = LANE_ROLES.includes(m[1]) && fs.readFileSync(nodePath.join(root, DIR, e.name), 'utf8') === laneStub(m[1], m[2]) } catch (err) { /* unreadable */ }
-    laneFiles.push({ path: `${DIR}/${e.name}`, role: m[1], lane: m[2], pristine })
+    try { pristine = LANE_ROLES.includes(m[1]) && fs.readFileSync(nodePath.join(root, DIR, entry.name), 'utf8') === laneStub(m[1], m[2]) } catch (error) { /* unreadable */ }
+    laneFiles.push({ path: `${DIR}/${entry.name}`, role: m[1], lane: m[2], pristine })
   }
   return {
     stacks: stackList,
-    signals: SIGNAL_FILES.filter((s) => relSet.has(s)).sort(byCode),
+    signals: SIGNAL_FILES.filter((s) => relativeSet.has(s)).sort(byCode),
     ci: direct('.github/workflows/', /\.ya?ml$/),
     rules,
-    agentsMd: relSet.has('AGENTS.md'),
-    mcp: relSet.has('.mcp.json'),
+    agentsMd: relativeSet.has('AGENTS.md'),
+    mcp: relativeSet.has('.mcp.json'),
     existing,
     projectAgents: direct('.claude/agents/', /\.md$/).length,
     laneCandidates: stackList.length >= 2 ? stackList : [],
@@ -179,7 +179,7 @@ function detect(root) {
 
 // ---- propose -----------------------------------------------------------------------------------
 
-function propose(root, pluginVersion, lanes = []) {
+function propose(root, versionToWrite, lanes = []) {
   const d = detect(root)
   const list = (a) => (a.length ? a.join(', ') : 'none')
   const lines = [
@@ -195,10 +195,10 @@ function propose(root, pluginVersion, lanes = []) {
     `  lane candidates: ${list(d.laneCandidates)}`,
     'files',
   ]
-  for (const e of d.existing) {
-    if (!e.present) lines.push(`  create ${e.path}`)
-    else if (e.pristine) lines.push(`  keep ${e.path} (stub unchanged)`)
-    else lines.push(`  keep ${e.path} (edited by the owner, never touched)`)
+  for (const entry of d.existing) {
+    if (!entry.present) lines.push(`  create ${entry.path}`)
+    else if (entry.pristine) lines.push(`  keep ${entry.path} (stub unchanged)`)
+    else lines.push(`  keep ${entry.path} (edited by the owner, never touched)`)
   }
   for (const l of lanes) {
     for (const r of LANE_ROLES) {
@@ -212,7 +212,7 @@ function propose(root, pluginVersion, lanes = []) {
   lines.push(
     'config (.claude/pipeline.config.json, a key is set only when absent or empty)',
     `  projectSpecifics: ${JSON.stringify(DIR)}`,
-    `  minPluginVersion: ${JSON.stringify(pluginVersion)}`,
+    `  minPluginVersion: ${JSON.stringify(versionToWrite)}`,
     '  agentContext: unchanged (rules to target are asked per role)',
   )
   return lines.join('\n') + '\n'
@@ -221,23 +221,23 @@ function propose(root, pluginVersion, lanes = []) {
 // ---- write -------------------------------------------------------------------------------------
 
 function writeStubs(root, lanes = []) {
-  const dir = nodePath.join(root, DIR)
-  fs.mkdirSync(dir, { recursive: true })
+  const directory = nodePath.join(root, DIR)
+  fs.mkdirSync(directory, { recursive: true })
   const created = []
   const kept = []
   // With --lanes only the lane files are written (the role stubs come from the plain run); the plain run writes the role stubs.
   const targets = lanes.length > 0 ? [] : ROLE_FILES.map((r) => [`${DIR}/${r}.md`, STUBS[r]])
   for (const l of lanes) for (const r of LANE_ROLES) targets.push([`${DIR}/${r}.${l}.md`, laneStub(r, l)])
-  for (const [rel, body] of targets) {
+  for (const [relative, body] of targets) {
     let fd
     try {
-      fd = fs.openSync(nodePath.join(root, rel), 'wx', 0o644)
-    } catch (e) {
-      if (e && e.code === 'EEXIST') { kept.push(rel); continue }
-      throw e
+      fd = fs.openSync(nodePath.join(root, relative), 'wx', 0o644)
+    } catch (error) {
+      if (error && error.code === 'EEXIST') { kept.push(relative); continue }
+      throw error
     }
     try { fs.writeSync(fd, body) } finally { fs.closeSync(fd) }
-    created.push(rel)
+    created.push(relative)
   }
   return { created, kept }
 }
@@ -247,7 +247,7 @@ function writeStubs(root, lanes = []) {
 function pluginVersion() {
   try {
     return JSON.parse(fs.readFileSync(nodePath.join(__dirname, '..', '.claude-plugin', 'plugin.json'), 'utf8')).version
-  } catch (e) {
+  } catch (error) {
     return '0.0.0'
   }
 }
@@ -256,26 +256,26 @@ const USAGE = 'usage: init-specifics.cjs [--root <repo>] [--detect | --propose [
 
 function main(argv) {
   const o = { root: process.cwd(), mode: 'write', version: null, lanes: [] }
-  for (let i = 0; i < argv.length; i++) {
-    const a = argv[i]
-    const val = () => {
-      if (i + 1 >= argv.length) throw new Error(`${a} needs a value`)
-      return argv[++i]
+  for (let index = 0; index < argv.length; index++) {
+    const a = argv[index]
+    const value = () => {
+      if (index + 1 >= argv.length) throw new Error(`${a} needs a value`)
+      return argv[++index]
     }
     try {
-      if (a === '--root') o.root = val()
+      if (a === '--root') o.root = value()
       else if (a === '--detect') o.mode = 'detect'
       else if (a === '--propose') o.mode = 'propose'
-      else if (a === '--plugin-version') o.version = val()
+      else if (a === '--plugin-version') o.version = value()
       else if (a === '--lanes') {
-        const names = val().split(',')
+        const names = value().split(',')
         const badName = names.find((n) => !LANE_NAME_RE.test(n))
         if (badName !== undefined) throw new Error('bad lane name (expected [a-z0-9-], 1 to 24 characters)')
-        o.lanes = names.filter((n, i) => names.indexOf(n) === i)
+        o.lanes = names.filter((n, position) => names.indexOf(n) === position)
       }
       else throw new Error(`unknown argument: ${a}`)
-    } catch (e) {
-      process.stderr.write(`init-specifics: ${e.message}\n${USAGE}\n`)
+    } catch (error) {
+      process.stderr.write(`init-specifics: ${error.message}\n${USAGE}\n`)
       return 2
     }
   }
@@ -288,8 +288,8 @@ function main(argv) {
     else if (o.mode === 'propose') process.stdout.write(propose(o.root, o.version || pluginVersion(), o.lanes))
     else process.stdout.write(JSON.stringify(writeStubs(o.root, o.lanes)) + '\n')
     return 0
-  } catch (e) {
-    process.stderr.write(`init-specifics: ${String(e && e.message ? e.message : e).split('\n')[0]}\n`)
+  } catch (error) {
+    process.stderr.write(`init-specifics: ${String(error && error.message ? error.message : error).split('\n')[0]}\n`)
     return 2
   }
 }
