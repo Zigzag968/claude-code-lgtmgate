@@ -83,24 +83,24 @@ const PROTECTED_ARGS = [
 ]
 
 class Refusal extends Error {
-  constructor(msg, detail) { super(msg); this.detail = detail || [] }
+  constructor(message, detail) { super(message); this.detail = detail || [] }
 }
 class Usage extends Error {}
 
-const refuse = (msg, detail) => { throw new Refusal(msg, detail) }
-const usage = (msg) => { throw new Usage(msg) }
-const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
+const refuse = (message, detail) => { throw new Refusal(message, detail) }
+const usage = (message) => { throw new Usage(message) }
+const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
 const sha256 = (s) => crypto.createHash('sha256').update(s, 'utf8').digest('hex')
 
 // ---- arguments ------------------------------------------------------------------------------
 
-function parseArgs(argv) {
+function parseArguments(argv) {
   const out = { positional: [], outDir: null, fp: null }
-  for (let i = 0; i < argv.length; i++) {
-    const a = argv[i]
+  for (let index = 0; index < argv.length; index++) {
+    const a = argv[index]
     if (a === '--out-dir' || a === '--fp') {
-      if (i + 1 >= argv.length || argv[i + 1].startsWith('--')) usage(`${a} needs a value`)
-      out[a === '--fp' ? 'fp' : 'outDir'] = argv[++i]
+      if (index + 1 >= argv.length || argv[index + 1].startsWith('--')) usage(`${a} needs a value`)
+      out[a === '--fp' ? 'fp' : 'outDir'] = argv[++index]
     } else if (a.startsWith('--')) {
       usage(`unknown flag ${a}`)
     } else {
@@ -123,16 +123,16 @@ function parseArgs(argv) {
 
 function loadCapture(file) {
   let text
-  try { text = fs.readFileSync(file, 'utf8') } catch (e) { refuse(`cannot read the raw capture (${(e && e.code) || 'error'})`) }
+  try { text = fs.readFileSync(file, 'utf8') } catch (error) { refuse(`cannot read the raw capture (${(error && error.code) || 'error'})`) }
   let c
-  try { c = JSON.parse(text) } catch (e) { refuse('the raw capture is not valid JSON') }
-  if (!isObj(c)) refuse('the raw capture is not a JSON object')
+  try { c = JSON.parse(text) } catch (error) { refuse('the raw capture is not valid JSON') }
+  if (!isObject(c)) refuse('the raw capture is not a JSON object')
   const extra = Object.keys(c).filter((k) => !['name', 'args', 'calls', 'expect'].includes(k))
   if (extra.length) refuse(`the raw capture has key(s) outside name, args, calls, expect: ${extra.join(', ')}`)
-  if (!isObj(c.args)) refuse('the raw capture has no args object')
+  if (!isObject(c.args)) refuse('the raw capture has no args object')
   if (Object.prototype.hasOwnProperty.call(c.args, 'simulate')) refuse('the raw capture sets args.simulate')
-  if (!isObj(c.calls)) refuse('the raw capture has no calls object')
-  if (!isObj(c.expect) || typeof c.expect.status !== 'string' || !c.expect.status) refuse('the raw capture has no expect.status')
+  if (!isObject(c.calls)) refuse('the raw capture has no calls object')
+  if (!isObject(c.expect) || typeof c.expect.status !== 'string' || !c.expect.status) refuse('the raw capture has no expect.status')
   if (Object.prototype.hasOwnProperty.call(c.expect, 'throws')) refuse('the raw capture sets expect.throws (an arg-validation refusal has nothing to minimize)')
   return c
 }
@@ -148,7 +148,7 @@ function shapeOf(v) {
   if (typeof v === 'number') return ['n', String(v)]
   if (typeof v === 'boolean') return ['b', v]
   if (Array.isArray(v)) return ['a', v.map((x) => shapeOf(x))]
-  if (isObj(v)) return ['o', Object.keys(v).sort().map((k) => [k, shapeOf(v[k])])]
+  if (isObject(v)) return ['o', Object.keys(v).sort().map((k) => [k, shapeOf(v[k])])]
   return ['?', typeof v]
 }
 
@@ -156,7 +156,7 @@ function shapeOf(v) {
 
 // The command a probe prompt asks the probe agent to run: the text between ` --cmd ` and `\n2. cd `, un-quoted
 // from `'...'` (`'\''` is one quote). Plain indexOf parsing of the prompt the engine builds (probeCommands).
-function cmdOfPrompt(prompt) {
+function commandOfPrompt(prompt) {
   if (typeof prompt !== 'string') return null
   const end = prompt.indexOf('\n2. cd ')
   if (end < 0) return null
@@ -174,8 +174,8 @@ function cmdOfPrompt(prompt) {
 const PROBE_ENVELOPE_TOKEN = /^(PROBE|VERIFY|ok|fail|line=PROBE|name=[A-Za-z0-9._-]+|exit=-?\d+|sha=[0-9a-f]+|cmd=[0-9a-f]+|reason=[A-Za-z0-9._-]+)$/
 
 const CMD_RE = /cmd=([0-9a-f]{64})/
-const firstCmdHash = (s) => { const m = CMD_RE.exec(s); return m ? m[1] : null }
-const setCmdHash = (s, h) => s.replace(CMD_RE, `cmd=${h}`)
+const firstCommandHash = (s) => { const m = CMD_RE.exec(s); return m ? m[1] : null }
+const setCommandHash = (s, h) => s.replace(CMD_RE, `cmd=${h}`)
 
 // ---- leaves and neutral tokens -------------------------------------------------------------
 
@@ -183,14 +183,14 @@ function collectLeaves(root, rootName) {
   const out = []
   const walk = (node, segs, parent, key) => {
     if (typeof node === 'string') out.push({ parent, key, segs })
-    else if (Array.isArray(node)) node.forEach((v, i) => walk(v, [...segs, i], node, i))
-    else if (isObj(node)) for (const k of Object.keys(node)) walk(node[k], [...segs, k], node, k)
+    else if (Array.isArray(node)) node.forEach((v, index) => walk(v, [...segs, index], node, index))
+    else if (isObject(node)) for (const k of Object.keys(node)) walk(node[k], [...segs, k], node, k)
   }
   walk(root, [rootName], null, null)
   return out
 }
 
-const pathOf = (segs) => segs.reduce((acc, s, i) => (i === 0 ? String(s) : typeof s === 'number' ? `${acc}[${s}]` : `${acc}.${s}`), '')
+const pathOf = (segs) => segs.reduce((accumulator, s, index) => (index === 0 ? String(s) : typeof s === 'number' ? `${accumulator}[${s}]` : `${accumulator}.${s}`), '')
 
 function neutralOf(v) {
   if (/^[0-9a-f]{32,}$/.test(v)) return '0'.repeat(v.length)
@@ -207,15 +207,15 @@ function isProtected(segs) {
 
 // ---- redaction and strict replay (the sanctioned spawns) --------------------------------------
 
-function runNode(args, env) {
-  return spawnSync(process.execPath, args, { cwd: REPO, encoding: 'utf8', env: env || process.env })
+function runNode(arguments_, environment) {
+  return spawnSync(process.execPath, arguments_, { cwd: REPO, encoding: 'utf8', env: environment || process.env })
 }
 
 // ---- main -----------------------------------------------------------------------------------
 
 let createdOut = null // set once the output name is linked, so an unexpected error can remove it
-let tmpOut = null // the temporary file next to the target, removed on any end
-let tmpDirOut = null // the private directory of the redaction copy, removed on any end
+let temporaryOut = null // the temporary file next to the target, removed on any end
+let temporaryDirectoryOut = null // the private directory of the redaction copy, removed on any end
 let finished = false // the publication is complete: a late signal changes nothing
 
 // One turn of the event loop, so that a pending SIGINT / SIGTERM is handled between two steps (the replays and the write
@@ -227,67 +227,62 @@ const turn = () => new Promise((resolve) => setImmediate(resolve))
 // handled: a hidden `.<name>.json.tmp-*` file may remain in the output directory (never a partial file at the final name).
 function onSignal(sig) {
   if (finished) return
-  if (tmpOut) { try { fs.unlinkSync(tmpOut) } catch (e) { /* already gone */ } }
-  if (tmpDirOut) { try { fs.rmSync(tmpDirOut, { recursive: true, force: true }) } catch (e) { /* best effort */ } }
+  if (temporaryOut) { try { fs.unlinkSync(temporaryOut) } catch (error) { /* already gone */ } }
+  if (temporaryDirectoryOut) { try { fs.rmSync(temporaryDirectoryOut, { recursive: true, force: true }) } catch (error) { /* best effort */ } }
   process.stderr.write(`error: interrupted by ${sig}\n`)
   process.stdout.write('[publish-fixture] status=error\n')
   process.exit(1)
 }
 
-async function main() {
-  process.on('SIGINT', () => onSignal('SIGINT'))
-  process.on('SIGTERM', () => onSignal('SIGTERM'))
-  const { capture, outName, outDir, fp } = parseArgs(process.argv.slice(2))
-  const outPath = path.join(outDir, `${outName}.json`)
+// The comparable outcome of a replay; null when the replay is not a clean run. Status, reason and trace exactly,
+// the ordered agent() labels, the engine call sites, the form of the rest of the result and the number of log lines.
+const oracleOf = (r) => {
+  if (r.error || r.missing.length || !r.result || typeof r.result !== 'object') return null
+  const rest = {}
+  for (const k of Object.keys(r.result)) if (!['status', 'reason', 'trace'].includes(k)) rest[k] = r.result[k]
+  return JSON.stringify([
+    r.result.status === undefined ? null : r.result.status,
+    r.result.reason === undefined ? null : r.result.reason,
+    Array.isArray(r.result.trace) ? r.result.trace : [],
+    r.calls.map((c) => c.label),
+    r.sites,
+    shapeOf(rest),
+    r.logs.length,
+  ])
+}
 
-  let dst = null
-  try { dst = fs.statSync(outDir) } catch (e) { /* refused below */ }
-  if (!dst || !dst.isDirectory()) refuse('the output directory does not exist')
-  let existing = null
-  try { existing = fs.lstatSync(outPath) } catch (e) { if (!e || e.code !== 'ENOENT') throw e }
-  if (existing) refuse(`the output file ${outPath} exists; a published fixture is never overwritten`)
-
-  const raw = loadCapture(capture)
-  let run
-  try { run = buildPipelineRunner(stripExports(fs.readFileSync(fp, 'utf8'))) } catch (e) { refuse(`cannot load the engine file (${(e && e.code) || 'error'})`) }
-
-  let replays = 0
-  const replay = async (fx) => {
-    if (++replays > MAX_REPLAYS) refuse(`replay budget of ${MAX_REPLAYS} exhausted before the minimization settled`)
-    await turn()
-    return replayFixture(fx, run, { sites: true, prompts: true })
-  }
-  // The comparable outcome of a replay; null when the replay is not a clean run. Status, reason and trace exactly,
-  // the ordered agent() labels, the engine call sites, the form of the rest of the result and the number of log lines.
-  const oracleOf = (r) => {
-    if (r.error || r.missing.length || !r.result || typeof r.result !== 'object') return null
-    const rest = {}
-    for (const k of Object.keys(r.result)) if (!['status', 'reason', 'trace'].includes(k)) rest[k] = r.result[k]
-    return JSON.stringify([
-      r.result.status === undefined ? null : r.result.status,
-      r.result.reason === undefined ? null : r.result.reason,
-      Array.isArray(r.result.trace) ? r.result.trace : [],
-      r.calls.map((c) => c.label),
-      r.sites,
-      shapeOf(rest),
-      r.logs.length,
-    ])
-  }
-
+// The session holds what the steps share: the engine runner, the replay budget, the candidate, the baseline outcome, the coupled keys, the journal.
+function newSession(run, raw, outName) {
   const cand = { name: outName, args: JSON.parse(JSON.stringify(raw.args)), calls: JSON.parse(JSON.stringify(raw.calls)), expect: { status: raw.expect.status } }
   tokenizeVersionProbes(cand.calls, [run.engineVersion])
-  const totalChars = (fx) => [...collectLeaves(fx.args, 'args'), ...collectLeaves(fx.calls, 'calls')]
-    .reduce((n, l) => n + l.parent[l.key].length, 0)
-  const charsBefore = totalChars(cand)
+  return { run, replays: 0, cand, base: null, coupled: new Set(), journal: null }
+}
 
-  // ---- baseline ----
-  const r1 = await replay(cand)
+async function replay(session, fx) {
+  if (++session.replays > MAX_REPLAYS) refuse(`replay budget of ${MAX_REPLAYS} exhausted before the minimization settled`)
+  await turn()
+  return replayFixture(fx, session.run, { sites: true, prompts: true })
+}
+
+// The output directory must exist and the output name must be free.
+function checkOutput(outDirectory, outPath) {
+  let directoryStat = null
+  try { directoryStat = fs.statSync(outDirectory) } catch (error) { /* refused below */ }
+  if (!directoryStat || !directoryStat.isDirectory()) refuse('the output directory does not exist')
+  let existing = null
+  try { existing = fs.lstatSync(outPath) } catch (error) { if (!error || error.code !== 'ENOENT') throw error }
+  if (existing) refuse(`the output file ${outPath} exists; a published fixture is never overwritten`)
+}
+
+// Step 2: three replays that must agree; returns the first one and records the baseline outcome.
+async function baseline(session, raw) {
+  const r1 = await replay(session, session.cand)
   if (r1.error) refuse('baseline replay: the engine threw')
   if (r1.missing.length) refuse(`baseline replay: ${r1.missing.length} unanswered call(s)`)
   const base = oracleOf(r1)
   if (base === null) refuse('baseline replay: the engine returned no result object')
-  for (let i = 0; i < BASELINE_REPLAYS - 1; i++) {
-    const rn = await replay(cand)
+  for (let index = 0; index < BASELINE_REPLAYS - 1; index++) {
+    const rn = await replay(session, session.cand)
     if (oracleOf(rn) !== base) refuse('baseline replay is not deterministic')
   }
   if (typeof r1.result.status !== 'string' || r1.result.status !== raw.expect.status) {
@@ -296,73 +291,84 @@ async function main() {
   const reason = r1.result.reason
   if (reason !== undefined && reason !== null && typeof reason !== 'string') refuse('baseline replay: result.reason is not a string')
   if (r1.sites.some((s) => /^[LPA]\?/.test(s))) refuse('baseline replay: an engine call site could not be resolved')
+  session.base = base
+  return r1
+}
 
-  // ---- coupled probes ----
+// Step 4: the `probe-*` calls whose answer hash is the SHA-256 of the command the engine composed.
+function coupledProbes(session, r1) {
   const coupledKeys = new Map()
-  {
-    const counts = new Map()
-    for (const c of r1.calls) {
-      if (typeof c.label !== 'string' || !c.label.startsWith('probe-')) continue
-      const n = counts.get(c.label) || 0
-      counts.set(c.label, n + 1)
-      const arr = Array.isArray(cand.calls[c.label])
-      const key = arr ? `${c.label}[${n}]` : c.label
-      const entry = arr ? cand.calls[c.label][n] : cand.calls[c.label]
-      const cmd = cmdOfPrompt(c.prompt)
-      const good = !!(isObj(entry) && typeof entry.line === 'string' && cmd !== null && firstCmdHash(entry.line) === sha256(cmd))
-      coupledKeys.set(key, (coupledKeys.has(key) ? coupledKeys.get(key) : true) && good)
-    }
+  const counts = new Map()
+  for (const c of r1.calls) {
+    if (typeof c.label !== 'string' || !c.label.startsWith('probe-')) continue
+    const n = counts.get(c.label) || 0
+    counts.set(c.label, n + 1)
+    const array = Array.isArray(session.cand.calls[c.label])
+    const key = array ? `${c.label}[${n}]` : c.label
+    const entry = array ? session.cand.calls[c.label][n] : session.cand.calls[c.label]
+    const command = commandOfPrompt(c.prompt)
+    const good = !!(isObject(entry) && typeof entry.line === 'string' && command !== null && firstCommandHash(entry.line) === sha256(command))
+    coupledKeys.set(key, (coupledKeys.has(key) ? coupledKeys.get(key) : true) && good)
   }
-  const coupled = new Set([...coupledKeys].filter(([, v]) => v).map(([k]) => k))
+  session.coupled = new Set([...coupledKeys].filter(([, v]) => v).map(([k]) => k))
+}
 
-  let journal = null
-  const put = (parent, key, val) => {
-    if (journal) journal.push([parent, key, parent[key]])
-    parent[key] = val
+// Rewrites the coupled `cmd=` hashes of the entries a replay asked for to what the engine composed now.
+function rehashPass(session, fx, r, put) {
+  let changed = false
+  const counts = new Map()
+  const done = new Set()
+  for (const c of r.calls) {
+    if (typeof c.label !== 'string') continue
+    const n = counts.get(c.label) || 0
+    counts.set(c.label, n + 1)
+    const array = Array.isArray(fx.calls[c.label])
+    const key = array ? `${c.label}[${n}]` : c.label
+    if (!session.coupled.has(key) || done.has(key)) continue
+    done.add(key)
+    const entry = array ? fx.calls[c.label][n] : fx.calls[c.label]
+    if (!isObject(entry) || typeof entry.line !== 'string') continue
+    const command = commandOfPrompt(c.prompt)
+    if (command === null) continue
+    const want = sha256(command)
+    const current = firstCommandHash(entry.line)
+    if (current === null || current === want) continue
+    put(entry, 'line', setCommandHash(entry.line, want))
+    if (typeof entry.verify === 'string' && firstCommandHash(entry.verify) === current) put(entry, 'verify', setCommandHash(entry.verify, want))
+    changed = true
   }
-  // Replay, rewrite the coupled `cmd=` hashes to what the engine composed now, repeat until none changes.
-  // Returns the last replay, or null when the hashes do not settle.
+  return changed
+}
+
+// The change helpers of one session: `put` journals every write, `rehash` replays and re-hashes until none changes
+// (the last replay, or null when the hashes do not settle), `tryChange` keeps a change only if the outcome is the baseline's.
+function makeMinimizer(session) {
+  const put = (parent, key, value) => {
+    if (session.journal) session.journal.push([parent, key, parent[key]])
+    parent[key] = value
+  }
   const rehash = async (fx) => {
     for (let pass = 0; pass < MAX_REHASH; pass++) {
-      const r = await replay(fx)
-      let changed = false
-      const counts = new Map()
-      const done = new Set()
-      for (const c of r.calls) {
-        if (typeof c.label !== 'string') continue
-        const n = counts.get(c.label) || 0
-        counts.set(c.label, n + 1)
-        const arr = Array.isArray(fx.calls[c.label])
-        const key = arr ? `${c.label}[${n}]` : c.label
-        if (!coupled.has(key) || done.has(key)) continue
-        done.add(key)
-        const entry = arr ? fx.calls[c.label][n] : fx.calls[c.label]
-        if (!isObj(entry) || typeof entry.line !== 'string') continue
-        const cmd = cmdOfPrompt(c.prompt)
-        if (cmd === null) continue
-        const want = sha256(cmd)
-        const cur = firstCmdHash(entry.line)
-        if (cur === null || cur === want) continue
-        put(entry, 'line', setCmdHash(entry.line, want))
-        if (typeof entry.verify === 'string' && firstCmdHash(entry.verify) === cur) put(entry, 'verify', setCmdHash(entry.verify, want))
-        changed = true
-      }
-      if (!changed) return r
+      const r = await replay(session, fx)
+      if (!rehashPass(session, fx, r, put)) return r
     }
     return null
   }
-  // One candidate change: kept only if, after the coupled hashes follow, the outcome is the baseline's.
-  const tryChange = async (parent, key, val) => {
-    journal = []
-    put(parent, key, val)
-    const r = await rehash(cand)
-    const good = r !== null && oracleOf(r) === base
-    if (!good) for (let i = journal.length - 1; i >= 0; i--) journal[i][0][journal[i][1]] = journal[i][2]
-    journal = null
+  const tryChange = async (parent, key, value) => {
+    session.journal = []
+    put(parent, key, value)
+    const r = await rehash(session.cand)
+    const good = r !== null && oracleOf(r) === session.base
+    if (!good) for (let index = session.journal.length - 1; index >= 0; index--) session.journal[index][0][session.journal[index][1]] = session.journal[index][2]
+    session.journal = null
     return good
   }
+  return { rehash, tryChange }
+}
 
-  // ---- minimize ----
+// Step 3: every string leaf to its neutral token, then each line of a multi-line leaf, to a fixpoint (3 passes at most).
+async function minimize(session, tryChange) {
+  const { cand } = session
   const leaves = [...collectLeaves(cand.args, 'args'), ...collectLeaves(cand.calls, 'calls')]
   for (let pass = 0; pass < MAX_PASSES; pass++) {
     const before = JSON.stringify(cand)
@@ -379,31 +385,33 @@ async function main() {
       if (isProtected(l.segs)) continue
       if (isNeutral(l.parent[l.key]) || !l.parent[l.key].includes('\n')) continue
       const n = l.parent[l.key].split('\n').length
-      for (let i = 0; i < n; i++) {
+      for (let index = 0; index < n; index++) {
         const lines = l.parent[l.key].split('\n')
-        if (lines.length !== n || lines[i] === '_' || lines[i] === '') continue
-        lines[i] = '_'
+        if (lines.length !== n || lines[index] === '_' || lines[index] === '') continue
+        lines[index] = '_'
         await tryChange(l.parent, l.key, lines.join('\n'))
       }
     }
     if (JSON.stringify(cand) === before) break
   }
+}
 
-  const fin0 = await replay(cand)
+// Step 6, first half: drop what the final replay did not consume and build the published `expect`; returns the pruned count.
+async function pruneAndExpect(session) {
+  const { cand, run, base } = session
+  const fin0 = await replay(session, cand)
   if (oracleOf(fin0) !== base) refuse('minimization ended on a different outcome (internal)')
   // Whatever the final replay did not consume (a label never asked, the tail of an array) is dropped: it is dead
   // weight whose label can still name a private branch.
   let pruned = 0
-  {
-    const asked = new Set(fin0.calls.map((c) => c.label))
-    for (const label of Object.keys(cand.calls)) {
-      if (!asked.has(label)) { delete cand.calls[label]; pruned++; continue }
-      const entry = cand.calls[label]
-      const used = fin0.cursors.get(label) || 0
-      if (Array.isArray(entry) && used < entry.length) { pruned += entry.length - used; entry.length = used }
-    }
+  const asked = new Set(fin0.calls.map((c) => c.label))
+  for (const label of Object.keys(cand.calls)) {
+    if (!asked.has(label)) { delete cand.calls[label]; pruned++; continue }
+    const entry = cand.calls[label]
+    const used = fin0.cursors.get(label) || 0
+    if (Array.isArray(entry) && used < entry.length) { pruned += entry.length - used; entry.length = used }
   }
-  const fin = pruned ? await replay(cand) : fin0
+  const fin = pruned ? await replay(session, cand) : fin0
   if (oracleOf(fin) !== base) refuse('pruning the unconsumed entries changed the outcome (internal)')
   cand.expect = { status: fin.result.status }
   if (fin.result.reason !== undefined) cand.expect.reason = fin.result.reason
@@ -413,61 +421,66 @@ async function main() {
   cand.expect.trace = Array.isArray(fin.result.trace) ? fin.result.trace : []
   cand.expect.traceExact = true
   cand.expect.callLabels = fin.calls.map((c) => c.label)
+  return pruned
+}
 
-  // ---- redact, re-hash, check, strict replay (a private 0600 copy, removed in `finally`) ----
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'publish-fixture-'))
-  tmpDirOut = tmpDir
-  let text
+// Step 5: redact, re-hash, check, strict replay (a private 0600 copy, removed in `finally`); returns the text to publish.
+async function redactAndCheck(session, rehash, outName, fp) {
+  const { cand, base } = session
+  const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'publish-fixture-'))
+  temporaryDirectoryOut = temporaryDirectory
   try {
-    const tmp = path.join(tmpDir, 'candidate.json')
-    const writeTmp = (fx) => fs.writeFileSync(tmp, `${JSON.stringify(fx, null, 2)}\n`, { mode: 0o600 })
-    const scrub = (s) => String(s).split(tmp).join('<candidate>')
-    writeTmp(cand)
+    const temporary = path.join(temporaryDirectory, 'candidate.json')
+    const writeTemporary = (fx) => fs.writeFileSync(temporary, `${JSON.stringify(fx, null, 2)}\n`, { mode: 0o600 })
+    const scrub = (s) => String(s).split(temporary).join('<candidate>')
+    writeTemporary(cand)
 
-    const red = runNode([path.join(__dirname, 'redact-fixture.cjs'), tmp])
+    const red = runNode([path.join(__dirname, 'redact-fixture.cjs'), temporary])
     if (red.status === 3) {
       refuse('redact-fixture exited 3', String(red.stderr || '').split('\n').filter(Boolean).map(scrub))
     }
     if (red.status !== 0) refuse(`redact-fixture exited ${red.status === null ? 'abnormally' : red.status}`)
 
-    const redacted = JSON.parse(fs.readFileSync(tmp, 'utf8'))
+    const redacted = JSON.parse(fs.readFileSync(temporary, 'utf8'))
     const fx2 = { name: outName, args: redacted.args, calls: redacted.calls, expect: redacted.expect }
     const settled = await rehash(fx2)
     if (settled === null) refuse('coupled PROBE hashes did not settle after redaction')
-    writeTmp(fx2)
-    const chk = runNode([path.join(__dirname, 'redact-fixture.cjs'), '--check', tmp])
+    writeTemporary(fx2)
+    const chk = runNode([path.join(__dirname, 'redact-fixture.cjs'), '--check', temporary])
     if (chk.status !== 0) refuse(`redact-fixture --check exited ${chk.status === null ? 'abnormally' : chk.status} on the redacted candidate`)
     if (oracleOf(settled) !== base) refuse('outcome changed after redaction')
-    const strict = runNode([path.join(__dirname, 'run-offline.cjs'), tmp, '--report-unused', '--fp', fp], { ...process.env, OFFLINE_STRICT: '1' })
-    const sout = `${strict.stdout || ''}${strict.stderr || ''}`
-    if (strict.status !== 0 || !sout.includes('passed=1 failed=0')) {
+    const strict = runNode([path.join(__dirname, 'run-offline.cjs'), temporary, '--report-unused', '--fp', fp], { ...process.env, OFFLINE_STRICT: '1' })
+    const strictOutput = `${strict.stdout || ''}${strict.stderr || ''}`
+    if (strict.status !== 0 || !strictOutput.includes('passed=1 failed=0')) {
       refuse(`strict replay of the redacted candidate failed (exit ${strict.status === null ? 'abnormally' : strict.status})`)
     }
-    text = fs.readFileSync(tmp, 'utf8')
+    const text = fs.readFileSync(temporary, 'utf8')
     cand.args = fx2.args
     cand.calls = fx2.calls
     cand.expect = fx2.expect
+    return text
   } finally {
-    try { fs.rmSync(tmpDir, { recursive: true, force: true }) } catch (e) { /* best effort, the directory is ours */ }
-    tmpDirOut = null
+    try { fs.rmSync(temporaryDirectory, { recursive: true, force: true }) } catch (error) { /* best effort, the directory is ours */ }
+    temporaryDirectoryOut = null
   }
+}
 
-  // ---- write: a temporary file next to the target, then a link that fails if the name exists ----
-  // A kill at any point leaves at worst a hidden `.<name>.json.tmp-*` file, never a partial file at the final name; SIGINT and
-  // SIGTERM remove it (onSignal), SIGKILL cannot be handled.
-  tmpOut = path.join(outDir, `.${outName}.json.tmp-${process.pid}-${crypto.randomBytes(4).toString('hex')}`)
+// Writes `text` to a temporary file next to the target, then links it at its name (the link fails if the name exists).
+// A kill leaves at worst a hidden `.<name>.json.tmp-*` file, never a partial file at the final name (SIGINT/SIGTERM remove it in onSignal).
+async function writeAtomic(outDirectory, outName, outPath, text) {
+  temporaryOut = path.join(outDirectory, `.${outName}.json.tmp-${process.pid}-${crypto.randomBytes(4).toString('hex')}`)
   let fd
   try {
-    fd = fs.openSync(tmpOut, 'wx', 0o600)
-  } catch (e) {
-    tmpOut = null // never created by us: nothing to remove
-    throw e
+    fd = fs.openSync(temporaryOut, 'wx', 0o600)
+  } catch (error) {
+    temporaryOut = null // never created by us: nothing to remove
+    throw error
   }
   try {
-    const buf = Buffer.from(text)
+    const buffer = Buffer.from(text)
     let off = 0
-    while (off < buf.length) {
-      const n = fs.writeSync(fd, buf, off, buf.length - off)
+    while (off < buffer.length) {
+      const n = fs.writeSync(fd, buffer, off, buffer.length - off)
       if (!(n > 0)) throw new Error('short write: no progress')
       off += n
     }
@@ -478,27 +491,30 @@ async function main() {
     fs.closeSync(fd)
   }
   try {
-    fs.linkSync(tmpOut, outPath)
-  } catch (e) {
-    if (e && e.code === 'EEXIST') refuse(`the output file ${outPath} exists; a published fixture is never overwritten`)
-    throw e
+    fs.linkSync(temporaryOut, outPath)
+  } catch (error) {
+    if (error && error.code === 'EEXIST') refuse(`the output file ${outPath} exists; a published fixture is never overwritten`)
+    throw error
   }
   createdOut = outPath
-  fs.unlinkSync(tmpOut)
-  tmpOut = null
+  fs.unlinkSync(temporaryOut)
+  temporaryOut = null
+}
 
-  // ---- what remains: field names and counts, never a value ----
-  // A kept string with a space, a newline or a path separator is free text (a plan line, a reason, a file path), protected
-  // fields included. A PROBE / VERIFY answer line is judged on what is not its fixed envelope (`PROBE`, `VERIFY ok line=PROBE`,
-  // `name=`, `exit=`, `sha=`, `cmd=`, `reason=`, whose spaces are delimiters): the part after `json=` is free text when it holds a
-  // space or a path separator (a repository path, a folder name after `/Users/<name>`, a title), and so is any other token.
-  const isFreeText = (v) => {
-    if (!/^(PROBE|VERIFY) /.test(v)) return /[\s/\\]/.test(v)
-    const i = v.indexOf(' json=')
-    const head = i < 0 ? v : v.slice(0, i)
-    const payload = i < 0 ? '' : v.slice(i + 6)
-    return !head.split(' ').every((t) => PROBE_ENVELOPE_TOKEN.test(t)) || /[\s/\\]/.test(payload)
-  }
+// A kept string with a space, a newline or a path separator is free text (a plan line, a reason, a file path), protected
+// fields included. A PROBE / VERIFY answer line is judged on what is not its fixed envelope (`PROBE`, `VERIFY ok line=PROBE`,
+// `name=`, `exit=`, `sha=`, `cmd=`, `reason=`, whose spaces are delimiters): the part after `json=` is free text when it holds a
+// space or a path separator (a repository path, a folder name after `/Users/<name>`, a title), and so is any other token.
+const isFreeText = (v) => {
+  if (!/^(PROBE|VERIFY) /.test(v)) return /[\s/\\]/.test(v)
+  const index = v.indexOf(' json=')
+  const head = index < 0 ? v : v.slice(0, index)
+  const payload = index < 0 ? '' : v.slice(index + 6)
+  return !head.split(' ').every((t) => PROBE_ENVELOPE_TOKEN.test(t)) || /[\s/\\]/.test(payload)
+}
+
+// What remains: field names and counts, never a value.
+function report(cand, charsBefore, pruned, outPath) {
   const rem = [...collectLeaves(cand.args, 'args'), ...collectLeaves(cand.calls, 'calls')]
     .map((l) => ({ p: pathOf(l.segs), n: l.parent[l.key].length, v: l.parent[l.key], prot: isProtected(l.segs) }))
     .filter((x) => !isNeutral(x.v))
@@ -520,7 +536,7 @@ async function main() {
   let scalars = 0
   const tally = (v) => {
     if (Array.isArray(v)) v.forEach(tally)
-    else if (isObj(v)) for (const k of Object.keys(v)) { keyNames++; tally(v[k]) }
+    else if (isObject(v)) for (const k of Object.keys(v)) { keyNames++; tally(v[k]) }
     else if (typeof v !== 'string') scalars++
   }
   tally(cand.args)
@@ -529,32 +545,56 @@ async function main() {
   out.push(`pruned: ${pruned} unconsumed call entries`)
   process.stdout.write(`${out.join('\n')}\n`)
   process.stdout.write(`[publish-fixture] status=ok out=${outPath}\n`)
+}
+
+async function main() {
+  process.on('SIGINT', () => onSignal('SIGINT'))
+  process.on('SIGTERM', () => onSignal('SIGTERM'))
+  const { capture, outName, outDir, fp } = parseArguments(process.argv.slice(2))
+  const outPath = path.join(outDir, `${outName}.json`)
+  checkOutput(outDir, outPath)
+
+  const raw = loadCapture(capture)
+  let run
+  try { run = buildPipelineRunner(stripExports(fs.readFileSync(fp, 'utf8'))) } catch (error) { refuse(`cannot load the engine file (${(error && error.code) || 'error'})`) }
+
+  const session = newSession(run, raw, outName)
+  const charsBefore = [...collectLeaves(session.cand.args, 'args'), ...collectLeaves(session.cand.calls, 'calls')]
+    .reduce((n, l) => n + l.parent[l.key].length, 0)
+  const r1 = await baseline(session, raw)
+  coupledProbes(session, r1)
+  const { rehash, tryChange } = makeMinimizer(session)
+  await minimize(session, tryChange)
+  const pruned = await pruneAndExpect(session)
+  const text = await redactAndCheck(session, rehash, outName, fp)
+  await writeAtomic(outDir, outName, outPath, text)
+  report(session.cand, charsBefore, pruned, outPath)
   finished = true
 }
 
-main().catch((e) => {
-  if (tmpOut) { try { fs.unlinkSync(tmpOut) } catch (u) { /* already gone */ } }
-  if (e instanceof Usage) {
-    process.stderr.write(`usage-error: ${e.message}\n${USAGE}\n`)
+main().catch((thrown) => {
+  if (temporaryOut) { try { fs.unlinkSync(temporaryOut) } catch (u) { /* already gone */ } }
+  if (thrown instanceof Usage) {
+    process.stderr.write(`usage-error: ${thrown.message}\n${USAGE}\n`)
     process.stdout.write('[publish-fixture] status=usage-error\n')
     process.exitCode = 2
     return
   }
-  if (e instanceof Refusal) {
-    process.stderr.write(`refused: ${e.message}\n`)
-    for (const d of e.detail) process.stderr.write(`  ${d}\n`)
+  if (thrown instanceof Refusal) {
+    process.stderr.write(`refused: ${thrown.message}\n`)
+    for (const d of thrown.detail) process.stderr.write(`  ${d}\n`)
     process.stdout.write('[publish-fixture] status=refused\n')
     process.exitCode = 1
     return
   }
   // Anything else (EACCES, ENOSPC...) still ends with a status line, no stack, and no file of ours left behind.
   if (createdOut) { try { fs.unlinkSync(createdOut) } catch (u) { /* already gone */ } }
-  const err = e instanceof Error ? e : new Error(String(e))
-  const code = err.code || err.name || 'Error'
-  let msg = String(err.message).replace(/\s*\n\s*/g, ' ')
-  if (err.code && msg.startsWith(`${err.code}: `)) msg = msg.slice(err.code.length + 2)
-  process.stderr.write(`error: ${code}: ${msg}\n`)
-  if (process.env.PUBLISH_FIXTURE_DEBUG === '1') process.stderr.write(`${err.stack}\n`)
+  const error = thrown instanceof Error ? thrown : new Error(String(thrown))
+  const code = error.code || error.name || 'Error'
+  let message = String(error.message).replace(/\s*\n\s*/g, ' ')
+  if (error.code && message.startsWith(`${error.code}: `)) message = message.slice(error.code.length + 2)
+  process.stderr.write(`error: ${code}: ${message}\n`)
+  if (process.env.PUBLISH_FIXTURE_DEBUG === '1') process.stderr.write(`${error.stack}\n`)
   process.stdout.write('[publish-fixture] status=error\n')
   process.exitCode = 1
 })
