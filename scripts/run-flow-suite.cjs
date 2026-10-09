@@ -68,17 +68,17 @@
 const fs = require('fs')
 const path = require('path')
 
-function parseArgs(argv) {
+function parseArguments(argv) {
   const out = { suite: 'templates/test-deliver-pipeline.js', fp: 'workflows/deliver-pipeline.js' }
-  for (let i = 0; i < argv.length; i++) {
-    if (argv[i] === '--suite' && argv[i + 1]) { out.suite = argv[++i]; continue }
-    if (argv[i] === '--fp' && argv[i + 1]) { out.fp = argv[++i]; continue }
+  for (let index = 0; index < argv.length; index++) {
+    if (argv[index] === '--suite' && argv[index + 1]) { out.suite = argv[++index]; continue }
+    if (argv[index] === '--fp' && argv[index + 1]) { out.fp = argv[++index]; continue }
   }
   return out
 }
 
-function stripExports(src) {
-  return src.replace(/^export\s+/mg, '')
+function stripExports(source) {
+  return source.replace(/^export\s+/mg, '')
 }
 
 // agent() throws — under `simulate` mode every agent() call site inside
@@ -92,15 +92,14 @@ async function deadAgent() {
 // Runs the REAL deliver-pipeline.js body (already export-stripped source) under the
 // pipeline-scope globals. Mirrors run_feature_pipeline_sim.cjs's `new Function` wrap.
 // phase() records its title in `phaseTitles` (reset at every run): the suite reads the sequence right after a run.
-function buildPipelineRunner(fpSrcStripped, log, phaseTitles) {
-  // eslint-disable-next-line no-new-func
-  const fn = new Function(
+function buildPipelineRunner(fpSourceStripped, log, phaseTitles) {
+  const function_ = new Function(
     'args', 'agent', 'log', 'phase',
-    'return (async () => {\n' + fpSrcStripped + '\n})()',
+    'return (async () => {\n' + fpSourceStripped + '\n})()',
   )
-  return async (args) => {
+  return async (arguments_) => {
     phaseTitles.length = 0
-    return fn(args, deadAgent, log, (t) => { phaseTitles.push(String(t)) })
+    return function_(arguments_, deadAgent, log, (t) => { phaseTitles.push(String(t)) })
   }
 }
 
@@ -108,21 +107,21 @@ function buildPipelineRunner(fpSrcStripped, log, phaseTitles) {
 // the header note above). Re-runs the pipeline body fresh on every call, matching real
 // Workflow-tool semantics (no cross-call state leaks between cases).
 function buildWorkflowMock(log, phaseTitles) {
-  return async (ref, args) => {
-    const scriptPath = ref && typeof ref === 'object' ? ref.scriptPath : null
+  return async (reference, arguments_) => {
+    const scriptPath = reference && typeof reference === 'object' ? reference.scriptPath : null
     if (!scriptPath) {
       throw new Error(
         `run-flow-suite workflow() mock: only { scriptPath } refs are resolved (harness-side ` +
-        `default, never registry resolution) — got ${JSON.stringify(ref)}`)
+        `default, never registry resolution) — got ${JSON.stringify(reference)}`)
     }
-    const src = stripExports(fs.readFileSync(scriptPath, 'utf-8'))
-    const run = buildPipelineRunner(src, log, phaseTitles)
-    return run(args)
+    const source = stripExports(fs.readFileSync(scriptPath, 'utf-8'))
+    const run = buildPipelineRunner(source, log, phaseTitles)
+    return run(arguments_)
   }
 }
 
 async function main() {
-  const { suite, fp } = parseArgs(process.argv.slice(2))
+  const { suite, fp } = parseArguments(process.argv.slice(2))
   const suitePath = path.resolve(suite)
   const fpPath = path.resolve(fp)
 
@@ -131,50 +130,49 @@ async function main() {
   const dumpPath = process.env.FLOW_SUITE_DUMP_KEYS || null
   const dumpLines = []
   let pendingReturns = []
-  const log = (msg) => {
-    const s = String(msg)
+  const log = (message) => {
+    const s = String(message)
     lines.push(s)
     if (!dumpPath) return
     const m = /^(?:PASS|FAIL) — (.*)$/.exec(s)
     if (!m) return
-    pendingReturns.forEach((r, i) => dumpLines.push(`${m[1]}\t#${i + 1}\t${r.status}\t${Object.keys(r).sort().join(',')}`))
+    pendingReturns.forEach((r, index) => dumpLines.push(`${m[1]}\t#${index + 1}\t${r.status}\t${Object.keys(r).sort().join(',')}`))
     pendingReturns = []
   }
 
-  const suiteSrcStripped = stripExports(fs.readFileSync(suitePath, 'utf-8'))
+  const suiteSourceStripped = stripExports(fs.readFileSync(suitePath, 'utf-8'))
   const phaseTitles = []
   const workflowMock = buildWorkflowMock(log, phaseTitles)
   const workflow = dumpPath
-    ? async (ref, a) => { const r = await workflowMock(ref, a); if (r && typeof r === 'object') pendingReturns.push(r); return r }
+    ? async (reference, a) => { const r = await workflowMock(reference, a); if (r && typeof r === 'object') pendingReturns.push(r); return r }
     : workflowMock
   // fpSource: raw pipeline text for source-anchored cases (#214) — agentDeathRouting table and
   // STRUCTURED_OUTPUT_MANDATE are unreachable through simulate-mode workflow() runs.
   // repoConfig: this repo's own `.claude/pipeline.config.json` (null if absent), for cases that pin the
   // repo's declared `oneWayDoorPaths`, `oneWayDoorKinds` and `engineRepo` flag (T77b, T77f, T77m, T163c); the
   // engine has no filesystem.
-  let repoConfig = null
-  try { repoConfig = JSON.parse(fs.readFileSync(path.resolve('.claude/pipeline.config.json'), 'utf-8')) } catch (_) { repoConfig = null }
-  const suiteArgs = { fpScriptPath: fpPath, fpSource: fs.readFileSync(fpPath, 'utf-8'), repoConfig, phaseTitles }
+  let repositoryConfig = null
+  try { repositoryConfig = JSON.parse(fs.readFileSync(path.resolve('.claude/pipeline.config.json'), 'utf-8')) } catch (_) { repositoryConfig = null }
+  const suiteArguments = { fpScriptPath: fpPath, fpSource: fs.readFileSync(fpPath, 'utf-8'), repoConfig: repositoryConfig, phaseTitles }
 
-  // eslint-disable-next-line no-new-func
-  const suiteFn = new Function(
+  const suiteFunction = new Function(
     'args', 'log', 'workflow',
-    'return (async () => {\n' + suiteSrcStripped + '\n})()',
+    'return (async () => {\n' + suiteSourceStripped + '\n})()',
   )
 
   let result
   try {
-    result = await suiteFn(suiteArgs, log, workflow)
-  } catch (e) {
+    result = await suiteFunction(suiteArguments, log, workflow)
+  } catch (error) {
     for (const l of lines) process.stderr.write(l + '\n')
-    process.stderr.write((e && e.stack ? e.stack : String(e)) + '\n')
+    process.stderr.write((error && error.stack ? error.stack : String(error)) + '\n')
     process.stdout.write(`[flow-suite] status=harness-error passed=0 failed=0\n`)
     process.exit(1)
   }
 
   for (const l of lines) process.stdout.write(l + '\n')
   if (dumpPath) {
-    pendingReturns.forEach((r, i) => dumpLines.push(`(after last case)\t#${i + 1}\t${r.status}\t${Object.keys(r).sort().join(',')}`))
+    pendingReturns.forEach((r, index) => dumpLines.push(`(after last case)\t#${index + 1}\t${r.status}\t${Object.keys(r).sort().join(',')}`))
     fs.writeFileSync(dumpPath, dumpLines.join('\n') + (dumpLines.length ? '\n' : ''))
   }
 
@@ -194,8 +192,8 @@ async function main() {
   process.exit(strict && failed > 0 ? 1 : 0)
 }
 
-main().catch((err) => {
-  console.error(err && err.stack ? err.stack : String(err))
+main().catch((error) => {
+  console.error(error && error.stack ? error.stack : String(error))
   process.stdout.write(`[flow-suite] status=harness-error passed=0 failed=0\n`)
   process.exit(1)
 })

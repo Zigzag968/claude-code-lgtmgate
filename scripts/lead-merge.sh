@@ -681,8 +681,11 @@ else
       sleep "$poll_sleep"
     done
   fi
-  # shellcheck disable=SC2086
-  gh pr checks "$PR" -R "$REPO" --watch --fail-fast $req || die "CI checks failed; not merging"
+  if [ -n "$req" ]; then
+    gh pr checks "$PR" -R "$REPO" --watch --fail-fast "$req" || die "CI checks failed; not merging"
+  else
+    gh pr checks "$PR" -R "$REPO" --watch --fail-fast || die "CI checks failed; not merging"
+  fi
 fi
 
 # --- 7. merge ------------------------------------------------------------------

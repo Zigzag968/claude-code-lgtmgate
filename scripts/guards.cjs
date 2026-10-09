@@ -133,9 +133,9 @@ let failed = 0
 const out =(s) => console.log(s)
 const bad = (s) => { failed++; out(s) }
 
-function gitShow(rel) {
+function gitShow(relativePath) {
   try {
-    return execFileSync('git', ['show', `origin/main:${rel}`], { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
+    return execFileSync('git', ['show', `origin/main:${relativePath}`], { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
   } catch (_) {
     return null
   }
@@ -147,80 +147,80 @@ const readOr = (p) => (p && fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : null
 function isCommentLine(line) { return /^\s*\/\//.test(line) }
 const blankNonNl = (t) => t.replace(/[^\n]/g, ' ')
 // Blank `/* ... */` block comments (an unterminated one runs to EOF); offsets and newlines kept.
-const noBlock = (src) => src.replace(/\/\*[\s\S]*?(?:\*\/|$)/g, blankNonNl)
+const noBlock = (source) => source.replace(/\/\*[\s\S]*?(?:\*\/|$)/g, blankNonNl)
 // Also blank whole-line `//` comments.
-function stripComments(src) {
-  return noBlock(src).split('\n').map((l) => (isCommentLine(l) ? blankNonNl(l) : l)).join('\n')
+function stripComments(source) {
+  return noBlock(source).split('\n').map((l) => (isCommentLine(l) ? blankNonNl(l) : l)).join('\n')
 }
 
 // Returns [start, end) offsets of the body `{...}` of `function callAgent`, or null.
-function callAgentBody(src) {
-  const m = /(?:async\s+)?function\s+callAgent\s*\(/.exec(src)
+function callAgentBody(source) {
+  const m = /(?:async\s+)?function\s+callAgent\s*\(/.exec(source)
   if (!m) return null
-  let i = m.index + m[0].length
+  let index = m.index + m[0].length
   let depth = 1
   // walk the parameter list (may contain defaults, no braces expected)
-  while (i < src.length && depth > 0) {
-    const c = src[i]
+  while (index < source.length && depth > 0) {
+    const c = source[index]
     if (c === '(') depth++
     else if (c === ')') depth--
-    i++
+    index++
   }
-  while (i < src.length && src[i] !== '{') i++
-  const start = i
+  while (index < source.length && source[index] !== '{') index++
+  const start = index
   let d = 0
-  while (i < src.length) {
-    const c = src[i]
-    const n = src[i + 1]
-    if (c === '/' && n === '/') { while (i < src.length && src[i] !== '\n') i++; continue }
-    if (c === '/' && n === '*') { i = src.indexOf('*/', i + 2); if (i < 0) return null; i += 2; continue }
+  while (index < source.length) {
+    const c = source[index]
+    const n = source[index + 1]
+    if (c === '/' && n === '/') { while (index < source.length && source[index] !== '\n') index++; continue }
+    if (c === '/' && n === '*') { index = source.indexOf('*/', index + 2); if (index < 0) return null; index += 2; continue }
     if (c === '\'' || c === '"') {
-      const q = c; i++
-      while (i < src.length && src[i] !== q) { if (src[i] === '\\') i++; i++ }
-      i++; continue
+      const q = c; index++
+      while (index < source.length && source[index] !== q) { if (source[index] === '\\') index++; index++ }
+      index++; continue
     }
-    if (c === '`') { i = skipTemplate(src, i + 1); continue }
+    if (c === '`') { index = skipTemplate(source, index + 1); continue }
     if (c === '{') d++
-    else if (c === '}') { d--; if (d === 0) return [start, i + 1] }
-    i++
+    else if (c === '}') { d--; if (d === 0) return [start, index + 1] }
+    index++
   }
   return null
 }
-function skipTemplate(src, i) {
-  while (i < src.length && src[i] !== '`') {
-    if (src[i] === '\\') { i += 2; continue }
-    if (src[i] === '$' && src[i + 1] === '{') {
-      let d = 1; i += 2
-      while (i < src.length && d > 0) {
-        if (src[i] === '`') { i = skipTemplate(src, i + 1); continue }
-        if (src[i] === '{') d++
-        else if (src[i] === '}') d--
-        i++
+function skipTemplate(source, index) {
+  while (index < source.length && source[index] !== '`') {
+    if (source[index] === '\\') { index += 2; continue }
+    if (source[index] === '$' && source[index + 1] === '{') {
+      let d = 1; index += 2
+      while (index < source.length && d > 0) {
+        if (source[index] === '`') { index = skipTemplate(source, index + 1); continue }
+        if (source[index] === '{') d++
+        else if (source[index] === '}') d--
+        index++
       }
       continue
     }
-    i++
+    index++
   }
-  return i + 1
+  return index + 1
 }
 
-function countAgentCalls(rawSrc) {
-  const src = stripComments(rawSrc)
-  const body = callAgentBody(src)
+function countAgentCalls(rawSource) {
+  const source = stripComments(rawSource)
+  const body = callAgentBody(source)
   const re = /await\s+agent\s*\(/g
   let n = 0
   let m
-  while ((m = re.exec(src))) {
+  while ((m = re.exec(source))) {
     if (!(body && m.index >= body[0] && m.index < body[1])) n++
   }
   return n
 }
 
-function countSimulateSeams(rawSrc) {
+function countSimulateSeams(rawSource) {
   // One seam = one distinct key: `simulate.<key>` (key != probes) or `simulate.probes.<key>` /
   // `simulate.probes['key']` / `simulate?.probes?.<key>`. A dynamic `simulate.probes[role]` is not a key.
   const keys = new Set()
-  for (const line of stripComments(rawSrc).split('\n')) {
+  for (const line of stripComments(rawSource).split('\n')) {
     const re = /simulate\??\.([A-Za-z_][A-Za-z0-9_]*)(?:\??\.([A-Za-z_][A-Za-z0-9_]*)|\??\.?\[\s*(['"])([A-Za-z_][A-Za-z0-9_]*)\3\s*\])?/g
     let m
     while ((m = re.exec(line))) {
@@ -232,11 +232,11 @@ function countSimulateSeams(rawSrc) {
 }
 
 const REGEX_APPLICATIONS = /\.match\(|\.test\(|\.exec\(|\.matchAll\(|\.replace\(\/|\.split\(\/|new RegExp\(/g
-function countRegexApplications(rawSrc) {
+function countRegexApps(rawSource) {
   let inParser = false
   let n = 0
   // marker lines are whole-line `//` comments: match them before those are blanked
-  for (const line of noBlock(rawSrc).split('\n')) {
+  for (const line of noBlock(rawSource).split('\n')) {
     if (/^\s*\/\/\s*guards:parser-begin\b/.test(line)) { inParser = true; continue }
     if (/^\s*\/\/\s*guards:parser-end\b/.test(line)) { inParser = false; continue }
     if (inParser || isCommentLine(line)) continue
@@ -247,16 +247,16 @@ function countRegexApplications(rawSrc) {
 }
 
 // Problems with the parser markers (empty when balanced).
-function parserMarkerErrors(rawSrc) {
+function parserMarkerErrors(rawSource) {
   const errs = []
   let openAt = 0
-  const lines = noBlock(rawSrc).split('\n')
-  for (let i = 0; i < lines.length; i++) {
-    if (/^\s*\/\/\s*guards:parser-begin\b/.test(lines[i])) {
-      if (openAt) errs.push(`nested guards:parser-begin at line ${i + 1} (already open since line ${openAt})`)
-      else openAt = i + 1
-    } else if (/^\s*\/\/\s*guards:parser-end\b/.test(lines[i])) {
-      if (!openAt) errs.push(`guards:parser-end at line ${i + 1} has no matching guards:parser-begin`)
+  const lines = noBlock(rawSource).split('\n')
+  for (let index = 0; index < lines.length; index++) {
+    if (/^\s*\/\/\s*guards:parser-begin\b/.test(lines[index])) {
+      if (openAt) errs.push(`nested guards:parser-begin at line ${index + 1} (already open since line ${openAt})`)
+      else openAt = index + 1
+    } else if (/^\s*\/\/\s*guards:parser-end\b/.test(lines[index])) {
+      if (!openAt) errs.push(`guards:parser-end at line ${index + 1} has no matching guards:parser-begin`)
       else openAt = 0
     }
   }
@@ -273,18 +273,18 @@ function checkR1() {
     return
   }
   if (branch === null) { bad(`FAIL: R1 ratchet: cannot read branch ${WORKFLOW}`); return }
-  for (const e of parserMarkerErrors(base)) out(`WARN: R1 parser markers: base (origin/main) ${WORKFLOW}: ${e}`)
+  for (const error of parserMarkerErrors(base)) out(`WARN: R1 parser markers: base (origin/main) ${WORKFLOW}: ${error}`)
   const branchErrs = parserMarkerErrors(branch)
-  for (const e of branchErrs) bad(`FAIL: R1 parser markers: ${WORKFLOW}: ${e} — balance the markers (each parser-begin needs exactly one parser-end)`)
+  for (const error of branchErrs) bad(`FAIL: R1 parser markers: ${WORKFLOW}: ${error} — balance the markers (each parser-begin needs exactly one parser-end)`)
   if (branchErrs.length) return
   const counters = [
     ['agent-calls', countAgentCalls],
     ['simulate-seams', countSimulateSeams],
-    ['agent-output-regex', countRegexApplications],
+    ['agent-output-regex', countRegexApps],
   ]
-  for (const [name, fn] of counters) {
-    const b = fn(base)
-    const m = fn(branch)
+  for (const [name, function_] of counters) {
+    const b = function_(base)
+    const m = function_(branch)
     const ok = m <= b
     out(`R1 ${name} base=${b} branch=${m} ${ok ? 'ok' : 'UP'}`)
     if (!ok) failed++
@@ -297,14 +297,14 @@ function checkR1() {
 function ymlRunText(yml) {
   const lines = yml.split('\n').filter((l) => !/^\s*#/.test(l)).map((l) => l.replace(/\s+#.*$/, ''))
   const parts = []
-  for (let i = 0; i < lines.length; i++) {
-    const m = /^(\s*(?:-\s+)?)run:\s*(.*)$/.exec(lines[i])
+  for (let index = 0; index < lines.length; index++) {
+    const m = /^(\s*(?:-\s+)?)run:\s*(.*)$/.exec(lines[index])
     if (!m) continue
     const keyIndent = m[1].length
     if (/^[|>][+-]?\d*$/.test(m[2].trim())) {
-      for (i++; i < lines.length; i++) {
-        const l = lines[i]
-        if (l.trim() !== '' && l.length - l.trimStart().length <= keyIndent) { i--; break }
+      for (index++; index < lines.length; index++) {
+        const l = lines[index]
+        if (l.trim() !== '' && l.length - l.trimStart().length <= keyIndent) { index--; break }
         parts.push(l)
       }
     } else parts.push(m[2])
@@ -330,9 +330,9 @@ function checkWired() {
   if (yml === null) { bad(`FAIL: all-tests-wired: ${GUARDS_YML} missing`); return }
   const suites = ['scripts/run-offline.cjs']
   const stray = []
-  for (const rel of walkTestFiles('')) {
-    if (TEST_FOLDERS.some((folder) => rel.startsWith(`${folder}/`))) suites.push(rel)
-    else stray.push(rel)
+  for (const relativePath of walkTestFiles('')) {
+    if (TEST_FOLDERS.some((folder) => relativePath.startsWith(`${folder}/`))) suites.push(relativePath)
+    else stray.push(relativePath)
   }
   if (stray.length) { bad(`FAIL: all-tests-wired: test file outside every known test folder (${TEST_FOLDERS.join(', ')}): ${stray.join(', ')}`); return }
   const runText = ymlRunText(yml)
@@ -378,10 +378,10 @@ function parseSemver(v) {
   return m ? { str: String(v).trim(), core: [Number(m[1]), Number(m[2]), Number(m[3])], pre: m[4] ? m[4].split('.') : [] } : null
 }
 function cmp(a, b) {
-  for (let i = 0; i < 3; i++) if (a.core[i] !== b.core[i]) return a.core[i] - b.core[i]
+  for (let index = 0; index < 3; index++) if (a.core[index] !== b.core[index]) return a.core[index] - b.core[index]
   if (!a.pre.length || !b.pre.length) return b.pre.length - a.pre.length
-  for (let i = 0; i < Math.min(a.pre.length, b.pre.length); i++) {
-    const x = a.pre[i], y = b.pre[i], xn = /^\d+$/.test(x), yn = /^\d+$/.test(y)
+  for (let index = 0; index < Math.min(a.pre.length, b.pre.length); index++) {
+    const x = a.pre[index], y = b.pre[index], xn = /^\d+$/.test(x), yn = /^\d+$/.test(y)
     if (xn && yn) { if (Number(x) !== Number(y)) return Number(x) - Number(y) } else if (xn !== yn) return xn ? -1 : 1
     else if (x !== y) return x < y ? -1 : 1
   }
@@ -393,7 +393,7 @@ function checkVersion() {
   if (baseTxt === null) { bad(`FAIL: version-floor: cannot read base ${MANIFEST} (origin/main not resolvable) — run 'git fetch origin main' first`); return }
   if (branchTxt === null) { bad(`FAIL: version-floor: cannot read ${MANIFEST}`); return }
   let bv, nv
-  try { bv = parseSemver(JSON.parse(baseTxt).version); nv = parseSemver(JSON.parse(branchTxt).version) } catch (e) { bad(`FAIL: version-floor: invalid JSON (${e.message})`); return }
+  try { bv = parseSemver(JSON.parse(baseTxt).version); nv = parseSemver(JSON.parse(branchTxt).version) } catch (error) { bad(`FAIL: version-floor: invalid JSON (${error.message})`); return }
   if (!bv || !nv) { bad('FAIL: version-floor: version is not semver'); return }
   if (cmp(nv, bv) < 0) bad(`FAIL: version-floor: branch version ${nv.str} < origin/main ${bv.str}`)
   else out(`PASS: version-floor: branch ${nv.str} >= origin/main ${bv.str}`)
@@ -482,7 +482,7 @@ function proseLines(txt) {
 }
 // Import references to `name` (`@name` at a line start or after whitespace) in prose lines.
 const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-const importRefs = (lines, name) => lines.reduce((n, l) =>
+const importReferences = (lines, name) => lines.reduce((n, l) =>
   n + (l.match(new RegExp(`(?:^|\\s)@${escapeRegExp(name)}(?![\\w./-])`, 'g')) || []).length, 0)
 function checkInstructionsWired() {
   const problems = []
@@ -490,28 +490,28 @@ function checkInstructionsWired() {
   if (claude === null) problems.push('.claude/CLAUDE.md missing')
   else {
     const lines = proseLines(claude)
-    for (const doc of IMPORTED_DOCS) {
-      const target = `../${doc}`
+    for (const document of IMPORTED_DOCS) {
+      const target = `../${document}`
       const own = lines.filter((l) => l.replace(/[ \t]+$/, '') === `@${target}`).length
-      const refs = importRefs(lines, target)
+      const references = importReferences(lines, target)
       if (own === 0) problems.push(`.claude/CLAUDE.md has no line \`@${target}\` outside code`)
-      else if (refs > 1) problems.push(`.claude/CLAUDE.md imports ${doc} ${refs} times, keep exactly one \`@${target}\` line`)
-      else if (!fs.existsSync(path.resolve(ROOT, '.claude', target))) problems.push(`.claude/CLAUDE.md imports @${target} but ${doc} does not exist there`)
+      else if (references > 1) problems.push(`.claude/CLAUDE.md imports ${document} ${references} times, keep exactly one \`@${target}\` line`)
+      else if (!fs.existsSync(path.resolve(ROOT, '.claude', target))) problems.push(`.claude/CLAUDE.md imports @${target} but ${document} does not exist there`)
       // Imports resolve relative to the importing file: a bare `@VISION.md` looks inside .claude/ and loads nothing.
-      if (importRefs(lines, doc) > 0) problems.push(`.claude/CLAUDE.md has a bare \`@${doc}\` import, which loads nothing from .claude/, use \`@${target}\``)
+      if (importReferences(lines, document) > 0) problems.push(`.claude/CLAUDE.md has a bare \`@${document}\` import, which loads nothing from .claude/, use \`@${target}\``)
     }
-    if (importRefs(lines, 'AGENTS.md') > 0) problems.push('.claude/CLAUDE.md imports AGENTS.md, which loads the docs twice')
+    if (importReferences(lines, 'AGENTS.md') > 0) problems.push('.claude/CLAUDE.md imports AGENTS.md, which loads the docs twice')
   }
   const agentsMd = readOr(path.join(ROOT, 'AGENTS.md'))
   if (agentsMd === null) problems.push('AGENTS.md missing')
   else {
-    const unnamed = IMPORTED_DOCS.filter((doc) => !agentsMd.includes(doc))
+    const unnamed = IMPORTED_DOCS.filter((document) => !agentsMd.includes(document))
     if (unnamed.length) problems.push(`AGENTS.md does not name ${unnamed.join(', ')}`)
   }
-  const agentsDir = path.join(ROOT, 'agents')
-  const personas = fs.existsSync(agentsDir) ? fs.readdirSync(agentsDir).filter((f) => f.endsWith('.md')).sort() : []
+  const agentsDirectory = path.join(ROOT, 'agents')
+  const personas = fs.existsSync(agentsDirectory) ? fs.readdirSync(agentsDirectory).filter((f) => f.endsWith('.md')).sort() : []
   for (const f of personas) {
-    const txt = fs.readFileSync(path.join(agentsDir, f), 'utf8').replace(/^\uFEFF/, '')
+    const txt = fs.readFileSync(path.join(agentsDirectory, f), 'utf8').replace(/^\uFEFF/, '')
     const fm = /^---\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/.exec(txt)
     if (fm && /^omitClaudeMd[ \t]*:[ \t]*["']?true["']?[ \t]*(?:#.*)?$/im.test(fm[1])) problems.push(`agents/${f} sets omitClaudeMd: true`)
   }
@@ -525,19 +525,19 @@ const DOC_BUDGETS = [['VISION.md', 20], ['ARCHITECTURE.md', 20]]
 const DOC_LINE_CAP = 160
 // Same count as `wc -l` for a file ending with a newline; a last line without one still counts.
 const lineCount = (t) => (t === '' ? 0 : t.split('\n').length - (t.endsWith('\n') ? 1 : 0))
-function checkDocBudgets() {
+function checkDocumentBudgets() {
   const problems = []
   const sizes = []
-  for (const [rel, max] of DOC_BUDGETS) {
-    const txt = readOr(path.join(ROOT, rel))
-    if (txt === null) { problems.push(`${rel} missing`); continue }
+  for (const [relativePath, max] of DOC_BUDGETS) {
+    const txt = readOr(path.join(ROOT, relativePath))
+    if (txt === null) { problems.push(`${relativePath} missing`); continue }
     const n = lineCount(txt)
     const widths = txt.split('\n').map((l) => [...l.replace(/\r$/, '')].length)
     const longest = widths.reduce((a, w) => Math.max(a, w), 0)
-    sizes.push(`${rel} ${n}/${max} lines, longest ${longest}/${DOC_LINE_CAP} chars`)
-    if (n > max) problems.push(`${rel} has ${n} lines, budget ${max}`)
-    const over = widths.map((w, i) => [i + 1, w]).filter(([, w]) => w > DOC_LINE_CAP)
-    if (over.length) problems.push(`${rel} line ${over[0][0]} has ${over[0][1]} characters, cap ${DOC_LINE_CAP}` + (over.length > 1 ? ` (+${over.length - 1} more)` : ''))
+    sizes.push(`${relativePath} ${n}/${max} lines, longest ${longest}/${DOC_LINE_CAP} chars`)
+    if (n > max) problems.push(`${relativePath} has ${n} lines, budget ${max}`)
+    const over = widths.map((w, index) => [index + 1, w]).filter(([, w]) => w > DOC_LINE_CAP)
+    if (over.length) problems.push(`${relativePath} line ${over[0][0]} has ${over[0][1]} characters, cap ${DOC_LINE_CAP}` + (over.length > 1 ? ` (+${over.length - 1} more)` : ''))
   }
   if (problems.length) bad(`FAIL: doc-budgets: ${problems.join('; ')} — move detail to docs/ (never imported), never raise the budget`)
   else out(`PASS: doc-budgets: ${sizes.join('; ')}`)
@@ -547,8 +547,8 @@ function checkDocBudgets() {
 // The registry is the top-level `const STATUS = Object.freeze({ ... })` closed by a `})` at column 0;
 // agentDeathRouting()'s indented role -> status table is not it. Keys are the quoted entry names.
 const STATUS_SECTION = '## 5. Handle the returned status'
-function statusRegistryKeys(src) {
-  const m = /^const STATUS = Object\.freeze\(\{\n([\s\S]*?)^\}\)/m.exec(src)
+function statusRegistryKeys(source) {
+  const m = /^const STATUS = Object\.freeze\(\{\n([\s\S]*?)^\}\)/m.exec(source)
   return m ? [...m[1].matchAll(/^\s*'([^']+)':/gm)].map((x) => x[1]) : null
 }
 // Body rows of the first Markdown table after the §5 heading, each as its first cell and the
@@ -558,10 +558,10 @@ function statusTableRows(md) {
   const start = lines.findIndex((l) => l.trim() === STATUS_SECTION)
   if (start < 0) return null
   const rows = []
-  for (let i = start + 1; i < lines.length; i++) {
-    if (/^##/.test(lines[i])) break
-    if (!lines[i].startsWith('|')) { if (rows.length) break; continue }
-    rows.push(lines[i])
+  for (let index = start + 1; index < lines.length; index++) {
+    if (/^##/.test(lines[index])) break
+    if (!lines[index].startsWith('|')) { if (rows.length) break; continue }
+    rows.push(lines[index])
   }
   if (rows.length < 2) return null
   return rows.slice(2).map((l) => {
@@ -579,7 +579,7 @@ function checkStatusTable() {
   const rows = statusTableRows(md)
   if (!rows) { bad(`FAIL: status-table: no table under \`${STATUS_SECTION}\` in ${DELIVER_MD}`); return }
   const problems = []
-  for (const k of keys.filter((k, i) => keys.indexOf(k) !== i)) problems.push(`STATUS key '${k}' is declared twice in ${WORKFLOW}`)
+  for (const k of keys.filter((key, index) => keys.indexOf(key) !== index)) problems.push(`STATUS key '${k}' is declared twice in ${WORKFLOW}`)
   const inRows = new Set()
   for (const r of rows) {
     if (!r.statuses.length) problems.push(`row '${r.cell}' of the status table (${DELIVER_MD} §5) names no \`status\``)
@@ -598,8 +598,8 @@ function checkStatusTable() {
 // The declared titles are the `title: '...'` entries of the `phases: [` list inside the top-level
 // `export const meta = { ... }` block (closed by a `}` at column 0); anything after the block is ignored.
 const PHASE_TITLE_CAP = 16
-function declaredPhaseTitles(src) {
-  const m = /^export const meta = \{\n([\s\S]*?)^\}/m.exec(src)
+function declaredPhaseTitles(source) {
+  const m = /^export const meta = \{\n([\s\S]*?)^\}/m.exec(source)
   if (!m) return null
   const at = m[1].search(/\bphases:\s*\[/)
   if (at < 0) return null
@@ -617,9 +617,9 @@ function checkPhaseTitles() {
     if (n > PHASE_TITLE_CAP) problems.push(`title '${t}' has ${n} characters, cap ${PHASE_TITLE_CAP}`)
   }
   // Each pair once; the shorter title (the first one when equal) is named as the prefix.
-  for (let i = 0; i < titles.length; i++) {
-    for (let j = i + 1; j < titles.length; j++) {
-      const [short, long] = titles[i].trim().length <= titles[j].trim().length ? [titles[i], titles[j]] : [titles[j], titles[i]]
+  for (let index = 0; index < titles.length; index++) {
+    for (let index_ = index + 1; index_ < titles.length; index_++) {
+      const [short, long] = titles[index].trim().length <= titles[index_].trim().length ? [titles[index], titles[index_]] : [titles[index_], titles[index]]
       if (long.trim().toLowerCase().startsWith(short.trim().toLowerCase())) problems.push(`title '${short}' is a prefix of '${long}' (case-insensitive), the progress view merges them`)
     }
   }
@@ -628,22 +628,22 @@ function checkPhaseTitles() {
 }
 
 function checkInitStubs() {
-  let mod
+  let module_
   try {
-    mod = require(process.env.GUARDS_INIT_STUBS || path.join(ROOT, 'scripts/init-specifics.cjs'))
-  } catch (e) {
+    module_ = require(process.env.GUARDS_INIT_STUBS || path.join(ROOT, 'scripts/init-specifics.cjs'))
+  } catch (_) {
     bad('FAIL: init-stubs: cannot load the stubs module')
     return
   }
-  const stubs = mod.STUBS
+  const stubs = module_.STUBS
   const names = stubs && typeof stubs === 'object' ? Object.keys(stubs) : []
   if (names.length === 0) { bad('FAIL: init-stubs: no stub exported'); return }
   const problems = []
   const emptyOnceStripped = (txt) => {
-    let prev
-    let cur = txt
-    do { prev = cur; cur = cur.replace(/<!--[\s\S]*?-->/g, '') } while (cur !== prev)
-    return cur.trim() === ''
+    let previous
+    let current = txt
+    do { previous = current; current = current.replace(/<!--[\s\S]*?-->/g, '') } while (current !== previous)
+    return current.trim() === ''
   }
   for (const n of names) {
     const txt = String(stubs[n])
@@ -653,8 +653,8 @@ function checkInitStubs() {
   }
   // Lane stub (#271): the frontmatter is stripped with the comments; a module without laneStub (the test seam) is tolerated.
   let laneStubs = 0
-  if (typeof mod.laneStub === 'function') {
-    const txt = String(mod.laneStub('sam', 'ios'))
+  if (typeof module_.laneStub === 'function') {
+    const txt = String(module_.laneStub('sam', 'ios'))
     const w = ENGINE_WORDS_RE.exec(txt)
     if (w) problems.push(`lane stub carries the engine word '${w[0]}'`)
     const body = txt.startsWith('---\n') && txt.indexOf('\n---\n', 3) > 0 ? txt.slice(txt.indexOf('\n---\n', 3) + 5) : txt
@@ -668,7 +668,7 @@ function checkInitStubs() {
     if (w) problems.push(`lane sentence carries the engine word '${w[0]}'`)
     if (sentence === '') problems.push('lane sentence is empty for a persona')
     laneSentences = 1
-  } catch (e) {
+  } catch (_) {
     problems.push('cannot load laneSentence from scripts/agent-context.cjs')
   }
   if (problems.length) { for (const pr of problems) bad(`FAIL: init-stubs: ${pr}`); return }
@@ -776,7 +776,7 @@ if (ONLY.includes('wired')) checkWired()
 if (ONLY.includes('guard-steps')) checkGuardSteps()
 if (ONLY.includes('version')) checkVersion()
 if (ONLY.includes('parity')) checkSamParity()
-if (ONLY.includes('budgets')) checkDocBudgets()
+if (ONLY.includes('budgets')) checkDocumentBudgets()
 if (ONLY.includes('instructions')) checkInstructionsWired()
 if (ONLY.includes('status')) checkStatusTable()
 if (ONLY.includes('phases')) checkPhaseTitles()

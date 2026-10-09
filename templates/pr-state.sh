@@ -60,9 +60,13 @@ main() {
   local issues_json="null" truncated="false"
 
   now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  [ -n "$WORKTREE" ] && cd "$WORKTREE"
 
   pr_json='{"headRefName":null,"headRefOid":null,"bodyDigest":null,"acceptanceChecked":null,"decisionLog":null,"mergeable":null,"mergeStateStatus":null,"lastCommitDate":null,"commitCount":null,"ciState":null,"ciChecks":null,"reviewCommentIds":null,"files":null}'
+
+  if [ -n "$WORKTREE" ] && ! cd "$WORKTREE"; then
+    jq -nc --arg now "$now" --argjson pr "$pr_json" '{now:$now} + $pr + {openIssues:null, openIssuesTruncated:false}'
+    return
+  fi
 
   if [ -n "$PR" ]; then
     if [ -n "$REPO" ]; then

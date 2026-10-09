@@ -48,16 +48,15 @@ lines_json() { jq -Rsc 'split("\n") | map(select(length > 0))'; }
 
 dev() {
   local plan_stale="null" subs="null" gitdir="null" writable="null" layout="null" out total repo gd probe d bin t lout lrc tlist
+  local -a target_paths
 
   # planStale: files of the plan targets that moved on origin/<base> since the frozen base.
   if [ -n "$TARGETS" ] && [ -n "$WORKTREE" ] && [ -n "$BASE" ]; then
     git -C "$WORKTREE" fetch origin "$BASE" -q >/dev/null 2>&1
-    set -f
-    # shellcheck disable=SC2086
-    if out="$(git -C "$WORKTREE" diff --name-only "HEAD...origin/$BASE" -- $TARGETS 2>/dev/null)"; then
+    IFS=' ' read -r -a target_paths <<< "$TARGETS"
+    if out="$(git -C "$WORKTREE" diff --name-only "HEAD...origin/$BASE" -- "${target_paths[@]+"${target_paths[@]}"}" 2>/dev/null)"; then
       plan_stale="$(printf '%s\n' "$out" | lines_json)"
     fi
-    set +f
   fi
 
   # layout (#307): the planned paths, as empty files in a scratch tree, against the repo's ls-lint rules.

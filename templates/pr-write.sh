@@ -204,7 +204,7 @@ body_splice_op() {
 }
 
 main() {
-  [ -n "$WORKTREE" ] && cd "$WORKTREE"
+  if [ -n "$WORKTREE" ]; then cd "$WORKTREE" || { emit failed bad-args; return; }; fi
   mkdir -p .pipeline 2>/dev/null || ERRF=/dev/null
   case "$OP" in
     issue-comment) comment_op issue "$NUMBER" ;;

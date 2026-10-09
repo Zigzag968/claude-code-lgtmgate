@@ -69,19 +69,19 @@
 const fs = require('fs')
 const path = require('path')
 
-function parseArgs(argv) {
+function parseArguments(argv) {
   const out = { fp: 'workflows/deliver-pipeline.js', all: null, reportUnused: false, fixtures: [] }
-  for (let i = 0; i < argv.length; i++) {
-    if (argv[i] === '--fp' && argv[i + 1]) { out.fp = argv[++i]; continue }
-    if (argv[i] === '--all' && argv[i + 1]) { out.all = argv[++i]; continue }
-    if (argv[i] === '--report-unused') { out.reportUnused = true; continue }
-    out.fixtures.push(argv[i])
+  for (let index = 0; index < argv.length; index++) {
+    if (argv[index] === '--fp' && argv[index + 1]) { out.fp = argv[++index]; continue }
+    if (argv[index] === '--all' && argv[index + 1]) { out.all = argv[++index]; continue }
+    if (argv[index] === '--report-unused') { out.reportUnused = true; continue }
+    out.fixtures.push(argv[index])
   }
   return out
 }
 
-function stripExports(src) {
-  return src.replace(/^export\s+/mg, '')
+function stripExports(source) {
+  return source.replace(/^export\s+/mg, '')
 }
 
 // `@@ENGINE_VERSION@@` anywhere in a fixture (args, calls, expect) stands for the version of the engine under
@@ -89,8 +89,8 @@ function stripExports(src) {
 // a fixture that quotes it (the plugin-version probe answer, a reason naming it) survives a bump. A fixture that
 // uses the token against an engine with no BUILD version is refused, never run with the token left in.
 const ENGINE_VERSION_TOKEN = '@@ENGINE_VERSION@@'
-function engineVersionOf(src) {
-  const m = /const BUILD = \{[^}]*\bversion: '([^']+)'/.exec(String(src))
+function engineVersionOf(source) {
+  const m = /const BUILD = \{[^}]*\bversion: '([^']+)'/.exec(String(source))
   return m ? m[1] : null
 }
 // A version string as the engine writes it in BUILD (semver, optional pre-release).
@@ -122,15 +122,15 @@ function tokenizeVersionProbes(calls, versions) {
   for (const label of Object.keys(calls || {})) {
     if (!VERSION_PROBE_LABEL.test(label)) continue
     const entries = Array.isArray(calls[label]) ? calls[label] : [calls[label]]
-    for (const e of entries) {
-      if (e === null || typeof e !== 'object') continue
+    for (const callEntry of entries) {
+      if (callEntry === null || typeof callEntry !== 'object') continue
       for (const k of ['line', 'verify']) {
-        if (typeof e[k] !== 'string') continue
+        if (typeof callEntry[k] !== 'string') continue
         for (const v of versions) {
           if (!v) continue
           const from = `"PLUGIN-VERSION:${v}"`
-          if (!e[k].includes(from)) continue
-          e[k] = e[k].split(from).join(`"PLUGIN-VERSION:${ENGINE_VERSION_TOKEN}"`)
+          if (!callEntry[k].includes(from)) continue
+          callEntry[k] = callEntry[k].split(from).join(`"PLUGIN-VERSION:${ENGINE_VERSION_TOKEN}"`)
           n++
         }
       }
@@ -139,10 +139,10 @@ function tokenizeVersionProbes(calls, versions) {
   return n
 }
 
-function listJson(dir) {
+function listJson(directory) {
   const out = []
-  for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
-    const p = path.join(dir, ent.name)
+  for (const ent of fs.readdirSync(directory, { withFileTypes: true })) {
+    const p = path.join(directory, ent.name)
     if (ent.isDirectory()) out.push(...listJson(p))
     else if (ent.isFile() && ent.name.endsWith('.json')) out.push(p)
   }
@@ -154,9 +154,9 @@ function listJson(dir) {
 // errors on purpose (fail-open probes, agent-death routing), so the harness must fail the
 // fixture itself — a run that "passed" while a call went unanswered proves nothing.
 function buildFixtureAgent(fixture, calls, missing, cursors, withPrompts = false) {
-  return async (prompt, opts) => {
-    const label = opts && opts.label
-    const entry = { label: label || null, hasSchema: !!(opts && opts.schema) }
+  return async (prompt, options) => {
+    const label = options && options.label
+    const entry = { label: label || null, hasSchema: !!(options && options.schema) }
     if (withPrompts) entry.prompt = String(prompt)
     calls.push(entry)
     const head = String(prompt).slice(0, 200)
@@ -170,13 +170,13 @@ function buildFixtureAgent(fixture, calls, missing, cursors, withPrompts = false
     }
     const value = fixture.calls[label]
     if (Array.isArray(value)) {
-      const i = cursors.get(label) || 0
-      if (i >= value.length) {
+      const index = cursors.get(label) || 0
+      if (index >= value.length) {
         missing.push(`fixture entry "${label}" exhausted after ${value.length} call(s)`)
         throw new Error(`[offline] fixture entry "${label}" exhausted after ${value.length} call(s) (fixture "${fixture.name}")`)
       }
-      cursors.set(label, i + 1)
-      return clone(value[i])
+      cursors.set(label, index + 1)
+      return clone(value[index])
     }
     return clone(value)
   }
@@ -186,13 +186,12 @@ function clone(v) {
   return v === null || typeof v !== 'object' ? v : JSON.parse(JSON.stringify(v))
 }
 
-function buildPipelineRunner(fpSrcStripped) {
-  // eslint-disable-next-line no-new-func
+function buildPipelineRunner(fpSourceStripped) {
   const run = new Function(
     'args', 'agent', 'log', 'phase',
-    'return (async () => {\n' + fpSrcStripped + '\n})()',
+    'return (async () => {\n' + fpSourceStripped + '\n})()',
   )
-  run.engineVersion = engineVersionOf(fpSrcStripped)
+  run.engineVersion = engineVersionOf(fpSourceStripped)
   return run
 }
 
@@ -203,7 +202,7 @@ function findUnused(fixture, calls, cursors) {
     if (!calls.some((c) => c.label === label)) { unused.push(label); continue }
     const value = fixture.calls[label]
     if (Array.isArray(value)) {
-      for (let i = cursors.get(label) || 0; i < value.length; i++) unused.push(`${label}[${i}]`)
+      for (let index = cursors.get(label) || 0; index < value.length; index++) unused.push(`${label}[${index}]`)
     }
   }
   return unused
@@ -234,37 +233,37 @@ function promptProblems(exp, calls) {
     if (exp[key] === undefined) continue
     const entries = Array.isArray(exp[key]) ? exp[key] : [exp[key]]
     if (entries.length === 0) { problems.push(`${key}: must be an entry or a non-empty array of entries`); continue }
-    for (const e of entries) {
-      if (e === null || typeof e !== 'object' || Array.isArray(e)) { problems.push(`${key}: each entry must be an object`); continue }
-      const bad = Object.keys(e).find((k) => !['label', 'nth', field].includes(k))
+    for (const callEntry of entries) {
+      if (callEntry === null || typeof callEntry !== 'object' || Array.isArray(callEntry)) { problems.push(`${key}: each entry must be an object`); continue }
+      const bad = Object.keys(callEntry).find((k) => !['label', 'nth', field].includes(k))
       if (bad !== undefined) { problems.push(`${key}: unknown entry key "${bad}" (allowed: label, nth, ${field})`); continue }
-      if (!isNonEmptyString(e.label)) { problems.push(`${key}: "label" must be a non-empty string`); continue }
-      if (e.nth !== undefined && !(Number.isInteger(e.nth) && e.nth >= 0)) { problems.push(`${key}: "nth" must be an integer >= 0`); continue }
-      if (!Array.isArray(e[field]) || e[field].length < minLen || e[field].some((s) => !isNonEmptyString(s))) {
+      if (!isNonEmptyString(callEntry.label)) { problems.push(`${key}: "label" must be a non-empty string`); continue }
+      if (callEntry.nth !== undefined && !(Number.isInteger(callEntry.nth) && callEntry.nth >= 0)) { problems.push(`${key}: "nth" must be an integer >= 0`); continue }
+      if (!Array.isArray(callEntry[field]) || callEntry[field].length < minLen || callEntry[field].some((s) => !isNonEmptyString(s))) {
         problems.push(`${key}: "${field}" must be an array of at least ${minLen} non-empty string(s)`)
         continue
       }
-      const nth = e.nth === undefined ? 0 : e.nth
-      const target = calls.filter((c) => c.label === e.label)[nth]
+      const nth = callEntry.nth === undefined ? 0 : callEntry.nth
+      const target = calls.filter((c) => c.label === callEntry.label)[nth]
       if (target === undefined) {
-        problems.push(`${key}: no call nth ${nth} of label "${e.label}" (calls: ${calls.map((c) => c.label).join(', ')})`)
+        problems.push(`${key}: no call nth ${nth} of label "${callEntry.label}" (calls: ${calls.map((c) => c.label).join(', ')})`)
         continue
       }
       const prompt = typeof target.prompt === 'string' ? target.prompt : ''
       if (key === 'promptIncludes') {
-        for (const needle of e.includes) {
-          if (!prompt.includes(needle)) problems.push(`promptIncludes: "${e.label}"[${nth}] prompt lacks "${needle}"`)
+        for (const needle of callEntry.includes) {
+          if (!prompt.includes(needle)) problems.push(`promptIncludes: "${callEntry.label}"[${nth}] prompt lacks "${needle}"`)
         }
       } else if (key === 'promptExcludes') {
-        for (const needle of e.excludes) {
-          if (prompt.includes(needle)) problems.push(`promptExcludes: "${e.label}"[${nth}] prompt holds "${needle}"`)
+        for (const needle of callEntry.excludes) {
+          if (prompt.includes(needle)) problems.push(`promptExcludes: "${callEntry.label}"[${nth}] prompt holds "${needle}"`)
         }
       } else {
         let last = -1
-        for (const s of e.order) {
+        for (const s of callEntry.order) {
           const at = prompt.indexOf(s)
-          if (at === -1) { problems.push(`promptOrder: "${e.label}"[${nth}] prompt lacks "${s}"`); break }
-          if (at <= last) { problems.push(`promptOrder: "${e.label}"[${nth}] "${s}" is not after the previous string`); break }
+          if (at === -1) { problems.push(`promptOrder: "${callEntry.label}"[${nth}] prompt lacks "${s}"`); break }
+          if (at <= last) { problems.push(`promptOrder: "${callEntry.label}"[${nth}] "${s}" is not after the previous string`); break }
           last = at
         }
       }
@@ -289,8 +288,8 @@ function check(fixture, result, logs, calls = [], phases = []) {
   }
   if (Array.isArray(exp.trace)) {
     const got = Array.isArray(result.trace) ? result.trace : []
-    exp.trace.forEach((t, i) => {
-      if (got[i] !== t) problems.push(`trace[${i}]: expected "${t}", got "${got[i]}"`)
+    exp.trace.forEach((t, index) => {
+      if (got[index] !== t) problems.push(`trace[${index}]: expected "${t}", got "${got[index]}"`)
     })
   }
   if (exp.traceExact !== undefined) {
@@ -307,14 +306,14 @@ function check(fixture, result, logs, calls = [], phases = []) {
     if (!Array.isArray(exp.callLabels)) problems.push('callLabels: must be an array')
     else {
       const got = calls.map((c) => c.label)
-      if (got.length !== exp.callLabels.length || got.some((l, i) => l !== exp.callLabels[i])) {
+      if (got.length !== exp.callLabels.length || got.some((l, index) => l !== exp.callLabels[index])) {
         problems.push(`callLabels: expected ${JSON.stringify(exp.callLabels)}, got ${JSON.stringify(got)}`)
       }
     }
   }
   if (exp.phases !== undefined) {
     if (!Array.isArray(exp.phases)) problems.push('phases: must be an array')
-    else if (phases.length !== exp.phases.length || phases.some((p, i) => p !== exp.phases[i])) {
+    else if (phases.length !== exp.phases.length || phases.some((p, index) => p !== exp.phases[index])) {
       problems.push(`phases: expected ${JSON.stringify(exp.phases)}, got ${JSON.stringify(phases)}`)
     }
   }
@@ -382,31 +381,31 @@ async function replayFixture(fixture, run, { sites = false, prompts = false } = 
     const agentInner = agent
     log = (m) => { siteList.push(`L${engineSite()}`); return logInner(m) }
     phase = (...a) => { siteList.push(`P${engineSite()}`); return phaseInner(...a) }
-    agent = (prompt, opts) => { siteList.push(`A${engineSite()}:${(opts && opts.label) || ''}`); return agentInner(prompt, opts) }
+    agent = (prompt, options) => { siteList.push(`A${engineSite()}:${(options && options.label) || ''}`); return agentInner(prompt, options) }
   }
   let result
   let error = null
-  try { result = await run(clone(fixture.args || {}), agent, log, phase) } catch (e) { error = e }
+  try { result = await run(clone(fixture.args || {}), agent, log, phase) } catch (caught) { error = caught }
   return { result, error, logs, calls, missing, cursors, sites: siteList, phases }
 }
 
-async function runOne(fixturePath, fpSrcStripped) {
+async function runOne(fixturePath, fpSourceStripped) {
   const fixture = JSON.parse(fs.readFileSync(fixturePath, 'utf-8'))
   if (!fixture.name) fixture.name = path.basename(fixturePath, '.json')
-  if (fixture.runs !== undefined) return runChain(fixture, fpSrcStripped)
-  return runSingle(fixture, fpSrcStripped)
+  if (fixture.runs !== undefined) return runChain(fixture, fpSourceStripped)
+  return runSingle(fixture, fpSourceStripped)
 }
 
 // A multi-run fixture replays its runs in order, each against its own calls and expect, through runSingle. What a later run
 // sees of the earlier one is only what its `carry` names: { "<arg>": "<field>" } sets that arg of run N to that top-level
 // field of run N-1's result (the way the Lead hands `plan` back as `planText` on a relaunch). A failing run ends the chain.
 const RUN_KEYS = ['args', 'calls', 'expect', 'carry']
-async function runChain(fixture, fpSrcStripped) {
+async function runChain(fixture, fpSourceStripped) {
   const problems = []
   const logs = []
   const unused = []
   const allCalls = []
-  let prev = null
+  let previous = null
   let result = { status: 'none' }
   if (fixture.args !== undefined || fixture.calls !== undefined || fixture.expect !== undefined) {
     throw new Error(`[offline] fixture "${fixture.name}" sets "runs" and also a top-level args/calls/expect — a multi-run fixture keeps them inside each run`)
@@ -414,54 +413,54 @@ async function runChain(fixture, fpSrcStripped) {
   if (!Array.isArray(fixture.runs) || fixture.runs.length < 2) {
     throw new Error(`[offline] fixture "${fixture.name}": "runs" must be an array of at least 2 runs`)
   }
-  for (let i = 0; i < fixture.runs.length; i++) {
-    const spec = fixture.runs[i]
-    const tag = `run ${i + 1}`
+  for (let index = 0; index < fixture.runs.length; index++) {
+    const spec = fixture.runs[index]
+    const tag = `run ${index + 1}`
     if (spec === null || typeof spec !== 'object') throw new Error(`[offline] fixture "${fixture.name}": ${tag} is not an object`)
     for (const key of Object.keys(spec)) {
       if (!RUN_KEYS.includes(key)) throw new Error(`[offline] fixture "${fixture.name}": ${tag} has unknown key "${key}" (allowed: ${RUN_KEYS.join(', ')})`)
     }
-    const args = JSON.parse(JSON.stringify(spec.args || {}))
+    const arguments_ = JSON.parse(JSON.stringify(spec.args || {}))
     if (spec.carry !== undefined) {
-      if (i === 0 || spec.carry === null || typeof spec.carry !== 'object') {
+      if (index === 0 || spec.carry === null || typeof spec.carry !== 'object') {
         throw new Error(`[offline] fixture "${fixture.name}": ${tag} "carry" must be an object and needs an earlier run`)
       }
-      for (const [argName, field] of Object.entries(spec.carry)) {
-        if (prev.result[field] === undefined) {
-          problems.push(`${tag}: carry "${argName}" <- result.${field}, but run ${i} returned no "${field}" (status ${prev.result.status})`)
-        } else args[argName] = clone(prev.result[field])
+      for (const [argumentName, field] of Object.entries(spec.carry)) {
+        if (previous.result[field] === undefined) {
+          problems.push(`${tag}: carry "${argumentName}" <- result.${field}, but run ${index} returned no "${field}" (status ${previous.result.status})`)
+        } else arguments_[argumentName] = clone(previous.result[field])
       }
       if (problems.length) break
     }
-    const r = await runSingle({ name: `${fixture.name}#${i + 1}`, args, calls: spec.calls, expect: spec.expect }, fpSrcStripped)
+    const r = await runSingle({ name: `${fixture.name}#${index + 1}`, args: arguments_, calls: spec.calls, expect: spec.expect }, fpSourceStripped)
     for (const p of r.problems) problems.push(`${tag}: ${p}`)
     for (const u of r.unused) unused.push(`${tag}: ${u}`)
     logs.push(...r.logs)
     allCalls.push(...r.calls)
     result = r.result
-    prev = r
+    previous = r
     if (r.problems.length) break
   }
   return { fixture, result, logs, calls: allCalls, problems, unused }
 }
 
-async function runSingle(fixture, fpSrcStripped) {
+async function runSingle(fixture, fpSourceStripped) {
   if (!fixture.calls || typeof fixture.calls !== 'object') {
     throw new Error(`[offline] fixture "${fixture.name}" has no "calls" object`)
   }
   if (fixture.args && fixture.args.simulate) {
     throw new Error(`[offline] fixture "${fixture.name}" sets args.simulate — this harness runs the REAL parsers, never simulate mode`)
   }
-  const run = buildPipelineRunner(fpSrcStripped)
+  const run = buildPipelineRunner(fpSourceStripped)
   fixture = withEngineVersion(fixture, run.engineVersion)
   const r = await replayFixture(fixture, run, { prompts: true })
   const { logs, calls, missing, cursors } = r
   const expThrows = fixture.expect && fixture.expect.throws
   if (typeof expThrows === 'string') {
-    const err = r.error
+    const error = r.error
     const problems = expectKeyProblems(fixture.expect)
-    if (!err) problems.push(`throws: expected an error containing "${expThrows}", but the run did not throw`)
-    else if (!String(err.message).includes(expThrows)) problems.push(`throws: expected message containing "${expThrows}", got "${err.message}"`)
+    if (!error) problems.push(`throws: expected an error containing "${expThrows}", but the run did not throw`)
+    else if (!String(error.message).includes(expThrows)) problems.push(`throws: expected message containing "${expThrows}", got "${error.message}"`)
     if (calls.length) problems.push(`throws: ${calls.length} agent() call(s) happened before the refusal (${calls.map((c) => c.label || c).join(', ')})`)
     return { fixture, result: { status: 'threw' }, logs, calls, problems, unused: findUnused(fixture, calls, cursors) }
   }
@@ -473,34 +472,34 @@ async function runSingle(fixture, fpSrcStripped) {
 }
 
 async function main() {
-  const { fp, all, fixtures, reportUnused } = parseArgs(process.argv.slice(2))
+  const { fp, all, fixtures, reportUnused } = parseArguments(process.argv.slice(2))
   const files = all ? listJson(path.resolve(all)) : fixtures.map((f) => path.resolve(f))
   if (!files.length) {
     process.stderr.write('usage: node scripts/run-offline.cjs <fixture.json>... | --all <dir> [--fp <pipeline.js>]\n')
     process.stdout.write('[offline] status=harness-error passed=0 failed=0\n')
     process.exit(1)
   }
-  const fpSrcStripped = stripExports(fs.readFileSync(path.resolve(fp), 'utf-8'))
+  const fpSourceStripped = stripExports(fs.readFileSync(path.resolve(fp), 'utf-8'))
 
   let passed = 0
   let failed = 0
   for (const f of files) {
-    const rel = path.relative(process.cwd(), f)
+    const relativePath = path.relative(process.cwd(), f)
     try {
-      const r = await runOne(f, fpSrcStripped)
+      const r = await runOne(f, fpSourceStripped)
       if (r.problems.length) {
         failed++
-        process.stdout.write(`FAIL: ${rel} (${r.fixture.name}) status=${r.result.status}\n`)
+        process.stdout.write(`FAIL: ${relativePath} (${r.fixture.name}) status=${r.result.status}\n`)
         for (const p of r.problems) process.stdout.write(`  - ${p}\n`)
         if (process.env.OFFLINE_VERBOSE === '1') for (const l of r.logs) process.stdout.write(`  | ${l}\n`)
       } else {
         passed++
-        process.stdout.write(`ok: ${rel} (${r.fixture.name}) status=${r.result.status} calls=${r.calls.length}\n`)
+        process.stdout.write(`ok: ${relativePath} (${r.fixture.name}) status=${r.result.status} calls=${r.calls.length}\n`)
       }
       if (reportUnused) for (const u of r.unused) process.stdout.write(`  unused: ${u}\n`)
-    } catch (e) {
+    } catch (error) {
       failed++
-      process.stdout.write(`FAIL: ${rel} — ${e && e.message ? e.message : String(e)}\n`)
+      process.stdout.write(`FAIL: ${relativePath} — ${e && e.message ? e.message : String(e)}\n`)
     }
   }
   const status = failed === 0 ? 'ok' : 'fail'
@@ -513,8 +512,8 @@ async function main() {
 module.exports = { stripExports, buildPipelineRunner, replayFixture, engineVersionOf, engineVersionOfStamp, ENGINE_VERSION_RE, tokenizeVersionProbes, ENGINE_VERSION_TOKEN }
 
 if (require.main === module) {
-  main().catch((err) => {
-    console.error(err && err.stack ? err.stack : String(err))
+  main().catch((error) => {
+    console.error(error && error.stack ? error.stack : String(error))
     process.stdout.write('[offline] status=harness-error passed=0 failed=0\n')
     process.exit(1)
   })
