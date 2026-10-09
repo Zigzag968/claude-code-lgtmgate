@@ -1,43 +1,11 @@
 {
-  "scripts/guards.cjs": {
-    "max-lines": 1,
-    "no-shadow": 1,
-    "unicorn/name-replacements": 41
-  },
-  "scripts/lead-merge.sh": {
-    "max-lines": 1,
-    "suppression": 1
-  },
-  "scripts/run-flow-suite.cjs": {
-    "suppression": 2,
-    "unicorn/name-replacements": 19
-  },
-  "scripts/run-offline.cjs": {
-    "suppression": 1,
-    "unicorn/name-replacements": 28
-  },
   "templates/pr-body-splice.cjs": {
     "unicorn/name-replacements": 16
-  },
-  "templates/pr-state.sh": {
-    "SC2164": 1
-  },
-  "templates/pr-write.sh": {
-    "SC2164": 1
-  },
-  "templates/preflight.sh": {
-    "suppression": 1
-  },
-  "templates/probe-run.cjs": {
-    "unicorn/name-replacements": 21
   },
   "templates/test-deliver-pipeline.js": {
     "max-lines": 1,
     "suppression": 10,
     "unicorn/name-replacements": 1127
-  },
-  "tests/hooks/test-SubagentStop-worktree-cleanup.sh": {
-    "SC2046": 9
   },
   "tests/scripts/test-capture-incident.sh": {
     "max-lines": 1
