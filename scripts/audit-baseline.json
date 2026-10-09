@@ -2,21 +2,6 @@
   "templates/test-deliver-pipeline.js": {
     "max-lines": 1
   },
-  "tests/scripts/test-capture-incident.sh": {
-    "max-lines": 1
-  },
-  "tests/scripts/test-lead-merge.sh": {
-    "max-lines": 1
-  },
-  "tests/scripts/test-publish-fixture.sh": {
-    "max-lines": 1
-  },
-  "tests/templates/test-canonical-guards.sh": {
-    "max-lines": 1
-  },
-  "tests/templates/test-probe-run.sh": {
-    "max-lines": 1
-  },
   "workflows/deliver-pipeline.js": {
     "max-lines": 1,
     "unicorn/name-replacements": 8
