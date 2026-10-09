@@ -231,18 +231,16 @@ import re, sys
 rows = open(sys.argv[1], newline="").read().split("\n")
 def fence_after(line, fence):
     t = line.lstrip()
-    c = t[:1]
-    run = 0
-    if c in ("`", "~") and len(line) - len(t) <= 3:
-        while run < len(t) and t[run] == c:
-            run += 1
+    c, run = t[:1], 0
+    while c in ("`", "~") and len(line) - len(t) <= 3 and run < len(t) and t[run] == c:
+        run += 1
     if fence != "":
         return "" if run >= len(fence) and c == fence[0] and t[run:].strip() == "" else fence
     return c * run if run >= 3 and not (c == "`" and "`" in t[run:]) else ""
 review = open(sys.argv[2]).read().replace("\r", "").split("\n")
 def norm(s):
     return re.sub(r"\s+", " ", s.replace("**", "").replace("`", "")).strip()
-proven = []  # (normalised box text, raw proof)
+proven = []
 pat = re.compile(r"^\s*(?:[—–:]|--?)?\s*verified,?\s+tick pending\s*\(permissions\)\s*:\s*(\S.*)$", re.I)
 for line in review:
     m = re.match(r"^\s*[-*]\s*(?:\[[ xX]\]\s*)?(.*)$", line)
