@@ -9,7 +9,8 @@
 # worktree must not let a link escape it, and must leave no residual directory behind — the bug
 # this fix closes: mkdir -p ran BEFORE the containment check) + #53 happy-path non-regression
 # (an ordinary link still succeeds); #72 forbidden skips the implicit .env link + #72 default
-# (unset) non-regression (implicit .env link still created).
+# (unset) non-regression (implicit .env link still created); #313 `--soft` marker: soft pair
+# linked / warned, hard pair still fails, dash-leading path rejected.
 #
 # Fixtures are created fresh per case under mktemp -d and intentionally left in place afterwards
 # — nothing in this file deletes them (.claude/rules/pr-acceptance.md: scratch vs in-place
@@ -147,6 +148,60 @@ ok5="false"
 [ "$first5" = "PROVISION-VERSION:2" ] && [ "$first5b" = "PROVISION-VERSION:2" ] && ok5="true"
 assert_case "#82 PROVISION-VERSION:2 is the first stdout line on every path" "$ok5" \
   "normal='$first5', usage-error='$first5b'"
+
+# --- case 6: #313 soft pair with an existing source is linked ---------------
+
+pair6="$(new_git_pair)"
+main6="${pair6% *}"; wt6="${pair6#* }"
+mkdir -p "$main6/cache"
+echo "c" > "$main6/cache/f.txt"
+out6="$(bash "$PROVISION" "$wt6" --soft "cache" "cache" 2>&1)"
+exit6=$?
+linked6="$(bool bash -c 'printf "%s" "$1" | grep -q "^LINKED cache"' _ "$out6")"
+resolves6="$(bool test -e "$wt6/cache/f.txt")"
+ok6="false"
+[ "$exit6" -eq 0 ] && [ "$linked6" = "true" ] && [ "$resolves6" = "true" ] && ok6="true"
+assert_case "#313 soft pair with an existing source is linked" "$ok6" \
+  "exit=$exit6 (want 0), linked_line=$linked6, resolves=$resolves6"
+
+# --- case 7: #313 soft pair with an absent source warns and exits 0 ---------
+
+pair7="$(new_git_pair)"
+wt7="${pair7#* }"
+out7="$(bash "$PROVISION" "$wt7" --soft "absent-dir" "absent-dir" 2>&1)"
+exit7=$?
+warned7="$(bool bash -c 'printf "%s" "$1" | grep -q "WARN optional src missing:"' _ "$out7")"
+ok7="false"
+[ "$exit7" -eq 0 ] && [ "$warned7" = "true" ] && ok7="true"
+assert_case "#313 soft pair with an absent source warns and exits 0" "$ok7" \
+  "exit=$exit7 (want 0), warned=$warned7"
+
+# --- case 8: #313 the same absent source as a HARD pair still fails ----------
+
+pair8="$(new_git_pair)"
+wt8="${pair8#* }"
+out8="$(bash "$PROVISION" "$wt8" "absent-dir" "absent-dir" --soft "other-absent" "other-absent" 2>&1)"
+exit8=$?
+missing8="$(bool bash -c 'printf "%s" "$1" | grep -q "MISSING-SRC .*absent-dir"' _ "$out8")"
+ok8="false"
+[ "$exit8" -eq 2 ] && [ "$missing8" = "true" ] && ok8="true"
+assert_case "#313 hard pair with an absent source still exits 2 MISSING-SRC" "$ok8" \
+  "exit=$exit8 (want 2), missing_src=$missing8"
+
+# --- case 9: #313 a path starting with a dash is rejected --------------------
+
+pair9="$(new_git_pair)"
+wt9="${pair9#* }"
+out9a="$(bash "$PROVISION" "$wt9" --soft "-x" "ok" 2>&1)"
+exit9a=$?
+out9b="$(bash "$PROVISION" "$wt9" "ok" "-x" 2>&1)"
+exit9b=$?
+rej9a="$(bool bash -c 'printf "%s" "$1" | grep -q "(path segment rejected)"' _ "$out9a")"
+rej9b="$(bool bash -c 'printf "%s" "$1" | grep -q "(path segment rejected)"' _ "$out9b")"
+ok9="false"
+[ "$exit9a" -eq 2 ] && [ "$exit9b" -eq 2 ] && [ "$rej9a" = "true" ] && [ "$rej9b" = "true" ] && ok9="true"
+assert_case "#313 a path starting with a dash is rejected" "$ok9" \
+  "src exit=$exit9a rejected=$rej9a, dst exit=$exit9b rejected=$rej9b (want 2, true)"
 
 # --- summary -------------------------------------------------------------
 
