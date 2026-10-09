@@ -135,62 +135,27 @@ def build_parser() -> argparse.ArgumentParser:
 _URL_NUMBER = re.compile(r"/issues/([1-9][0-9]*)\s*$")
 
 
-def main(argv: List[str], cfg, gh=None, dep_runner=None) -> int:
-    args = build_parser().parse_args(argv)
-    try:
-        if args.body_file:
-            with open(args.body_file, encoding="utf-8") as handle:
-                body = handle.read()
-        else:
-            body = args.body or ""
-    except OSError as exc:
-        print("[backlog-file] error: %s" % exc)
-        return 1
+def _read_body(args) -> str:
+    if args.body_file:
+        with open(args.body_file, encoding="utf-8") as handle:
+            return handle.read()
+    return args.body or ""
 
-    offline = bool(args.issues_file or args.labels_file)
-    if args.apply and offline:
-        print("[backlog-file] error: --apply cannot be combined with --issues-file/--labels-file (offline inputs are dry-run only)")
-        return 1
 
-    try:
-        if gh is None and not (args.issues_file and args.labels_file):
-            from backlog_gh import Gh
+def _load_inputs(args, cfg, gh):
+    if gh is None and not (args.issues_file and args.labels_file):
+        from backlog_gh import Gh
 
-            gh = Gh(cfg)
-        issues = load_json_list(args.issues_file) if args.issues_file else gh.fetch_issues("open", OPEN_LIMIT)
-        if args.labels_file:
-            repo_labels = {str(entry["name"]) for entry in load_json_list(args.labels_file)}
-        else:
-            repo_labels = gh.fetch_label_names()
-    except (RuntimeError, ValueError, KeyError, OSError, json.JSONDecodeError) as exc:
-        print("[backlog-file] error: %s" % exc)
-        return 1
+        gh = Gh(cfg)
+    issues = load_json_list(args.issues_file) if args.issues_file else gh.fetch_issues("open", OPEN_LIMIT)
+    if args.labels_file:
+        repo_labels = {str(entry["name"]) for entry in load_json_list(args.labels_file)}
+    else:
+        repo_labels = gh.fetch_label_names()
+    return gh, issues, repo_labels
 
-    blockers = sorted(set(args.blocked_by))
-    codes = validate_intake(args.title, body, args.label, cfg, issues, repo_labels)
-    if len(blockers) > MAX_DEP_LINKS:
-        codes.append("too-many-blocked-by:%d" % MAX_DEP_LINKS)
-    labels = final_labels(args.label, cfg)
-    digest = payload_digest(args.title, body, labels, cfg.repo, blockers)
-    verdict = "ok" if not codes else "refused"
-    print("[backlog-file] verdict=%s codes=%s payload-digest=%s" % (verdict, ",".join(codes) or "-", digest))
-    print("[backlog-file] labels=%s" % ",".join(sorted(labels)))
-    for number in blockers:
-        print("[backlog-file] planned blocked-by: #%d" % number)
 
-    if not args.apply:
-        print("[backlog-file] dry-run: nothing created")
-        return 0
-    if codes:
-        print("[backlog-file] refusing to create: the payload is refused")
-        return 1
-    if cfg.mode == "propose":
-        print("[backlog-file] mode=propose: proposal only, nothing created")
-        return 0
-    if cfg.mode == "write-supervised":
-        if args.confirm != digest:
-            print("[backlog-file] refusing to create: --confirm must equal the printed payload-digest %s" % digest)
-            return 1
+def _create_and_link(args, cfg, gh, dep_runner, body: str, labels: List[str], blockers: List[int]) -> int:
     dep_gh = None
     if blockers:
         try:  # built BEFORE the create: a mode/repo refusal must never leave a created issue without its links
@@ -227,3 +192,50 @@ def main(argv: List[str], cfg, gh=None, dep_runner=None) -> int:
               % (created, url, ", ".join("#%d" % n for n in missing), first_error))
         return 1
     return 0
+
+
+def main(argv: List[str], cfg, gh=None, dep_runner=None) -> int:
+    args = build_parser().parse_args(argv)
+    try:
+        body = _read_body(args)
+    except OSError as exc:
+        print("[backlog-file] error: %s" % exc)
+        return 1
+
+    offline = bool(args.issues_file or args.labels_file)
+    if args.apply and offline:
+        print("[backlog-file] error: --apply cannot be combined with --issues-file/--labels-file (offline inputs are dry-run only)")
+        return 1
+
+    try:
+        gh, issues, repo_labels = _load_inputs(args, cfg, gh)
+    except (RuntimeError, ValueError, KeyError, OSError, json.JSONDecodeError) as exc:
+        print("[backlog-file] error: %s" % exc)
+        return 1
+
+    blockers = sorted(set(args.blocked_by))
+    codes = validate_intake(args.title, body, args.label, cfg, issues, repo_labels)
+    if len(blockers) > MAX_DEP_LINKS:
+        codes.append("too-many-blocked-by:%d" % MAX_DEP_LINKS)
+    labels = final_labels(args.label, cfg)
+    digest = payload_digest(args.title, body, labels, cfg.repo, blockers)
+    verdict = "ok" if not codes else "refused"
+    print("[backlog-file] verdict=%s codes=%s payload-digest=%s" % (verdict, ",".join(codes) or "-", digest))
+    print("[backlog-file] labels=%s" % ",".join(sorted(labels)))
+    for number in blockers:
+        print("[backlog-file] planned blocked-by: #%d" % number)
+
+    if not args.apply:
+        print("[backlog-file] dry-run: nothing created")
+        return 0
+    if codes:
+        print("[backlog-file] refusing to create: the payload is refused")
+        return 1
+    if cfg.mode == "propose":
+        print("[backlog-file] mode=propose: proposal only, nothing created")
+        return 0
+    if cfg.mode == "write-supervised":
+        if args.confirm != digest:
+            print("[backlog-file] refusing to create: --confirm must equal the printed payload-digest %s" % digest)
+            return 1
+    return _create_and_link(args, cfg, gh, dep_runner, body, labels, blockers)
