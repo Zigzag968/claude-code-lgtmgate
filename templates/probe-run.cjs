@@ -93,7 +93,7 @@ const PARSERS = {
       return { error: 'bad-json' }
     }
   },
-  // provision_worktree.sh output (#82). Independent of exit: the call site merges stderr (2>&1).
+  // provision-worktree.sh output (#82). Independent of exit: the call site merges stderr (2>&1).
   // No PROVISION-VERSION line = v1; 1 and 2 are accepted, anything else is an error.
   provision(stdout) {
     const text = String(stdout)

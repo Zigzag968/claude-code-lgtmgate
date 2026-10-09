@@ -27,19 +27,21 @@ Create the target folders if missing (`.claude/workflows`, `.claude/rules`, `.cl
 - `${CLAUDE_PLUGIN_ROOT}/templates/pr-acceptance.md`         → `.claude/rules/pr-acceptance.md`
 - `${CLAUDE_PLUGIN_ROOT}/templates/gh-pipeline-status.sh`    → `.claude/scripts/gh-pipeline-status.sh`
 - `${CLAUDE_PLUGIN_ROOT}/templates/blocked-by-check.sh`      → `.claude/scripts/blocked-by-check.sh`
-- `${CLAUDE_PLUGIN_ROOT}/templates/provision_worktree.sh`    → `scripts/provision_worktree.sh`
+- `${CLAUDE_PLUGIN_ROOT}/templates/provision-worktree.sh`    → `scripts/provision-worktree.sh`
 
-Then: `chmod +x .claude/scripts/gh-pipeline-status.sh`, `chmod +x .claude/scripts/blocked-by-check.sh` and `chmod +x scripts/provision_worktree.sh`.
+Then: `chmod +x .claude/scripts/gh-pipeline-status.sh`, `chmod +x .claude/scripts/blocked-by-check.sh` and `chmod +x scripts/provision-worktree.sh`.
 
-`blocked-by-check.sh` is not fail-closed like `provision_worktree.sh` — a project with no cross-repo dependency works fine without it, this copy is just an optional install slot.
+`blocked-by-check.sh` is not fail-closed like `provision-worktree.sh` — a project with no cross-repo dependency works fine without it, this copy is just an optional install slot.
 
-Setup (provisioning) is **fail-closed** on `scripts/provision_worktree.sh` — this copy is not optional: without it, the first run `exit 127`s.
+Setup (provisioning) is **fail-closed** on `scripts/provision-worktree.sh` — this copy is not optional: without it, the first run `exit 127`s.
+
+**Upgrading from the previous name.** A consumer initialised earlier has `scripts/provision_worktree.sh`. The engine keeps provisioning with that copy while `scripts/provision-worktree.sh` is absent. To switch, re-run init (`complete` mode installs the missing new name), then `git rm scripts/provision_worktree.sh`, commit and push (provisioning runs from the committed worktree). The fallback is removed under #364.
 
 (1 `cp` command per file — no compounding.)
 
-**Commit + push BEFORE the first run (mandatory — MANDATORY, claude-agent-pipeline#51).** The provisioning gate runs `bash "<worktree>/scripts/provision_worktree.sh"` **from the WORKTREE**, i.e. the content **COMMITTED** on `baseBranch` — not the working tree of the main checkout that `init` just wrote to. `git worktree add` always clones from a committed ref: until these files are committed + pushed to `baseBranch`, a freshly created worktree does NOT have `scripts/provision_worktree.sh`, the gate `exit 127`s, and the pipeline escalates `provision-failed` on the very first task — exactly the failure this gate is meant to prevent. Before the first `/lgtmgate:deliver`:
+**Commit + push BEFORE the first run (mandatory — MANDATORY, claude-agent-pipeline#51).** The provisioning gate runs `bash "<worktree>/scripts/provision-worktree.sh"` **from the WORKTREE**, i.e. the content **COMMITTED** on `baseBranch` — not the working tree of the main checkout that `init` just wrote to. `git worktree add` always clones from a committed ref: until these files are committed + pushed to `baseBranch`, a freshly created worktree does NOT have `scripts/provision-worktree.sh`, the gate `exit 127`s, and the pipeline escalates `provision-failed` on the very first task — exactly the failure this gate is meant to prevent. Before the first `/lgtmgate:deliver`:
 ```bash
-git add .claude/lgtmgate scripts/provision_worktree.sh .claude/workflows .claude/rules .claude/scripts .claude/pipeline.config.json
+git add .claude/lgtmgate scripts/provision-worktree.sh .claude/workflows .claude/rules .claude/scripts .claude/pipeline.config.json
 ```
 ```bash
 git commit -m "chore(pipeline): bootstrap lgtmgate machinery"

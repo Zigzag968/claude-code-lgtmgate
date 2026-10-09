@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Offline regression test for templates/provision_worktree.sh (claude-agent-pipeline#53 + #72),
+# Offline regression test for templates/provision-worktree.sh (claude-agent-pipeline#53 + #72),
 # exercising the REAL script (not a stub) against throwaway git worktrees under $TMPDIR — the
 # only level at which the containment-reorder (#53) and the PROVISION_ENV_SYMLINK seam (#72)
 # can be proven, since templates/test-deliver-pipeline.js only asserts the composed COMMAND
@@ -17,7 +17,7 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../templates" && pwd)"
-PROVISION="$SCRIPT_DIR/provision_worktree.sh"
+PROVISION="$SCRIPT_DIR/provision-worktree.sh"
 FIXTURE_ROOT="${FIXTURE_ROOT:-${TMPDIR:-/tmp}}"
 
 pass_count=0

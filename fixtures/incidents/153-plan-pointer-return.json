@@ -76,8 +76,8 @@
       "rationale": "All four gaps confirmed present on base; fix is the smallest change at each cause, no new status/agent/hook/seam. Proof log re-executed in the worktree this round."
     },
     "probe-151-provision-provision-r0": {
-      "line": "PROBE name=provision exit=0 sha=0a0001500e6f649a575d2515664fed6807d2e283f35ade49abafa5cfd5ddcda7 cmd=7be4ef1daa1aa22fb13a23d0dbf342ab14f2bb040034fff1e86dfddf3fd57cba json={\"version\":2,\"linked\":[],\"missing\":[],\"skipped\":false}",
-      "verify": "VERIFY ok line=PROBE name=provision exit=0 sha=0a0001500e6f649a575d2515664fed6807d2e283f35ade49abafa5cfd5ddcda7 cmd=7be4ef1daa1aa22fb13a23d0dbf342ab14f2bb040034fff1e86dfddf3fd57cba json={\"version\":2,\"linked\":[],\"missing\":[],\"skipped\":false}"
+      "line": "PROBE name=provision exit=0 sha=0a0001500e6f649a575d2515664fed6807d2e283f35ade49abafa5cfd5ddcda7 cmd=7e5f7773e98665cf671d0abb7e53dcdeb6bcfac55575c19bcf97a2d1d31780ad json={\"version\":2,\"linked\":[],\"missing\":[],\"skipped\":false}",
+      "verify": "VERIFY ok line=PROBE name=provision exit=0 sha=0a0001500e6f649a575d2515664fed6807d2e283f35ade49abafa5cfd5ddcda7 cmd=7e5f7773e98665cf671d0abb7e53dcdeb6bcfac55575c19bcf97a2d1d31780ad json={\"version\":2,\"linked\":[],\"missing\":[],\"skipped\":false}"
     },
     "probe-151-provision-freshness-provision-freshness-r0": {
       "line": "PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b cmd=aeedbb11a66e9abca86f7c808f52d0448e197b92ffa3334d359ce066bb3b003f json={\"state\":\"fresh\",\"behind\":0,\"own\":0}",

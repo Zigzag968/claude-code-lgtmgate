@@ -8,9 +8,6 @@
     "max-lines": 1,
     "suppression": 1
   },
-  "scripts/provision_worktree.sh": {
-    "ls-lint:.sh:kebabcase": 1
-  },
   "scripts/run-flow-suite.cjs": {
     "suppression": 2,
     "unicorn/name-replacements": 19
@@ -33,9 +30,6 @@
   },
   "templates/probe-run.cjs": {
     "unicorn/name-replacements": 21
-  },
-  "templates/provision_worktree.sh": {
-    "ls-lint:.sh:kebabcase": 1
   },
   "templates/test-deliver-pipeline.js": {
     "max-lines": 1,
