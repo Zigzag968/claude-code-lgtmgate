@@ -26,10 +26,12 @@
 #      let a symlink already committed in MAIN (e.g. "devkey" -> ~/.ssh/id_ed25519) link
 #      a real secret into the worktree, since they only ever inspect the DIRECTORY.
 #
-# Usage: provision-worktree.sh <worktree-path> [<src> <dst>]...
+# Usage: provision-worktree.sh <worktree-path> [<src> <dst>]... [--soft [<src> <dst>]...]
 #   <src>/<dst> are positional PAIRS (no separator char, so a path containing
 #   ':' or '=' can never be misparsed), relative to MAIN and to the worktree
-#   respectively. Every argv pair is HARD (missing source fails the run).
+#   respectively. Pairs before the first `--soft` token are HARD (missing source
+#   fails the run); pairs after it are SOFT (missing source only warns, #313). A
+#   path starting with '-' is rejected, so `--soft` can never be read as a path.
 #   The implicit ".env" -> ".env" link is always considered too, as SOFT
 #   (missing source only warns) — unless the caller already passes an
 #   explicit pair with dst=".env", in which case the caller's (hard) pair wins.
@@ -43,7 +45,7 @@
 # Exit codes:
 #   0 — every HARD link created (or none configured); SOFT misses only warn.
 #   1 — usage error: bad/missing worktree path, not a git worktree, odd arg
-#       count, or worktree resolves to MAIN itself (never self-link).
+#       count before or after `--soft`, or worktree resolves to MAIN itself (never self-link).
 #   2 — at least one HARD source was missing, rejected, or failed to link — see stderr.
 #
 # stdout (first line on every path, then one line per successfully created link):
@@ -64,7 +66,7 @@ set -uo pipefail
 echo "PROVISION-VERSION:2"
 
 if [ "$#" -lt 1 ]; then
-  echo "[provision] usage: provision-worktree.sh <worktree-path> [<src> <dst>]..." >&2
+  echo "[provision] usage: provision-worktree.sh <worktree-path> [<src> <dst>]... [--soft [<src> <dst>]...]" >&2
   exit 1
 fi
 
@@ -96,7 +98,21 @@ fi
 WT_PHYS="$(cd "$WORKTREE" && pwd -P)"
 MAIN_PHYS="$(cd "$MAIN" && pwd -P)"
 
-if [ $(( $# % 2 )) -ne 0 ]; then
+# Split the pairs at the FIRST `--soft` token (#313): before it HARD, after it SOFT. Each part
+# must hold whole pairs. A second `--soft` is an ordinary token, refused later by reject_path.
+hard_part=()
+soft_part=()
+seen_soft=0
+for arg in "$@"; do
+  if [ "$seen_soft" -eq 0 ] && [ "$arg" = "--soft" ]; then
+    seen_soft=1
+  elif [ "$seen_soft" -eq 0 ]; then
+    hard_part+=("$arg")
+  else
+    soft_part+=("$arg")
+  fi
+done
+if [ $(( ${#hard_part[@]} % 2 )) -ne 0 ] || [ $(( ${#soft_part[@]} % 2 )) -ne 0 ]; then
   echo "[provision] usage error: <src> <dst> arguments must come in pairs (got $# trailing arg(s))" >&2
   exit 1
 fi
@@ -121,12 +137,12 @@ src_exists() {
 }
 
 # reject_path REL — true (reject) if REL contains a `..` or `.` path segment, or is
-# absolute. Same rule as the JS-side safeLinkPath validator, so the two guards can
+# absolute, or starts with '-' (so `--soft` is never a path). Same rule as the JS-side safeLinkPath validator, so the two guards can
 # never disagree about what is safe.
 reject_path() {
   local rel="$1" seg
   case "$rel" in
-    /*) return 0 ;;
+    /*|-*) return 0 ;;
   esac
   local IFS=/
   for seg in $rel; do
@@ -175,10 +191,20 @@ existing_ancestor() {
 # `"${arr[@]}"` foreach — so an empty array never trips `set -u` on older bash).
 argv_srcs=()
 argv_dsts=()
-while [ "$#" -gt 0 ]; do
-  argv_srcs+=("$1")
-  argv_dsts+=("$2")
-  shift 2
+argv_hard=()
+pi=0
+while [ "$pi" -lt "${#hard_part[@]}" ]; do
+  argv_srcs+=("${hard_part[$pi]}")
+  argv_dsts+=("${hard_part[$((pi + 1))]}")
+  argv_hard+=(1)
+  pi=$((pi + 2))
+done
+pi=0
+while [ "$pi" -lt "${#soft_part[@]}" ]; do
+  argv_srcs+=("${soft_part[$pi]}")
+  argv_dsts+=("${soft_part[$((pi + 1))]}")
+  argv_hard+=(0)
+  pi=$((pi + 2))
 done
 argv_n=${#argv_dsts[@]}
 
@@ -200,7 +226,7 @@ while [ "$ai" -lt "$argv_n" ]; do
 done
 
 # Build the full (pre-dedupe) list: implicit soft .env first (unless overridden
-# above by an explicit argv pair), then every argv pair as HARD.
+# above by an explicit argv pair), then every argv pair (HARD before `--soft`, SOFT after).
 all_srcs=()
 all_dsts=()
 all_hard=()
@@ -215,7 +241,7 @@ ai=0
 while [ "$ai" -lt "$argv_n" ]; do
   all_srcs+=("${argv_srcs[$ai]}")
   all_dsts+=("${argv_dsts[$ai]}")
-  all_hard+=(1)
+  all_hard+=("${argv_hard[$ai]}")
   ai=$((ai + 1))
 done
 
