@@ -190,8 +190,8 @@ def build_stub() -> str:
     lines = [
         "# lgtmgate (plugin active)",
         "",
-        "The **lgtmgate** plugin is loaded. Delivery work runs through the "
-        "**Mia -> Sam -> Nick -> Morgan** orchestration.",
+        "The **lgtmgate** plugin is loaded. "
+        "Delivery work runs through its five-agent pipeline, launched with `/lgtmgate:deliver`.",
         "",
         "- Launch a delivery: `/lgtmgate:deliver <issue> \"<brief>\"` "
         "(the Lead creates the shared worktree, then drives the workflow — the plugin's "
