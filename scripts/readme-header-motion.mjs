@@ -169,18 +169,12 @@ function lightsKF(p, t) {
   kf(`mgd${p}`, [[0, op(0)], [merged - .001, op(0)], [merged, op(1)], [T, op(1)]]);
 }
 
-// the kraft box exists only while the parcel is in DEV (Nick puts code in it and sticks the PR label): it pops around the
-// label when the parcel reaches the station and goes when it leaves; before and after, the issue is the label alone, on its foot.
+// the kraft box appears when the parcel reaches DEV (Nick builds it around the issue label and puts the PR label on it); from then
+// on it travels with the PR (REVIEW, the back trip on line A, the gate, the Lead's grip, main). Before DEV the issue is the label alone.
 export function boxKF(p, t) {
-  const s0 = 'transform:scale(0)', s1 = 'transform:scale(1)';
-  const stays = t.back ? [[t.m2[1], t.m3[0]], [t.back[1], t.m3b[0]]] : [[t.m2[1], t.m3[0]]];     // [arrives, leaves] per visit
-  const box = [[0, s0]], foot = [[0, op(1)]];
-  for (const [a, b] of stays) {
-    box.push([a - .001, s0, E.back], [a + .3, s1], [b, s1], [b + .001, s0]);
-    foot.push([a - .001, op(1)], [a + .05, op(0)], [b + .001, op(1)]);                           // the foot hides under the box
-  }
-  box.push([T, s0]); foot.push([T, op(1)]);
-  kf(`box${p}`, box); kf(`foot${p}`, foot);
+  const a = t.m2[1];
+  kf(`box${p}`, [[0, 'transform:scale(0)'], [a - .001, 'transform:scale(0)', E.back], [a + .3, 'transform:scale(1)'], [T, 'transform:scale(1)']]);
+  kf(`foot${p}`, [[0, op(1)], [a - .001, op(1)], [a + .05, op(0)], [T, op(0)]]);                   // the foot hides under the box
 }
 
 // KF.push order is the CSS order: the four groups run in the order the original single function wrote them

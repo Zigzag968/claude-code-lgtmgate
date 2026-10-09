@@ -72,16 +72,16 @@ const ZL = { A: 350, B: 0 };                                       // A = back l
 const PRC = { draft: '#6E7781', changes: '#CF222E', ready: '#1F883D' };  // filled, white text, like GitHub's state labels
 const OKC = '#1F883D', KOC = '#CF222E';                              // Morgan's marks: green tick, red cross
 const prLabel = (bg, cls) => `<g${cls ? ` class="a ${cls}"` : ''}><rect x="-13.5" y="-7.5" width="27" height="15" rx="4" fill="${bg}"/><text x="0" y="3.6" text-anchor="middle" class="mono" fill="#fff" font-size="10" font-weight="800">PR</text></g>`;
-// modes: 'live' (label layers animate, class suffix p), 'final' (ticked, PR ready, on main), 'carry' (the same, in the Lead's grip, no foot), 'plain'
+// modes: 'live' (label layers animate, class suffix p), 'final' (boxed, ticked, PR ready: in the Lead's grip or on main), 'plain'
 function parcel(prNumber, mode, z0, p = '') {
   const [fx, fy] = P(-PW / 2, TOPY, ZF + z0);
   const cx = fx + 6, cy = fy + 7;
   const tape = [P(-7, TOPY, ZF + z0), P(7, TOPY, ZF + z0), P(7, TOPY, ZF + PD + z0), P(-7, TOPY, ZF + PD + z0)];
   const live = mode === 'live';
-  // the kraft box (with its tape) pops around the label when the parcel reaches DEV; before that the issue is the label alone, on a small foot
+  // the kraft box (with its tape) is built around the label in DEV and stays with the PR to main; before DEV the issue is the label alone, on a small foot
   const kraft = box(-PW / 2, BH, ZF + z0, PW, PHt, PD, 'kr') + `<polygon fill="#E3C38F" points="${pts(tape)}"/><rect fill="#E3C38F" x="${f2(fx + PW / 2 - 7)}" y="${f2(fy)}" width="14" height="5"/>`;
   const foot = `<ellipse cx="${f2(cx + 23)}" cy="${f2(cy + 46)}" rx="27" ry="3.6" fill="${INK}" opacity=".14"/><rect x="${f2(cx + 7)}" y="${f2(cy + 36)}" width="32" height="9" rx="2" fill="#C9C6D5"/>`;
-  let s = live ? `<g class="a box${p}" style="transform-origin:${f2(cx + 23)}px ${f2(cy + 19)}px">${kraft}</g><g class="a foot${p}">${foot}</g>` : mode === 'carry' ? '' : foot;   // the kraft box only exists in DEV
+  let s = live ? `<g class="a box${p}" style="transform-origin:${f2(cx + 23)}px ${f2(cy + 19)}px">${kraft}</g><g class="a foot${p}">${foot}</g>` : kraft;   // the box only exists from DEV on
   s += `<rect fill="#fff" x="${f2(cx)}" y="${f2(cy)}" width="46" height="38" rx="2.5"/>`;
   s += `<text class="mono" fill="${INK}" x="${f2(cx + 4)}" y="${f2(cy + 10)}" font-size="9" font-weight="700">${prNumber}</text>`;
   if (mode === 'plain') return s;
@@ -300,7 +300,7 @@ function lead() {
   const cap = (length, th) => `<rect x="${-th / 2}" y="${-th / 2}" width="${length + th}" height="${th}" rx="${th / 2}" fill="#2B2748"/>`;
   const joint = r => `<circle r="${r}" fill="#8069FF"/><circle r="${r * .34}" fill="#2B2748"/>`;
   const topC = P(0, TOPY, ZC);
-  const card = ['B', 'A'].map(p => `<g class="a carry${p}"><g transform="translate(${f2(-topC[0])} ${f2(GRIP - topC[1])})">${parcel(p === 'A' ? '#143' : '#142', 'carry', 0)}</g></g>`).join('');
+  const card = ['B', 'A'].map(p => `<g class="a carry${p}"><g transform="translate(${f2(-topC[0])} ${f2(GRIP - topC[1])})">${parcel(p === 'A' ? '#143' : '#142', 'final', 0)}</g></g>`).join('');
   const grip = `<rect x="-3" y="0" width="6" height="${GRIP - 5}" fill="#2B2748"/><rect x="-13" y="${GRIP - 6}" width="26" height="6" rx="2" fill="#8069FF"/>${joint(6.5)}`;
   const chain = (links, hand) => `<g transform="translate(${f2(SH[0])} ${f2(SH[1])})"><g class="a sh">${links ? cap(L1, 15) + `<line x1="4" y1="-5" x2="${L1 - 4}" y2="-5" stroke="#4A4478" stroke-width="2" stroke-linecap="round"/>` : ''}
       <g transform="translate(${L1} 0)"><g class="a el">${links ? cap(L2, 12) + `<line x1="4" y1="-4" x2="${L2 - 4}" y2="-4" stroke="#4A4478" stroke-width="1.8" stroke-linecap="round"/>` : ''}
