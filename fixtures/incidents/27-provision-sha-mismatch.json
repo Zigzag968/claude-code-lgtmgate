@@ -15,8 +15,8 @@
       "verify": "VERIFY ok line=PROBE name=lines exit=0 sha=4b0b2f33b20b777393f4cb55ea1d47c45786b52ad36822582a5ed67647e54ed5 cmd=2af1fd58e4141ac8977c54e48900baf5a81f43c1be46d2a1c6f38830f7582ec8 json={\"lines\":[\"PLUGIN-VERSION:@@ENGINE_VERSION@@\"]}"
     },
     "probe-27-provision-provision-r0": {
-      "line": "PROBE name=provision exit=0 sha=43906f9f12fdfc3e46bd7f72f0c9b44369719e90aa9b5f8bb4d06822efed0860 cmd=d05939234d8e3289e1c8e68892b03c84f47f98b166f84e186c5dc220c0748abd json={\"version\":1,\"linked\":[\".env\"],\"missing\":[],\"skipped\":false}",
-      "verify": "VERIFY ok line=PROBE name=provision exit=0 sha=30ad404e7bf922808eeb13427c66400303e810a9392f80082fb0abe2fc6fc271 cmd=d05939234d8e3289e1c8e68892b03c84f47f98b166f84e186c5dc220c0748abd json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}"
+      "line": "PROBE name=provision exit=0 sha=43906f9f12fdfc3e46bd7f72f0c9b44369719e90aa9b5f8bb4d06822efed0860 cmd=a49a0d2c05b07350fdf2ded8af5402d710a960f493961557cb866f1068a4994b json={\"version\":1,\"linked\":[\".env\"],\"missing\":[],\"skipped\":false}",
+      "verify": "VERIFY ok line=PROBE name=provision exit=0 sha=30ad404e7bf922808eeb13427c66400303e810a9392f80082fb0abe2fc6fc271 cmd=a49a0d2c05b07350fdf2ded8af5402d710a960f493961557cb866f1068a4994b json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}"
     }
   },
   "expect": {

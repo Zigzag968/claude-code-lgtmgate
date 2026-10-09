@@ -15,8 +15,8 @@
       "verify": "VERIFY ok line=PROBE name=lines exit=0 sha=4b0b2f33b20b777393f4cb55ea1d47c45786b52ad36822582a5ed67647e54ed5 cmd=2af1fd58e4141ac8977c54e48900baf5a81f43c1be46d2a1c6f38830f7582ec8 json={\"lines\":[\"PLUGIN-VERSION:@@ENGINE_VERSION@@\"]}"
     },
     "probe-32-provision-provision-r0": {
-      "line": "PROBE name=provision exit=0 sha=30ad404e7bf922808eeb13427c66400303e810a9392f80082fb0abe2fc6fc271 cmd=36ea1f1c9380a1b5b2d374af562899cb1fb54a369f5ab2187f7f519bc72f2ec4 json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}",
-      "verify": "VERIFY ok line=PROBE name=provision exit=0 sha=30ad404e7bf922808eeb13427c66400303e810a9392f80082fb0abe2fc6fc271 cmd=36ea1f1c9380a1b5b2d374af562899cb1fb54a369f5ab2187f7f519bc72f2ec4 json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}"
+      "line": "PROBE name=provision exit=0 sha=30ad404e7bf922808eeb13427c66400303e810a9392f80082fb0abe2fc6fc271 cmd=3e39b33862eb59c946c9613755a958bb012d96f1c47cd975f84165b1da210489 json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}",
+      "verify": "VERIFY ok line=PROBE name=provision exit=0 sha=30ad404e7bf922808eeb13427c66400303e810a9392f80082fb0abe2fc6fc271 cmd=3e39b33862eb59c946c9613755a958bb012d96f1c47cd975f84165b1da210489 json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}"
     },
     "probe-32-provision-freshness-provision-freshness-r0": {
       "line": "PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b cmd=a3bf7db4662cb5f44b6123f8fd493ffb0fab32352fb8052decc625e219185aea json={\"state\":\"fresh\",\"behind\":0,\"own\":0}",
