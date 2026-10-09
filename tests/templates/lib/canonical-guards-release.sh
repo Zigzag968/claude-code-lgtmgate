@@ -51,7 +51,7 @@ fi
 # =============================================================================
 if [ -f "$WORKFLOW_FILE" ]; then
   LOG_LINE="$(grep -n '^log(BUILD_STAMP)' "$WORKFLOW_FILE" | head -1 | cut -d: -f1)"
-  ARGS_LINE="$(grep -n '^const argsIn = (typeof args === .string.' "$WORKFLOW_FILE" | head -1 | cut -d: -f1)"
+  ARGS_LINE="$(grep -n '^const argumentsIn = (typeof args === .string.' "$WORKFLOW_FILE" | head -1 | cut -d: -f1)"
   DRYRUN_LINE="$(grep -n '^if (dryRun) return' "$WORKFLOW_FILE" | head -1 | cut -d: -f1)"
   FINISH_PRESENT="$(grep -c 'const finish = ' "$WORKFLOW_FILE")"
   BARE_RETURNS="$(python3 -c "
@@ -273,8 +273,8 @@ print(m.group(0) if m else '')
 " 2>/dev/null)"
   if [ -z "$WRR_WINDOW" ]; then
     fail "worktree-root-resolver" "sentinel window resolveWorktreeRoot:start/:end not found in $WORKFLOW_FILE"
-  elif ! grep -q 'const worktreeRoot = resolveWorktreeRoot({ env: runtimeEnv, configLocal, config, wtPath })' "$WORKFLOW_FILE"; then
-    fail "worktree-root-resolver" "call site 'const worktreeRoot = resolveWorktreeRoot({ env: runtimeEnv, configLocal, config, wtPath })' missing in $WORKFLOW_FILE"
+  elif ! grep -q 'const worktreeRoot = resolveWorktreeRoot({ env: runtimeEnvironment, configLocal, config, wtPath })' "$WORKFLOW_FILE"; then
+    fail "worktree-root-resolver" "call site 'const worktreeRoot = resolveWorktreeRoot({ env: runtimeEnvironment, configLocal, config, wtPath })' missing in $WORKFLOW_FILE"
   elif ! grep -q 'worktree root: ${worktreeRoot}' "$WORKFLOW_FILE"; then
     fail "worktree-root-resolver" "Dev-stage interpolation 'worktree root: \${worktreeRoot}' missing in $WORKFLOW_FILE"
   elif echo "$WRR_WINDOW" | grep -qE 'require\(|readFileSync|import fs|__dirname'; then

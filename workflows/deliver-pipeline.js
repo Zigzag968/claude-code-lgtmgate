@@ -215,9 +215,9 @@ const finish = (outcome, extra = {}) => ({ buildStamp: BUILD_STAMP, ...(simulate
   ...(classifierOutageDeath && outcome.status.endsWith('-died')
     ? { reason: 'classifier-outage: resume with resumeFromRunId' } : {}), ...outcome, ...extra })
 
-const argsIn = (typeof args === 'string' ? JSON.parse(args) : args) || {}
+const argumentsIn = (typeof args === 'string' ? JSON.parse(args) : args) || {}
 // The removed scout arg: refuse it before anything else (zero agent call), with the remedy in the message.
-if (argsIn.scoutAgent !== undefined) throw new Error('removed: declare lanes with a `lane:` frontmatter in `.claude/lgtmgate/<role>.<lane>.md`; start a fresh run at the wanted entryStage')
+if (argumentsIn.scoutAgent !== undefined) throw new Error('removed: declare lanes with a `lane:` frontmatter in `.claude/lgtmgate/<role>.<lane>.md`; start a fresh run at the wanted entryStage')
 const {
   issue, brief, pmReview = false, issueType = null, wtPath,
   config,
@@ -246,7 +246,7 @@ const {
   models = {},
   simulate = null,
   stamp = null,
-} = argsIn
+} = argumentsIn
 
 if (!issue || !brief || !wtPath) throw new Error('Missing required args: issue, brief, wtPath')
 // #13/#12 — `config` is REQUIRED and must be an object: the workflow sandbox has no filesystem, so
@@ -395,11 +395,11 @@ if (branchPrefixArgumentIgnored) {
 // LGTMGATE_WORKTREE_ROOT in a dev shell must not leak into a flow case.
 // resolveWorktreeRoot() itself is defined below (see its :start/:end sentinel block) — hoisted,
 // so this call resolves fine despite the definition appearing later in the file.
-const runtimeEnv = simulate
+const runtimeEnvironment = simulate
   ? (simulate.probes?.env || {})
   : ((typeof process !== 'undefined' && process && process.env) ? process.env : {})
-const worktreeRoot = resolveWorktreeRoot({ env: runtimeEnv, configLocal, config, wtPath })
-log(`worktreeRoot: ${worktreeRoot ?? '(unresolved)'} (env=${runtimeEnv.LGTMGATE_WORKTREE_ROOT ? 'set' : 'unset'}, local=${configLocal.worktreeRoot ? 'set' : 'unset'}, config=${config.worktreeRoot ? 'set' : 'unset'})`)
+const worktreeRoot = resolveWorktreeRoot({ env: runtimeEnvironment, configLocal, config, wtPath })
+log(`worktreeRoot: ${worktreeRoot ?? '(unresolved)'} (env=${runtimeEnvironment.LGTMGATE_WORKTREE_ROOT ? 'set' : 'unset'}, local=${configLocal.worktreeRoot ? 'set' : 'unset'}, config=${config.worktreeRoot ? 'set' : 'unset'})`)
 // Code repo "owner/repo" for cross-repo runs: scopes the gh calls (guard, PR-create,
 // checks, no-op gate) to the code repo instead of relying on the invoking cwd. Absent ->
 // gh resolves from the worktree cwd (backward-compatible; the already-done guard then
