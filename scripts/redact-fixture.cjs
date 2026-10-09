@@ -21,10 +21,10 @@
 
 const fs = require('fs')
 
-const { SECRET_REWRITES, PEM_RULE } = require('./lib/secret-rules.cjs')
+const { SECRET_REWRITES, PEM_RULE } = require('./lib/redaction-rules.cjs')
 
 const RULES = [
-  // GitHub tokens, API keys (shared with scripts/agent-context.cjs: scripts/lib/secret-rules.cjs)
+  // GitHub tokens, API keys (shared with scripts/agent-context.cjs: scripts/lib/redaction-rules.cjs)
   ...SECRET_REWRITES,
   // temp directories: the whole path goes (uid, project directory and run id are all session-private);
   // `/var/folders` may carry the `/private` of its real path
