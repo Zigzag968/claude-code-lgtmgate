@@ -268,7 +268,7 @@ fs.writeFileSync(out, src.replace(from, () => to))
 JS
 out=$(node scripts/run-offline.cjs "$TMP/relaunch-nocarry.json" 2>&1)
 case "$out" in *"FAIL:"*"run 2: logs: missing \"acceptance item(s) rebuilt from the ids of planText\""*) n1=1;; *) n1=0;; esac
-if node "$TMP/mut.cjs" "$TMP/ro-m3.cjs" 'args[argName] = clone(prev.result[field])' 'void 0'; then
+if node "$TMP/mut.cjs" "$TMP/ro-m3.cjs" 'arguments_[argumentName] = clone(previous.result[field])' 'void 0'; then
   out=$(node "$TMP/ro-m3.cjs" fixtures/relaunch/dev-after-plan.json 2>&1)
   case "$out" in *"FAIL:"*"run 2: logs: missing \"acceptance item(s) rebuilt from the ids of planText\""*) n2=1;; *) n2=0;; esac
 else n2=0; fi

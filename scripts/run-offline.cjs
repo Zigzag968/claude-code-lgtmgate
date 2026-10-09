@@ -499,7 +499,7 @@ async function main() {
       if (reportUnused) for (const u of r.unused) process.stdout.write(`  unused: ${u}\n`)
     } catch (error) {
       failed++
-      process.stdout.write(`FAIL: ${relativePath} — ${e && e.message ? e.message : String(e)}\n`)
+      process.stdout.write(`FAIL: ${relativePath} — ${error && error.message ? error.message : String(error)}\n`)
     }
   }
   const status = failed === 0 ? 'ok' : 'fail'
