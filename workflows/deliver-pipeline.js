@@ -133,7 +133,7 @@ export const meta = {
 // `version`, checked against plugin.json by tests/templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '1.3.0-beta.5', cutFrom: 'd234ae9' }
+const BUILD = { plugin: 'lgtmgate', version: '1.3.0-beta.6', cutFrom: '5d27a47' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -1115,7 +1115,7 @@ function tickIdsArgv(pr, ids) {
 // ---------------------------------------------------------------------------
 
 const ghProject = config.ghProject || {}
-const STATUS_OPTIONS = ghProject.statusOptions || {}
+const PROJECT_STATUS_OPTIONS = ghProject.statusOptions || {}
 
 // ---------------------------------------------------------------------------
 // Schemas (verbatim from origin/develop)
@@ -2344,7 +2344,7 @@ async function callAgentSafe(role, prompt, options, round = 0, maxAttempts = 2) 
 }
 
 async function updateStatus(name) {
-  const optionId = STATUS_OPTIONS[name]
+  const optionId = PROJECT_STATUS_OPTIONS[name]
   if (!optionId) { log(`updateStatus: unknown "${name}", skipping`); return }
   if (!ghProject.projectId || !ghProject.fieldId || !ghProject.owner || !ghProject.projectNumber) {
     log(`updateStatus: incomplete ghProject config, skipping "${name}"`); return
