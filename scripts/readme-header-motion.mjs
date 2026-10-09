@@ -46,7 +46,7 @@ export const valueAt = (fr, t) => {
 
 // ---------------------------------------------------------------- geometry the keyframes read
 export const BH = 20, PHt = 52, TOPY = BH + PHt;
-export const HOIST = 150, DROP = 60;
+export const HOIST = 136, DROP = 60;
 export const LAMP = { off: '#DCD8E8', o: '#F5A524', g: '#22C55E', r: '#F04438' };
 
 // ---------------------------------------------------------------- timelines (each line on its own local clock)
@@ -167,6 +167,14 @@ function lightsKF(p, t) {
   kf(`rv${p}`, [[0, op(0)], [t.pop[0], op(0), E.out], [t.pop[0] + .3, op(1)], [merged + .6, op(1), E.out], [merged + .9, op(0)], [T, op(0)]]);
   kf(`mg${p}`, [[0, 'opacity:0;transform:scale(1)'], [merge - .001, 'opacity:0;transform:scale(1)'], [merge, 'opacity:1;transform:scale(1.35)', E.back], [merge + .25, 'opacity:1;transform:scale(1)'], [merged - .001, 'opacity:1;transform:scale(1)'], [merged, 'opacity:0;transform:scale(1)'], [T, 'opacity:0;transform:scale(1)']]);
   kf(`mgd${p}`, [[0, op(0)], [merged - .001, op(0)], [merged, op(1)], [T, op(1)]]);
+}
+
+// the kraft box appears when the parcel reaches DEV (Nick builds it around the issue label and puts the PR label on it); from then
+// on it travels with the PR (REVIEW, the back trip on line A, the gate, the Lead's grip, main). Before DEV the issue is the label alone.
+export function boxKF(p, t) {
+  const a = t.m2[1];
+  kf(`box${p}`, [[0, 'transform:scale(0)'], [a - .001, 'transform:scale(0)', E.back], [a + .3, 'transform:scale(1)'], [T, 'transform:scale(1)']]);
+  kf(`foot${p}`, [[0, op(1)], [a - .001, op(1)], [a + .05, op(0)], [T, op(0)]]);                   // the foot hides under the box
 }
 
 // KF.push order is the CSS order: the four groups run in the order the original single function wrote them
