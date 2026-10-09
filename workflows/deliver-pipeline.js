@@ -133,7 +133,7 @@ export const meta = {
 // `version`, checked against plugin.json by tests/templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '1.2.0-beta.15', cutFrom: 'b4996da' }
+const BUILD = { plugin: 'lgtmgate', version: '1.2.0-beta.16', cutFrom: '085cddf' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -2831,34 +2831,34 @@ if (entryStage !== 'plan') {
 
 {
   // provision.extraLinks traversal+metacharacter guard (STRIDE T/E, OWASP A01:2025 Broken Access
-  // Control / CWE-22/59/61) — provisionArgs double-quotes values read straight from
+  // Control / CWE-22/59/61) — provisionArguments double-quotes values read straight from
   // pipeline.config.json into a shell line the agent runs verbatim; a metacharacter-only
   // allowlist does NOT close this (`/` and `.` are both inside the class, so
   // `../../../.ssh/id_ed25519` would pass it). Segment rejection instead of path.resolve/realpath
   // canonicalization, because workflow scripts have no module imports — the physical containment
   // assertion lives in scripts/provision-worktree.sh (pwd -P), which is where a direct
   // `bash scripts/provision-worktree.sh MAIN ../x y` invocation is caught.
+  // A leading '-' is rejected too (identical to reject_path in templates/provision-worktree.sh, the two must
+  // stay identical) so a path can never be mistaken for the `--soft` marker.
   const safeLinkPath = (v) =>
     typeof v === 'string' && /^[A-Za-z0-9._\/-]+$/.test(v) && !v.startsWith('/') &&
-    v.split('/').every(seg => seg !== '' && seg !== '.' && seg !== '..')
+    !v.startsWith('-') && v.split('/').every(seg => seg !== '' && seg !== '.' && seg !== '..')
   for (const l of provisionLinks) {
     if (!safeLinkPath(l?.src) || !safeLinkPath(l?.dst))
       throw new Error(`Invalid provision.extraLinks entry (traversal or metacharacter): ${JSON.stringify(l)}`)
   }
-  // KNOWN EDGE (deliberately NOT changed here): the no-script branch keys on `provisionLinks.length`,
-  // while the argv keys on the optional-filtered subset, so a config declaring ONLY optional links
-  // and no provisioning script hard-fails instead of skipping. Not changed in this slice — the
-  // condition is asserted verbatim by the drift guard this fold is proving against
-  // (tests/test_provision_missing_script_gate.py); tracked as claude-agent-pipeline#64. Pinned
-  // locally by F3 (templates/test-deliver-pipeline.js) until the upstream fix lands —
-  // update BOTH F3 and the upstream pin in the same pass, never one without the other.
-  const provisionArguments = provisionLinks.filter(l => l.optional !== true).map(l => ` "${l.src}" "${l.dst}"`).join('')
+  // Hard links first, then `--soft` and the optional links: the script treats every pair after `--soft`
+  // as SOFT (absent source only warns). No optional link => no `--soft` token, byte-identical command.
+  const pair = (l) => ` "${l.src}" "${l.dst}"`
+  const hardLinks = provisionLinks.filter(l => l.optional !== true)
+  const softLinks = provisionLinks.filter(l => l.optional === true)
+  const provisionArguments = hardLinks.map(pair).join('') + (softLinks.length ? ' --soft' + softLinks.map(pair).join('') : '')
   const provisionScript = `${wtPath}/scripts/provision-worktree.sh`
   // DEBT(#364): consumers initialised before the rename still carry the snake_case copy; used only when the kebab-case one is absent
   const legacyProvisionScript = `${wtPath}/scripts/provision_worktree.sh`
-  const noScriptBranch = provisionLinks.length === 0
+  const noScriptBranch = hardLinks.length === 0
     ? `echo "PROVISION-SKIPPED-NO-SCRIPT $SCRIPT (no provision.extraLinks configured - nothing to link)"; exit 0`
-    : `echo "PROVISION-NO-SCRIPT $SCRIPT (${provisionLinks.length} hard link(s) configured - cannot provision)" >&2; exit 2`
+    : `echo "PROVISION-NO-SCRIPT $SCRIPT (${hardLinks.length} hard link(s) configured - cannot provision)" >&2; exit 2`
   const provisionCommand =
     `SCRIPT="${provisionScript}"; LEGACY_SCRIPT="${legacyProvisionScript}"; if [ ! -f "$SCRIPT" ] && [ -f "$LEGACY_SCRIPT" ]; then SCRIPT="$LEGACY_SCRIPT"; fi; if [ -f "$SCRIPT" ]; then PROVISION_ENV_SYMLINK="${environmentSymlink}" bash "$SCRIPT" "${wtPath}"${provisionArguments}; else ${noScriptBranch}; fi`
   if (simulate) provisionCommandPreview = provisionCommand

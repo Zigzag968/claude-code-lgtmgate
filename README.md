@@ -196,7 +196,7 @@ Nothing stack-specific lives in the plugin. Everything project-dependent is read
 | `stack` | target stack string handed to the plan auditor; empty → inferred from the worktree |
 | `preflight.envNote` | free-form operator note injected verbatim ahead of every preflight check, notably the HARD test-command check (see the trust warning below) |
 | `preflight.envSymlink` | `required` (default, current behavior) / `forbidden` (envless-by-contract projects: preflight asserts `.env` is ABSENT) / `ignore` (check omitted); enum-validated, the value is never interpolated into agent text |
-| `provision.extraLinks[].optional` | marks a configured link as soft: absent at provision time degrades to a loud skip instead of a hard `provision-failed` escalate |
+| `provision.extraLinks[].optional` | marks a configured link as soft: it reaches the script after a `--soft` marker; absent at provision time it is skipped with a warning (`WARN optional src missing:`) instead of a hard `provision-failed` escalate, present it is linked; a config with only optional links and no script skips loudly. Refresh `scripts/provision-worktree.sh` after a plugin update (an older copy fails with a usage error when an optional link is configured) |
 
 A dependency install blocked by sandbox TLS is reported as a blocker, never bypassed. The two
 levers that make the install unnecessary in the first place are (a) pre-linking the project's

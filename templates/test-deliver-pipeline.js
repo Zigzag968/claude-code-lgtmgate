@@ -198,7 +198,7 @@ if (_gateProbe.status !== 'needs-revision') {
 // LOCAL: T61a/T61b/T61c cross-repo re-routed branchPrefix reconciliation (worktree pipeline.config.json re-check before escalating) — repo-local mechanism (lgtmgate#131).
 // LOCAL: T44a provision.extraLinks traversal segment rejected before any agent call — repo-local mechanism (claude-agent-pipeline#51 hardening).
 // LOCAL: F2 provision missing-script gate: no links → skip and continue; hard link → escalate — repo-local mechanism (claude-agent-pipeline#60 R7).
-// LOCAL: F3 provision no-script branch on optional-only links pins the documented KNOWN EDGE (raw length vs optional-filtered argv) — repo-local mechanism (claude-agent-pipeline#64).
+// LOCAL: F3 provision no-script branch on optional-only links pins the loud skip of an optional-only config without a script, the soft pair travelling after --soft (#313) — repo-local mechanism.
 // LOCAL: T54a/T54b/T54c/T54d agentType registry-gap harness signature replays (#54) — repo-local mechanism.
 // LOCAL: nick delivers with prNumber:0 + testsPass:true/false (no-PR terminal delivery) — repo-local mechanism.
 // LOCAL: T70a/T70b/T70c/T70d preflight.envSymlink gating (required/forbidden/ignore/invalid) — repo-local mechanism (#70).
@@ -2263,24 +2263,25 @@ await testCase('F2 provision missing-script gate: no links → skip and continue
   return error ? error : { ok: true }
 })
 
-// F3 pins the documented KNOWN EDGE (deliver-pipeline.js:1409-1414) at its current, intentional
-// behavior: the no-script branch keys on the RAW extraLinks length while provisionArgs keys on
-// the optional-filtered subset, so an optional-only config still hard-fails instead of skipping.
+// F3 pins that an optional-only config without a provisioning script skips loudly (hard links = 0),
+// and that the optional pair travels after `--soft` (#313).
 // Asserts on r.provisionCmdPreview (the statically composed command string), never on
-// simulate.provision — that object bypasses parseProvisionOutput entirely (deliver-pipeline.js
-// :1454-1458) and would prove nothing about the argv/condition mismatch this case exists to pin.
-await testCase('F3 provision no-script branch on optional-only links: KNOWN EDGE pins current hard-fail (not loud-skip)', async () => {
+// simulate.provision — that object bypasses parseProvisionOutput entirely and would prove nothing
+// about the argv/condition this case exists to pin.
+await testCase('F3 provision no-script branch on optional-only links: loud skip, soft pair passed after --soft', async () => {
   const r = await run({
     mode: 'auto',
     config: { ...CONFIG, provision: { extraLinks: [{ src: 'MAIN/.env', dst: '.env', optional: true }] } },
     simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] },
   })
   const p = r.provisionCmdPreview
-  const error1 = includes('provisionCmdPreview', p,
-    'PROVISION-NO-SCRIPT $SCRIPT (1 hard link(s) configured - cannot provision)')
+  const error1 = includes('provisionCmdPreview', p, 'PROVISION-SKIPPED-NO-SCRIPT')
   const error2 = includes('provisionCmdPreview', p,
-    'bash "$SCRIPT" "/tmp/lgtmgate-test"; else')
-  const error = error1 || error2
+    'bash "$SCRIPT" "/tmp/lgtmgate-test" --soft "MAIN/.env" ".env"; else')
+  const error3 = p.includes('PROVISION-NO-SCRIPT')
+    ? { ok: false, msg: 'provisionCmdPreview: expected NOT to include "PROVISION-NO-SCRIPT"' }
+    : null
+  const error = error1 || error2 || error3
   return error ? error : { ok: true }
 })
 
@@ -4279,6 +4280,20 @@ await testCase('T104d provisionCmdPreview: SCRIPT invocation + extraLinks args p
     'if [ -f "$SCRIPT" ]; then PROVISION_ENV_SYMLINK="required" bash "$SCRIPT" "/tmp/lgtmgate-test" ".venv" ".venv"; else')
   const error3 = includes('provisionCmdPreview', p, '; fi')
   const error = error1 || error2 || error3
+  return error ? error : { ok: true }
+})
+
+await testCase('T104f provisionCmdPreview: hard pairs first, then --soft and the optional pair (#313)', async () => {
+  const r = await run({
+    mode: 'auto',
+    config: { ...CONFIG, provision: { extraLinks: [
+      { src: 'node_modules', dst: 'node_modules', optional: true },
+      { src: '.venv', dst: '.venv' },
+    ] } },
+    simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] },
+  })
+  const error = includes('provisionCmdPreview', r.provisionCmdPreview,
+    'bash "$SCRIPT" "/tmp/lgtmgate-test" ".venv" ".venv" --soft "node_modules" "node_modules"; else')
   return error ? error : { ok: true }
 })
 
