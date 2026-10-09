@@ -44,7 +44,7 @@ C=templates/pr-body-splice.cjs
 site literal "$C" ACCEPTANCE_START 1 "^const ACCEPTANCE_START = '([^']*)'\$"
 site literal "$C" includes 1 ".*b\\.includes\\('([^']*acceptance:start[^']*)'\\).*"
 site literal scripts/lib/acceptance-check.sh MSTART 1 ".*MSTART = \"([^\"]*)\".*"
-site regex scripts/lead-merge.sh re.search 1 ".*re\\.search\\(r\"([^\"]*acceptance:start[^\"]*)\".*"
+site literal scripts/lead-merge.sh marker 1 ".*marker == \"([^\"]*acceptance:start[^\"]*)\".*"
 site regex scripts/lib/merge-gates.sh re.search 1 ".*re\\.search\\(r\"([^\"]*acceptance:start[^\"]*)\".*"
 
 echo "[test-marker-parity] passed=$PASS failed=$FAIL"
