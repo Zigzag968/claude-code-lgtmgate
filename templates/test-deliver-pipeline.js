@@ -1272,7 +1272,7 @@ await testCase('T36 no minimizedComments fixture → trace has zero review-comme
 })
 
 // ---------------------------------------------------------------------------
-// Real-incident replay — deterministic provision_worktree.sh gate (D2)
+// Real-incident replay — deterministic provision-worktree.sh gate (D2)
 // ---------------------------------------------------------------------------
 
 // T37 — provisioning fails (simulate.provision.ok=false) → escalate,
@@ -2233,7 +2233,7 @@ await testCase('T44a provision.extraLinks traversal segment rejected before any 
 })
 
 // F2 (claude-agent-pipeline#60 R7) — provision missing-script gate. A consumer worktree of
-// config.repo (#363) can carry no scripts/provision_worktree.sh of its own: the JS branches
+// config.repo (#363) can carry no scripts/provision-worktree.sh of its own: the JS branches
 // STATICALLY on provisionLinks.length, never left to the agent to decide. No hard link
 // configured -> loud skip, run continues; >=1 hard link configured -> loud hard fail, escalate.
 // Simulate mode never executes the shell branch itself — it exercises the JS control flow
@@ -4241,7 +4241,7 @@ await testCase('T105 no mergeState fixture → ready unchanged, no mergeable-con
 
 // provisionCmdPreview (claude-agent-pipeline#72) — same simulate-only seam as
 // preflightPromptPreview (T70a-d above): asserts the composed provisioning command carries
-// PROVISION_ENV_SYMLINK through to scripts/provision_worktree.sh per preflight.envSymlink
+// PROVISION_ENV_SYMLINK through to scripts/provision-worktree.sh per preflight.envSymlink
 // value, and that the `bash "$SCRIPT"` invocation itself is preserved around it. Numbered
 // T104a-d.
 await testCase('T104a provisionCmdPreview: envSymlink default (unset) -> PROVISION_ENV_SYMLINK="required"', async () => {
@@ -4281,12 +4281,66 @@ await testCase('T104d provisionCmdPreview: SCRIPT invocation + extraLinks args p
     simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] },
   })
   const p = r.provisionCmdPreview
-  const e1 = includes('provisionCmdPreview', p, 'SCRIPT="/tmp/lgtmgate-test/scripts/provision_worktree.sh"')
+  const e1 = includes('provisionCmdPreview', p, 'SCRIPT="/tmp/lgtmgate-test/scripts/provision-worktree.sh"; LEGACY_SCRIPT=')
   const e2 = includes('provisionCmdPreview', p,
     'if [ -f "$SCRIPT" ]; then PROVISION_ENV_SYMLINK="required" bash "$SCRIPT" "/tmp/lgtmgate-test" ".venv" ".venv"; else')
   const e3 = includes('provisionCmdPreview', p, '; fi')
   const err = e1 || e2 || e3
   return err ? err : { ok: true }
+})
+
+// T104e (#344) — the composed provisioning command is EXECUTED against a temporary worktree: a consumer initialised
+// under the previous name (scripts/provision_worktree.sh) keeps provisioning; the new name wins when both exist.
+// DEBT(#364): removed together with the fallback.
+await testCase('T104e provisioning command executed: legacy-only copy runs, new name wins, none fails closed (#344)', async () => {
+  if (!SUITE_ARGS.fpSource) {
+    log('SKIP — T104e: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const childProcess = process.getBuiltinModule('child_process')
+  const fileSystem = process.getBuiltinModule('fs')
+  const operatingSystem = process.getBuiltinModule('os')
+  const pathModule = process.getBuiltinModule('path')
+  const temporaryDirectory = fileSystem.mkdtempSync(pathModule.join(operatingSystem.tmpdir(), 't344-'))
+  try {
+    let layoutIndex = 0
+    const execute = async (extraLinks, scriptNames) => {
+      layoutIndex += 1
+      const worktree = pathModule.join(temporaryDirectory, `wt-${layoutIndex}`)
+      fileSystem.mkdirSync(pathModule.join(worktree, 'scripts'), { recursive: true })
+      for (const scriptName of scriptNames) {
+        const marker = scriptName === 'provision-worktree.sh' ? 'STUB-NEW' : 'STUB-LEGACY'
+        fileSystem.writeFileSync(pathModule.join(worktree, 'scripts', scriptName), `echo ${marker}\n`)
+      }
+      const r = await run({
+        wtPath: worktree,
+        mode: 'auto',
+        config: { ...CONFIG, provision: { extraLinks } },
+        simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] },
+      })
+      const result = childProcess.spawnSync('sh', ['-c', r.provisionCmdPreview], { encoding: 'utf8' })
+      return { status: result.status, output: `${result.stdout}${result.stderr}` }
+    }
+    const link = [{ src: '.venv', dst: '.venv' }]
+    const legacyOnly = await execute([], ['provision_worktree.sh'])
+    const both = await execute([], ['provision_worktree.sh', 'provision-worktree.sh'])
+    const none = await execute([], [])
+    const noneWithLink = await execute(link, [])
+    const checks = [
+      includes('legacy copy only: the legacy copy runs', legacyOnly.output, 'STUB-LEGACY'),
+      eq('legacy copy only: exit 0', legacyOnly.status, 0),
+      includes('both copies: the new name runs', both.output, 'STUB-NEW'),
+      eq('both copies: the legacy copy does not run', both.output.includes('STUB-LEGACY'), false),
+      includes('no copy, no links: skipped', none.output, 'PROVISION-SKIPPED-NO-SCRIPT'),
+      eq('no copy, no links: exit 0', none.status, 0),
+      eq('no copy, a hard link: fails closed (exit 2)', noneWithLink.status, 2),
+      includes('no copy, a hard link: the message names the new path', noneWithLink.output, 'scripts/provision-worktree.sh'),
+    ]
+    const failure = checks.find(Boolean)
+    return failure ? failure : { ok: true }
+  } finally {
+    fileSystem.rmSync(temporaryDirectory, { recursive: true, force: true })
+  }
 })
 
 // ---------------------------------------------------------------------------

@@ -1087,13 +1087,17 @@ if command -v jq >/dev/null 2>&1 && [ -x "$ROOT/node_modules/.bin/ls-lint" ] && 
   ok=0
   [ "$(printf '%s' "$OUT" | jq -c '.layout')" = '{"verdict":"CONFORMING","issues":[]}' ] && ok=1
   check "[307] preflight.sh dev --engine true: a conforming planned path -> layout CONFORMING, no issue" "$ok"
+  OUT="$(bash "$PF307" dev --wt "$W307" --engine true --targets 'scripts/provision-worktree.sh templates/provision-worktree.sh')"
+  ok=0
+  [ "$(printf '%s' "$OUT" | jq -c '.layout')" = '{"verdict":"CONFORMING","issues":[]}' ] && ok=1
+  check "[344] preflight.sh dev --engine true: the renamed provisioning script paths -> layout CONFORMING" "$ok"
   OUT="$(bash "$PF307" dev --wt "$W307" --targets 'scripts/BadName.cjs')"
   ok=0
   [ "$(printf '%s' "$OUT" | jq -c '.layout')" = "null" ] && [ "$(printf '%s\n' "$OUT" | wc -l | tr -d ' ')" = "1" ] && ok=1
   check "[307] preflight.sh dev without --engine: layout null, still exactly one line" "$ok"
 else
   echo "SKIP - [307] preflight.sh layout e2e needs jq and node_modules/.bin/ls-lint"
-  for n307 in a b c; do check "[307] layout e2e $n307 skipped (ls-lint absent)" 1; done
+  for n307 in a b c d; do check "[307] layout e2e $n307 skipped (ls-lint absent)" 1; done
 fi
 ok=0
 node -e '

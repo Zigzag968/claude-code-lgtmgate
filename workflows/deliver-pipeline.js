@@ -2825,7 +2825,7 @@ if (entryStage !== 'plan') {
 // Trust boundary: the script is executed from the WORKTREE (`${wtPath}/scripts/...`), so on any
 // resume entryStage ('dev'/'review') it is branch-controlled — trusted to exactly the degree the
 // branch under review is. Integrity of the DEPLOYED consumer copies (this repo's own included)
-// is a ship-time pre-condition (md5 equality against templates/provision_worktree.sh — see
+// is a ship-time pre-condition (md5 equality against templates/provision-worktree.sh — see
 // skills/init/SKILL.md and the S4 cross-slice flag), not enforced by this file.
 // ---------------------------------------------------------------------------
 
@@ -2836,8 +2836,8 @@ if (entryStage !== 'plan') {
   // allowlist does NOT close this (`/` and `.` are both inside the class, so
   // `../../../.ssh/id_ed25519` would pass it). Segment rejection instead of path.resolve/realpath
   // canonicalization, because workflow scripts have no module imports — the physical containment
-  // assertion lives in scripts/provision_worktree.sh (pwd -P), which is where a direct
-  // `bash scripts/provision_worktree.sh MAIN ../x y` invocation is caught.
+  // assertion lives in scripts/provision-worktree.sh (pwd -P), which is where a direct
+  // `bash scripts/provision-worktree.sh MAIN ../x y` invocation is caught.
   const safeLinkPath = (v) =>
     typeof v === 'string' && /^[A-Za-z0-9._\/-]+$/.test(v) && !v.startsWith('/') &&
     v.split('/').every(seg => seg !== '' && seg !== '.' && seg !== '..')
@@ -2853,12 +2853,14 @@ if (entryStage !== 'plan') {
   // locally by F3 (templates/test-deliver-pipeline.js) until the upstream fix lands —
   // update BOTH F3 and the upstream pin in the same pass, never one without the other.
   const provisionArgs = provisionLinks.filter(l => l.optional !== true).map(l => ` "${l.src}" "${l.dst}"`).join('')
-  const provisionScript = `${wtPath}/scripts/provision_worktree.sh`
+  const provisionScript = `${wtPath}/scripts/provision-worktree.sh`
+  // DEBT(#364): consumers initialised before the rename still carry the snake_case copy; used only when the kebab-case one is absent
+  const legacyProvisionScript = `${wtPath}/scripts/provision_worktree.sh`
   const noScriptBranch = provisionLinks.length === 0
     ? `echo "PROVISION-SKIPPED-NO-SCRIPT $SCRIPT (no provision.extraLinks configured - nothing to link)"; exit 0`
     : `echo "PROVISION-NO-SCRIPT $SCRIPT (${provisionLinks.length} hard link(s) configured - cannot provision)" >&2; exit 2`
   const provisionCmd =
-    `SCRIPT="${provisionScript}"; if [ -f "$SCRIPT" ]; then PROVISION_ENV_SYMLINK="${envSymlink}" bash "$SCRIPT" "${wtPath}"${provisionArgs}; else ${noScriptBranch}; fi`
+    `SCRIPT="${provisionScript}"; LEGACY_SCRIPT="${legacyProvisionScript}"; if [ ! -f "$SCRIPT" ] && [ -f "$LEGACY_SCRIPT" ]; then SCRIPT="$LEGACY_SCRIPT"; fi; if [ -f "$SCRIPT" ]; then PROVISION_ENV_SYMLINK="${envSymlink}" bash "$SCRIPT" "${wtPath}"${provisionArgs}; else ${noScriptBranch}; fi`
   if (simulate) provisionCmdPreview = provisionCmd
   // #82: the call goes through probe() (probe-run gate): probe-run.cjs executes the command and keeps
   // the raw output, PARSERS.provision derives linked/missing/skipped in the script, the exit code

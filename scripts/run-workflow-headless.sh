@@ -38,7 +38,7 @@ fi
 RAW="$(mktemp "${TMPDIR:-/tmp}/wf-headless-raw.XXXXXXXX")"
 
 # bash 3.2 (macOS /usr/bin/env bash) trips 'set -u' on an empty array expansion — same trap
-# documented in scripts/provision_worktree.sh:152. Guarded form => zero words when unset.
+# documented in scripts/provision-worktree.sh:152. Guarded form => zero words when unset.
 claude --print --output-format stream-json --verbose --model claude-sonnet-5 \
   --allowed-tools Workflow ${PLUGIN_DIR_ARGS[@]+"${PLUGIN_DIR_ARGS[@]}"} > "$RAW" 2>&1
 CLAUDE_EXIT=$?

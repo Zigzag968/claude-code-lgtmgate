@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# provision_worktree.sh — deterministic worktree provisioning: symlink unversioned
+# provision-worktree.sh — deterministic worktree provisioning: symlink unversioned
 # dependencies (.env, venvs, caches) from MAIN into a linked worktree, before any
 # agent runs so build/test commands work from the first tick (ported
 # from an internal reference implementation).
@@ -26,7 +26,7 @@
 #      let a symlink already committed in MAIN (e.g. "devkey" -> ~/.ssh/id_ed25519) link
 #      a real secret into the worktree, since they only ever inspect the DIRECTORY.
 #
-# Usage: provision_worktree.sh <worktree-path> [<src> <dst>]...
+# Usage: provision-worktree.sh <worktree-path> [<src> <dst>]...
 #   <src>/<dst> are positional PAIRS (no separator char, so a path containing
 #   ':' or '=' can never be misparsed), relative to MAIN and to the worktree
 #   respectively. Every argv pair is HARD (missing source fails the run).
@@ -64,26 +64,26 @@ set -uo pipefail
 echo "PROVISION-VERSION:2"
 
 if [ "$#" -lt 1 ]; then
-  echo "[provision] usage: provision_worktree.sh <worktree-path> [<src> <dst>]..." >&2
+  echo "[provision] usage: provision-worktree.sh <worktree-path> [<src> <dst>]..." >&2
   exit 1
 fi
 
-WT="$1"
+WORKTREE="$1"
 shift
 
-if [ ! -d "$WT" ]; then
-  echo "[provision] worktree path does not exist or is not a directory: $WT" >&2
+if [ ! -d "$WORKTREE" ]; then
+  echo "[provision] worktree path does not exist or is not a directory: $WORKTREE" >&2
   exit 1
 fi
 
-GIT_COMMON="$(git -C "$WT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"
+GIT_COMMON="$(git -C "$WORKTREE" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"
 if [ -z "${GIT_COMMON:-}" ]; then
-  echo "[provision] not a git worktree (git-common-dir resolution failed): $WT" >&2
+  echo "[provision] not a git worktree (git-common-dir resolution failed): $WORKTREE" >&2
   exit 1
 fi
 MAIN="$(dirname "$GIT_COMMON")"
 
-WT_REAL="$(realpath "$WT" 2>/dev/null || echo "$WT")"
+WT_REAL="$(realpath "$WORKTREE" 2>/dev/null || echo "$WORKTREE")"
 MAIN_REAL="$(realpath "$MAIN" 2>/dev/null || echo "$MAIN")"
 if [ "$WT_REAL" = "$MAIN_REAL" ]; then
   echo "[provision] refusing to provision: worktree resolves to MAIN itself ($MAIN_REAL) — never self-link" >&2
@@ -92,8 +92,8 @@ fi
 
 # Physical containment roots (claude-agent-pipeline#51 hardening) — `pwd -P` rather than
 # `realpath`, which portably resolves symlinks in the path without depending on GNU-only
-# flags. Both WT and MAIN already passed the -d/git-worktree checks above, so both exist.
-WT_PHYS="$(cd "$WT" && pwd -P)"
+# flags. Both WORKTREE and MAIN already passed the -d/git-worktree checks above, so both exist.
+WT_PHYS="$(cd "$WORKTREE" && pwd -P)"
 MAIN_PHYS="$(cd "$MAIN" && pwd -P)"
 
 if [ $(( $# % 2 )) -ne 0 ]; then
@@ -253,7 +253,7 @@ while [ "$k" -lt "$final_n" ]; do
   dst="${final_dsts[$k]}"
   hard="${final_hard[$k]}"
   abs_src="$MAIN/$src"
-  abs_dst="$WT/$dst"
+  abs_dst="$WORKTREE/$dst"
 
   # Step 1 (claude-agent-pipeline#51): segment rejection — belt-and-suspenders in front
   # of the JS-side safeLinkPath validator, so a direct invocation of this script
@@ -318,7 +318,7 @@ while [ "$k" -lt "$final_n" ]; do
   # the half only the shell can do, and it also catches a hostile SYMLINKED
   # INTERMEDIATE DIRECTORY already present in the worktree/MAIN (a plain lexical check
   # on src/dst strings would miss that). This MUST run BEFORE any `mkdir -p` — a hostile
-  # dst (e.g. a segment escaping WT via a pre-existing symlinked ancestor) must never
+  # dst (e.g. a segment escaping WORKTREE via a pre-existing symlinked ancestor) must never
   # get a directory created on its behalf first (claude-agent-pipeline#53: mkdir ran
   # before this check, so a rejected path could still leave a created directory behind).
   # existing_ancestor() lets the check run against a not-yet-created dst by walking up

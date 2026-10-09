@@ -1,1 +1,0 @@
-../templates/provision_worktree.sh

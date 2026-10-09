@@ -555,7 +555,7 @@ fi
 # #78 (shell-portability half only — the bump-required exclusion-list half of #78 is a
 # human call per that issue's own body, not actioned here). macOS ships bash 3.2
 # (/bin/bash, /usr/bin/env bash) — this repo has already been bitten twice by bash4+-only
-# constructs slipping into a tracked *.sh file (scripts/provision_worktree.sh,
+# constructs slipping into a tracked *.sh file (scripts/provision-worktree.sh,
 # scripts/run-workflow-headless.sh, both #57). Static, zero-external-dependency grep across
 # every `git ls-files '*.sh'` result for the four textbook bash4+-only constructs: `declare
 # -A` (associative arrays), `mapfile`/`readarray`, `${var,,}`/`${var^^}` case-conversion, and

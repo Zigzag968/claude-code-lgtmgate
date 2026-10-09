@@ -201,7 +201,7 @@ Nothing stack-specific lives in the plugin. Everything project-dependent is read
 A dependency install blocked by sandbox TLS is reported as a blocker, never bypassed. The two
 levers that make the install unnecessary in the first place are (a) pre-linking the project's
 `.venv`/`node_modules` into the worktree via `provision.extraLinks` (consumed by
-`scripts/provision_worktree.sh`) and (b) `preflight.envNote` for run-specific environment
+`scripts/provision-worktree.sh`) and (b) `preflight.envNote` for run-specific environment
 constraints.
 
 The agents (`agents/*.md`) are fully de-specialized and reusable on any stack: Swift/iOS, Node, Python, Rust, etc.
