@@ -1,26 +1,8 @@
 {
-  "scripts/agent-context.cjs": {
-    "max-lines": 1,
-    "max-lines-per-function": 1,
-    "unicorn/name-replacements": 43
-  },
-  "scripts/capture-incident.cjs": {
-    "max-lines-per-function": 1,
-    "unicorn/name-replacements": 29
-  },
-  "scripts/gen-readme-header.mjs": {
-    "max-lines": 1,
-    "max-lines-per-function": 1,
-    "unicorn/name-replacements": 36
-  },
   "scripts/guards.cjs": {
     "max-lines": 1,
     "no-shadow": 1,
     "unicorn/name-replacements": 41
-  },
-  "scripts/init-specifics.cjs": {
-    "no-shadow": 2,
-    "unicorn/name-replacements": 22
   },
   "scripts/lead-merge.sh": {
     "max-lines": 1,
@@ -28,10 +10,6 @@
   },
   "scripts/provision_worktree.sh": {
     "ls-lint:.sh:kebabcase": 1
-  },
-  "scripts/publish-fixture.cjs": {
-    "max-lines-per-function": 1,
-    "unicorn/name-replacements": 45
   },
   "scripts/run-flow-suite.cjs": {
     "suppression": 2,
