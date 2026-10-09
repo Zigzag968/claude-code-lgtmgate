@@ -10,14 +10,14 @@ export const meta = {
 
 const results = []
 
-async function testCase(name, fn) {
+async function testCase(name, function_) {
   try {
-    const { ok, msg } = await fn()
+    const { ok, msg } = await function_()
     results.push({ name, ok, msg: ok ? 'PASS' : (msg || 'assertion failed') })
     log(`${ok ? 'PASS' : 'FAIL'} — ${name}${ok ? '' : `: ${msg || 'assertion failed'}`}`)
-  } catch (e) {
-    results.push({ name, ok: false, msg: `threw: ${e.message}` })
-    log(`FAIL — ${name}: threw: ${e.message}`)
+  } catch (error) {
+    results.push({ name, ok: false, msg: `threw: ${error.message}` })
+    log(`FAIL — ${name}: threw: ${error.message}`)
   }
 }
 
@@ -209,10 +209,10 @@ if (_gateProbe.status !== 'needs-revision') {
 // 1. auto, sam:GO, morgan:[LGTM] → ready, full trace, no pause
 await testCase('auto / GO / LGTM → ready with full trace', async () => {
   const r = await run({ mode: 'auto', simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] } })
-  const e1 = eq('status', r.status, 'ready')
-  const e2 = eq('trace', r.trace, ['Plan', 'Dev', 'Review', 'PR Ready'])
-  const err = e1 || e2
-  return err ? err : { ok: true }
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = eq('trace', r.trace, ['Plan', 'Dev', 'Review', 'PR Ready'])
+  const error = error1 || error2
+  return error ? error : { ok: true }
 })
 
 // 1b. config.repo set → flow still completes end-to-end. config.repo threads `-R <repo>`
@@ -224,9 +224,9 @@ await testCase('config.repo set → ready (cross-repo threading does not break t
     config: { ...CONFIG, repo: 'owner/code-repo' },
     simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] },
   })
-  const e1 = eq('status', r.status, 'ready')
-  const e2 = eq('trace', r.trace, ['Plan', 'Dev', 'Review', 'PR Ready'])
-  return (e1 || e2) ? (e1 || e2) : { ok: true }
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = eq('trace', r.trace, ['Plan', 'Dev', 'Review', 'PR Ready'])
+  return (error1 || error2) ? (error1 || error2) : { ok: true }
 })
 
 // 2. auto, sam:GO, morgan:[REQUIRED_CHANGES, LGTM] → ready, rounds:1
@@ -235,20 +235,20 @@ await testCase('auto / GO / REQUIRED_CHANGES then LGTM → ready rounds:1', asyn
     mode: 'auto',
     simulate: { sam: 'GO', morgan: [{ verdict: 'REQUIRED_CHANGES', items: ['a'] }, { verdict: 'LGTM' }] },
   })
-  const e1 = eq('status', r.status, 'ready')
-  const e2 = eq('rounds', r.rounds, 1)
-  const err = e1 || e2
-  return err ? err : { ok: true }
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = eq('rounds', r.rounds, 1)
+  const error = error1 || error2
+  return error ? error : { ok: true }
 })
 
 // 3. auto, sam:NO-GO → no-go, trace ends ['Plan','Blocked']
 await testCase('auto / NO-GO → no-go, trace ends [Plan,Blocked]', async () => {
   const r = await run({ mode: 'auto', simulate: { sam: 'NO-GO' } })
-  const e1 = eq('status', r.status, 'no-go')
+  const error1 = eq('status', r.status, 'no-go')
   const traceEnd = r.trace.slice(-2)
-  const e2 = eq('trace.slice(-2)', traceEnd, ['Plan', 'Blocked'])
-  const err = e1 || e2
-  return err ? err : { ok: true }
+  const error2 = eq('trace.slice(-2)', traceEnd, ['Plan', 'Blocked'])
+  const error = error1 || error2
+  return error ? error : { ok: true }
 })
 
 // 4. semi, proceedThrough:null, sam:GO → plan-ready
@@ -258,8 +258,8 @@ await testCase('semi / proceedThrough:null → plan-ready', async () => {
     proceedThrough: null,
     simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] },
   })
-  const e = eq('status', r.status, 'plan-ready')
-  return e ? e : { ok: true }
+  const error = eq('status', r.status, 'plan-ready')
+  return error ? error : { ok: true }
 })
 
 // 5. semi, proceedThrough:'plan', sam:GO → plan-ready (authorization stops at plan) (#308)
@@ -269,8 +269,8 @@ await testCase('semi / proceedThrough:plan → plan-ready (authorization stops a
     proceedThrough: 'plan',
     simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] },
   })
-  const e = eq('status', r.status, 'plan-ready')
-  return e ? e : { ok: true }
+  const error = eq('status', r.status, 'plan-ready')
+  return error ? error : { ok: true }
 })
 
 // 6. semi, proceedThrough:'dev', sam:GO, morgan:[REQUIRED_CHANGES, LGTM] → needs-revision, round:0
@@ -280,10 +280,10 @@ await testCase('semi / proceedThrough:dev / REQUIRED_CHANGES → needs-revision 
     proceedThrough: 'dev',
     simulate: { sam: 'GO', morgan: [{ verdict: 'REQUIRED_CHANGES', items: ['x'] }, { verdict: 'LGTM' }] },
   })
-  const e1 = eq('status', r.status, 'needs-revision')
-  const e2 = eq('round', r.round, 0)
-  const err = e1 || e2
-  return err ? err : { ok: true }
+  const error1 = eq('status', r.status, 'needs-revision')
+  const error2 = eq('round', r.round, 0)
+  const error = error1 || error2
+  return error ? error : { ok: true }
 })
 
 // 7. semi, proceedThrough:'review', sam:GO, morgan:[REQUIRED_CHANGES, LGTM] → ready, rounds:1
@@ -293,10 +293,10 @@ await testCase('semi / proceedThrough:review / REQUIRED_CHANGES loop → ready r
     proceedThrough: 'review',
     simulate: { sam: 'GO', morgan: [{ verdict: 'REQUIRED_CHANGES', items: ['x'] }, { verdict: 'LGTM' }] },
   })
-  const e1 = eq('status', r.status, 'ready')
-  const e2 = eq('rounds', r.rounds, 1)
-  const err = e1 || e2
-  return err ? err : { ok: true }
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = eq('rounds', r.rounds, 1)
+  const error = error1 || error2
+  return error ? error : { ok: true }
 })
 
 // 8. manual, proceedThrough:null, sam:GO → plan-ready
@@ -306,8 +306,8 @@ await testCase('manual / proceedThrough:null → plan-ready', async () => {
     proceedThrough: null,
     simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] },
   })
-  const e = eq('status', r.status, 'plan-ready')
-  return e ? e : { ok: true }
+  const error = eq('status', r.status, 'plan-ready')
+  return error ? error : { ok: true }
 })
 
 // 9. manual, proceedThrough:'plan' → plan-ready
@@ -317,8 +317,8 @@ await testCase('manual / proceedThrough:plan → plan-ready', async () => {
     proceedThrough: 'plan',
     simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] },
   })
-  const e = eq('status', r.status, 'plan-ready')
-  return e ? e : { ok: true }
+  const error = eq('status', r.status, 'plan-ready')
+  return error ? error : { ok: true }
 })
 
 // 10. manual, proceedThrough:'dev' → dev-done
@@ -328,8 +328,8 @@ await testCase('manual / proceedThrough:dev → dev-done', async () => {
     proceedThrough: 'dev',
     simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] },
   })
-  const e = eq('status', r.status, 'dev-done')
-  return e ? e : { ok: true }
+  const error = eq('status', r.status, 'dev-done')
+  return error ? error : { ok: true }
 })
 
 // T187 (#187) — an explicit proceedThrough is honoured in every mode. gate() used to return "no pause" for
@@ -341,10 +341,10 @@ await testCase('T187a auto / proceedThrough:plan → plan-ready, no Dev/Review c
     proceedThrough: 'plan',
     simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] },
   })
-  const e1 = eq('status', r.status, 'plan-ready')
-  const e2 = r.trace.includes('Dev') ? { ok: false, msg: `trace must not include Dev, got ${JSON.stringify(r.trace)}` } : null
-  const e3 = r.trace.includes('Review') ? { ok: false, msg: `trace must not include Review, got ${JSON.stringify(r.trace)}` } : null
-  return (e1 || e2 || e3) ? (e1 || e2 || e3) : { ok: true }
+  const error1 = eq('status', r.status, 'plan-ready')
+  const error2 = r.trace.includes('Dev') ? { ok: false, msg: `trace must not include Dev, got ${JSON.stringify(r.trace)}` } : null
+  const error3 = r.trace.includes('Review') ? { ok: false, msg: `trace must not include Review, got ${JSON.stringify(r.trace)}` } : null
+  return (error1 || error2 || error3) ? (error1 || error2 || error3) : { ok: true }
 })
 
 await testCase('T187b auto / design-step trigger + proceedThrough:plan → plan-ready, never Dev', async () => {
@@ -361,16 +361,16 @@ await testCase('T187b auto / design-step trigger + proceedThrough:plan → plan-
       morgan: [{ verdict: 'LGTM' }],
     },
   })
-  const e1 = eq('status', r.status, 'plan-ready')
-  const e2 = r.trace.includes('Dev') ? { ok: false, msg: `trace must not include Dev, got ${JSON.stringify(r.trace)}` } : null
-  return (e1 || e2) ? (e1 || e2) : { ok: true }
+  const error1 = eq('status', r.status, 'plan-ready')
+  const error2 = r.trace.includes('Dev') ? { ok: false, msg: `trace must not include Dev, got ${JSON.stringify(r.trace)}` } : null
+  return (error1 || error2) ? (error1 || error2) : { ok: true }
 })
 
 await testCase('T187c auto / no proceedThrough → ready, runs through with no new pause', async () => {
   const r = await run({ mode: 'auto', simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] } })
-  const e1 = eq('status', r.status, 'ready')
-  const e2 = eq('trace', r.trace, ['Plan', 'Dev', 'Review', 'PR Ready'])
-  return (e1 || e2) ? (e1 || e2) : { ok: true }
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = eq('trace', r.trace, ['Plan', 'Dev', 'Review', 'PR Ready'])
+  return (error1 || error2) ? (error1 || error2) : { ok: true }
 })
 
 await testCase('T187d semi / proceedThrough:plan → plan-ready (unchanged by #187)', async () => {
@@ -379,9 +379,9 @@ await testCase('T187d semi / proceedThrough:plan → plan-ready (unchanged by #1
     proceedThrough: 'plan',
     simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] },
   })
-  const e1 = eq('status', r.status, 'plan-ready')
-  const e2 = eq('trace', r.trace, ['Plan'])
-  return (e1 || e2) ? (e1 || e2) : { ok: true }
+  const error1 = eq('status', r.status, 'plan-ready')
+  const error2 = eq('trace', r.trace, ['Plan'])
+  return (error1 || error2) ? (error1 || error2) : { ok: true }
 })
 
 await testCase('T187e auto / proceedThrough:dev / REQUIRED_CHANGES → needs-revision round:0 (same as semi)', async () => {
@@ -390,9 +390,9 @@ await testCase('T187e auto / proceedThrough:dev / REQUIRED_CHANGES → needs-rev
     proceedThrough: 'dev',
     simulate: { sam: 'GO', morgan: [{ verdict: 'REQUIRED_CHANGES', items: ['x'] }, { verdict: 'LGTM' }] },
   })
-  const e1 = eq('status', r.status, 'needs-revision')
-  const e2 = eq('round', r.round, 0)
-  return (e1 || e2) ? (e1 || e2) : { ok: true }
+  const error1 = eq('status', r.status, 'needs-revision')
+  const error2 = eq('round', r.round, 0)
+  return (error1 || error2) ? (error1 || error2) : { ok: true }
 })
 
 await testCase('T187f auto / proceedThrough:review / REQUIRED_CHANGES loop → ready rounds:1', async () => {
@@ -401,9 +401,9 @@ await testCase('T187f auto / proceedThrough:review / REQUIRED_CHANGES loop → r
     proceedThrough: 'review',
     simulate: { sam: 'GO', morgan: [{ verdict: 'REQUIRED_CHANGES', items: ['x'] }, { verdict: 'LGTM' }] },
   })
-  const e1 = eq('status', r.status, 'ready')
-  const e2 = eq('rounds', r.rounds, 1)
-  return (e1 || e2) ? (e1 || e2) : { ok: true }
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = eq('rounds', r.rounds, 1)
+  return (error1 || error2) ? (error1 || error2) : { ok: true }
 })
 
 // 11. entryStage:'review', no prNumber → throws with correct message
@@ -411,11 +411,11 @@ await testCase('entryStage:review without prNumber → throws', async () => {
   try {
     await run({ entryStage: 'review', simulate: { morgan: [{ verdict: 'LGTM' }] } })
     return { ok: false, msg: 'expected throw, but did not throw' }
-  } catch (e) {
-    if (e.message.includes('entryStage=review requires prNumber')) {
+  } catch (error) {
+    if (error.message.includes('entryStage=review requires prNumber')) {
       return { ok: true }
     }
-    return { ok: false, msg: `wrong error message: ${e.message}` }
+    return { ok: false, msg: `wrong error message: ${error.message}` }
   }
 })
 
@@ -426,21 +426,21 @@ await testCase('entryStage:review / prNumber:42 → skips Plan+Dev, ready pr:42'
     prNumber: 42,
     simulate: { morgan: [{ verdict: 'LGTM' }] },
   })
-  const e1 = eq('status', r.status, 'ready')
-  const e2 = eq('pr', r.pr, 42)
-  const e3 = eq('trace', r.trace, ['Review', 'PR Ready'])
-  const err = e1 || e2 || e3
-  return err ? err : { ok: true }
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = eq('pr', r.pr, 42)
+  const error3 = eq('trace', r.trace, ['Review', 'PR Ready'])
+  const error = error1 || error2 || error3
+  return error ? error : { ok: true }
 })
 
 // 13. dryRun:true, mode:'manual' → dry-run-ok, mode:'manual', entryStage:'plan'
 await testCase('dryRun:true → dry-run-ok passthrough', async () => {
   const r = await run({ dryRun: true, mode: 'manual' })
-  const e1 = eq('status', r.status, 'dry-run-ok')
-  const e2 = eq('mode', r.mode, 'manual')
-  const e3 = eq('entryStage', r.entryStage, 'plan')
-  const err = e1 || e2 || e3
-  return err ? err : { ok: true }
+  const error1 = eq('status', r.status, 'dry-run-ok')
+  const error2 = eq('mode', r.mode, 'manual')
+  const error3 = eq('entryStage', r.entryStage, 'plan')
+  const error = error1 || error2 || error3
+  return error ? error : { ok: true }
 })
 
 // T246 (#246) — `auto` is the default mode: a launch that passes no `mode` runs through to ready, and the
@@ -462,9 +462,9 @@ await testCase('null Morgan round 0 (2026-07-21 crash) → review-died PR preser
     mode: 'auto',
     simulate: { sam: 'GO', morgan: [null] },
   })
-  const e1 = eq('status', r.status, 'review-died')
-  const e2 = eq('pr', r.pr, 999)
-  return (e1 || e2) ? (e1 || e2) : { ok: true }
+  const error1 = eq('status', r.status, 'review-died')
+  const error2 = eq('pr', r.pr, 999)
+  return (error1 || error2) ? (error1 || error2) : { ok: true }
 })
 
 // 15. auto, sam:GO, round 0 REQUIRED_CHANGES + round 1 SAME items → escalate
@@ -479,9 +479,9 @@ await testCase('no-progress (round 1 items ⊇ round 0) → escalate', async () 
       ],
     },
   })
-  const e1 = eq('status', r.status, 'escalate')
-  const e2 = eq('reason', r.reason, 'no-progress')
-  return (e1 || e2) ? (e1 || e2) : { ok: true }
+  const error1 = eq('status', r.status, 'escalate')
+  const error2 = eq('reason', r.reason, 'no-progress')
+  return (error1 || error2) ? (error1 || error2) : { ok: true }
 })
 
 // 16. entryStage:'dev', alreadyDoneCheck: substantiated issue-closed → already-done
@@ -492,8 +492,8 @@ await testCase('entryStage:dev / already-done guard → already-done', async () 
       alreadyDoneCheck: { isAlreadyDone: true, isIssueClosed: true, issueState: 'CLOSED', isMerged: false },
     },
   })
-  const e = eq('status', r.status, 'already-done')
-  return e ? e : { ok: true }
+  const error = eq('status', r.status, 'already-done')
+  return error ? error : { ok: true }
 })
 
 // 16b. entryStage:'dev', alreadyDoneCheck: checkFailed + fabricated mergedAt → NOT already-done
@@ -514,8 +514,8 @@ await testCase('entryStage:dev / already-done guard checkFailed → flow continu
       morgan: [{ verdict: 'LGTM' }],
     },
   })
-  const e = eq('status', r.status, 'ready')
-  return e ? e : { ok: true }
+  const error = eq('status', r.status, 'ready')
+  return error ? error : { ok: true }
 })
 
 // 16c. entryStage:'dev', alreadyDoneCheck: bare {isAlreadyDone:true} → NOT already-done
@@ -530,8 +530,8 @@ await testCase('entryStage:dev / already-done guard bare boolean → flow contin
       morgan: [{ verdict: 'LGTM' }],
     },
   })
-  const e = eq('status', r.status, 'ready')
-  return e ? e : { ok: true }
+  const error = eq('status', r.status, 'ready')
+  return error ? error : { ok: true }
 })
 
 // 16d. entryStage:'dev', alreadyDoneCheck: substantiated merged row on the expected branch → already-done
@@ -550,8 +550,8 @@ await testCase('entryStage:dev / already-done guard substantiated merge → alre
       },
     },
   })
-  const e = eq('status', r.status, 'already-done')
-  return e ? e : { ok: true }
+  const error = eq('status', r.status, 'already-done')
+  return error ? error : { ok: true }
 })
 
 // 16e. entryStage:'dev', alreadyDoneCheck: merged row on the expected branch but the merged PR's
@@ -578,8 +578,8 @@ await testCase('entryStage:dev / already-done guard merged-but-does-not-close-is
       morgan: [{ verdict: 'LGTM' }],
     },
   })
-  const e = eq('status', r.status, 'ready')
-  return e ? e : { ok: true }
+  const error = eq('status', r.status, 'ready')
+  return error ? error : { ok: true }
 })
 
 // T9031 (#31) — the already-done result carries the guard's own diagnostic, so a false positive is
@@ -601,13 +601,13 @@ await testCase('T9031 already-done result carries the guard diagnostic (merged p
       },
     },
   })
-  const e = eq('status', r.status, 'already-done')
+  const error = eq('status', r.status, 'already-done')
     || eq('guard.reason', r.guard && r.guard.reason, 'merged')
     || eq('guard.mergedPr', r.guard && r.guard.mergedPr, 446)
     || eq('guard.mergedHeadRef', r.guard && r.guard.mergedHeadRef, 'features/issue-1')
     || eq('guard.mergedPrClosesIssue', r.guard && r.guard.mergedPrClosesIssue, true)
     || eq('guard.issueState', r.guard && r.guard.issueState, 'OPEN')
-  return e ? e : { ok: true }
+  return error ? error : { ok: true }
 })
 
 // T9031b (#31) — issue-closed path: the merged-PR fields are absent on the guard result and read null.
@@ -618,13 +618,13 @@ await testCase('T9031b already-done result carries the guard diagnostic (issue-c
       alreadyDoneCheck: { isAlreadyDone: true, isIssueClosed: true, issueState: 'CLOSED', isMerged: false },
     },
   })
-  const e = eq('status', r.status, 'already-done')
+  const error = eq('status', r.status, 'already-done')
     || eq('guard.reason', r.guard && r.guard.reason, 'issue-closed')
     || eq('guard.issueState', r.guard && r.guard.issueState, 'CLOSED')
     || eq('guard.mergedPr', r.guard && r.guard.mergedPr, null)
     || eq('guard.mergedHeadRef', r.guard && r.guard.mergedHeadRef, null)
     || eq('guard.mergedPrClosesIssue', r.guard && r.guard.mergedPrClosesIssue, null)
-  return e ? e : { ok: true }
+  return error ? error : { ok: true }
 })
 
 // T183a (#183, resumeReason present) — a mergeable-conflicting-driven entryStage:'dev' resume
@@ -639,11 +639,11 @@ await testCase('T183a resumeReason:mergeable-conflicting → RESUME REASON note 
     simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] },
   })
   const p = r.nickPromptPreview
-  const e1 = includes('nickPromptPreview', p, 'RESUME REASON (#183)')
-  const e2 = includes('nickPromptPreview', p, 'mergeable-conflicting')
-  const e3 = includes('nickPromptPreview', p, '4242')
-  const err = e1 || e2 || e3
-  return err ? err : { ok: true }
+  const error1 = includes('nickPromptPreview', p, 'RESUME REASON (#183)')
+  const error2 = includes('nickPromptPreview', p, 'mergeable-conflicting')
+  const error3 = includes('nickPromptPreview', p, '4242')
+  const error = error1 || error2 || error3
+  return error ? error : { ok: true }
 })
 
 // T183b (#183, negative control) — an ordinary entryStage:'dev' resume (resumeReason omitted)
@@ -654,10 +654,10 @@ await testCase('T183b resumeReason omitted → no RESUME REASON note in nickProm
     mode: 'auto',
     simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] },
   })
-  const err = r.nickPromptPreview.includes('RESUME REASON')
+  const error = r.nickPromptPreview.includes('RESUME REASON')
     ? { ok: false, msg: `expected nickPromptPreview NOT to include "RESUME REASON", got ${JSON.stringify(r.nickPromptPreview)}` }
     : null
-  return err ? err : { ok: true }
+  return error ? error : { ok: true }
 })
 
 // T174a (#174) — Sam bundles an epic + 2 fully-resolved absorbed issues; Nick's composed
@@ -669,8 +669,8 @@ await testCase('T174a bundled epic + 2 fully-resolved absorbed issues -> Closes 
     mode: 'auto',
     simulate: { sam: 'GO', samAbsorbedIssues: ['91', '123'], morgan: [{ verdict: 'LGTM' }] },
   })
-  const err = includes('nickPromptPreview', r.nickPromptPreview, 'Closes #162, Closes #91, Closes #123')
-  return err ? err : { ok: true }
+  const error = includes('nickPromptPreview', r.nickPromptPreview, 'Closes #162, Closes #91, Closes #123')
+  return error ? error : { ok: true }
 })
 
 // T174b (#174, negative control) — an issue Sam's plan flags partial/residual is simply never
@@ -683,12 +683,12 @@ await testCase('T174b partial/non-absorbed issue is excluded from the Closes # l
     simulate: { sam: 'GO', samAbsorbedIssues: ['91'], morgan: [{ verdict: 'LGTM' }] },
   })
   const p = r.nickPromptPreview
-  const e1 = includes('nickPromptPreview', p, 'Closes #162, Closes #91')
-  const e2 = p.includes('Closes #119')
+  const error1 = includes('nickPromptPreview', p, 'Closes #162, Closes #91')
+  const error2 = p.includes('Closes #119')
     ? { ok: false, msg: `expected nickPromptPreview NOT to include "Closes #119" (partial issue), got ${JSON.stringify(p)}` }
     : null
-  const err = e1 || e2
-  return err ? err : { ok: true }
+  const error = error1 || error2
+  return error ? error : { ok: true }
 })
 
 // T183c (#183, validation) — an unrecognized resumeReason value throws under dryRun, same idiom
@@ -701,9 +701,9 @@ await testCase('T183c resumeReason invalid value → throws under dryRun (zero a
       resumeReason: 'bogus',
     })
     return { ok: false, msg: 'expected run() to throw, it did not' }
-  } catch (e) {
-    if (!e.message.includes('Invalid resumeReason')) {
-      return { ok: false, msg: `wrong error message: ${e.message}` }
+  } catch (error) {
+    if (!error.message.includes('Invalid resumeReason')) {
+      return { ok: false, msg: `wrong error message: ${error.message}` }
     }
     return { ok: true }
   }
@@ -722,8 +722,8 @@ await testCase('preflight fails then passes → ready (no extra Morgan round con
       morgan: [{ verdict: 'LGTM' }],
     },
   })
-  const e = eq('status', r.status, 'ready')
-  return e ? e : { ok: true }
+  const error = eq('status', r.status, 'ready')
+  return error ? error : { ok: true }
 })
 
 // #182/#183 helpers, defined before the cases that use them (the #228 / human-gate cases below run in id mode).
@@ -732,11 +732,10 @@ await testCase('preflight fails then passes → ready (no extra Morgan round con
 // only when the suite was not given the pipeline source (the case then logs SKIP); a source without the markers THROWS,
 // so the case FAILs instead of passing vacuously.
 const t182Block = () => {
-  const src = SUITE_ARGS.fpSource
-  if (!src) return null
-  const block = extractBetween(src, '// --- acceptanceItems:start ---', '// --- acceptanceItems:end ---')
+  const source = SUITE_ARGS.fpSource
+  if (!source) return null
+  const block = extractBetween(source, '// --- acceptanceItems:start ---', '// --- acceptanceItems:end ---')
   if (!block) throw new Error('acceptanceItems:start/:end markers not found in the pipeline source')
-  // eslint-disable-next-line no-new-func
   return new Function(block + '\nreturn { tickIdsArgv, numberItems, renderLine, renderChecklist, parseChecklist, itemsFromPlan, validateAcceptanceItems, planLacksItems, mapBoxes, nickBlockNote, morganBoxesNote, boxLineId, lineKey, humanGateLine, onlyHumanGateLines, parkUntickable, morganItemsRule, reviewProgress, ciScope, ciAbsent, ciBlocker, verdictProblem }')()
 }
 const T182_ITEMS = [
@@ -745,10 +744,10 @@ const T182_ITEMS = [
   { text: '`node scripts/run-flow-suite.cjs | tail -n 1` ends with `failed=0`', humanGate: false },
 ]
 // What numberItems must make of T182_ITEMS: { id, text, humanGate } in this key order (the suite compares JSON).
-const T182_CANON = T182_ITEMS.map((it, i) => ({ id: i + 1, text: it.text, humanGate: it.humanGate }))
+const T182_CANON = T182_ITEMS.map((it, index) => ({ id: index + 1, text: it.text, humanGate: it.humanGate }))
 // The lines `items` must render to, written BY HAND: an oracle independent of renderChecklist.
 const t182Lines = (items, ids = true) =>
-  items.map((it, i) => `- [ ] ${ids ? `<!-- ac:${i + 1} --> ` : ''}${it.humanGate ? '[human-gate] ' : ''}${it.text}`)
+  items.map((it, index) => `- [ ] ${ids ? `<!-- ac:${index + 1} --> ` : ''}${it.humanGate ? '[human-gate] ' : ''}${it.text}`)
 // A Sam return carrying the items as data AND their lines in the plan text, as the contract asks.
 const t182Sam = (items, ids = true) => ({
   plan: '## Plan\n1. change it\ntargetFiles: none\n\n## Acceptance checklist\n' + t182Lines(items, ids).join('\n') + '\n',
@@ -776,11 +775,11 @@ await testCase('T18 human-gate short-circuit round 0 → ready-pending-human', a
       morgan: [{ verdict: 'REQUIRED_CHANGES', items: t182Lines([gate]) }],
     },
   })
-  const e1 = eq('status', r.status, 'ready-pending-human')
-  const e2 = eq('round', r.round, 0)
-  const e3 = eq('humanGateItems.length', r.humanGateItems?.length, 1)
-  const e4 = eq('resumable', r.resumable, true)
-  return e1 || e2 || e3 || e4 || { ok: true }
+  const error1 = eq('status', r.status, 'ready-pending-human')
+  const error2 = eq('round', r.round, 0)
+  const error3 = eq('humanGateItems.length', r.humanGateItems?.length, 1)
+  const error4 = eq('resumable', r.resumable, true)
+  return error1 || error2 || error3 || error4 || { ok: true }
 })
 
 // 19. T19 — mixed round loops on real blocker, then terminates
@@ -798,10 +797,10 @@ await testCase('T19 mixed round loops on real blocker then human-gate terminates
       ],
     },
   })
-  const e1 = eq('status', r.status, 'ready-pending-human')
-  const e2 = eq('round', r.round, 1)
-  const e3 = eq('humanGateItems.length', r.humanGateItems?.length, 1)
-  return e1 || e2 || e3 || { ok: true }
+  const error1 = eq('status', r.status, 'ready-pending-human')
+  const error2 = eq('round', r.round, 1)
+  const error3 = eq('humanGateItems.length', r.humanGateItems?.length, 1)
+  return error1 || error2 || error3 || { ok: true }
 })
 
 // 20. T20 — normalization catches cosmetic rewording (Part 2)
@@ -819,9 +818,9 @@ await testCase('T20 normalization catches cosmetic rewording → no-progress esc
       ],
     },
   })
-  const e1 = eq('status', r.status, 'escalate')
-  const e2 = eq('reason', r.reason, 'no-progress')
-  return (e1 || e2) ? (e1 || e2) : { ok: true }
+  const error1 = eq('status', r.status, 'escalate')
+  const error2 = eq('reason', r.reason, 'no-progress')
+  return (error1 || error2) ? (error1 || error2) : { ok: true }
 })
 
 // 21. T21 — genuinely different blockers still loop (no false early-stop from normalization)
@@ -838,9 +837,9 @@ await testCase('T21 genuinely different blockers loop without false early-stop',
       ],
     },
   })
-  const e1 = eq('status', r.status, 'ready')
-  const e2 = eq('rounds', r.rounds, 2)
-  return (e1 || e2) ? (e1 || e2) : { ok: true }
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = eq('rounds', r.rounds, 2)
+  return (error1 || error2) ? (error1 || error2) : { ok: true }
 })
 
 // 22. T22 — human ticks the box → clean LGTM on re-launch (resume path)
@@ -854,9 +853,9 @@ await testCase('T22 human ticks box, re-launch via entryStage:review → ready (
       morgan: [{ verdict: 'LGTM' }],
     },
   })
-  const e1 = eq('status', r.status, 'ready')
-  const e2 = eq('pr', r.pr, 267)
-  return (e1 || e2) ? (e1 || e2) : { ok: true }
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = eq('pr', r.pr, 267)
+  return (error1 || error2) ? (error1 || error2) : { ok: true }
 })
 
 // 23. T23 — Nick pushes nothing on a correction round → nick-no-op escalate (no re-review)
@@ -871,10 +870,10 @@ await testCase('T23 Nick no-op on correction round (SHA unchanged) → escalate 
       headSha: { 1: 'sha-abc123' },
     },
   })
-  const e1 = eq('status', r.status, 'escalate')
-  const e2 = eq('reason', r.reason, 'nick-no-op')
-  const e3 = eq('round', r.round, 1)
-  return (e1 || e2 || e3) ? (e1 || e2 || e3) : { ok: true }
+  const error1 = eq('status', r.status, 'escalate')
+  const error2 = eq('reason', r.reason, 'nick-no-op')
+  const error3 = eq('round', r.round, 1)
+  return (error1 || error2 || error3) ? (error1 || error2 || error3) : { ok: true }
 })
 
 // T23b (issue #97) — the no-op gate widens from SHA-only to SHA-OR-body: Nick's fix landed as a
@@ -892,9 +891,9 @@ await testCase('T23b Nick body-only fix (SHA unchanged, body changed) → contin
       prBodySig: { 1: 'body-v1', 2: 'body-v2' },
     },
   })
-  const e1 = eq('status', r.status, 'ready')
-  const e2 = includes('trace', r.trace, 'nick-body-only-fix:1')
-  return (e1 || e2) ? (e1 || e2) : { ok: true }
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = includes('trace', r.trace, 'nick-body-only-fix:1')
+  return (error1 || error2) ? (error1 || error2) : { ok: true }
 })
 
 // ── #228, #183 — verified-untickable terminal status ───────────────────────────────────────
@@ -908,7 +907,7 @@ const UNT_ITEMS = [
 ]
 const UNT_LINES = t182Lines(UNT_ITEMS)
 const UNT_PROOF = '$ cmd\n(verbatim output)'
-const untBoxes = (...proven) => proven.map((p, i) => ({ id: i + 1, proven: p, proof: p ? UNT_PROOF : '' }))
+const untBoxes = (...proven) => proven.map((p, index) => ({ id: index + 1, proven: p, proof: p ? UNT_PROOF : '' }))
 const nickTrace = (r) => ((r.trace || []).some(t => /^nick/i.test(String(t))) ? { ok: false, msg: `Nick dispatched: trace=${JSON.stringify(r.trace)}` } : null)
 
 await testCase('T228a all boxes proven, the tick refused (auto) → verified-untickable, no Nick round, no reason', async () => {
@@ -921,16 +920,16 @@ await testCase('T228a all boxes proven, the tick refused (auto) → verified-unt
       headSha: { 1: 'sha-abc123' },
     },
   })
-  const e1 = eq('status', r.status, 'verified-untickable')
-  const e2 = eq('round', r.round, 0)
-  const e3 = eq('untickableItems.length', r.untickableItems?.length, 2)
-  const e4 = eq('resumable', r.resumable, true)
-  const e5 = eq('reason', r.reason, undefined)
-  const e6 = eq('item verbatim', r.untickableItems?.[0]?.item, UNT_LINES[0])
-  const e7 = eq('proof carried', r.untickableItems?.[0]?.proof, UNT_PROOF)
-  const e8 = eq('id carried', r.untickableItems?.map(i => i.id), [1, 2])
-  const e9 = includes('trace', r.trace, 'verified-untickable:0')
-  return e1 || e2 || e3 || e4 || e5 || e6 || e7 || e8 || nickTrace(r) || e9 || { ok: true }
+  const error1 = eq('status', r.status, 'verified-untickable')
+  const error2 = eq('round', r.round, 0)
+  const error3 = eq('untickableItems.length', r.untickableItems?.length, 2)
+  const error4 = eq('resumable', r.resumable, true)
+  const error5 = eq('reason', r.reason, undefined)
+  const error6 = eq('item verbatim', r.untickableItems?.[0]?.item, UNT_LINES[0])
+  const error7 = eq('proof carried', r.untickableItems?.[0]?.proof, UNT_PROOF)
+  const error8 = eq('id carried', r.untickableItems?.map(index => index.id), [1, 2])
+  const error9 = includes('trace', r.trace, 'verified-untickable:0')
+  return error1 || error2 || error3 || error4 || error5 || error6 || error7 || error8 || nickTrace(r) || error9 || { ok: true }
 })
 
 await testCase('T228b semi mode, entryStage:review → verified-untickable (returns before gate(review))', async () => {
@@ -944,9 +943,9 @@ await testCase('T228b semi mode, entryStage:review → verified-untickable (retu
       acceptanceSync: false,
     },
   })
-  const e1 = eq('status', r.status, 'verified-untickable')
-  const e2 = eq('untickableItems.length', r.untickableItems?.length, 2)
-  return e1 || e2 || { ok: true }
+  const error1 = eq('status', r.status, 'verified-untickable')
+  const error2 = eq('untickableItems.length', r.untickableItems?.length, 2)
+  return error1 || error2 || { ok: true }
 })
 
 await testCase('T228d a refused tick + a human-gate box → ready-pending-human carrying both lists', async () => {
@@ -960,11 +959,11 @@ await testCase('T228d a refused tick + a human-gate box → ready-pending-human 
       acceptanceSync: false,
     },
   })
-  const e1 = eq('status', r.status, 'ready-pending-human')
-  const e2 = eq('humanGateItems', r.humanGateItems, [lines[1]])
-  const e3 = eq('untickableItems.length', r.untickableItems?.length, 1)
-  const e4 = eq('untickable item', r.untickableItems?.[0]?.item, lines[0])
-  return e1 || e2 || e3 || e4 || { ok: true }
+  const error1 = eq('status', r.status, 'ready-pending-human')
+  const error2 = eq('humanGateItems', r.humanGateItems, [lines[1]])
+  const error3 = eq('untickableItems.length', r.untickableItems?.length, 1)
+  const error4 = eq('untickable item', r.untickableItems?.[0]?.item, lines[0])
+  return error1 || error2 || error3 || error4 || { ok: true }
 })
 
 await testCase('T228e a checklist-wording owner with a whitespace proof → fail-safe legacy path → escalate nick-no-op', async () => {
@@ -977,10 +976,10 @@ await testCase('T228e a checklist-wording owner with a whitespace proof → fail
       headSha: { 1: 'sha-abc123' },
     },
   })
-  const e1 = eq('status', r.status, 'escalate')
-  const e2 = eq('reason', r.reason, 'nick-no-op')
-  const e3 = eq('untickableItems', r.untickableItems, undefined)
-  return e1 || e2 || e3 || { ok: true }
+  const error1 = eq('status', r.status, 'escalate')
+  const error2 = eq('reason', r.reason, 'nick-no-op')
+  const error3 = eq('untickableItems', r.untickableItems, undefined)
+  return error1 || error2 || error3 || { ok: true }
 })
 
 await testCase('T228f ciGreen:false with every box proven and the tick refused → not parked (legacy path)', async () => {
@@ -993,10 +992,10 @@ await testCase('T228f ciGreen:false with every box proven and the tick refused �
       headSha: { 1: 'sha-abc123' },
     },
   })
-  const e1 = r.status === 'verified-untickable' ? { ok: false, msg: 'parked despite ciGreen:false' } : null
-  const e2 = eq('status', r.status, 'escalate')
-  const e3 = eq('reason', r.reason, 'nick-no-op')
-  return e1 || e2 || e3 || { ok: true }
+  const error1 = r.status === 'verified-untickable' ? { ok: false, msg: 'parked despite ciGreen:false' } : null
+  const error2 = eq('status', r.status, 'escalate')
+  const error3 = eq('reason', r.reason, 'nick-no-op')
+  return error1 || error2 || error3 || { ok: true }
 })
 
 await testCase('T228g round 0 a refused tick + a real code blocker loops, round 1 only the refused tick → verified-untickable at round 1', async () => {
@@ -1011,10 +1010,10 @@ await testCase('T228g round 0 a refused tick + a real code blocker loops, round 
       acceptanceSync: false,
     },
   })
-  const e1 = eq('status', r.status, 'verified-untickable')
-  const e2 = eq('round', r.round, 1)
-  const e3 = eq('untickableItems.length', r.untickableItems?.length, 2)
-  return e1 || e2 || e3 || { ok: true }
+  const error1 = eq('status', r.status, 'verified-untickable')
+  const error2 = eq('round', r.round, 1)
+  const error3 = eq('untickableItems.length', r.untickableItems?.length, 2)
+  return error1 || error2 || error3 || { ok: true }
 })
 
 // 24. T24 — plan-verification gate: round-1 NOT_CONFORMING loops back to Sam, round-2
@@ -1032,8 +1031,8 @@ await testCase('T24 planCheck NOT_CONFORMING then CONFORMING → loops back, pro
       morgan: [{ verdict: 'LGTM' }],
     },
   })
-  const e = eq('status', r.status, 'ready')
-  return e ? e : { ok: true }
+  const error = eq('status', r.status, 'ready')
+  return error ? error : { ok: true }
 })
 
 // 25. T25 — plan-verification gate: NOT_CONFORMING at both attempts (bounded by the default
@@ -1050,9 +1049,9 @@ await testCase('T25 planCheck NOT_CONFORMING x2 (maxPlanAttempts) → escalate p
       morgan: [{ verdict: 'LGTM' }],
     },
   })
-  const e1 = eq('status', r.status, 'escalate')
-  const e2 = eq('reason', r.reason, 'plan-not-conforming')
-  return (e1 || e2) ? (e1 || e2) : { ok: true }
+  const error1 = eq('status', r.status, 'escalate')
+  const error2 = eq('reason', r.reason, 'plan-not-conforming')
+  return (error1 || error2) ? (error1 || error2) : { ok: true }
 })
 
 // 26. T26 (#308) — resumed run: semi + proceedThrough:'plan' MUST stop at plan-ready,
@@ -1064,10 +1063,10 @@ await testCase('T26 semi / proceedThrough:plan → plan-ready, no Dev/Review cha
     proceedThrough: 'plan',
     simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] },
   })
-  const e1 = eq('status', r.status, 'plan-ready')
-  const e2 = r.trace.includes('Dev') ? { ok: false, msg: `trace must not include Dev, got ${JSON.stringify(r.trace)}` } : null
-  const e3 = r.trace.includes('Review') ? { ok: false, msg: `trace must not include Review, got ${JSON.stringify(r.trace)}` } : null
-  return (e1 || e2 || e3) ? (e1 || e2 || e3) : { ok: true }
+  const error1 = eq('status', r.status, 'plan-ready')
+  const error2 = r.trace.includes('Dev') ? { ok: false, msg: `trace must not include Dev, got ${JSON.stringify(r.trace)}` } : null
+  const error3 = r.trace.includes('Review') ? { ok: false, msg: `trace must not include Review, got ${JSON.stringify(r.trace)}` } : null
+  return (error1 || error2 || error3) ? (error1 || error2 || error3) : { ok: true }
 })
 
 // 27. Diagnose stage — mandatory, refuted: Theo refutes → diagnosis-refuted, no Sam/Nick/Morgan spent
@@ -1081,11 +1080,11 @@ await testCase('Diagnose (mandatory) / Theo refutes → diagnosis-refuted, trace
       // 'ready'). Asserting status + trace below is the actual regression guard.
     },
   })
-  const e1 = eq('status', r.status, 'diagnosis-refuted')
-  const e2 = eq('trace', r.trace, ['Blocked'])
-  const e3 = includes('evidence', r.evidence, 'did not occur')
-  const e4 = includes('actualCause', r.actualCause, 'stale cache')
-  return (e1 || e2 || e3 || e4) ? (e1 || e2 || e3 || e4) : { ok: true }
+  const error1 = eq('status', r.status, 'diagnosis-refuted')
+  const error2 = eq('trace', r.trace, ['Blocked'])
+  const error3 = includes('evidence', r.evidence, 'did not occur')
+  const error4 = includes('actualCause', r.actualCause, 'stale cache')
+  return (error1 || error2 || error3 || error4) ? (error1 || error2 || error3 || error4) : { ok: true }
 })
 
 // 28. Diagnose stage — mandatory, confirmed: Theo confirms → falls through to normal ready flow
@@ -1098,9 +1097,9 @@ await testCase('Diagnose (mandatory) / Theo confirms → falls through to Plan, 
       morgan: [{ verdict: 'LGTM' }],
     },
   })
-  const e1 = eq('status', r.status, 'ready')
-  const e2 = eq('trace', r.trace, ['Plan', 'Dev', 'Review', 'PR Ready'])
-  return (e1 || e2) ? (e1 || e2) : { ok: true }
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = eq('trace', r.trace, ['Plan', 'Dev', 'Review', 'PR Ready'])
+  return (error1 || error2) ? (error1 || error2) : { ok: true }
 })
 
 // 29. Diagnose stage — no arg/tag needed at all: default `simFixture('theo')` (confirmed:true)
@@ -1108,9 +1107,9 @@ await testCase('Diagnose (mandatory) / Theo confirms → falls through to Plan, 
 //     mandatory gate never requires special-casing by the caller (nightly or otherwise).
 await testCase('Diagnose (mandatory) / no theo fixture supplied → default-confirms, unchanged ready flow', async () => {
   const r = await run({ mode: 'auto', simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] } })
-  const e1 = eq('status', r.status, 'ready')
-  const e2 = eq('trace', r.trace, ['Plan', 'Dev', 'Review', 'PR Ready'])
-  return (e1 || e2) ? (e1 || e2) : { ok: true }
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = eq('trace', r.trace, ['Plan', 'Dev', 'Review', 'PR Ready'])
+  return (error1 || error2) ? (error1 || error2) : { ok: true }
 })
 
 // 30. T30 (#333, reopened) — Morgan's window catches an issue created during her round-0
@@ -1129,9 +1128,9 @@ await testCase('T30 issue created in round-0 window → flagged, trace records i
       windowStart: '2026-01-01T00:00:00Z',
     },
   })
-  const e1 = eq('status', r.status, 'ready')
-  const e2 = includes('trace', r.trace, 'reviewer-window-issue-flagged:501')
-  return (e1 || e2) ? (e1 || e2) : { ok: true }
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = includes('trace', r.trace, 'reviewer-window-issue-flagged:501')
+  return (error1 || error2) ? (error1 || error2) : { ok: true }
 })
 
 // 31. T31 (#333) negative control — same run WITHOUT an issueWindow/morganIssues fixture must
@@ -1160,12 +1159,12 @@ await testCase('T32 real-case replay (issue created inside reviewer window) → 
       issueWindow: { 0: { windowEnd: '2026-09-01T18:00:29Z', issues: [{ number: 257, createdAt: '2026-09-01T17:38:44Z', url: 'https://github.com/example-org/example-repo/issues/257' }] } },
     },
   })
-  const e1 = includes('trace', r.trace, 'reviewer-window-issue-flagged:257')
+  const error1 = includes('trace', r.trace, 'reviewer-window-issue-flagged:257')
   const closeTokens = r.trace.filter(t => /close/i.test(String(t)))
-  const e2 = closeTokens.length !== 0
+  const error2 = closeTokens.length !== 0
     ? { ok: false, msg: `expected zero close-shaped trace tokens, got ${JSON.stringify(closeTokens)}` }
     : null
-  return (e1 || e2) ? (e1 || e2) : { ok: true }
+  return (error1 || error2) ? (error1 || error2) : { ok: true }
 })
 
 // T33 (#333, reopened) — a reopen is not a creation: an issue whose createdAt PREDATES the
@@ -1226,10 +1225,10 @@ await testCase('T119 planCheck orphan criterion → escalate, orphans in planChe
       morgan: [{ verdict: 'LGTM' }],
     },
   })
-  const e1 = eq('status', r.status, 'escalate')
-  const e2 = eq('reason', r.reason, 'plan-not-conforming')
-  const e3 = includes('planCheckIssues', r.planCheckIssues, orphan)
-  return (e1 || e2 || e3) ? (e1 || e2 || e3) : { ok: true }
+  const error1 = eq('status', r.status, 'escalate')
+  const error2 = eq('reason', r.reason, 'plan-not-conforming')
+  const error3 = includes('planCheckIssues', r.planCheckIssues, orphan)
+  return (error1 || error2 || error3) ? (error1 || error2 || error3) : { ok: true }
 })
 
 // ---------------------------------------------------------------------------
@@ -1248,9 +1247,9 @@ await testCase('T35 review-comment hygiene / minimizedComments fixture → trace
       minimizedComments: { 1: ['IC_x'] },
     },
   })
-  const e1 = eq('status', r.status, 'ready')
-  const e2 = includes('trace', r.trace, 'review-comment-minimized:IC_x')
-  return (e1 || e2) ? (e1 || e2) : { ok: true }
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = includes('trace', r.trace, 'review-comment-minimized:IC_x')
+  return (error1 || error2) ? (error1 || error2) : { ok: true }
 })
 
 // T36 negative control — same 2-round REQUIRED_CHANGES→LGTM flow WITHOUT a
@@ -1286,20 +1285,20 @@ await testCase('T37 provision fails → escalate / reason provision-failed', asy
       provision: { ok: false, missing: ['/x/.venv'], exitCode: 2 },
     },
   })
-  const e1 = eq('status', r.status, 'escalate')
-  const e2 = eq('reason', r.reason, 'provision-failed')
-  const e3 = eq('missing', r.missing, ['/x/.venv'])
-  const err = e1 || e2 || e3
-  return err ? err : { ok: true }
+  const error1 = eq('status', r.status, 'escalate')
+  const error2 = eq('reason', r.reason, 'provision-failed')
+  const error3 = eq('missing', r.missing, ['/x/.venv'])
+  const error = error1 || error2 || error3
+  return error ? error : { ok: true }
 })
 
 // T38 negative control — provisioning succeeds (default fixture,
 // ok:true) → flow completes exactly as before, trace unchanged.
 await testCase('T38 provision succeeds (default fixture) → ready, trace unchanged', async () => {
   const r = await run({ mode: 'auto', simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] } })
-  const e1 = eq('status', r.status, 'ready')
-  const e2 = eq('trace', r.trace, ['Plan', 'Dev', 'Review', 'PR Ready'])
-  return (e1 || e2) ? (e1 || e2) : { ok: true }
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = eq('trace', r.trace, ['Plan', 'Dev', 'Review', 'PR Ready'])
+  return (error1 || error2) ? (error1 || error2) : { ok: true }
 })
 
 // ---------------------------------------------------------------------------
@@ -1314,12 +1313,12 @@ await testCase('T38 provision succeeds (default fixture) → ready, trace unchan
 // ~20 KB real-world size class this models (#87 truncation regression).
 const PR385_BODY_REAL = "Closes #292\n\n## Summary\n- Adds `reviewMarker` (`<!-- pipeline-review-round pr=<N> -->`) that the review loop stamps as the first line of Morgan's verdict comments and Nick's push-notes.\n- Adds `minimizeSupersededReviewComments(round)`: best-effort, marker-scoped pass that minimizes (collapses, never deletes) prior-round marked comments before each Morgan spawn (initial + loop re-review), running AFTER Nick's push in the loop so his round-N note is minimized too.\n- Marker-only targeting — all pipeline agents share ONE GitHub token, so author filtering is useless/dangerous; unmarked (human) comments are never touched. Fails safe: scan/mutation errors are caught and logged, never thrown.\n- Scope: directions 1+2 from Sam's plan only. Directions 3 (decision-log body section), 4 (artifact-first body), and the commit-hygiene squash note are deferred to a follow-up.\n\n## Test plan\n- `node scripts/run-flow-suite.cjs` (Lead-run; agents have no Workflow tool) — asserts trace includes `review-comment-minimized:IC_x` on a 2-round REQUIRED_CHANGES→LGTM flow with a `minimizedComments` fixture; negative control is the same flow with no fixture → zero `review-comment-minimized:` trace entries.\n- `python3 -m unittest discover plugins/backlog/tests` — all green.\n- `bash templates/test-canonical-guards.sh` — all green.\n- No Python files touched by this PR (JS-only change to `workflows/`).\n\n## Feature flag\nNone — no-opt-out hygiene pass on the existing review-loop seam, matching the plan's scope table.\n\n## Risk\nLow. Best-effort/non-throwing by construction (mirrors `reconcileMorganIssues`). Worst case on a `gh`/GraphQL hiccup: a comment simply stays visible (fail-safe), never mis-minimized, since targeting requires the literal `<!-- pipeline-review-round` marker prefix that only this pipeline ever writes.\n\n<!-- acceptance:start -->\n- [x] `node scripts/run-flow-suite.cjs` — all cases pass, incl. the 2 new minimize cases (trace assertion + negative control).\n- [x] `grep -n \"pipeline-review-round\" workflows/deliver-pipeline.js` returns >= 4 hits (marker const, helper filter, both Morgan prompts, Nick prompt).\n- [x] `minimizeSupersededReviewComments` filters on marker + `isMinimized==false` ONLY (no author filter) and contains no `throw` — confirm by reading the helper.\n- [x] Call order: minimize runs before BOTH Morgan spawns and, in the loop, AFTER Nick's push — confirm by reading source order.\n- [x] Lint clean and the pre-existing flow cases still green (no exact-trace regression).\n- [x] [human-gate] Dogfood: if THIS PR's review takes >=2 rounds, `gh pr view <pr> --json comments` shows round-0 verdict + Nick push-note as `isMinimized:true` while only the latest verdict stays visible.\n<!-- acceptance:end -->\n\n## Note\nNo further caveats — clean baseline, nothing deferred beyond what's listed in Scope above.\n\n"
 
-function countOccurrences(str, sub) {
-  return String(str).split(sub).length - 1
+function countOccurrences(string_, sub) {
+  return String(string_).split(sub).length - 1
 }
 
-function countUncheckedBoxes(str) {
-  return (String(str).match(/^\s*-\s*\[ \]/gm) || []).length
+function countUncheckedBoxes(string_) {
+  return (String(string_).match(/^\s*-\s*\[ \]/gm) || []).length
 }
 
 // T39 (#384, real named case) — the decision-log composer fed the REAL body of PR #385 through
@@ -1372,9 +1371,9 @@ await testCase('T41 decisionLog populated while trace is unchanged (no regressio
     mode: 'auto',
     simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] },
   })
-  const e1 = eq('decisionLog', r.decisionLog, ['- round 0 — LGTM'])
-  const e2 = eq('trace', r.trace, ['Plan', 'Dev', 'Review', 'PR Ready'])
-  return (e1 || e2) ? (e1 || e2) : { ok: true }
+  const error1 = eq('decisionLog', r.decisionLog, ['- round 0 — LGTM'])
+  const error2 = eq('trace', r.trace, ['Plan', 'Dev', 'Review', 'PR Ready'])
+  return (error1 || error2) ? (error1 || error2) : { ok: true }
 })
 
 // ---------------------------------------------------------------------------
@@ -1389,9 +1388,9 @@ await testCase('T42 squashBeforeHandoff fires at 9 commits (real #446 count)', a
     config: { ...CONFIG, commitHygiene: { squashBeforeHandoff: true, maxCommits: 3 } },
     simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }], squashCommits: 9 },
   })
-  const e1 = eq('status', r.status, 'ready')
-  const e2 = includes('trace', r.trace, `commit-squashed:${r.pr}`)
-  return (e1 || e2) ? (e1 || e2) : { ok: true }
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = includes('trace', r.trace, `commit-squashed:${r.pr}`)
+  return (error1 || error2) ? (error1 || error2) : { ok: true }
 })
 
 // T43 (negative control, two sub-assertions) — (a) below maxCommits with
@@ -1494,12 +1493,12 @@ await testCase('T45 artifact-proof gate overturns LGTM on a stale artifact (#518
       artifactFloor: ARTIFACT_FLOOR,
     },
   })
-  const e1 = eq('status', r.status, 'needs-revision')
-  const e2 = eq('round', r.round, 0)
-  const e3 = includes('items', r.items, ARTIFACT_PROOF_ITEM)
-  const e4 = includes('trace', r.trace, 'artifact-proof-rejected:artifact-stale')
-  const err = e1 || e2 || e3 || e4
-  return err ? err : { ok: true }
+  const error1 = eq('status', r.status, 'needs-revision')
+  const error2 = eq('round', r.round, 0)
+  const error3 = includes('items', r.items, ARTIFACT_PROOF_ITEM)
+  const error4 = includes('trace', r.trace, 'artifact-proof-rejected:artifact-stale')
+  const error = error1 || error2 || error3 || error4
+  return error ? error : { ok: true }
 })
 
 // T46 (#526, negative control) — same proof, but stamped AFTER the floor: zero blockers,
@@ -1522,10 +1521,10 @@ await testCase('T46 artifact-proof gate negative control (fresh artifact → rea
       artifactFloor: ARTIFACT_FLOOR,
     },
   })
-  const e1 = eq('status', r.status, 'ready')
-  const e2 = eq('trace', r.trace, ['Plan', 'Dev', 'Review', 'PR Ready'])
-  const err = e1 || e2
-  return err ? err : { ok: true }
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = eq('trace', r.trace, ['Plan', 'Dev', 'Review', 'PR Ready'])
+  const error = error1 || error2
+  return error ? error : { ok: true }
 })
 
 // T47 (#526) — a declared artifact that does not EXIST on disk must overturn LGTM regardless
@@ -1551,8 +1550,8 @@ await testCase('T47 artifact-proof gate overturns LGTM on a missing artifact', a
   })
   const errs = []
   if (r.status === 'ready') errs.push({ ok: false, msg: `status: expected never 'ready', got 'ready'` })
-  const e2 = includes('trace', r.trace, 'artifact-proof-rejected:artifact-absent')
-  if (e2) errs.push(e2)
+  const error2 = includes('trace', r.trace, 'artifact-proof-rejected:artifact-absent')
+  if (error2) errs.push(error2)
   return errs.length ? errs[0] : { ok: true }
 })
 
@@ -1641,17 +1640,17 @@ await testCase('T9007b artifact-proof-rejected escalation: every blocker own-def
   const d2 = includes('lgtm with an item: items', d.items || [], 'note')
   const d3 = d.reason === 'artifact-proof-rejected' ? { ok: false, msg: 'lgtm with an item: must not escalate artifact-proof-rejected' } : null
   // d. no path -> own defect
-  const e = await auto({ verdict: 'LGTM', artifactProofs: [{ ...emptyProof, path: '', bytes: 4096 }] })
-  const e1 = eq('no-path: status', e.status, 'escalate')
-  const e2 = eq('no-path: reason', e.reason, 'artifact-proof-rejected')
-  const e3 = eq('no-path: blockers', reasons(e), ['no-path'])
+  const error = await auto({ verdict: 'LGTM', artifactProofs: [{ ...emptyProof, path: '', bytes: 4096 }] })
+  const error1 = eq('no-path: status', error.status, 'escalate')
+  const error2 = eq('no-path: reason', error.reason, 'artifact-proof-rejected')
+  const error3 = eq('no-path: blockers', reasons(error), ['no-path'])
   // e. unparseable mtime -> own defect
   const f = await auto({ verdict: 'LGTM', artifactProofs: [{ ...emptyProof, mtime: 'yesterday', bytes: 4096 }] })
   const f1 = eq('no-valid-mtime: status', f.status, 'escalate')
   const f2 = eq('no-valid-mtime: reason', f.reason, 'artifact-proof-rejected')
   const f3 = eq('no-valid-mtime: blockers', reasons(f), ['no-valid-mtime'])
   // f. the board status is set to Blocked on the escalation (initial review and re-review), with the blockers listed
-  const g1 = eq('no-path: last trace entry', e.trace[e.trace.length - 1], 'Blocked')
+  const g1 = eq('no-path: last trace entry', error.trace[error.trace.length - 1], 'Blocked')
   const g2 = eq('no-valid-mtime: last trace entry', f.trace[f.trace.length - 1], 'Blocked')
   const h = await run({
     mode: 'auto',
@@ -1665,20 +1664,20 @@ await testCase('T9007b artifact-proof-rejected escalation: every blocker own-def
   const h2 = eq('loop: blockers', reasons(h), ['artifact-empty'])
   const h3 = eq('loop: last trace entry', h.trace[h.trace.length - 1], 'Blocked')
   // g. a review-entry run (existing PR) escalates the same way
-  const i = await run({
+  const index = await run({
     mode: 'auto',
     entryStage: 'review',
     prNumber: 227,
     simulate: { morgan: [{ verdict: 'LGTM', artifactProofs: [emptyProof] }], artifactFloor: ARTIFACT_FLOOR },
   })
-  const i1 = eq('review entry: status', i.status, 'escalate')
-  const i2 = eq('review entry: reason', i.reason, 'artifact-proof-rejected')
-  const i3 = eq('review entry: pr', i.pr, 227)
-  const i4 = eq('review entry: blockers', reasons(i), ['artifact-empty'])
-  const i5 = eq('review entry: last trace entry', i.trace[i.trace.length - 1], 'Blocked')
-  return a1 || a2 || a3 || a4 || b1 || b2 || b3 || c1 || c2 || c3 || d1 || d2 || d3 || e1 || e2 || e3
-    || f1 || f2 || f3 || g1 || g2 || h1 || h2 || h3 || nickTrace(e) || nickTrace(f) || nickTrace(i)
-    || i1 || i2 || i3 || i4 || i5 || { ok: true }
+  const index1 = eq('review entry: status', index.status, 'escalate')
+  const index2 = eq('review entry: reason', index.reason, 'artifact-proof-rejected')
+  const index3 = eq('review entry: pr', index.pr, 227)
+  const index4 = eq('review entry: blockers', reasons(index), ['artifact-empty'])
+  const index5 = eq('review entry: last trace entry', index.trace[index.trace.length - 1], 'Blocked')
+  return a1 || a2 || a3 || a4 || b1 || b2 || b3 || c1 || c2 || c3 || d1 || d2 || d3 || error1 || error2 || error3
+    || f1 || f2 || f3 || g1 || g2 || h1 || h2 || h3 || nickTrace(error) || nickTrace(f) || nickTrace(index)
+    || index1 || index2 || index3 || index4 || index5 || { ok: true }
 })
 
 // T9005 (#5) — a proof file that is content of the PR head (`committedInPr: true`) has an mtime that predates
@@ -1706,9 +1705,9 @@ await testCase('T9005 a proof committed in the PR skips the mtime checks; untrac
   const d1 = eq('string flag: status', d.status, 'needs-revision')
   const d2 = includes('string flag: trace', d.trace || [], 'artifact-proof-rejected:artifact-stale')
   // 5. committed but absent on disk -> still rejected
-  const e = await semi([{ ...old, committedInPr: true, exists: false }])
-  const e1 = eq('committed+absent: status', e.status, 'needs-revision')
-  const e2 = includes('committed+absent: trace', e.trace || [], 'artifact-proof-rejected:artifact-absent')
+  const error = await semi([{ ...old, committedInPr: true, exists: false }])
+  const error1 = eq('committed+absent: status', error.status, 'needs-revision')
+  const error2 = includes('committed+absent: trace', error.trace || [], 'artifact-proof-rejected:artifact-absent')
   // 6. committed but empty -> still rejected (own defect: escalates, no Nick round)
   const f = await auto([{ ...old, committedInPr: true, bytes: 0 }])
   const f1 = eq('committed+empty: status', f.status, 'escalate')
@@ -1725,30 +1724,30 @@ await testCase('T9005 a proof committed in the PR skips the mtime checks; untrac
   const h1 = eq('mixed: status', h.status, 'needs-revision')
   const h2 = includes('mixed: items', h.items || [], second.item)
   const h3 = (h.items || []).includes(ARTIFACT_PROOF_ITEM) ? { ok: false, msg: 'mixed: the committed proof must not be listed in items' } : null
-  return a1 || a2 || a3 || b1 || c1 || c2 || d1 || d2 || e1 || e2 || f1 || f2 || f3 || nickTrace(f)
+  return a1 || a2 || a3 || b1 || c1 || c2 || d1 || d2 || error1 || error2 || f1 || f2 || f3 || nickTrace(f)
     || g1 || g2 || g3 || nickTrace(g) || h1 || h2 || h3 || { ok: true }
 })
 
 // T9005b (#5) — source-level: the MORGAN schema declares `committedInPr` as a boolean and the shared
 // artifactProofStep asks for it (single constant, interpolated in both Morgan prompts).
 await testCase('T9005b the MORGAN schema declares committedInPr and artifactProofStep asks for it (#5)', async () => {
-  const src = SUITE_ARGS.fpSource
-  if (!src) {
+  const source = SUITE_ARGS.fpSource
+  if (!source) {
     log('SKIP — T9005b: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
     return { ok: true }
   }
   const slice = (from, to) => {
-    const i = src.indexOf(from)
-    const j = i < 0 ? -1 : src.indexOf(to, i)
-    return i < 0 || j < 0 ? '' : src.slice(i, j)
+    const index = source.indexOf(from)
+    const index_ = index < 0 ? -1 : source.indexOf(to, index)
+    return index < 0 || index_ < 0 ? '' : source.slice(index, index_)
   }
   const schema = slice('artifactProofs: {', 'itemOwners: {')
   const step = slice('const artifactProofStep =', '// Worktree freshness probe')
-  const e1 = includes('schema field', schema, "committedInPr: { type: 'boolean' }")
-  const e2 = includes('prompt clause names the field', step, 'committedInPr')
-  const e3 = includes('prompt clause names the command', step, 'diff --name-only origin/')
-  const e4 = eq('interpolations in the Morgan prompts', src.split('${artifactProofStep}').length - 1, 2)
-  return (e1 || e2 || e3 || e4) ? (e1 || e2 || e3 || e4) : { ok: true }
+  const error1 = includes('schema field', schema, "committedInPr: { type: 'boolean' }")
+  const error2 = includes('prompt clause names the field', step, 'committedInPr')
+  const error3 = includes('prompt clause names the command', step, 'diff --name-only origin/')
+  const error4 = eq('interpolations in the Morgan prompts', source.split('${artifactProofStep}').length - 1, 2)
+  return (error1 || error2 || error3 || error4) ? (error1 || error2 || error3 || error4) : { ok: true }
 })
 
 // T9005c (#5) — a flagged proof must carry a positive numeric size: `bytes` missing, NaN or a string is
@@ -1767,10 +1766,10 @@ await testCase('T9005c a committedInPr proof needs a positive numeric size (#5)'
   ]
   for (const [name, p] of cases) {
     const r = await auto(p)
-    const err = eq(`flagged ${name}: status`, r.status, 'escalate')
+    const error = eq(`flagged ${name}: status`, r.status, 'escalate')
       || eq(`flagged ${name}: reason`, r.reason, 'artifact-proof-rejected')
       || includes(`flagged ${name}: trace`, r.trace || [], 'artifact-proof-rejected:artifact-empty')
-    if (err) return err
+    if (error) return error
   }
   const ok = await auto({ ...old, committedInPr: true, bytes: 1 })
   return eq('flagged bytes 1: status', ok.status, 'ready') || { ok: true }
@@ -1800,17 +1799,17 @@ await testCase("T9005e a committedInPr proof must appear in the PR's changed fil
 // T9005d (#5) — source-level: both unconditional sentences of artifactProofStep carry the committed-in-PR
 // qualifier, and the clause's command uses the same `git -C "<worktree>"` form as the regression-guard step.
 await testCase('T9005d artifactProofStep qualifies both freshness sentences and uses git -C for the diff (#5)', async () => {
-  const src = SUITE_ARGS.fpSource
-  if (!src) {
+  const source = SUITE_ARGS.fpSource
+  if (!source) {
     log('SKIP — T9005d: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
     return { ok: true }
   }
-  const i = src.indexOf('const artifactProofStep =')
-  const j = i < 0 ? -1 : src.indexOf('// Worktree freshness probe', i)
-  const step = i < 0 || j < 0 ? '' : src.slice(i, j)
-  const e1 = eq('qualifier count', step.split('(except a file committed in the PR, below)').length - 1, 2)
-  const e2 = includes('git -C form', step, 'git -C "${wtPath}" diff --name-only origin/${baseBranch}...HEAD')
-  return e1 || e2 || { ok: true }
+  const index = source.indexOf('const artifactProofStep =')
+  const index_ = index < 0 ? -1 : source.indexOf('// Worktree freshness probe', index)
+  const step = index < 0 || index_ < 0 ? '' : source.slice(index, index_)
+  const error1 = eq('qualifier count', step.split('(except a file committed in the PR, below)').length - 1, 2)
+  const error2 = includes('git -C form', step, 'git -C "${wtPath}" diff --name-only origin/${baseBranch}...HEAD')
+  return error1 || error2 || { ok: true }
 })
 
 // T48 (#526, back-compat) — an LGTM with NO artifactProofs declared (the pre-#526 shape every
@@ -1820,10 +1819,10 @@ await testCase('T48 artifact-proof gate back-compat (no artifactProofs → unaff
     mode: 'auto',
     simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] },
   })
-  const e1 = eq('status', r.status, 'ready')
-  const e2 = eq('trace', r.trace, ['Plan', 'Dev', 'Review', 'PR Ready'])
-  const err = e1 || e2
-  return err ? err : { ok: true }
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = eq('trace', r.trace, ['Plan', 'Dev', 'Review', 'PR Ready'])
+  const error = error1 || error2
+  return error ? error : { ok: true }
 })
 
 // T49 — behindCount set → freshness note injected, trace + return field carry it.
@@ -1832,11 +1831,11 @@ await testCase('T49 worktree behind → freshness note surfaced (trace + worktre
     mode: 'auto',
     simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }], behindCount: 21 },
   })
-  const e1 = eq('status', r.status, 'ready')
-  const e2 = includes('trace', r.trace, 'worktree-behind:21')
-  const e3 = eq('worktreeBehind', r.worktreeBehind, 21)
-  const err = e1 || e2 || e3
-  return err ? err : { ok: true }
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = includes('trace', r.trace, 'worktree-behind:21')
+  const error3 = eq('worktreeBehind', r.worktreeBehind, 21)
+  const error = error1 || error2 || error3
+  return error ? error : { ok: true }
 })
 
 // T50 (negative control) — no behindCount declared → default 0, no note, unaffected trace.
@@ -1845,13 +1844,13 @@ await testCase('T50 worktree fresh (no behindCount) → no freshness note, workt
     mode: 'auto',
     simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] },
   })
-  const e1 = eq('status', r.status, 'ready')
-  const e2 = eq('worktreeBehind', r.worktreeBehind, 0)
-  const e3 = r.trace.some(t => String(t).startsWith('worktree-behind:'))
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = eq('worktreeBehind', r.worktreeBehind, 0)
+  const error3 = r.trace.some(t => String(t).startsWith('worktree-behind:'))
     ? { ok: false, msg: `trace: expected no worktree-behind entry, got ${JSON.stringify(r.trace)}` }
     : null
-  const err = e1 || e2 || e3
-  return err ? err : { ok: true }
+  const error = error1 || error2 || error3
+  return error ? error : { ok: true }
 })
 
 // T51 (#645, back-compat) — flag absent → the OFF path is byte-identical to pre-#645: no
@@ -1861,13 +1860,13 @@ await testCase('T51 planAudit absent → OFF, exact legacy trace, no plan-audit 
     mode: 'auto',
     simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] },
   })
-  const e1 = eq('status', r.status, 'ready')
-  const e2 = eq('trace', r.trace, ['Plan', 'Dev', 'Review', 'PR Ready'])
-  const e3 = r.trace.some(t => String(t).startsWith('plan-audit'))
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = eq('trace', r.trace, ['Plan', 'Dev', 'Review', 'PR Ready'])
+  const error3 = r.trace.some(t => String(t).startsWith('plan-audit'))
     ? { ok: false, msg: `trace: expected no plan-audit entry, got ${JSON.stringify(r.trace)}` }
     : null
-  const err = e1 || e2 || e3
-  return err ? err : { ok: true }
+  const error = error1 || error2 || error3
+  return error ? error : { ok: true }
 })
 
 // T52 (#645) — planAudit:true + SOUND round 1 → ready, trace has plan-audit:SOUND, no amend.
@@ -1881,13 +1880,13 @@ await testCase('T52 planAudit:true SOUND round 1 → ready, plan-audit:SOUND, no
       audit: { 1: { verdict: 'SOUND', findings: [] } },
     },
   })
-  const e1 = eq('status', r.status, 'ready')
-  const e2 = includes('trace', r.trace, 'plan-audit:SOUND')
-  const e3 = r.trace.some(t => String(t).startsWith('plan-audit-amend:'))
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = includes('trace', r.trace, 'plan-audit:SOUND')
+  const error3 = r.trace.some(t => String(t).startsWith('plan-audit-amend:'))
     ? { ok: false, msg: `trace: expected no amend entry, got ${JSON.stringify(r.trace)}` }
     : null
-  const err = e1 || e2 || e3
-  return err ? err : { ok: true }
+  const error = error1 || error2 || error3
+  return error ? error : { ok: true }
 })
 
 // T53 (#645) — S4 XSS replay shape: round 1 BLOCKING (SOUND-WITH-NOTES) sends ONE amendment,
@@ -1909,16 +1908,16 @@ await testCase('T53 S4-shaped replay: blocking round 1 → one amend → SOUND r
       },
     },
   })
-  const e1 = eq('status', r.status, 'ready')
+  const error1 = eq('status', r.status, 'ready')
   const trace = r.trace
-  const i1 = trace.indexOf('plan-audit:SOUND-WITH-NOTES')
-  const i2 = trace.indexOf('plan-audit-amend:1')
-  const i3 = trace.lastIndexOf('plan-audit:SOUND')
-  const e2 = (i1 === -1 || i2 === -1 || i3 === -1 || !(i1 < i2 && i2 < i3))
+  const index1 = trace.indexOf('plan-audit:SOUND-WITH-NOTES')
+  const index2 = trace.indexOf('plan-audit-amend:1')
+  const index3 = trace.lastIndexOf('plan-audit:SOUND')
+  const error2 = (index1 === -1 || index2 === -1 || index3 === -1 || !(index1 < index2 && index2 < index3))
     ? { ok: false, msg: `trace order wrong: ${JSON.stringify(trace)}` }
     : null
-  const err = e1 || e2
-  return err ? err : { ok: true }
+  const error = error1 || error2
+  return error ? error : { ok: true }
 })
 
 // T54 (#645) — NOT_SOUND twice (maxAuditRounds default 2) → escalate / plan-not-sound.
@@ -1936,13 +1935,13 @@ await testCase('T54 NOT_SOUND x2 (maxAuditRounds) → escalate plan-not-sound', 
       },
     },
   })
-  const e1 = eq('status', r.status, 'escalate')
-  const e2 = eq('reason', r.reason, 'plan-not-sound')
-  const e3 = (Array.isArray(r.auditFindings) && r.auditFindings.length > 0)
+  const error1 = eq('status', r.status, 'escalate')
+  const error2 = eq('reason', r.reason, 'plan-not-sound')
+  const error3 = (Array.isArray(r.auditFindings) && r.auditFindings.length > 0)
     ? null : { ok: false, msg: `expected non-empty auditFindings, got ${JSON.stringify(r.auditFindings)}` }
-  const e4 = eq('trace end', r.trace[r.trace.length - 1], 'Blocked')
-  const err = e1 || e2 || e3 || e4
-  return err ? err : { ok: true }
+  const error4 = eq('trace end', r.trace[r.trace.length - 1], 'Blocked')
+  const error = error1 || error2 || error3 || error4
+  return error ? error : { ok: true }
 })
 
 // T55 (#645) — a blocking round 1 forces one amendment; the terminal round 2 (maxAuditRounds
@@ -1961,11 +1960,11 @@ await testCase('T55 terminal round notes-only → ready, no ping-pong', async ()
       },
     },
   })
-  const e1 = eq('status', r.status, 'ready')
-  const e2 = (r.trace.filter(t => t === 'plan-audit-amend:2').length === 0)
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = (r.trace.filter(t => t === 'plan-audit-amend:2').length === 0)
     ? null : { ok: false, msg: `expected no second amendment, got ${JSON.stringify(r.trace)}` }
-  const err = e1 || e2
-  return err ? err : { ok: true }
+  const error = error1 || error2
+  return error ? error : { ok: true }
 })
 
 // T56 (#645) — an unrecognized/absent verdict is malformed output and must never pass the gate.
@@ -1979,10 +1978,10 @@ await testCase('T56 malformed audit verdict → escalate plan-audit-malformed', 
       audit: { 1: { findings: [] } },
     },
   })
-  const e1 = eq('status', r.status, 'escalate')
-  const e2 = eq('reason', r.reason, 'plan-audit-malformed')
-  const err = e1 || e2
-  return err ? err : { ok: true }
+  const error1 = eq('status', r.status, 'escalate')
+  const error2 = eq('reason', r.reason, 'plan-audit-malformed')
+  const error = error1 || error2
+  return error ? error : { ok: true }
 })
 
 // T57 (#645) — config.planAudit:true + arg planAudit:false → OFF (explicit false beats config).
@@ -1993,12 +1992,12 @@ await testCase('T57 config.planAudit:true + arg planAudit:false → OFF', async 
     config: { ...CONFIG, planAudit: true },
     simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] },
   })
-  const e1 = eq('status', r.status, 'ready')
-  const e2 = r.trace.some(t => String(t).startsWith('plan-audit'))
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = r.trace.some(t => String(t).startsWith('plan-audit'))
     ? { ok: false, msg: `trace: expected no plan-audit entry, got ${JSON.stringify(r.trace)}` }
     : null
-  const err = e1 || e2
-  return err ? err : { ok: true }
+  const error = error1 || error2
+  return error ? error : { ok: true }
 })
 
 // T58 (#29) — branch-conformance guard: Nick reports a PR opened from the raw dispatch
@@ -2013,14 +2012,14 @@ await testCase('T58 nick.branch = dispatch branch → escalate/branch-mismatch, 
     mode: 'auto',
     simulate: { sam: 'GO', nick: { prNumber: 777, branch: 'feat-issue-1' } },
   })
-  const e1 = eq('status', r.status, 'escalate')
-  const e2 = eq('reason', r.reason, 'branch-mismatch')
-  const e3 = eq('actualBranch', r.actualBranch, 'feat-issue-1')
-  const e4 = eq('expectedBranch', r.expectedBranch, 'features/issue-1')
-  const e5 = r.trace.includes('Review')
+  const error1 = eq('status', r.status, 'escalate')
+  const error2 = eq('reason', r.reason, 'branch-mismatch')
+  const error3 = eq('actualBranch', r.actualBranch, 'feat-issue-1')
+  const error4 = eq('expectedBranch', r.expectedBranch, 'features/issue-1')
+  const error5 = r.trace.includes('Review')
     ? { ok: false, msg: `trace must not include Review, got ${JSON.stringify(r.trace)}` }
     : null
-  return (e1 || e2 || e3 || e4 || e5) ? (e1 || e2 || e3 || e4 || e5) : { ok: true }
+  return (error1 || error2 || error3 || error4 || error5) ? (error1 || error2 || error3 || error4 || error5) : { ok: true }
 })
 
 // T59 (#71) — branch-check agent answers with prose naming the EXPECTED ref (the real incident
@@ -2036,11 +2035,11 @@ await testCase('T59 branch-check prose names the expected ref → no escalation'
       morgan: [{ verdict: 'LGTM' }],
     },
   })
-  const e1 = eq('status', r.status, 'ready')
-  const e2 = r.trace.includes('branch-check-normalized')
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = r.trace.includes('branch-check-normalized')
     ? null
     : { ok: false, msg: `trace must include branch-check-normalized, got ${JSON.stringify(r.trace)}` }
-  return (e1 || e2) ? (e1 || e2) : { ok: true }
+  return (error1 || error2) ? (error1 || error2) : { ok: true }
 })
 
 // T60 (#71) — branch-check agent answers with prose naming a DIFFERENT ref than expected. The
@@ -2055,14 +2054,14 @@ await testCase('T60 branch-check prose names a different ref → escalate with b
       branchCheckRaw: 'PR #776 is on branch `feat-issue-1`.',
     },
   })
-  const e1 = eq('status', r.status, 'escalate')
-  const e2 = eq('reason', r.reason, 'branch-mismatch')
-  const e3 = eq('actualBranch', r.actualBranch, 'feat-issue-1')
-  const e4 = eq('expectedBranch', r.expectedBranch, 'features/issue-1')
-  const e5 = r.trace.includes('Review')
+  const error1 = eq('status', r.status, 'escalate')
+  const error2 = eq('reason', r.reason, 'branch-mismatch')
+  const error3 = eq('actualBranch', r.actualBranch, 'feat-issue-1')
+  const error4 = eq('expectedBranch', r.expectedBranch, 'features/issue-1')
+  const error5 = r.trace.includes('Review')
     ? { ok: false, msg: `trace must not include Review, got ${JSON.stringify(r.trace)}` }
     : null
-  return (e1 || e2 || e3 || e4 || e5) ? (e1 || e2 || e3 || e4 || e5) : { ok: true }
+  return (error1 || error2 || error3 || error4 || error5) ? (error1 || error2 || error3 || error4 || error5) : { ok: true }
 })
 
 // T61 (#71) — branch-check agent answers with an ambiguous sentence naming BOTH the wrong and the
@@ -2077,12 +2076,12 @@ await testCase('T61 branch-check answer ambiguous → falls back to nick.branch'
       branchCheckRaw: 'PR #776 head is `feat-issue-1`, expected `features/issue-1`.',
     },
   })
-  const e1 = eq('status', r.status, 'escalate')
-  const e2 = eq('actualBranch', r.actualBranch, 'feat-issue-1')
-  const e3 = r.trace.includes('branch-check-unparsed')
+  const error1 = eq('status', r.status, 'escalate')
+  const error2 = eq('actualBranch', r.actualBranch, 'feat-issue-1')
+  const error3 = r.trace.includes('branch-check-unparsed')
     ? null
     : { ok: false, msg: `trace must include branch-check-unparsed, got ${JSON.stringify(r.trace)}` }
-  return (e1 || e2 || e3) ? (e1 || e2 || e3) : { ok: true }
+  return (error1 || error2 || error3) ? (error1 || error2 || error3) : { ok: true }
 })
 
 // T61a (#131) — reproduces a real incident (re-routed to lgtmgate#126):
@@ -2099,11 +2098,11 @@ await testCase('T61a config.branchPrefix stale on a cross-repo re-route (feat/ r
       morgan: [{ verdict: 'LGTM' }],
     },
   })
-  const e1 = eq('status', r.status, 'ready')
-  const e2 = r.trace.includes('branch-check-reconciled')
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = r.trace.includes('branch-check-reconciled')
     ? null
     : { ok: false, msg: `trace must include branch-check-reconciled, got ${JSON.stringify(r.trace)}` }
-  return (e1 || e2) ? (e1 || e2) : { ok: true }
+  return (error1 || error2) ? (error1 || error2) : { ok: true }
 })
 
 // T61b (#131, negative control) — the pipeline.config.json re-check does NOT confirm a different
@@ -2115,12 +2114,12 @@ await testCase('T61b pipeline.config.json re-check does not match either → sti
     mode: 'auto',
     simulate: { nick: { prNumber: 777, branch: 'feat-issue-1' }, configBranchPrefixRaw: 'features/' },
   })
-  const e1 = eq('status', r.status, 'escalate')
-  const e2 = eq('reason', r.reason, 'branch-mismatch')
-  const e3 = r.trace.includes('branch-check-reconciled')
+  const error1 = eq('status', r.status, 'escalate')
+  const error2 = eq('reason', r.reason, 'branch-mismatch')
+  const error3 = r.trace.includes('branch-check-reconciled')
     ? { ok: false, msg: `trace must NOT include branch-check-reconciled, got ${JSON.stringify(r.trace)}` }
     : null
-  return (e1 || e2 || e3) ? (e1 || e2 || e3) : { ok: true }
+  return (error1 || error2 || error3) ? (error1 || error2 || error3) : { ok: true }
 })
 
 // T61c (#131) — re-check fails (ERROR sentinel): treated as unavailable, guard falls back to its
@@ -2130,9 +2129,9 @@ await testCase('T61c pipeline.config.json re-check returns ERROR sentinel → tr
     mode: 'auto',
     simulate: { nick: { prNumber: 777, branch: 'feat-issue-1' }, configBranchPrefixRaw: 'ERROR' },
   })
-  const e1 = eq('status', r.status, 'escalate')
-  const e2 = eq('actualBranch', r.actualBranch, 'feat-issue-1')
-  return (e1 || e2) ? (e1 || e2) : { ok: true }
+  const error1 = eq('status', r.status, 'escalate')
+  const error2 = eq('actualBranch', r.actualBranch, 'feat-issue-1')
+  return (error1 || error2) ? (error1 || error2) : { ok: true }
 })
 
 // T105a (#139) — extends the reconcileStaleBranchPrefix principle above to baseBranch:
@@ -2148,11 +2147,11 @@ await testCase('T105a entryStage:dev resume / config baseBranch stale → reconc
       configProjectRecheckRaw: JSON.stringify({ baseBranch: 'main' }),
     },
   })
-  const e1 = eq('status', r.status, 'ready')
-  const e2 = r.trace.includes('config-baseBranch-reconciled')
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = r.trace.includes('config-baseBranch-reconciled')
     ? null
     : { ok: false, msg: `trace must include config-baseBranch-reconciled, got ${JSON.stringify(r.trace)}` }
-  return (e1 || e2) ? (e1 || e2) : { ok: true }
+  return (error1 || error2) ? (error1 || error2) : { ok: true }
 })
 
 // T105b (#139, cost-avoidance gate) — same configProjectRecheckRaw fixture but on a FRESH
@@ -2167,11 +2166,11 @@ await testCase('T105b fresh dispatch (entryStage:plan) / configProjectRecheckRaw
       configProjectRecheckRaw: JSON.stringify({ baseBranch: 'main' }),
     },
   })
-  const e1 = eq('status', r.status, 'ready')
-  const e2 = r.trace.includes('config-baseBranch-reconciled')
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = r.trace.includes('config-baseBranch-reconciled')
     ? { ok: false, msg: `trace must NOT include config-baseBranch-reconciled on a fresh dispatch, got ${JSON.stringify(r.trace)}` }
     : null
-  return (e1 || e2) ? (e1 || e2) : { ok: true }
+  return (error1 || error2) ? (error1 || error2) : { ok: true }
 })
 
 // T105c (#139) — entryStage:'dev' resume, re-check returns the ERROR sentinel: treated as
@@ -2187,11 +2186,11 @@ await testCase('T105c entryStage:dev resume / configProjectRecheckRaw ERROR sent
       configProjectRecheckRaw: 'ERROR',
     },
   })
-  const e1 = eq('status', r.status, 'ready')
-  const e2 = r.trace.includes('config-baseBranch-reconciled')
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = r.trace.includes('config-baseBranch-reconciled')
     ? { ok: false, msg: `trace must NOT include config-baseBranch-reconciled, got ${JSON.stringify(r.trace)}` }
     : null
-  return (e1 || e2) ? (e1 || e2) : { ok: true }
+  return (error1 || error2) ? (error1 || error2) : { ok: true }
 })
 
 // T105d (#270) — review-stage resume (entryStage:'review'), the worktree's own baseBranch differs
@@ -2205,11 +2204,11 @@ await testCase('T105d entryStage:review resume / project baseBranch differs → 
       configProjectRecheckRaw: JSON.stringify({ baseBranch: 'main' }),
     },
   })
-  const e1 = eq('status', r.status, 'ready')
-  const e2 = r.trace.includes('config-baseBranch-reconciled')
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = r.trace.includes('config-baseBranch-reconciled')
     ? null
     : { ok: false, msg: `trace must include config-baseBranch-reconciled, got ${JSON.stringify(r.trace)}` }
-  return (e1 || e2) ? (e1 || e2) : { ok: true }
+  return (error1 || error2) ? (error1 || error2) : { ok: true }
 })
 
 // Repo-local mechanism, LOCAL —
@@ -2224,9 +2223,9 @@ await testCase('T44a provision.extraLinks traversal segment rejected before any 
   try {
     await run({ mode: 'auto', config: { ...CONFIG, provision: { extraLinks: [{ src: '../../x', dst: 'y' }] } } })
     return { ok: false, msg: 'expected run() to throw on a traversal extraLinks entry, it did not' }
-  } catch (e) {
-    if (!/Invalid provision\.extraLinks entry/.test(e.message)) {
-      return { ok: false, msg: `expected "Invalid provision.extraLinks entry" in the thrown error, got: ${e.message}` }
+  } catch (error) {
+    if (!/Invalid provision\.extraLinks entry/.test(error.message)) {
+      return { ok: false, msg: `expected "Invalid provision.extraLinks entry" in the thrown error, got: ${error.message}` }
     }
     return { ok: true }
   }
@@ -2248,7 +2247,7 @@ await testCase('F2 provision missing-script gate: no links → skip and continue
       morgan: [{ verdict: 'LGTM' }],
     },
   })
-  const e1 = eq('status (no links, script absent)', noLinksRun.status, 'ready')
+  const error1 = eq('status (no links, script absent)', noLinksRun.status, 'ready')
 
   const hardLinkRun = await run({
     mode: 'auto',
@@ -2257,11 +2256,11 @@ await testCase('F2 provision missing-script gate: no links → skip and continue
       provision: { ok: false, exitCode: 2, skipped: false, linked: [], missing: [] },
     },
   })
-  const e2 = eq('status (hard link, script absent)', hardLinkRun.status, 'escalate')
-  const e3 = eq('reason (hard link, script absent)', hardLinkRun.reason, 'provision-failed')
+  const error2 = eq('status (hard link, script absent)', hardLinkRun.status, 'escalate')
+  const error3 = eq('reason (hard link, script absent)', hardLinkRun.reason, 'provision-failed')
 
-  const err = e1 || e2 || e3
-  return err ? err : { ok: true }
+  const error = error1 || error2 || error3
+  return error ? error : { ok: true }
 })
 
 // F3 pins the documented KNOWN EDGE (deliver-pipeline.js:1409-1414) at its current, intentional
@@ -2277,12 +2276,12 @@ await testCase('F3 provision no-script branch on optional-only links: KNOWN EDGE
     simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] },
   })
   const p = r.provisionCmdPreview
-  const e1 = includes('provisionCmdPreview', p,
+  const error1 = includes('provisionCmdPreview', p,
     'PROVISION-NO-SCRIPT $SCRIPT (1 hard link(s) configured - cannot provision)')
-  const e2 = includes('provisionCmdPreview', p,
+  const error2 = includes('provisionCmdPreview', p,
     'bash "$SCRIPT" "/tmp/lgtmgate-test"; else')
-  const err = e1 || e2
-  return err ? err : { ok: true }
+  const error = error1 || error2
+  return error ? error : { ok: true }
 })
 
 // Repo-local mechanism — see the
@@ -2301,9 +2300,9 @@ await testCase('T54a agentType registry gap on attempt 1 -> persona-fallback suc
     mode: 'auto',
     simulate: { agentTypeUnresolved: { theo: [1] }, sam: 'NO-GO' },
   })
-  const e1 = eq('status', r.status, 'no-go')
-  const e2 = eq('theo trace', theoTrace(r.trace), ['agent-died:theo:1', 'agent-type-unresolved:theo'])
-  return (e1 || e2) ? (e1 || e2) : { ok: true }
+  const error1 = eq('status', r.status, 'no-go')
+  const error2 = eq('theo trace', theoTrace(r.trace), ['agent-died:theo:1', 'agent-type-unresolved:theo'])
+  return (error1 || error2) ? (error1 || error2) : { ok: true }
 })
 
 await testCase('T54b agentType registry gap on attempt 1, persona-fallback attempt also dies -> diagnose-died', async () => {
@@ -2311,20 +2310,20 @@ await testCase('T54b agentType registry gap on attempt 1, persona-fallback attem
     mode: 'auto',
     simulate: { agentTypeUnresolved: { theo: [1] }, theo: 'DIE' },
   })
-  const e1 = eq('status', r.status, 'diagnose-died')
-  const e2 = eq('theo trace', theoTrace(r.trace), ['agent-died:theo:1', 'agent-type-unresolved:theo', 'agent-died:theo:2'])
-  return (e1 || e2) ? (e1 || e2) : { ok: true }
+  const error1 = eq('status', r.status, 'diagnose-died')
+  const error2 = eq('theo trace', theoTrace(r.trace), ['agent-died:theo:1', 'agent-type-unresolved:theo', 'agent-died:theo:2'])
+  return (error1 || error2) ? (error1 || error2) : { ok: true }
 })
 
 await testCase('T54c build stamp travels on every terminal return, dryRun AND normal', async () => {
   const dry = await run({ dryRun: true, mode: 'manual' })
   const normal = await run({ mode: 'auto', simulate: { sam: 'NO-GO' } })
   const stampRe = /^\[pipeline\] lgtmgate@/
-  const e1 = stampRe.test(dry.buildStamp)
+  const error1 = stampRe.test(dry.buildStamp)
     ? null : { ok: false, msg: `dryRun buildStamp does not match ${stampRe}: ${JSON.stringify(dry.buildStamp)}` }
-  const e2 = stampRe.test(normal.buildStamp)
+  const error2 = stampRe.test(normal.buildStamp)
     ? null : { ok: false, msg: `normal-run buildStamp does not match ${stampRe}: ${JSON.stringify(normal.buildStamp)}` }
-  return (e1 || e2) ? (e1 || e2) : { ok: true }
+  return (error1 || error2) ? (error1 || error2) : { ok: true }
 })
 
 await testCase('T54d agentType registry gap on the LAST attempt -> budget wins, no fallback, no 3rd spawn', async () => {
@@ -2332,9 +2331,9 @@ await testCase('T54d agentType registry gap on the LAST attempt -> budget wins, 
     mode: 'auto',
     simulate: { agentTypeUnresolved: { theo: [2] }, theo: 'DIE' },
   })
-  const e1 = eq('status', r.status, 'diagnose-died')
-  const e2 = eq('theo trace', theoTrace(r.trace), ['agent-died:theo:1', 'agent-died:theo:2'])
-  return (e1 || e2) ? (e1 || e2) : { ok: true }
+  const error1 = eq('status', r.status, 'diagnose-died')
+  const error2 = eq('theo trace', theoTrace(r.trace), ['agent-died:theo:1', 'agent-died:theo:2'])
+  return (error1 || error2) ? (error1 || error2) : { ok: true }
 })
 
 // T214 (#214) — native coverage for agentDeathRouting(), callAgentSafe( wiring and
@@ -2344,30 +2343,29 @@ await testCase('T54d agentType registry gap on the LAST attempt -> budget wins, 
 await testCase('T214a sam dies twice (retry-safe) -> plan-died, resumable, agent-died sam:1 + sam:2', async () => {
   const r = await run({ mode: 'auto', simulate: { sam: 'DIE' } })
   const samDied = (r.trace || []).filter(t => typeof t === 'string' && t.startsWith('agent-died:sam:'))
-  const e1 = eq('status', r.status, 'plan-died')
-  const e2 = eq('resumable', r.resumable, true)
-  const e3 = eq('sam death trace', samDied, ['agent-died:sam:1', 'agent-died:sam:2'])
-  return (e1 || e2 || e3) ? (e1 || e2 || e3) : { ok: true }
+  const error1 = eq('status', r.status, 'plan-died')
+  const error2 = eq('resumable', r.resumable, true)
+  const error3 = eq('sam death trace', samDied, ['agent-died:sam:1', 'agent-died:sam:2'])
+  return (error1 || error2 || error3) ? (error1 || error2 || error3) : { ok: true }
 })
 
 await testCase('T214b nick dies (side-effectful) -> dev-died, resumable, exactly one agent-died:nick:1', async () => {
   const r = await run({ mode: 'auto', simulate: { sam: 'GO', nick: 'DIE' } })
   const nickDied = (r.trace || []).filter(t => typeof t === 'string' && t.startsWith('agent-died:nick:'))
-  const e1 = eq('status', r.status, 'dev-died')
-  const e2 = eq('resumable', r.resumable, true)
-  const e3 = eq('nick death trace', nickDied, ['agent-died:nick:1'])
-  return (e1 || e2 || e3) ? (e1 || e2 || e3) : { ok: true }
+  const error1 = eq('status', r.status, 'dev-died')
+  const error2 = eq('resumable', r.resumable, true)
+  const error3 = eq('nick death trace', nickDied, ['agent-died:nick:1'])
+  return (error1 || error2 || error3) ? (error1 || error2 || error3) : { ok: true }
 })
 
 await testCase('T214c agentDeathRouting() table extracted from source markers', async () => {
-  const src = SUITE_ARGS.fpSource
-  if (!src) {
+  const source = SUITE_ARGS.fpSource
+  if (!source) {
     log('SKIP — T214c: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
     return { ok: true }
   }
-  const block = extractBetween(src, '// --- agentDeathRouting:start ---', '// --- agentDeathRouting:end ---')
+  const block = extractBetween(source, '// --- agentDeathRouting:start ---', '// --- agentDeathRouting:end ---')
   if (!block) return { ok: false, msg: 'agentDeathRouting:start/:end markers not found in pipeline source' }
-  // eslint-disable-next-line no-new-func
   const route = new Function(block + '\nreturn agentDeathRouting')()
   const checks = [
     eq('sam attempt 1 retries', route('sam', 1), { action: 'retry' }),
@@ -2388,14 +2386,13 @@ await testCase('T214c agentDeathRouting() table extracted from source markers', 
 // T272 (#82) — probeCommands() extracted from its source markers: both commands start with the
 // cd prefix the attest hook accepts, the script is single-quoted, --verify adds --attest and no --cmd.
 await testCase('T272 probeCommands() extracted from source markers (#82)', async () => {
-  const src = SUITE_ARGS.fpSource
-  if (!src) {
+  const source = SUITE_ARGS.fpSource
+  if (!source) {
     log('SKIP — T272: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
     return { ok: true }
   }
-  const block = extractBetween(src, '// --- probeCommands:start ---', '// --- probeCommands:end ---')
+  const block = extractBetween(source, '// --- probeCommands:start ---', '// --- probeCommands:end ---')
   if (!block) return { ok: false, msg: 'probeCommands:start/:end markers not found in pipeline source' }
-  // eslint-disable-next-line no-new-func
   const pc = new Function(block + '\nreturn probeCommands')()
   const base = { wtPath: '/wt/issue-7', issue: 7, name: 'provision', cmd: "echo 'hi'", label: 'provision', round: 0 }
   const withRoot = pc({ ...base, pluginRoot: '/plug' })
@@ -2424,7 +2421,7 @@ await testCase('T272 probeCommands() extracted from source markers (#82)', async
       ]
     })(),
     eq('noReuse never reaches the verify command', pc({ ...base, pluginRoot: '/plug', noReuse: true }).verify.includes('--no-reuse'), false),
-    eq('preflightProbe passes noReuse: true to probe() (live state, #83)', /async function preflightProbe[\s\S]*?probe\('preflight', cmd, \{[\s\S]*?noReuse: true/.test(src), true),
+    eq('preflightProbe passes noReuse: true to probe() (live state, #83)', /async function preflightProbe[\s\S]*?probe\('preflight', cmd, \{[\s\S]*?noReuse: true/.test(source), true),
     // #212: the digest the engine composed travels to the script, which refuses a copy that does not hash to it
     ...(() => {
       const digest = 'a'.repeat(63) + 'b'
@@ -2433,12 +2430,12 @@ await testCase('T272 probeCommands() extracted from source markers (#82)', async
         eq('expectCmd run carries --expect-cmd <digest> BEFORE --cmd (cmdOfPrompt still finds the command)', gated.run.includes(` --expect-cmd ${digest} --cmd `), true),
         eq('expectCmd never reaches the verify command', gated.verify.includes('--expect-cmd'), false),
         eq('the default run has no --expect-cmd', withRoot.run.includes('--expect-cmd'), false),
-        eq('prWrite gates the command (gateCmd: true)', /async function prWrite[\s\S]*?probe\('pr-write', cmd, \{[\s\S]*?gateCmd: true/.test(src), true),
-        eq('a non-empty tick sends the short command tickIdsArgv(pr, tickIds) (#257)', src.includes('tickIdsArgv(pr, tickIds)'), true),
-        eq('the empty tick keeps the text mode: the block as --text-b64 base64Utf8(rendered)', src.includes("'--text-b64', base64Utf8(rendered)"), true),
-        eq('the tick no longer sends the block as --text', src.includes("'--mode', 'tick', '--text', rendered"), false),
-        eq('the plugin-version probe does not gate its command (a stale root must still answer)', src.split('\n').filter((l) => l.includes("probe('lines', pluginVersionCmd(pluginRoot)")).every((l) => !l.includes('gateCmd')), true),
-        eq('preflightProbe does not gate its command', src.slice(src.indexOf('async function preflightProbe'), src.indexOf('async function prWrite')).includes('gateCmd'), false),
+        eq('prWrite gates the command (gateCmd: true)', /async function prWrite[\s\S]*?probe\('pr-write', cmd, \{[\s\S]*?gateCmd: true/.test(source), true),
+        eq('a non-empty tick sends the short command tickIdsArgv(pr, tickIds) (#257)', source.includes('tickIdsArgv(pr, tickIds)'), true),
+        eq('the empty tick keeps the text mode: the block as --text-b64 base64Utf8(rendered)', source.includes("'--text-b64', base64Utf8(rendered)"), true),
+        eq('the tick no longer sends the block as --text', source.includes("'--mode', 'tick', '--text', rendered"), false),
+        eq('the plugin-version probe does not gate its command (a stale root must still answer)', source.split('\n').filter((l) => l.includes("probe('lines', pluginVersionCmd(pluginRoot)")).every((l) => !l.includes('gateCmd')), true),
+        eq('preflightProbe does not gate its command', source.slice(source.indexOf('async function preflightProbe'), source.indexOf('async function prWrite')).includes('gateCmd'), false),
       ]
     })(),
   ]
@@ -2449,7 +2446,7 @@ await testCase('T272 probeCommands() extracted from source markers (#82)', async
 await testCase('T257 tick-ids argv for a 14-box checklist carries the ids and no checklist text (#257)', async () => {
   const fns = t182Block()
   if (!fns) return t182Skip('T257')
-  const items = Array.from({ length: 14 }, (_, i) => ({ text: `\`bash check-${i + 1}.sh </dev/null | tail -n 1\` ends with \`failed=0\` (a long criterion that makes the rendered block big)`, humanGate: i === 4 }))
+  const items = Array.from({ length: 14 }, (_, index) => ({ text: `\`bash check-${index + 1}.sh </dev/null | tail -n 1\` ends with \`failed=0\` (a long criterion that makes the rendered block big)`, humanGate: index === 4 }))
   const rendered = fns.renderChecklist(fns.numberItems(items))
   const argv = fns.tickIdsArgv(9, [1, 3, 14])
   const joined = argv.join(' ')
@@ -2463,17 +2460,17 @@ await testCase('T257 tick-ids argv for a 14-box checklist carries the ids and no
 // T273 (#82) — the probe role has the same persona-in-prompt fallback as Theo, and the two fail-closed
 // prerequisites carry a distinct reason: static checks on the source (no simulate seam exists for probe()).
 await testCase('T273 probe(): persona fallback wired, no-attestation and probe-run-not-found reasons (#82)', async () => {
-  const src = SUITE_ARGS.fpSource
-  if (!src) {
+  const source = SUITE_ARGS.fpSource
+  if (!source) {
     log('SKIP — T273: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
     return { ok: true }
   }
   const checks = [
-    eq('probe call carries personaFallback: PROBE_PERSONA', /agentType: 'lgtmgate:probe'[^\n]*personaFallback: PROBE_PERSONA/.test(src), true),
-    eq('PROBE_PERSONA is the probe-run copier persona', /const PROBE_PERSONA =[\s\S]*?probe-run\.cjs/.test(src), true),
-    eq("no-attestation maps to its own probeReason", src.includes("verified.reason === 'no-attestation' ? 'no-attestation'"), true),
-    eq('probe-run-not-found fails early', src.includes("if (!config.probeRunPath && !pluginRoot) return fail('probe-run-not-found')"), true),
-    eq('escalation carries probeHint', src.includes('probeHint: PROBE_REASON_HINTS[provision.probeFailed]'), true),
+    eq('probe call carries personaFallback: PROBE_PERSONA', /agentType: 'lgtmgate:probe'[^\n]*personaFallback: PROBE_PERSONA/.test(source), true),
+    eq('PROBE_PERSONA is the probe-run copier persona', /const PROBE_PERSONA =[\s\S]*?probe-run\.cjs/.test(source), true),
+    eq("no-attestation maps to its own probeReason", source.includes("verified.reason === 'no-attestation' ? 'no-attestation'"), true),
+    eq('probe-run-not-found fails early', source.includes("if (!config.probeRunPath && !pluginRoot) return fail('probe-run-not-found')"), true),
+    eq('escalation carries probeHint', source.includes('probeHint: PROBE_REASON_HINTS[provision.probeFailed]'), true),
   ]
   return checks.find(c => c) || { ok: true }
 })
@@ -2483,15 +2480,14 @@ await testCase('T273 probe(): persona fallback wired, no-attestation and probe-r
 // reads the manifest has none, T273); the real command, the real probe-run.cjs and real manifests run in
 // tests/templates/test-probe-run.sh, the replayed incident in fixtures/incidents/195-stale-plugin-root.json.
 const pluginVersionPieces = () => {
-  const src = SUITE_ARGS.fpSource
-  if (!src) return null
-  const block = extractBetween(src, '// --- pluginVersion:start ---', '// --- pluginVersion:end ---')
-  const m = /const BUILD = \{[^}]*\bversion: '([^']+)'/.exec(src)
-  if (!block || !m) return { missing: true, src }
-  // eslint-disable-next-line no-new-func
+  const source = SUITE_ARGS.fpSource
+  if (!source) return null
+  const block = extractBetween(source, '// --- pluginVersion:start ---', '// --- pluginVersion:end ---')
+  const m = /const BUILD = \{[^}]*\bversion: '([^']+)'/.exec(source)
+  if (!block || !m) return { missing: true, src: source }
   // minPluginVersionVerdict (#233) is undefined until the engine has it: the T195 cases never depend on it
   const fns = new Function(block + '\nreturn { pluginVersionCmd, pluginVersionVerdict, pluginVersionOrder, minPluginVersionVerdict: typeof minPluginVersionVerdict === "function" ? minPluginVersionVerdict : undefined }')()
-  return { ...fns, src, V: m[1] }
+  return { ...fns, src: source, V: m[1] }
 }
 await testCase('T195a pluginRoot of the engine\'s own version passes unchanged (#195)', async () => {
   const pv = pluginVersionPieces()
@@ -2640,21 +2636,21 @@ await testCase('T195d the check runs first, only when the templates come from pl
     log('SKIP — T195d: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
     return { ok: true }
   }
-  const src = pv.src
+  const source = pv.src
   const gate = "if (!simulate && pluginRoot && !config.probeRunPath) {"
-  const iGate = src.indexOf(gate)
-  const iProvision = src.indexOf("await probe('provision',")
-  if (iGate < 0) return { ok: false, msg: 'plugin-version gate not found in pipeline source' }
-  const body = src.slice(iGate, src.indexOf('\n}\n', iGate))
+  const indexGate = source.indexOf(gate)
+  const indexProvision = source.indexOf("await probe('provision',")
+  if (indexGate < 0) return { ok: false, msg: 'plugin-version gate not found in pipeline source' }
+  const body = source.slice(indexGate, source.indexOf('\n}\n', indexGate))
   const checks = [
-    eq('gate precedes the provision probe', iGate < iProvision, true),
+    eq('gate precedes the provision probe', indexGate < indexProvision, true),
     eq('gate reads the manifest through probe(lines) with noReuse', body.includes("probe('lines', pluginVersionCmd(pluginRoot), { label: 'plugin-version', noReuse: true, b64: true"), true),
-    eq('the session-root probe is delivered as --cmd-b64 too (#338)', src.includes("probe('lines', sessionRootCmd(sessionRoot, wtPath), { label: 'session-root', noReuse: true, b64: true"), true),
+    eq('the session-root probe is delivered as --cmd-b64 too (#338)', source.includes("probe('lines', sessionRootCmd(sessionRoot, wtPath), { label: 'session-root', noReuse: true, b64: true"), true),
     eq('gate escalates on the existing status', body.includes("finish(STATUS['escalate'], { reason: skew.reason"), true),
     eq('the root path travels in its own result field, not in the reason', body.includes("{ reason: skew.reason, issue, pluginRoot, trace }"), true),
     eq('a failure of the probe itself keeps the provision-failed signature', body.includes("reason: 'provision-failed', issue, missing: [], exitCode: null, probeReason: pv.probeFailed, probeHint: PROBE_REASON_HINTS[pv.probeFailed]"), true),
     eq('gate writes no label (no updateStatus, no prWrite)', body.includes('updateStatus') || body.includes('prWrite'), false),
-    eq('lines is registered in PROBES', src.includes("  'lines': 'lines',"), true),
+    eq('lines is registered in PROBES', source.includes("  'lines': 'lines',"), true),
   ]
   return checks.find(c => c) || { ok: true }
 })
@@ -2662,13 +2658,12 @@ await testCase('T195d the check runs first, only when the templates come from pl
 // T177 (#177) — a run whose Lead session root is not the target repository is refused before provisioning. The decision is
 // sessionRootVerdict(), a pure function extracted from its source markers; the real command runs against temp git repos.
 const sessionRootPieces = () => {
-  const src = SUITE_ARGS.fpSource
-  if (!src) return null
-  const block = extractBetween(src, '// --- sessionRoot:start ---', '// --- sessionRoot:end ---')
-  if (!block) return { missing: true, src }
-  // eslint-disable-next-line no-new-func
+  const source = SUITE_ARGS.fpSource
+  if (!source) return null
+  const block = extractBetween(source, '// --- sessionRoot:start ---', '// --- sessionRoot:end ---')
+  if (!block) return { missing: true, src: source }
   const fns = new Function(block + '\nreturn { sessionRootCmd, sessionRootVerdict }')()
-  return { ...fns, src }
+  return { ...fns, src: source }
 }
 await testCase('T177a the verdict on the real command: same repository passes, another one is session-root-mismatch, fail closed otherwise (#177)', async () => {
   const sp = sessionRootPieces()
@@ -2682,34 +2677,34 @@ await testCase('T177a the verdict on the real command: same repository passes, a
   const fsm = process.getBuiltinModule('fs')
   const osm = process.getBuiltinModule('os')
   const pathm = process.getBuiltinModule('path')
-  const tmp = fsm.mkdtempSync(pathm.join(osm.tmpdir(), 't177-'))
+  const temporary = fsm.mkdtempSync(pathm.join(osm.tmpdir(), 't177-'))
   try {
     const git = (cwd, ...a) => cp.execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', ...a], { cwd, stdio: 'ignore' })
-    const repoA = pathm.join(tmp, 'a')
-    const repoB = pathm.join(tmp, 'b')
-    const wtA = pathm.join(tmp, 'wt a')
-    for (const r of [repoA, repoB]) { fsm.mkdirSync(r); git(r, 'init', '-q'); git(r, 'commit', '--allow-empty', '-q', '-m', 'init') }
-    git(repoA, 'worktree', 'add', '-q', '-b', 'feat/x', wtA)
-    const real = (sessionRoot, wtPath) => {
+    const repositoryA = pathm.join(temporary, 'a')
+    const repositoryB = pathm.join(temporary, 'b')
+    const worktreeA = pathm.join(temporary, 'wt a')
+    for (const r of [repositoryA, repositoryB]) { fsm.mkdirSync(r); git(r, 'init', '-q'); git(r, 'commit', '--allow-empty', '-q', '-m', 'init') }
+    git(repositoryA, 'worktree', 'add', '-q', '-b', 'feat/x', worktreeA)
+    const real = (sessionRoot, worktreePath) => {
       let out = ''
       let exit = 0
-      try { out = cp.execFileSync('sh', ['-c', sessionRootCmd(sessionRoot, wtPath)], { encoding: 'utf8' }) } catch (e) { exit = e.status || 1 }
+      try { out = cp.execFileSync('sh', ['-c', sessionRootCmd(sessionRoot, worktreePath)], { encoding: 'utf8' }) } catch (error) { exit = error.status || 1 }
       return { exit, lines: out.split('\n').filter((l) => l !== '') }
     }
-    const same = real(repoA, wtA)
-    const differs = real(repoB, wtA)
-    const notRepo = real(pathm.join(tmp, 'missing'), wtA)
+    const same = real(repositoryA, worktreeA)
+    const differs = real(repositoryB, worktreeA)
+    const notRepository = real(pathm.join(temporary, 'missing'), worktreeA)
     const v = (o) => sessionRootVerdict({ exit: 0, lines: [], ...o })
     const mismatch = sessionRootVerdict(differs)
     const checks = [
       eq('the real command: the repo and its linked worktree are the same', same.lines, ['SESSION-ROOT:same']),
       eq('the real command: another repository differs', differs.lines, ['SESSION-ROOT:differs']),
-      eq('the real command: a non-repository is unreadable', notRepo.lines, ['SESSION-ROOT-ERROR:unreadable']),
+      eq('the real command: a non-repository is unreadable', notRepository.lines, ['SESSION-ROOT-ERROR:unreadable']),
       eq('same -> no verdict', sessionRootVerdict(same), null),
       eq('differs -> session-root-mismatch', mismatch && mismatch.code, 'session-root-mismatch'),
       includes('the mismatch says nothing ran', mismatch.reason, 'nothing ran'),
       includes('the mismatch names the remedy', mismatch.reason, 'session opened in it'),
-      eq('the reason carries no local path', mismatch.reason.includes(tmp) || mismatch.reason.includes('/Users/') || mismatch.reason.includes('/Volumes/'), false),
+      eq('the reason carries no local path', mismatch.reason.includes(temporary) || mismatch.reason.includes('/Users/') || mismatch.reason.includes('/Volumes/'), false),
       eq('error line -> session-root-unreadable', v({ lines: ['SESSION-ROOT-ERROR:unreadable'] }).code, 'session-root-unreadable'),
       eq('empty -> session-root-unreadable', v({ lines: [] }).code, 'session-root-unreadable'),
       eq('two lines -> session-root-unreadable', v({ lines: ['SESSION-ROOT:same', 'x'] }).code, 'session-root-unreadable'),
@@ -2718,7 +2713,7 @@ await testCase('T177a the verdict on the real command: same repository passes, a
     ]
     return checks.find(c => c) || { ok: true }
   } finally {
-    fsm.rmSync(tmp, { recursive: true, force: true })
+    fsm.rmSync(temporary, { recursive: true, force: true })
   }
 })
 await testCase('T177b the gate runs before provisioning and any agent call, only outside simulate, and writes no label (#177)', async () => {
@@ -2727,23 +2722,23 @@ await testCase('T177b the gate runs before provisioning and any agent call, only
     log('SKIP — T177b: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
     return { ok: true }
   }
-  const src = sp.src
+  const source = sp.src
   const gate = 'if (!simulate && sessionRoot) {'
-  const iGate = src.indexOf(gate)
-  if (iGate < 0) return { ok: false, msg: 'session-root gate not found in pipeline source' }
-  const iPlugin = src.indexOf('if (!simulate && pluginRoot && !config.probeRunPath) {')
-  const iProvision = src.indexOf("await probe('provision',")
-  const iRecheck = src.indexOf("if (entryStage !== 'plan') {", iGate)
-  const body = src.slice(iGate, src.indexOf('\n}\n', iGate))
+  const indexGate = source.indexOf(gate)
+  if (indexGate < 0) return { ok: false, msg: 'session-root gate not found in pipeline source' }
+  const indexPlugin = source.indexOf('if (!simulate && pluginRoot && !config.probeRunPath) {')
+  const indexProvision = source.indexOf("await probe('provision',")
+  const indexRecheck = source.indexOf("if (entryStage !== 'plan') {", indexGate)
+  const body = source.slice(indexGate, source.indexOf('\n}\n', indexGate))
   const checks = [
-    eq('gate follows the plugin-version gate', iPlugin >= 0 && iPlugin < iGate, true),
-    eq('gate precedes the provision probe', iGate < iProvision, true),
-    eq('gate precedes the entryStage re-check', iRecheck > iGate, true),
+    eq('gate follows the plugin-version gate', indexPlugin >= 0 && indexPlugin < indexGate, true),
+    eq('gate precedes the provision probe', indexGate < indexProvision, true),
+    eq('gate precedes the entryStage re-check', indexRecheck > indexGate, true),
     eq('gate reads through probe(lines) with noReuse', body.includes("probe('lines', sessionRootCmd(sessionRoot, wtPath), { label: 'session-root', noReuse: true"), true),
     eq('gate escalates on the existing status with the verdict reason', body.includes("finish(STATUS['escalate'], { reason: srv.reason"), true),
     eq('gate writes no label and makes no agent call', body.includes('updateStatus') || body.includes('prWrite') || body.includes('agent('), false),
-    eq('the reason is named in the source', src.includes("code: 'session-root-mismatch'"), true),
-    eq('no new status: the registry has no session-root key', /STATUS = \{[^}]*session-root/.test(src), false),
+    eq('the reason is named in the source', source.includes("code: 'session-root-mismatch'"), true),
+    eq('no new status: the registry has no session-root key', /STATUS = \{[^}]*session-root/.test(source), false),
   ]
   return checks.find(c => c) || { ok: true }
 })
@@ -2754,13 +2749,13 @@ await testCase('T177c skills/deliver/SKILL.md states the rule once and documents
     log('SKIP — T177c: SUITE_ARGS.fpScriptPath absent (suite not run via scripts/run-flow-suite.cjs)')
     return { ok: true }
   }
-  const doc = fsm.readFileSync(pathm.resolve(pathm.dirname(SUITE_ARGS.fpScriptPath), '..', 'skills', 'deliver', 'SKILL.md'), 'utf8')
+  const document = fsm.readFileSync(pathm.resolve(pathm.dirname(SUITE_ARGS.fpScriptPath), '..', 'skills', 'deliver', 'SKILL.md'), 'utf8')
   const rule = 'session opened in the target repository'
-  const row = doc.split('\n').find((l) => l.startsWith('| `escalate` |')) || ''
+  const row = document.split('\n').find((l) => l.startsWith('| `escalate` |')) || ''
   const checks = [
-    eq('the rule line appears in the restart paragraph, once', doc.split(rule).length - 1 >= 1 && doc.split('\n').filter((l) => l.startsWith('A run is driven from a ' + rule)).length, 1),
+    eq('the rule line appears in the restart paragraph, once', document.split(rule).length - 1 >= 1 && document.split('\n').filter((l) => l.startsWith('A run is driven from a ' + rule)).length, 1),
     eq('the escalate row names session-root-mismatch', row.includes('session-root-mismatch'), true),
-    eq('the sessionRoot arg is documented', doc.includes('sessionRoot: <'), true),
+    eq('the sessionRoot arg is documented', document.includes('sessionRoot: <'), true),
   ]
   return checks.find(c => c) || { ok: true }
 })
@@ -2852,15 +2847,15 @@ await testCase('T9233c the minPluginVersion verdict orders versions numerically 
   if (noMin) return noMin
   // an unusable value never reads as "no minimum" (a typo must not turn the check off)
   for (const bad of ['', 'banana', '1.0', ' 1.0.0', '1.0.0 ', 'v1.0.0', 1, true, {}, []]) {
-    let err = null
-    try { v('1.0.0', bad) } catch (e) { err = e }
-    if (!(err instanceof Error)) return { ok: false, msg: `${JSON.stringify(bad)}: expected an Error, none thrown` }
-    const e2 = includes(`${JSON.stringify(bad)}: message`, err.message, 'Invalid minPluginVersion')
-    if (e2) return e2
+    let error = null
+    try { v('1.0.0', bad) } catch (error_) { error = error_ }
+    if (!(error instanceof Error)) return { ok: false, msg: `${JSON.stringify(bad)}: expected an Error, none thrown` }
+    const error2 = includes(`${JSON.stringify(bad)}: message`, error.message, 'Invalid minPluginVersion')
+    if (error2) return error2
   }
   // end to end: the same refusal as a throw of the run (zero agent spawns), like Invalid planFreshness
   let thrown = null
-  try { await run({ mode: 'auto', config: { ...CONFIG, minPluginVersion: 'banana' }, simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] } }) } catch (e) { thrown = e }
+  try { await run({ mode: 'auto', config: { ...CONFIG, minPluginVersion: 'banana' }, simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] } }) } catch (error) { thrown = error }
   if (!thrown) return { ok: false, msg: 'run() with minPluginVersion "banana" did not reject' }
   return includes('run() rejection message', String(thrown.message), 'Invalid minPluginVersion') || { ok: true }
 })
@@ -2870,21 +2865,21 @@ await testCase('T9233d the minPluginVersion check runs before Setup and before e
     log('SKIP — T9233d: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
     return { ok: true }
   }
-  const src = pv.src
+  const source = pv.src
   const call = 'const tooOld = minPluginVersionVerdict({'
-  const iCall = src.indexOf(call)
-  if (iCall < 0) return { ok: false, msg: 'minPluginVersion call site not found in pipeline source' }
-  const iIf = src.indexOf('if (tooOld)', iCall)
-  const body = iIf < 0 ? '' : src.slice(iCall, src.indexOf('\n', iIf))
-  const iSetup = src.indexOf("phase('Setup')")
-  const iVersionProbe = src.indexOf("await probe('lines', pluginVersionCmd(")
-  const iProvision = src.indexOf("await probe('provision',")
-  const iProceed = src.indexOf('invalid-proceedThrough: ${JSON.stringify(proceedThrough)}')
+  const indexCall = source.indexOf(call)
+  if (indexCall < 0) return { ok: false, msg: 'minPluginVersion call site not found in pipeline source' }
+  const indexIf = source.indexOf('if (tooOld)', indexCall)
+  const body = indexIf < 0 ? '' : source.slice(indexCall, source.indexOf('\n', indexIf))
+  const indexSetup = source.indexOf("phase('Setup')")
+  const indexVersionProbe = source.indexOf("await probe('lines', pluginVersionCmd(")
+  const indexProvision = source.indexOf("await probe('provision',")
+  const indexProceed = source.indexOf('invalid-proceedThrough: ${JSON.stringify(proceedThrough)}')
   const checks = [
-    eq('the call follows the invalid-proceedThrough return', iProceed > -1 && iCall > iProceed, true),
-    eq('the call precedes phase(Setup)', iSetup > -1 && iCall < iSetup, true),
-    eq('the call precedes the plugin-version probe', iVersionProbe > -1 && iCall < iVersionProbe, true),
-    eq('the call precedes the provision probe', iProvision > -1 && iCall < iProvision, true),
+    eq('the call follows the invalid-proceedThrough return', indexProceed > -1 && indexCall > indexProceed, true),
+    eq('the call precedes phase(Setup)', indexSetup > -1 && indexCall < indexSetup, true),
+    eq('the call precedes the plugin-version probe', indexVersionProbe > -1 && indexCall < indexVersionProbe, true),
+    eq('the call precedes the provision probe', indexProvision > -1 && indexCall < indexProvision, true),
     eq('it reads the engine build and the repo config', body.includes('engineVersion: BUILD.version') && body.includes('minVersion: config.minPluginVersion'), true),
     eq('it escalates on the existing status with its reason', body.includes("return finish(STATUS['escalate'], { reason: tooOld.reason"), true),
     eq('the call site holds no label write, probe or agent call', ['updateStatus', 'prWrite', 'probe(', 'callAgent', 'agent('].some((t) => body.includes(t)), false),
@@ -2894,29 +2889,29 @@ await testCase('T9233d the minPluginVersion check runs before Setup and before e
 })
 
 await testCase('T214d callAgent( only invoked by callAgentSafe + morgan; callAgentSafe( widely wired', async () => {
-  const src = SUITE_ARGS.fpSource
-  if (!src) {
+  const source = SUITE_ARGS.fpSource
+  if (!source) {
     log('SKIP — T214d: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
     return { ok: true }
   }
-  const rawCalls = src.split('await callAgent(').length - 1
-  const safeCalls = src.split('callAgentSafe(').length - 1
-  const e1 = eq("count of 'await callAgent('", rawCalls, 2)
-  const e2 = safeCalls >= 15
+  const rawCalls = source.split('await callAgent(').length - 1
+  const safeCalls = source.split('callAgentSafe(').length - 1
+  const error1 = eq("count of 'await callAgent('", rawCalls, 2)
+  const error2 = safeCalls >= 15
     ? null : { ok: false, msg: `expected >= 15 'callAgentSafe(' occurrences (definition + call sites), got ${safeCalls}` }
-  return (e1 || e2) ? (e1 || e2) : { ok: true }
+  return (error1 || error2) ? (error1 || error2) : { ok: true }
 })
 
 await testCase('T214e STRUCTURED_OUTPUT_MANDATE text + schema-gated finalPrompt injection present', async () => {
-  const src = SUITE_ARGS.fpSource
-  if (!src) {
+  const source = SUITE_ARGS.fpSource
+  if (!source) {
     log('SKIP — T214e: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
     return { ok: true }
   }
-  const e1 = includes('mandate sentinel', src, 'FINAL-OUTPUT MANDATE (hard):')
-  const e2 = includes('schema-gated mandate in the composed prompt', src,
+  const error1 = includes('mandate sentinel', source, 'FINAL-OUTPUT MANDATE (hard):')
+  const error2 = includes('schema-gated mandate in the composed prompt', source,
     "mandate: opts && opts.schema ? STRUCTURED_OUTPUT_MANDATE : ''")
-  return (e1 || e2) ? (e1 || e2) : { ok: true }
+  return (error1 || error2) ? (error1 || error2) : { ok: true }
 })
 
 // No-PR terminal delivery — Nick can legitimately deliver without a PR (e.g. the
@@ -2927,10 +2922,10 @@ await testCase('nick delivers with prNumber:0 + testsPass:true → delivered-no-
     mode: 'auto',
     simulate: { sam: 'GO', nick: { prNumber: 0, testsPass: true } },
   })
-  const e1 = eq('status', r.status, 'delivered-no-pr')
-  const e2 = eq('trace', r.trace, ['Plan', 'Dev', 'Review', 'delivered-no-pr'])
-  const e3 = r.summary ? null : { ok: false, msg: `expected non-empty summary, got ${JSON.stringify(r.summary)}` }
-  return (e1 || e2 || e3) ? (e1 || e2 || e3) : { ok: true }
+  const error1 = eq('status', r.status, 'delivered-no-pr')
+  const error2 = eq('trace', r.trace, ['Plan', 'Dev', 'Review', 'delivered-no-pr'])
+  const error3 = r.summary ? null : { ok: false, msg: `expected non-empty summary, got ${JSON.stringify(r.summary)}` }
+  return (error1 || error2 || error3) ? (error1 || error2 || error3) : { ok: true }
 })
 
 await testCase('nick delivers with prNumber:0 + testsPass:false → escalate dev-stage-no-pr (no throw)', async () => {
@@ -2938,10 +2933,10 @@ await testCase('nick delivers with prNumber:0 + testsPass:false → escalate dev
     mode: 'auto',
     simulate: { sam: 'GO', nick: { prNumber: 0, testsPass: false } },
   })
-  const e1 = eq('status', r.status, 'escalate')
-  const e2 = eq('reason', r.reason, 'dev-stage-no-pr')
-  const e3 = eq('trace', r.trace, ['Plan', 'Dev', 'Review', 'dev-stage-no-pr', 'Blocked'])
-  return (e1 || e2 || e3) ? (e1 || e2 || e3) : { ok: true }
+  const error1 = eq('status', r.status, 'escalate')
+  const error2 = eq('reason', r.reason, 'dev-stage-no-pr')
+  const error3 = eq('trace', r.trace, ['Plan', 'Dev', 'Review', 'dev-stage-no-pr', 'Blocked'])
+  return (error1 || error2 || error3) ? (error1 || error2 || error3) : { ok: true }
 })
 
 // preflight.envSymlink (#70) — gates HARD preflight check 1. Repo-local knob, numbered
@@ -2952,14 +2947,14 @@ await testCase('T70a preflight.envSymlink default (unset) → required, byte-ide
     config: { ...CONFIG },
     simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] },
   })
-  const e1 = eq('status', r.status, 'ready')
-  const e2 = eq('trace', r.trace, ['Plan', 'Dev', 'Review', 'PR Ready'])
-  const e3 = includes('preflightPromptPreview', r.preflightPromptPreview, '1. test -L "/tmp/lgtmgate-test/.env"')
-  const e4 = r.preflightPromptPreview.includes('test ! -e')
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = eq('trace', r.trace, ['Plan', 'Dev', 'Review', 'PR Ready'])
+  const error3 = includes('preflightPromptPreview', r.preflightPromptPreview, '1. test -L "/tmp/lgtmgate-test/.env"')
+  const error4 = r.preflightPromptPreview.includes('test ! -e')
     ? { ok: false, msg: `expected preflightPromptPreview NOT to include "test ! -e", got ${JSON.stringify(r.preflightPromptPreview)}` }
     : null
-  const err = e1 || e2 || e3 || e4
-  return err ? err : { ok: true }
+  const error = error1 || error2 || error3 || error4
+  return error ? error : { ok: true }
 })
 
 await testCase('T70b preflight.envSymlink forbidden → check 1 asserts absence', async () => {
@@ -2968,12 +2963,12 @@ await testCase('T70b preflight.envSymlink forbidden → check 1 asserts absence'
     config: { ...CONFIG, preflight: { envSymlink: 'forbidden' } },
     simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] },
   })
-  const e1 = includes('preflightPromptPreview', r.preflightPromptPreview, '1. test ! -e "/tmp/lgtmgate-test/.env"')
-  const e2 = r.preflightPromptPreview.includes('test -L')
+  const error1 = includes('preflightPromptPreview', r.preflightPromptPreview, '1. test ! -e "/tmp/lgtmgate-test/.env"')
+  const error2 = r.preflightPromptPreview.includes('test -L')
     ? { ok: false, msg: `expected preflightPromptPreview NOT to include "test -L", got ${JSON.stringify(r.preflightPromptPreview)}` }
     : null
-  const err = e1 || e2
-  return err ? err : { ok: true }
+  const error = error1 || error2
+  return error ? error : { ok: true }
 })
 
 await testCase('T70c preflight.envSymlink ignore → check 1 omitted, aggregation range shrinks to 2-3', async () => {
@@ -2983,13 +2978,13 @@ await testCase('T70c preflight.envSymlink ignore → check 1 omitted, aggregatio
     simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] },
   })
   const p = r.preflightPromptPreview
-  const e1 = p.includes('test -L') ? { ok: false, msg: `expected NOT to include "test -L", got ${JSON.stringify(p)}` } : null
-  const e2 = p.includes('test ! -e') ? { ok: false, msg: `expected NOT to include "test ! -e", got ${JSON.stringify(p)}` } : null
-  const e3 = includes('preflightPromptPreview', p, '2. git -C')
-  const e4 = includes('preflightPromptPreview', p, '3. Unit suite still green')
-  const e5 = includes('preflightPromptPreview', p, 'HARD checks 2-3 all pass')
-  const err = e1 || e2 || e3 || e4 || e5
-  return err ? err : { ok: true }
+  const error1 = p.includes('test -L') ? { ok: false, msg: `expected NOT to include "test -L", got ${JSON.stringify(p)}` } : null
+  const error2 = p.includes('test ! -e') ? { ok: false, msg: `expected NOT to include "test ! -e", got ${JSON.stringify(p)}` } : null
+  const error3 = includes('preflightPromptPreview', p, '2. git -C')
+  const error4 = includes('preflightPromptPreview', p, '3. Unit suite still green')
+  const error5 = includes('preflightPromptPreview', p, 'HARD checks 2-3 all pass')
+  const error = error1 || error2 || error3 || error4 || error5
+  return error ? error : { ok: true }
 })
 
 await testCase('T70d preflight.envSymlink invalid value → throws under dryRun (zero agent spawns)', async () => {
@@ -3000,9 +2995,9 @@ await testCase('T70d preflight.envSymlink invalid value → throws under dryRun 
       config: { ...CONFIG, preflight: { envSymlink: 'yes' } },
     })
     return { ok: false, msg: 'expected run() to throw, it did not' }
-  } catch (e) {
-    if (!e.message.includes('Invalid preflight.envSymlink')) {
-      return { ok: false, msg: `wrong error message: ${e.message}` }
+  } catch (error) {
+    if (!error.message.includes('Invalid preflight.envSymlink')) {
+      return { ok: false, msg: `wrong error message: ${error.message}` }
     }
     return { ok: true }
   }
@@ -3012,14 +3007,14 @@ await testCase('T70d preflight.envSymlink invalid value → throws under dryRun 
 // JSON text instead of the parsed object) is refused by a throw BEFORE any stage runs, never
 // executed on defaults. Non-dryRun with a full simulate: if the guard were missing the run would
 // proceed to a real status instead of throwing.
-for (const [id, tag, cfg] of [['a', 'absent', undefined], ['b', 'null', null], ['c', 'string', JSON.stringify(CONFIG)], ['d', 'array', []]]) {
+for (const [id, tag, config] of [['a', 'absent', undefined], ['b', 'null', null], ['c', 'string', JSON.stringify(CONFIG)], ['d', 'array', []]]) {
   await testCase(`T268${id} config ${tag} -> refused before any stage (#13/#12)`, async () => {
     try {
-      const r = await run({ mode: 'auto', config: cfg, simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] } })
+      const r = await run({ mode: 'auto', config: config, simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] } })
       return { ok: false, msg: `expected a throw, got status ${r.status}` }
-    } catch (e) {
-      return e.message.includes('Missing or invalid arg: config')
-        ? { ok: true } : { ok: false, msg: `wrong error message: ${e.message}` }
+    } catch (error) {
+      return error.message.includes('Missing or invalid arg: config')
+        ? { ok: true } : { ok: false, msg: `wrong error message: ${error.message}` }
     }
   })
 }
@@ -3037,12 +3032,12 @@ await testCase('T71a resolveWorktreeRoot: relative logical default -> absolute i
     config: { ...CONFIG, worktreeRoot: 'worktrees/lgtmgate' },
     simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] },
   })
-  const e1 = includes('nickPromptPreview', r.nickPromptPreview, 'worktree root: /tmp/lgtmgate-worktrees')
-  const e2 = r.nickPromptPreview.includes('worktrees/lgtmgate')
+  const error1 = includes('nickPromptPreview', r.nickPromptPreview, 'worktree root: /tmp/lgtmgate-worktrees')
+  const error2 = r.nickPromptPreview.includes('worktrees/lgtmgate')
     ? { ok: false, msg: `expected nickPromptPreview NOT to include the raw relative default, got ${JSON.stringify(r.nickPromptPreview)}` }
     : null
-  const err = e1 || e2
-  return err ? err : { ok: true }
+  const error = error1 || error2
+  return error ? error : { ok: true }
 })
 
 await testCase('T71b resolveWorktreeRoot: $LGTMGATE_WORKTREE_ROOT beats local and versioned', async () => {
@@ -3053,11 +3048,11 @@ await testCase('T71b resolveWorktreeRoot: $LGTMGATE_WORKTREE_ROOT beats local an
     simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }], env: { LGTMGATE_WORKTREE_ROOT: '/env/root' } },
   })
   const p = r.nickPromptPreview
-  const e1 = includes('nickPromptPreview', p, 'worktree root: /env/root')
-  const e2 = p.includes('/local/root') ? { ok: false, msg: `expected NOT to include "/local/root", got ${JSON.stringify(p)}` } : null
-  const e3 = p.includes('/tmp/lgtmgate-worktrees') ? { ok: false, msg: `expected NOT to include "/tmp/lgtmgate-worktrees", got ${JSON.stringify(p)}` } : null
-  const err = e1 || e2 || e3
-  return err ? err : { ok: true }
+  const error1 = includes('nickPromptPreview', p, 'worktree root: /env/root')
+  const error2 = p.includes('/local/root') ? { ok: false, msg: `expected NOT to include "/local/root", got ${JSON.stringify(p)}` } : null
+  const error3 = p.includes('/tmp/lgtmgate-worktrees') ? { ok: false, msg: `expected NOT to include "/tmp/lgtmgate-worktrees", got ${JSON.stringify(p)}` } : null
+  const error = error1 || error2 || error3
+  return error ? error : { ok: true }
 })
 
 await testCase('T71c resolveWorktreeRoot: configLocal beats the versioned default', async () => {
@@ -3068,10 +3063,10 @@ await testCase('T71c resolveWorktreeRoot: configLocal beats the versioned defaul
     simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] },
   })
   const p = r.nickPromptPreview
-  const e1 = includes('nickPromptPreview', p, 'worktree root: /local/root')
-  const e2 = p.includes('/tmp/lgtmgate-worktrees') ? { ok: false, msg: `expected NOT to include "/tmp/lgtmgate-worktrees", got ${JSON.stringify(p)}` } : null
-  const err = e1 || e2
-  return err ? err : { ok: true }
+  const error1 = includes('nickPromptPreview', p, 'worktree root: /local/root')
+  const error2 = p.includes('/tmp/lgtmgate-worktrees') ? { ok: false, msg: `expected NOT to include "/tmp/lgtmgate-worktrees", got ${JSON.stringify(p)}` } : null
+  const error = error1 || error2
+  return error ? error : { ok: true }
 })
 
 await testCase('T71d resolveWorktreeRoot: absolute versioned default passes through unchanged (non-regression)', async () => {
@@ -3080,8 +3075,8 @@ await testCase('T71d resolveWorktreeRoot: absolute versioned default passes thro
     config: { ...CONFIG },
     simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] },
   })
-  const err = includes('nickPromptPreview', r.nickPromptPreview, 'worktree root: /tmp/lgtmgate-worktrees')
-  return err ? err : { ok: true }
+  const error = includes('nickPromptPreview', r.nickPromptPreview, 'worktree root: /tmp/lgtmgate-worktrees')
+  return error ? error : { ok: true }
 })
 
 // #111: Nick's prompt only ever interpolated the plan (planBlock), never the raw issue brief —
@@ -3093,8 +3088,8 @@ await testCase('T121 nickPrompt includes the raw issue brief alongside the plan 
     brief: marker,
     simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] },
   })
-  const err = includes('nickPromptPreview', r.nickPromptPreview, marker)
-  return err ? err : { ok: true }
+  const error = includes('nickPromptPreview', r.nickPromptPreview, marker)
+  return error ? error : { ok: true }
 })
 
 // #76: R2 fixture item is generated by the workflow JS from the `issueType` launch arg + Sam's targets.
@@ -3115,23 +3110,23 @@ const r2Absent = (p) => ['no-fixture', R2_ITEM, 'Refs #', 'R2 fixture rule']
 await testCase('T76a issueType bug + workflows/ target -> nickPrompt carries the R2 item, no-fixture and Refs # (#76)', async () => {
   const r = await r2Run('bug', ['workflows/deliver-pipeline.js'])
   const p = r.nickPromptPreview
-  const err = includes('nickPromptPreview', p, 'fixture `fixtures/incidents/')
+  const error = includes('nickPromptPreview', p, 'fixture `fixtures/incidents/')
     || includes('nickPromptPreview', p, 'replayed red on base and green on the branch by `scripts/run-offline.cjs`')
     || includes('nickPromptPreview', p, 'no-fixture')
     || includes('nickPromptPreview', p, 'Refs #')
-  return err ? err : { ok: true }
+  return error ? error : { ok: true }
 })
 
 await testCase('T76b issueType feature + workflows/ target -> nickPrompt carries no R2 text (#76)', async () => {
   const r = await r2Run('feature', ['workflows/deliver-pipeline.js'])
-  const err = r2Absent(r.nickPromptPreview)
-  return err ? err : { ok: true }
+  const error = r2Absent(r.nickPromptPreview)
+  return error ? error : { ok: true }
 })
 
 await testCase('T76c issueType bug + no workflows/ target -> nickPrompt carries no R2 text (#76)', async () => {
   const r = await r2Run('bug', ['agents/nick.md'])
-  const err = r2Absent(r.nickPromptPreview)
-  return err ? err : { ok: true }
+  const error = r2Absent(r.nickPromptPreview)
+  return error ? error : { ok: true }
 })
 
 // ---------------------------------------------------------------------------
@@ -3144,18 +3139,18 @@ await testCase('T76c issueType bug + no workflows/ target -> nickPrompt carries 
 // the real-world size class that triggered the #87 truncation regression.
 function buildPaddedBody20k(base) {
   const marker = '## Summary\n'
-  const idx = base.indexOf(marker)
-  if (idx === -1) throw new Error('T87a fixture: "## Summary" marker not found in base body')
-  const insertAt = idx + marker.length
+  const index = base.indexOf(marker)
+  if (index === -1) throw new Error('T87a fixture: "## Summary" marker not found in base body')
+  const insertAt = index + marker.length
   const target = 20000
   const needed = Math.max(0, target - base.length)
   let filler = ''
-  let i = 0
+  let index_ = 0
   while (filler.length < needed) {
-    filler += `Filler paragraph ${i} — realistic padding text describing additional context, ` +
+    filler += `Filler paragraph ${index_} — realistic padding text describing additional context, ` +
       `rationale and detail for this section, used only to grow the fixture body toward a ` +
       `20 KB real-world size for the byte-identity regression test (issue #87).\n\n`
-    i++
+    index_++
   }
   filler = filler.slice(0, needed)
   return base.slice(0, insertAt) + filler + base.slice(insertAt)
@@ -3163,11 +3158,11 @@ function buildPaddedBody20k(base) {
 
 const PR385_BODY_20K = buildPaddedBody20k(PR385_BODY_REAL)
 
-function extractBetween(str, startMarker, endMarker) {
-  const s = String(str).indexOf(startMarker)
-  const e = String(str).indexOf(endMarker)
-  if (s === -1 || e === -1) return null
-  return String(str).slice(s, e + endMarker.length)
+function extractBetween(string_, startMarker, endMarker) {
+  const s = String(string_).indexOf(startMarker)
+  const endIndex = String(string_).indexOf(endMarker)
+  if (s === -1 || endIndex === -1) return null
+  return String(string_).slice(s, endIndex + endMarker.length)
 }
 
 // T87a (#87, real-scale fixture) — the SAME decision-log composer T39 exercises (extracted in
@@ -3185,10 +3180,10 @@ await testCase('T87a decision-log composer on a 20 KB body — acceptance block 
   })
   const body = r.prBodyPreview || ''
   const errs = []
-  const beforeAcc = extractBetween(PR385_BODY_20K, '<!-- acceptance:start -->', '<!-- acceptance:end -->')
-  const afterAcc = extractBetween(body, '<!-- acceptance:start -->', '<!-- acceptance:end -->')
-  if (beforeAcc === null || afterAcc === null) errs.push('acceptance block not found')
-  else if (beforeAcc !== afterAcc) errs.push('acceptance block content drifted')
+  const beforeAccumulator = extractBetween(PR385_BODY_20K, '<!-- acceptance:start -->', '<!-- acceptance:end -->')
+  const afterAccumulator = extractBetween(body, '<!-- acceptance:start -->', '<!-- acceptance:end -->')
+  if (beforeAccumulator === null || afterAccumulator === null) errs.push('acceptance block not found')
+  else if (beforeAccumulator !== afterAccumulator) errs.push('acceptance block content drifted')
   if (countOccurrences(body, '<!-- decision-log:start -->') !== 1) errs.push('decision-log:start not exactly 1')
   if (!body.includes('- round 0 — REQUIRED_CHANGES (1 blocker)')) errs.push('missing round 0 entry')
   if (!body.includes('- round 1 — LGTM')) errs.push('missing round 1 entry')
@@ -3221,9 +3216,9 @@ await testCase('T87b bodyWriteGuardOk guard probe — false on truncated body, t
       },
     },
   })
-  const e1 = eq('guardProbeResult (truncated)', rTruncated.guardProbeResult, false)
-  const e2 = eq('guardProbeResult (full)', rFull.guardProbeResult, true)
-  return (e1 || e2) ? (e1 || e2) : { ok: true }
+  const error1 = eq('guardProbeResult (truncated)', rTruncated.guardProbeResult, false)
+  const error2 = eq('guardProbeResult (full)', rFull.guardProbeResult, true)
+  return (error1 || error2) ? (error1 || error2) : { ok: true }
 })
 
 // T87c (#87, negative control) — `command grep -cF "pr-body-read" workflows/deliver-pipeline.js`
@@ -3243,9 +3238,9 @@ await testCase('T88 maxAuditRounds:3 without a reason → throws under dryRun (z
   try {
     await run({ mode: 'manual', dryRun: true, maxAuditRounds: 3 })
     return { ok: false, msg: 'expected run() to throw, it did not' }
-  } catch (e) {
-    if (!e.message.includes('exceeds the doctrine ceiling') || !e.message.includes('maxAuditRoundsOverrideReason')) {
-      return { ok: false, msg: `wrong error message: ${e.message}` }
+  } catch (error) {
+    if (!error.message.includes('exceeds the doctrine ceiling') || !error.message.includes('maxAuditRoundsOverrideReason')) {
+      return { ok: false, msg: `wrong error message: ${error.message}` }
     }
     return { ok: true }
   }
@@ -3255,9 +3250,9 @@ await testCase('T89 maxAuditRounds:3 + whitespace-only reason → still throws (
   try {
     await run({ mode: 'manual', dryRun: true, maxAuditRounds: 3, maxAuditRoundsOverrideReason: '   ' })
     return { ok: false, msg: 'expected run() to throw, it did not' }
-  } catch (e) {
-    if (!e.message.includes('exceeds the doctrine ceiling')) {
-      return { ok: false, msg: `wrong error message: ${e.message}` }
+  } catch (error) {
+    if (!error.message.includes('exceeds the doctrine ceiling')) {
+      return { ok: false, msg: `wrong error message: ${error.message}` }
     }
     return { ok: true }
   }
@@ -3265,10 +3260,10 @@ await testCase('T89 maxAuditRounds:3 + whitespace-only reason → still throws (
 
 await testCase('T90 maxAuditRounds:2 (the ceiling itself) never requires a reason — boundary regression', async () => {
   const r = await run({ mode: 'manual', dryRun: true, maxAuditRounds: 2 })
-  const e1 = eq('status', r.status, 'dry-run-ok')
-  const e2 = eq('maxAuditRoundsOverrideReason', r.maxAuditRoundsOverrideReason, null)
-  const err = e1 || e2
-  return err ? err : { ok: true }
+  const error1 = eq('status', r.status, 'dry-run-ok')
+  const error2 = eq('maxAuditRoundsOverrideReason', r.maxAuditRoundsOverrideReason, null)
+  const error = error1 || error2
+  return error ? error : { ok: true }
 })
 
 await testCase('T91 maxAuditRounds:3 + a real reason → dry-run-ok, both fields echoed', async () => {
@@ -3276,11 +3271,11 @@ await testCase('T91 maxAuditRounds:3 + a real reason → dry-run-ok, both fields
     mode: 'manual', dryRun: true, maxAuditRounds: 3,
     maxAuditRoundsOverrideReason: 'CS-6-shaped risk class justifies one extra round',
   })
-  const e1 = eq('status', r.status, 'dry-run-ok')
-  const e2 = eq('maxAuditRounds', r.maxAuditRounds, 3)
-  const e3 = eq('maxAuditRoundsOverrideReason', r.maxAuditRoundsOverrideReason, 'CS-6-shaped risk class justifies one extra round')
-  const err = e1 || e2 || e3
-  return err ? err : { ok: true }
+  const error1 = eq('status', r.status, 'dry-run-ok')
+  const error2 = eq('maxAuditRounds', r.maxAuditRounds, 3)
+  const error3 = eq('maxAuditRoundsOverrideReason', r.maxAuditRoundsOverrideReason, 'CS-6-shaped risk class justifies one extra round')
+  const error = error1 || error2 || error3
+  return error ? error : { ok: true }
 })
 
 await testCase('T92 auditTrace shape on a clean round-1 SOUND pass (semi mode, stops at plan-ready)', async () => {
@@ -3289,12 +3284,12 @@ await testCase('T92 auditTrace shape on a clean round-1 SOUND pass (semi mode, s
     planAudit: true,
     simulate: { sam: 'GO', audit: { 1: { verdict: 'SOUND', findings: [] } } },
   })
-  const e1 = eq('status', r.status, 'plan-ready')
-  const e2 = eq('auditTrace', r.auditTrace, [{ round: 1, verdict: 'SOUND', blockingCount: 0, structuralMistakeCount: 0 }])
-  const e3 = eq('roundOneAboveTarget', r.roundOneAboveTarget, false)
-  const e4 = eq('blockingSeries', r.blockingSeries, [0])
-  const err = e1 || e2 || e3 || e4
-  return err ? err : { ok: true }
+  const error1 = eq('status', r.status, 'plan-ready')
+  const error2 = eq('auditTrace', r.auditTrace, [{ round: 1, verdict: 'SOUND', blockingCount: 0, structuralMistakeCount: 0 }])
+  const error3 = eq('roundOneAboveTarget', r.roundOneAboveTarget, false)
+  const error4 = eq('blockingSeries', r.blockingSeries, [0])
+  const error = error1 || error2 || error3 || error4
+  return error ? error : { ok: true }
 })
 
 await testCase('T93 auditTrace on a 2-round NOT_SOUND escalation (count exactly 1 each round) → roundOneAboveTarget false', async () => {
@@ -3311,15 +3306,15 @@ await testCase('T93 auditTrace on a 2-round NOT_SOUND escalation (count exactly 
       },
     },
   })
-  const e1 = eq('status', r.status, 'escalate')
-  const e2 = eq('auditTrace', r.auditTrace, [
+  const error1 = eq('status', r.status, 'escalate')
+  const error2 = eq('auditTrace', r.auditTrace, [
     { round: 1, verdict: 'NOT_SOUND', blockingCount: 1, structuralMistakeCount: 0 },
     { round: 2, verdict: 'NOT_SOUND', blockingCount: 1, structuralMistakeCount: 0 },
   ])
-  const e3 = eq('roundOneAboveTarget', r.roundOneAboveTarget, false)
-  const e4 = eq('blockingSeries', r.blockingSeries, [1, 1])
-  const err = e1 || e2 || e3 || e4
-  return err ? err : { ok: true }
+  const error3 = eq('roundOneAboveTarget', r.roundOneAboveTarget, false)
+  const error4 = eq('blockingSeries', r.blockingSeries, [1, 1])
+  const error = error1 || error2 || error3 || error4
+  return error ? error : { ok: true }
 })
 
 await testCase('T94 round-1-with-2-blockers → roundOneAboveTarget true (proves the flag actually fires)', async () => {
@@ -3339,11 +3334,11 @@ await testCase('T94 round-1-with-2-blockers → roundOneAboveTarget true (proves
       },
     },
   })
-  const e1 = eq('status', r.status, 'escalate')
-  const e2 = eq('roundOneBlockingCount', r.roundOneBlockingCount, 2)
-  const e3 = eq('roundOneAboveTarget', r.roundOneAboveTarget, true)
-  const err = e1 || e2 || e3
-  return err ? err : { ok: true }
+  const error1 = eq('status', r.status, 'escalate')
+  const error2 = eq('roundOneBlockingCount', r.roundOneBlockingCount, 2)
+  const error3 = eq('roundOneAboveTarget', r.roundOneAboveTarget, true)
+  const error = error1 || error2 || error3
+  return error ? error : { ok: true }
 })
 
 await testCase('T95 mixed debtClass round → blockingCount/structuralMistakeCount independent, routing unaffected by debtClass', async () => {
@@ -3367,10 +3362,10 @@ await testCase('T95 mixed debtClass round → blockingCount/structuralMistakeCou
   // severity, never on verdict alone or on debtClass) — this run stops at plan-ready because
   // maxAuditRounds defaults to 2 and round 1 already forces an amendment; assert round 1's
   // recorded counts before the (simulated, SOUND) round 2 completes it.
-  const e1 = eq('auditTrace[0]', r.auditTrace[0], { round: 1, verdict: 'SOUND-WITH-NOTES', blockingCount: 2, structuralMistakeCount: 1 })
-  const e2 = includes('trace', r.trace, 'plan-audit-amend:1')
-  const err = e1 || e2
-  return err ? err : { ok: true }
+  const error1 = eq('auditTrace[0]', r.auditTrace[0], { round: 1, verdict: 'SOUND-WITH-NOTES', blockingCount: 2, structuralMistakeCount: 1 })
+  const error2 = includes('trace', r.trace, 'plan-audit-amend:1')
+  const error = error1 || error2
+  return error ? error : { ok: true }
 })
 
 await testCase('T96 CS-6-shaped replay at the DEFAULT ceiling (2 rounds) — demonstrates non-convergence itself', async () => {
@@ -3382,18 +3377,18 @@ await testCase('T96 CS-6-shaped replay at the DEFAULT ceiling (2 rounds) — dem
       morgan: [{ verdict: 'LGTM' }],
       planCheck: [{ verdict: 'CONFORMING' }, { verdict: 'CONFORMING' }],
       audit: {
-        1: { verdict: 'SOUND-WITH-NOTES', findings: Array.from({ length: 5 }, (_, i) => ({ severity: 'blocking', title: `f${i}`, finding: 'x', fix: 'y' })) },
-        2: { verdict: 'SOUND-WITH-NOTES', findings: Array.from({ length: 6 }, (_, i) => ({ severity: 'blocking', title: `g${i}`, finding: 'x', fix: 'y' })) },
+        1: { verdict: 'SOUND-WITH-NOTES', findings: Array.from({ length: 5 }, (_, index) => ({ severity: 'blocking', title: `f${index}`, finding: 'x', fix: 'y' })) },
+        2: { verdict: 'SOUND-WITH-NOTES', findings: Array.from({ length: 6 }, (_, index) => ({ severity: 'blocking', title: `g${index}`, finding: 'x', fix: 'y' })) },
       },
     },
   })
-  const e1 = eq('status', r.status, 'escalate')
-  const e2 = eq('reason', r.reason, 'plan-not-sound')
-  const e3 = eq('blockingSeries', r.blockingSeries, [5, 6])
-  const e4 = eq('roundOneAboveTarget', r.roundOneAboveTarget, true)
-  const e5 = eq('maxAuditRoundsOverrideReason', r.maxAuditRoundsOverrideReason, null)
-  const err = e1 || e2 || e3 || e4 || e5
-  return err ? err : { ok: true }
+  const error1 = eq('status', r.status, 'escalate')
+  const error2 = eq('reason', r.reason, 'plan-not-sound')
+  const error3 = eq('blockingSeries', r.blockingSeries, [5, 6])
+  const error4 = eq('roundOneAboveTarget', r.roundOneAboveTarget, true)
+  const error5 = eq('maxAuditRoundsOverrideReason', r.maxAuditRoundsOverrideReason, null)
+  const error = error1 || error2 || error3 || error4 || error5
+  return error ? error : { ok: true }
 })
 
 // T97 (B1-B3) — design-step trigger: Theo's independent classification (>=2 of persistent-state /
@@ -3411,12 +3406,12 @@ await testCase('T97a design-step trigger fires (2/3 signals) → design-step-req
       sam: 'GO',
     },
   })
-  const e1 = eq('status', r.status, 'design-step-required')
-  const e2 = eq('designStepSignalCount', r.designStepSignalCount, 2)
-  const e3 = r.trace.some(t => String(t).startsWith('scout-issue'))
+  const error1 = eq('status', r.status, 'design-step-required')
+  const error2 = eq('designStepSignalCount', r.designStepSignalCount, 2)
+  const error3 = r.trace.some(t => String(t).startsWith('scout-issue'))
     ? { ok: false, msg: `expected Sam never invoked, trace: ${JSON.stringify(r.trace)}` } : null
-  const err = e1 || e2 || e3
-  return err ? err : { ok: true }
+  const error = error1 || error2 || error3
+  return error ? error : { ok: true }
 })
 
 await testCase('T97b design-step trigger fires on the immature-vendor-API signal ALONE (not folded into the 2-of-3 count)', async () => {
@@ -3431,8 +3426,8 @@ await testCase('T97b design-step trigger fires on the immature-vendor-API signal
       sam: 'GO',
     },
   })
-  const err = eq('status', r.status, 'design-step-required')
-  return err ? err : { ok: true }
+  const error = eq('status', r.status, 'design-step-required')
+  return error ? error : { ok: true }
 })
 
 await testCase('T97c design-step trigger + architectureDecisionApproved:true → gate does not fire, Sam proceeds', async () => {
@@ -3448,8 +3443,8 @@ await testCase('T97c design-step trigger + architectureDecisionApproved:true →
       sam: 'GO',
     },
   })
-  const err = eq('status', r.status, 'plan-ready')
-  return err ? err : { ok: true }
+  const error = eq('status', r.status, 'plan-ready')
+  return error ? error : { ok: true }
 })
 
 await testCase("T97d design-step trigger + proceedThrough:'plan' → gate does not fire, scoped architecture-only pass proceeds", async () => {
@@ -3465,8 +3460,8 @@ await testCase("T97d design-step trigger + proceedThrough:'plan' → gate does n
       sam: 'GO',
     },
   })
-  const err = eq('status', r.status, 'plan-ready')
-  return err ? err : { ok: true }
+  const error = eq('status', r.status, 'plan-ready')
+  return error ? error : { ok: true }
 })
 
 await testCase('T97e no design-step signals (0/3, no immature API) → gate never fires, ordinary run proceeds', async () => {
@@ -3477,8 +3472,8 @@ await testCase('T97e no design-step signals (0/3, no immature API) → gate neve
       sam: 'GO',
     },
   })
-  const err = eq('status', r.status, 'plan-ready')
-  return err ? err : { ok: true }
+  const error = eq('status', r.status, 'plan-ready')
+  return error ? error : { ok: true }
 })
 
 // T77 (#77, R3) — 5th design-step signal computed by the script from Sam's plan announcement and
@@ -3496,10 +3491,9 @@ const T77_KCONFIG = { ...CONFIG, oneWayDoorKinds: T77_KINDS }
 // samOneWayDoorText / oneWayDoorKindsOf, extracted from the engine's pure `oneWayDoor` block (null when
 // the suite does not get the pipeline source).
 const t77Block = () => {
-  const src = SUITE_ARGS.fpSource
-  if (!src) return null
-  const block = extractBetween(src, '// --- oneWayDoor:start ---', '// --- oneWayDoor:end ---')
-  // eslint-disable-next-line no-new-func
+  const source = SUITE_ARGS.fpSource
+  if (!source) return null
+  const block = extractBetween(source, '// --- oneWayDoor:start ---', '// --- oneWayDoor:end ---')
   return block ? new Function(block + '\nreturn { samOneWayDoorText, oneWayDoorKindsOf }')() : null
 }
 await testCase('T77a R3: a plan announcing a new status, kinds declared → design-step-required with a <=10-line summary', async () => {
@@ -3508,12 +3502,12 @@ await testCase('T77a R3: a plan announcing a new status, kinds declared → desi
     config: T77_KCONFIG,
     simulate: { theo: T77_THEO, sam: 'GO', samPlan: '## Plan\n1. add it\none-way-door: status — new `foo-blocked` terminal status\n' + T77_CK },
   })
-  const e1 = eq('status', r.status, 'design-step-required')
-  const e2 = eq('oneWayDoorHits', JSON.stringify(r.oneWayDoorHits), JSON.stringify(['status']))
-  const e3 = String(r.reason || '').split('\n').length <= 10 && String(r.reason).includes('foo-blocked')
+  const error1 = eq('status', r.status, 'design-step-required')
+  const error2 = eq('oneWayDoorHits', JSON.stringify(r.oneWayDoorHits), JSON.stringify(['status']))
+  const error3 = String(r.reason || '').split('\n').length <= 10 && String(r.reason).includes('foo-blocked')
     ? null : { ok: false, msg: `bad summary: ${JSON.stringify(r.reason)}` }
-  const err = e1 || e2 || e3
-  return err ? err : { ok: true }
+  const error = error1 || error2 || error3
+  return error ? error : { ok: true }
 })
 
 // T77b / T77f / T77m use this repo's own declared paths and kinds (SUITE_ARGS.repoConfig, passed by
@@ -3530,8 +3524,8 @@ await testCase('T77b R3: targetFiles touching hooks/plugin-hooks.json with this 
       config: { ...CONFIG, oneWayDoorPaths: OWD_REPO_PATHS },
       simulate: { theo: T77_THEO, sam: 'GO', samPlan: 'plan\none-way-door: none' + T77_CK, samTargetFiles: [file] },
     })
-    const err = eq(`status for ${file}`, r.status, 'design-step-required') || eq(`hits for ${file}`, JSON.stringify(r.oneWayDoorHits), JSON.stringify(['path']))
-    if (err) return err
+    const error = eq(`status for ${file}`, r.status, 'design-step-required') || eq(`hits for ${file}`, JSON.stringify(r.oneWayDoorHits), JSON.stringify(['path']))
+    if (error) return error
   }
   return { ok: true }
 })
@@ -3542,8 +3536,8 @@ await testCase('T77c R3 negative: no announcement (`one-way-door: none`, ordinar
     config: { ...T77_KCONFIG, oneWayDoorPaths: OWD_REPO_PATHS || [] },
     simulate: { theo: T77_THEO, sam: 'GO', samPlan: 'plan\none-way-door: none' + T77_CK, samTargetFiles: ['workflows/deliver-pipeline.js', 'hooks/test-block-merge-unchecked.sh'] },
   })
-  const err = eq('status', r.status, 'plan-ready')
-  return err ? err : { ok: true }
+  const error = eq('status', r.status, 'plan-ready')
+  return error ? error : { ok: true }
 })
 
 await testCase('T77d R3 + architectureDecisionApproved:true → an announced declared kind no longer stops the run', async () => {
@@ -3553,8 +3547,8 @@ await testCase('T77d R3 + architectureDecisionApproved:true → an announced dec
     architectureDecisionApproved: true,
     simulate: { theo: T77_THEO, sam: 'GO', samPlan: 'one-way-door: agent — new reviewer agent' + T77_CK },
   })
-  const err = eq('status', r.status, 'plan-ready')
-  return err ? err : { ok: true }
+  const error = eq('status', r.status, 'plan-ready')
+  return error ? error : { ok: true }
 })
 
 // T208 (#208) — the relaunch contract of the design-step stop. proceedThrough is validated up front (a typo
@@ -3562,14 +3556,14 @@ await testCase('T77d R3 + architectureDecisionApproved:true → an announced dec
 // resolves the one-way-door stop exactly as it resolves Theo's trigger (stopping at plan-ready); a launch entering
 // at dev|review cannot bypass an unapproved one-way-door plan.
 const T208_PLAN = 'one-way-door: status — x\n' + T77_CK
-const t208NoDev = (r) => (r.trace || []).includes('Dev') ? { ok: false, msg: `trace must not include Dev, got ${JSON.stringify(r.trace)}` } : null
+const t208NoDevelopment = (r) => (r.trace || []).includes('Dev') ? { ok: false, msg: `trace must not include Dev, got ${JSON.stringify(r.trace)}` } : null
 await testCase('T208a proceedThrough validation: a typo ("Plan") is refused up front on escalate with a reason naming the value', async () => {
   const r = await run({ mode: 'auto', proceedThrough: 'Plan', simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] } })
-  const e1 = eq('status', r.status, 'escalate')
+  const error1 = eq('status', r.status, 'escalate')
   const reason = String(r.reason || '')
-  const e2 = reason.includes('proceedThrough') && reason.includes('"Plan"') ? null : { ok: false, msg: `reason must name proceedThrough and "Plan", got ${JSON.stringify(r.reason)}` }
-  const e3 = r.plan === undefined ? null : { ok: false, msg: 'nothing must run: no plan field expected' }
-  return e1 || e2 || e3 || { ok: true }
+  const error2 = reason.includes('proceedThrough') && reason.includes('"Plan"') ? null : { ok: false, msg: `reason must name proceedThrough and "Plan", got ${JSON.stringify(r.reason)}` }
+  const error3 = r.plan === undefined ? null : { ok: false, msg: 'nothing must run: no plan field expected' }
+  return error1 || error2 || error3 || { ok: true }
 })
 
 await testCase('T208b proceedThrough validation: dryRun echoes the resolved value, and refuses a bad one too', async () => {
@@ -3586,17 +3580,17 @@ await testCase('T208b proceedThrough validation: dryRun echoes the resolved valu
 await testCase('T208c design-step one-way-door relaunch: proceedThrough:plan → plan-ready carrying oneWayDoorHits, never Dev (semi and auto)', async () => {
   for (const mode of ['semi', 'auto']) {
     const r = await run({ mode, proceedThrough: 'plan', config: T77_KCONFIG, simulate: { theo: T77_THEO, sam: 'GO', samPlan: T208_PLAN } })
-    const err = eq(`status (${mode})`, r.status, 'plan-ready')
+    const error = eq(`status (${mode})`, r.status, 'plan-ready')
       || eq(`oneWayDoorHits (${mode})`, JSON.stringify(r.oneWayDoorHits), JSON.stringify(['status']))
-      || t208NoDev(r)
-    if (err) return err
+      || t208NoDevelopment(r)
+    if (error) return error
   }
   return { ok: true }
 })
 
 await testCase('T208d design-step one-way-door relaunch: proceedThrough:dev at entryStage plan does not lift the stop', async () => {
   const r = await run({ mode: 'semi', proceedThrough: 'dev', config: T77_KCONFIG, simulate: { theo: T77_THEO, sam: 'GO', samPlan: T208_PLAN } })
-  return eq('status', r.status, 'design-step-required') || t208NoDev(r) || { ok: true }
+  return eq('status', r.status, 'design-step-required') || t208NoDevelopment(r) || { ok: true }
 })
 
 await testCase('T208e design-step relaunch: entry at dev without approval, planText announcing a declared kind → design-step-required with a readable reason', async () => {
@@ -3605,7 +3599,7 @@ await testCase('T208e design-step relaunch: entry at dev without approval, planT
   return eq('status', r.status, 'design-step-required')
     || eq('oneWayDoorHits', JSON.stringify(r.oneWayDoorHits), JSON.stringify(['status']))
     || (reason.includes('architectureDecisionApproved:true') ? null : { ok: false, msg: `reason must name architectureDecisionApproved:true, got ${JSON.stringify(r.reason)}` })
-    || t208NoDev(r)
+    || t208NoDevelopment(r)
     || { ok: true }
 })
 
@@ -3633,11 +3627,11 @@ await testCase('T208h design-step relaunch: entry at dev|review without planText
       for (const entry of [{ entryStage: 'dev' }, { entryStage: 'review', prNumber: 190 }]) {
         const r = await run({ ...entry, mode: 'auto', config, ...extra, simulate: sim })
         const reason = String(r.reason || '')
-        const err = eq(`status (${label}, ${blank}, ${entry.entryStage})`, r.status, 'design-step-required')
+        const error = eq(`status (${label}, ${blank}, ${entry.entryStage})`, r.status, 'design-step-required')
           || (reason.includes('planText') && reason.includes('architectureDecisionApproved:true') ? null : { ok: false, msg: `reason must name planText and architectureDecisionApproved:true, got ${JSON.stringify(r.reason)}` })
           || ((r.trace || []).includes('one-way-door-entry:no-plan-text') ? null : { ok: false, msg: `trace must carry one-way-door-entry:no-plan-text, got ${JSON.stringify(r.trace)}` })
-          || t208NoDev(r)
-        if (err) return err
+          || t208NoDevelopment(r)
+        if (error) return error
       }
     }
   }
@@ -3664,16 +3658,16 @@ await testCase('T208i design-step relaunch: the already-done guard wins over the
 await testCase('T208j proceedThrough validation: every non-stage value (0, false, true, 1, [], {}, "") is refused with invalid-proceedThrough', async () => {
   for (const v of [0, false, true, 1, [], {}, '']) {
     const r = await run({ mode: 'auto', proceedThrough: v, simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] } })
-    const err = eq(`status for ${JSON.stringify(v)}`, r.status, 'escalate')
+    const error = eq(`status for ${JSON.stringify(v)}`, r.status, 'escalate')
       || (String(r.reason || '').startsWith('invalid-proceedThrough') ? null : { ok: false, msg: `reason must start with invalid-proceedThrough for ${JSON.stringify(v)}, got ${JSON.stringify(r.reason)}` })
-    if (err) return err
+    if (error) return error
   }
   return { ok: true }
 })
 
 await testCase('T208k design-step one-way-door relaunch: proceedThrough:review at entryStage plan does not lift the stop either (only "plan" does)', async () => {
   const r = await run({ mode: 'semi', proceedThrough: 'review', config: T77_KCONFIG, simulate: { theo: T77_THEO, sam: 'GO', samPlan: T208_PLAN } })
-  return eq('status', r.status, 'design-step-required') || t208NoDev(r) || { ok: true }
+  return eq('status', r.status, 'design-step-required') || t208NoDevelopment(r) || { ok: true }
 })
 
 // T77e (#77) — the product-direction line goes to Sam and Morgan only: Nick's prompt carries none, and no
@@ -3690,15 +3684,15 @@ await testCase('T77e Nick prompt carries no product-direction line and names no 
   if (p.includes('PRODUCT DIRECTION')) return { ok: false, msg: 'nickPromptPreview carries the product-direction line; it is for Sam and Morgan only' }
   if (p.includes('docs/codemap.md')) return { ok: false, msg: 'nickPromptPreview names docs/codemap.md; no agent prompt gets it' }
   if (p.includes('DEBT(#')) return { ok: false, msg: 'nickPromptPreview carries DEBT marker syntax; the rule belongs to the repo docs' }
-  const src = SUITE_ARGS.fpSource
-  if (!src) {
+  const source = SUITE_ARGS.fpSource
+  if (!source) {
     log('SKIP — T77e source checks: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
     return { ok: true }
   }
-  if (src.includes('docs/codemap.md')) return { ok: false, msg: 'workflow source names docs/codemap.md; no agent prompt gets it' }
-  if (src.includes('ARCH_IMPORT_')) return { ok: false, msg: 'an ARCH_IMPORT_* read instruction is still present; the engine imports no doc' }
+  if (source.includes('docs/codemap.md')) return { ok: false, msg: 'workflow source names docs/codemap.md; no agent prompt gets it' }
+  if (source.includes('ARCH_IMPORT_')) return { ok: false, msg: 'an ARCH_IMPORT_* read instruction is still present; the engine imports no doc' }
   for (const use of ['${SAM_ONE_WAY_DOOR}${SAM_PRODUCT_DIRECTION}', '`${MORGAN_PRODUCT_DIRECTION}`']) {
-    if (!src.includes(use)) return { ok: false, msg: `workflow source lacks ${use}` }
+    if (!source.includes(use)) return { ok: false, msg: `workflow source lacks ${use}` }
   }
   return { ok: true }
 })
@@ -3715,8 +3709,8 @@ await testCase('T77f R3: targetFiles touching docs/critical-paths.md with this r
     config: { ...CONFIG, oneWayDoorPaths: OWD_REPO_PATHS },
     simulate: { theo: T77_THEO, sam: 'GO', samPlan: 'plan\none-way-door: none' + T77_CK, samTargetFiles: ['docs/critical-paths.md'] },
   })
-  const err = eq('status', r.status, 'design-step-required') || eq('hits', JSON.stringify(r.oneWayDoorHits), JSON.stringify(['path']))
-  return err ? err : { ok: true }
+  const error = eq('status', r.status, 'design-step-required') || eq('hits', JSON.stringify(r.oneWayDoorHits), JSON.stringify(['path']))
+  return error ? error : { ok: true }
 })
 
 // T77h (#77, consumer neutrality) — the one-way-door PATHS are per-project config (`oneWayDoorPaths`), never
@@ -3729,8 +3723,8 @@ await testCase('T77h R3 consumer: no oneWayDoorPaths in config, plan touches hoo
       config,
       simulate: { theo: T77_THEO, sam: 'GO', samPlan: 'plan\none-way-door: none' + T77_CK, samTargetFiles: ['hooks/foo.sh', 'hooks/plugin-hooks.json', 'docs/critical-paths.md'] },
     })
-    const err = eq('status', r.status, 'plan-ready') || eq('oneWayDoorHits', r.oneWayDoorHits, undefined)
-    if (err) return err
+    const error = eq('status', r.status, 'plan-ready') || eq('oneWayDoorHits', r.oneWayDoorHits, undefined)
+    if (error) return error
   }
   return { ok: true }
 })
@@ -3741,8 +3735,8 @@ await testCase('T77i R3: oneWayDoorPaths set to hooks/*.sh + docs/critical-paths
     config: { ...CONFIG, oneWayDoorPaths: ['hooks/*.sh', 'docs/critical-paths.md'] },
     simulate: { theo: T77_THEO, sam: 'GO', samPlan: 'plan\none-way-door: none' + T77_CK, samTargetFiles: ['hooks/foo.sh', 'docs/critical-paths.md'] },
   })
-  const e1 = eq('status', r.status, 'design-step-required') || eq('hits', JSON.stringify(r.oneWayDoorHits), JSON.stringify(['path']))
-  if (e1) return e1
+  const error1 = eq('status', r.status, 'design-step-required') || eq('hits', JSON.stringify(r.oneWayDoorHits), JSON.stringify(['path']))
+  if (error1) return error1
   const lines = String(r.reason || '').split('\n')
   return lines.length <= 10 && String(r.reason).includes('hooks/foo.sh') && String(r.reason).includes('oneWayDoorPaths: hooks/*.sh')
     ? { ok: true } : { ok: false, msg: `bad summary: ${JSON.stringify(r.reason)}` }
@@ -3784,14 +3778,14 @@ await testCase('T77k R3 announcement, four kinds declared: only status|agent|hoo
   })
   for (const kind of T77_KINDS) {
     const r = await runPlan(`one-way-door: ${kind} — new ${kind}`)
-    const err = eq(`status for kind ${kind}`, r.status, 'design-step-required') || eq(`hits for ${kind}`, JSON.stringify(r.oneWayDoorHits), JSON.stringify([kind]))
-    if (err) return err
+    const error = eq(`status for kind ${kind}`, r.status, 'design-step-required') || eq(`hits for ${kind}`, JSON.stringify(r.oneWayDoorHits), JSON.stringify([kind]))
+    if (error) return error
   }
   for (const line of ['one-way-door: none', 'one-way-door: none — nothing here', 'announce with `one-way-door: <kind> — <what>`',
     'one-way-door: guard — new guard', 'one-way-door: rule — new rule', 'one-way-door: migration — add the users table']) {
     const r = await runPlan(line)
-    const err = eq(`status for ${JSON.stringify(line)}`, r.status, 'plan-ready') || eq(`hits for ${JSON.stringify(line)}`, r.oneWayDoorHits, undefined)
-    if (err) return err
+    const error = eq(`status for ${JSON.stringify(line)}`, r.status, 'plan-ready') || eq(`hits for ${JSON.stringify(line)}`, r.oneWayDoorHits, undefined)
+    if (error) return error
   }
   const mixed = await runPlan('one-way-door: guard — new guard\none-way-door: hook — new hook')
   return eq('status for guard + hook', mixed.status, 'design-step-required') || eq('hits for guard + hook', JSON.stringify(mixed.oneWayDoorHits), JSON.stringify(['hook'])) || { ok: true }
@@ -3807,16 +3801,16 @@ await testCase('T77l R3 consumer: no oneWayDoorKinds in config → no kind quest
       config,
       simulate: { theo: T77_THEO, sam: 'GO', samPlan: 'plan\none-way-door: hook — new webhook handler\none-way-door: status — new order status' + T77_CK },
     })
-    const err = eq('status', r.status, 'plan-ready') || eq('oneWayDoorHits', r.oneWayDoorHits, undefined)
-    if (err) return err
+    const error = eq('status', r.status, 'plan-ready') || eq('oneWayDoorHits', r.oneWayDoorHits, undefined)
+    if (error) return error
     if ((r.trace || []).some(t => String(t).startsWith('one-way-door:'))) return { ok: false, msg: `one-way-door trace on a consumer run: ${JSON.stringify(r.trace)}` }
   }
-  const src = SUITE_ARGS.fpSource
-  if (!src) {
+  const source = SUITE_ARGS.fpSource
+  if (!source) {
     log('SKIP — T77l prompt checks: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
     return { ok: true }
   }
-  if (!src.split('\n').includes('const SAM_ONE_WAY_DOOR = samOneWayDoorText(config.oneWayDoorKinds)')) {
+  if (!source.split('\n').includes('const SAM_ONE_WAY_DOOR = samOneWayDoorText(config.oneWayDoorKinds)')) {
     return { ok: false, msg: 'SAM_ONE_WAY_DOOR is not built from config.oneWayDoorKinds' }
   }
   const fns = t77Block()
@@ -3836,8 +3830,8 @@ await testCase('T77m R3 this repo: its oneWayDoorKinds declare status, agent, ho
     return { ok: true }
   }
   const kinds = SUITE_ARGS.repoConfig.oneWayDoorKinds
-  const e0 = eq('repo oneWayDoorKinds', JSON.stringify(kinds), JSON.stringify(T77_KINDS))
-  if (e0) return e0
+  const error0 = eq('repo oneWayDoorKinds', JSON.stringify(kinds), JSON.stringify(T77_KINDS))
+  if (error0) return error0
   const config = { ...CONFIG, oneWayDoorKinds: kinds, oneWayDoorPaths: OWD_REPO_PATHS || [] }
   for (const kind of T77_KINDS) {
     const r = await run({
@@ -3845,8 +3839,8 @@ await testCase('T77m R3 this repo: its oneWayDoorKinds declare status, agent, ho
       config,
       simulate: { theo: T77_THEO, sam: 'GO', samPlan: `plan\none-way-door: ${kind} — new ${kind}` + T77_CK, samTargetFiles: ['workflows/deliver-pipeline.js'] },
     })
-    const err = eq(`status for ${kind}`, r.status, 'design-step-required') || eq(`hits for ${kind}`, JSON.stringify(r.oneWayDoorHits), JSON.stringify([kind]))
-    if (err) return err
+    const error = eq(`status for ${kind}`, r.status, 'design-step-required') || eq(`hits for ${kind}`, JSON.stringify(r.oneWayDoorHits), JSON.stringify([kind]))
+    if (error) return error
   }
   const fns = t77Block()
   if (!fns) {
@@ -3866,18 +3860,18 @@ await testCase('T77o R3 subset: oneWayDoorKinds ["hook"] → only hook is asked 
   const config = { ...CONFIG, oneWayDoorKinds: ['HOOK', 'bogus', 'hook', 7] }
   const runPlan = (line) => run({ mode: 'semi', config, simulate: { theo: T77_THEO, sam: 'GO', samPlan: `plan\n${line}` + T77_CK } })
   const rs = await runPlan('one-way-door: status — new status')
-  const e1 = eq('status for an undeclared kind', rs.status, 'plan-ready') || eq('hits for an undeclared kind', rs.oneWayDoorHits, undefined)
-  if (e1) return e1
+  const error1 = eq('status for an undeclared kind', rs.status, 'plan-ready') || eq('hits for an undeclared kind', rs.oneWayDoorHits, undefined)
+  if (error1) return error1
   const rh = await runPlan('one-way-door: hook — new hook')
-  const e2 = eq('status for the declared kind', rh.status, 'design-step-required') || eq('hits for the declared kind', JSON.stringify(rh.oneWayDoorHits), JSON.stringify(['hook']))
-  if (e2) return e2
+  const error2 = eq('status for the declared kind', rh.status, 'design-step-required') || eq('hits for the declared kind', JSON.stringify(rh.oneWayDoorHits), JSON.stringify(['hook']))
+  if (error2) return error2
   const fns = t77Block()
   if (!fns) {
     log('SKIP — T77o prompt checks: oneWayDoor block not available (SUITE_ARGS.fpSource absent)')
     return { ok: true }
   }
-  const e3 = eq('normalized kinds', JSON.stringify(fns.oneWayDoorKindsOf(config.oneWayDoorKinds)), JSON.stringify(['hook']))
-  if (e3) return e3
+  const error3 = eq('normalized kinds', JSON.stringify(fns.oneWayDoorKindsOf(config.oneWayDoorKinds)), JSON.stringify(['hook']))
+  if (error3) return error3
   const text = fns.samOneWayDoorText(config.oneWayDoorKinds)
   if (!text.includes('`one-way-door: hook — <what>`') || !text.includes('`one-way-door: none`')) return { ok: false, msg: `hook question missing: ${JSON.stringify(text)}` }
   for (const other of ['status', 'agent', 'seam']) {
@@ -3891,12 +3885,12 @@ await testCase('T77o R3 subset: oneWayDoorKinds ["hook"] → only hook is asked 
 // names the direction or principle a plan trades off, only if the project instructions state one.
 // Source-anchored: the engine reads no file in simulate mode.
 await testCase('T77n product direction is advisory for Morgan (signalled, never blocking); Sam names the principle traded off', async () => {
-  const src = SUITE_ARGS.fpSource
-  if (!src) {
+  const source = SUITE_ARGS.fpSource
+  if (!source) {
     log('SKIP — T77n: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
     return { ok: true }
   }
-  const lines = src.split('\n')
+  const lines = source.split('\n')
   const morgan = lines.find(l => l.startsWith('const MORGAN_PRODUCT_DIRECTION = ')) || ''
   const sam = lines.find(l => l.startsWith('const SAM_PRODUCT_DIRECTION = ')) || ''
   if (!morgan || !sam) return { ok: false, msg: 'MORGAN_PRODUCT_DIRECTION or SAM_PRODUCT_DIRECTION missing' }
@@ -3910,12 +3904,12 @@ await testCase('T77n product direction is advisory for Morgan (signalled, never 
       if (sentence.includes(blocking)) return { ok: false, msg: `MORGAN_PRODUCT_DIRECTION ties the direction to ${blocking}: ${sentence.slice(0, 160)}` }
     }
   }
-  const morganUses = src.split('`${MORGAN_PRODUCT_DIRECTION}`').length - 1
+  const morganUses = source.split('`${MORGAN_PRODUCT_DIRECTION}`').length - 1
   if (morganUses !== 2) return { ok: false, msg: `MORGAN_PRODUCT_DIRECTION used in ${morganUses} review prompt(s), expected 2 (first review + re-review)` }
   if (!sam.includes('if your project instructions state a product direction or principles, name the one your plan trades off')) {
     return { ok: false, msg: 'SAM_PRODUCT_DIRECTION does not ask Sam, conditionally, to name the principle a plan trades off' }
   }
-  const samUses = src.split('${SAM_PRODUCT_DIRECTION}').length - 1
+  const samUses = source.split('${SAM_PRODUCT_DIRECTION}').length - 1
   if (samUses !== 1) return { ok: false, msg: `SAM_PRODUCT_DIRECTION used ${samUses} time(s), expected 1 (the scout prompt)` }
   return { ok: true }
 })
@@ -3929,14 +3923,14 @@ await testCase('T77g consumer neutrality: a repo stating no product direction �
     mode: 'auto',
     simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] },
   })
-  const e1 = eq('status', r.status, 'ready')
-  if (e1) return e1
-  const src = SUITE_ARGS.fpSource
-  if (!src) {
+  const error1 = eq('status', r.status, 'ready')
+  if (error1) return error1
+  const source = SUITE_ARGS.fpSource
+  if (!source) {
     log('SKIP — T77g source checks: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
     return { ok: true }
   }
-  const lines = src.split('\n')
+  const lines = source.split('\n')
   for (const name of ['SAM_PRODUCT_DIRECTION', 'MORGAN_PRODUCT_DIRECTION']) {
     const line = lines.find(l => l.startsWith(`const ${name} = `)) || ''
     if (!line) return { ok: false, msg: `workflow source lacks const ${name}` }
@@ -3971,21 +3965,21 @@ await testCase('T77p consumer neutrality: no engine prompt names VISION.md, ARCH
     await run({ mode: 'auto', simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] } }),
     await run({ mode: 'semi', config: T77_KCONFIG, simulate: { theo: T77_THEO, sam: 'GO', samPlan: 'plan\none-way-door: none' + T77_CK } }),
   ]
-  const e1 = eq('full run status', runs[0].status, 'ready') || eq('plan-gate run status', runs[1].status, 'plan-ready')
-  if (e1) return e1
+  const error1 = eq('full run status', runs[0].status, 'ready') || eq('plan-gate run status', runs[1].status, 'plan-ready')
+  if (error1) return error1
   if (!String(runs[0].nickPromptPreview || '')) return { ok: false, msg: 'nickPromptPreview empty on the full run' }
   for (const r of runs) {
     const out = JSON.stringify(r)
     const hit = names.find(n => out.includes(n))
     if (hit) return { ok: false, msg: `run result (prompt previews included) names ${hit}` }
   }
-  const src = SUITE_ARGS.fpSource
-  if (!src) {
+  const source = SUITE_ARGS.fpSource
+  if (!source) {
     log('SKIP — T77p source checks: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
     return { ok: true }
   }
   for (const n of names) {
-    const line = src.split('\n').find(l => l.includes(n))
+    const line = source.split('\n').find(l => l.includes(n))
     if (line !== undefined) return { ok: false, msg: `engine source names ${n}: ${line.trim().slice(0, 120)}` }
   }
   return { ok: true }
@@ -3999,33 +3993,32 @@ const T163_ENGINE_WORDS = ['simulate', 'seam', 'agent()', 'fixtures/incidents']
 // not get the pipeline source). Sam's prompt is not observable in simulate mode, so the Sam-side cases are
 // source-anchored, as T77g, T77l, T77n and T77p are.
 const t163Block = () => {
-  const src = SUITE_ARGS.fpSource
-  if (!src) return null
-  const block = extractBetween(src, '// --- engineRules:start ---', '// --- engineRules:end ---')
-  // eslint-disable-next-line no-new-func
+  const source = SUITE_ARGS.fpSource
+  if (!source) return null
+  const block = extractBetween(source, '// --- engineRules:start ---', '// --- engineRules:end ---')
   return block ? new Function(block + '\nreturn { isEngineRepo, samLayerRule }')() : null
 }
 await testCase('T163a consumer Sam prompt: no engineRepo flag -> neutral PLAN RULE, none of simulate, seam, agent(), fixtures/incidents', async () => {
-  const src = SUITE_ARGS.fpSource
-  if (!src) {
+  const source = SUITE_ARGS.fpSource
+  if (!source) {
     log('SKIP — T163a: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
     return { ok: true }
   }
-  const lines = src.split('\n')
+  const lines = source.split('\n')
   if (!lines.includes('const SAM_LAYER_RULE = samLayerRule(config)')) return { ok: false, msg: 'SAM_LAYER_RULE is not built from samLayerRule(config)' }
   const fns = t163Block()
   if (!fns) return { ok: false, msg: 'engineRules:start/:end markers not found in pipeline source' }
   // Fail closed: only the boolean true marks the engine; every other config shape gets the neutral rule.
   const banned = [...T163_ENGINE_WORDS, 'LAYER RULE']
-  for (const cfg of [CONFIG, {}, { ...CONFIG, engineRepo: false }, { ...CONFIG, engineRepo: 'true' }, { ...CONFIG, engineRepo: 1 }, null, undefined]) {
-    const text = fns.samLayerRule(cfg)
-    if (!text.includes('PLAN RULE:') || !text.includes('patch-avoided:')) return { ok: false, msg: `neutral rule lacks PLAN RULE / patch-avoided: for ${JSON.stringify(cfg && cfg.engineRepo)}: ${JSON.stringify(text)}` }
+  for (const config of [CONFIG, {}, { ...CONFIG, engineRepo: false }, { ...CONFIG, engineRepo: 'true' }, { ...CONFIG, engineRepo: 1 }, null, undefined]) {
+    const text = fns.samLayerRule(config)
+    if (!text.includes('PLAN RULE:') || !text.includes('patch-avoided:')) return { ok: false, msg: `neutral rule lacks PLAN RULE / patch-avoided: for ${JSON.stringify(config && config.engineRepo)}: ${JSON.stringify(text)}` }
     const hit = banned.find(w => text.includes(w))
-    if (hit) return { ok: false, msg: `consumer Sam rule carries engine vocabulary (${hit}) for ${JSON.stringify(cfg && cfg.engineRepo)}: ${JSON.stringify(text)}` }
+    if (hit) return { ok: false, msg: `consumer Sam rule carries engine vocabulary (${hit}) for ${JSON.stringify(config && config.engineRepo)}: ${JSON.stringify(text)}` }
   }
   // The rest of the static Sam prompt: the scout prompt body (whole-line comments dropped) and the two
   // constants it interpolates besides the layer rule and the per-project one-way-door text.
-  const promptBody = extractBetween(src, 'const samScoutPrompt = (', '// Plan stage')
+  const promptBody = extractBetween(source, 'const samScoutPrompt = (', '// Plan stage')
   if (!promptBody) return { ok: false, msg: 'samScoutPrompt body not found in pipeline source' }
   const staticSam = [
     promptBody.split('\n').filter(l => !l.trim().startsWith('//')).join('\n'),
@@ -4044,8 +4037,8 @@ await testCase('T163b consumer Nick prompt: bug + workflows/ target on a consume
   const r = await r2Run('bug', ['workflows/checkout.ts'], CONFIG)
   const p = String(r.nickPromptPreview || '')
   if (p === '') return { ok: false, msg: 'nickPromptPreview empty on the consumer run' }
-  const err = r2Absent(p)
-  if (err) return err
+  const error = r2Absent(p)
+  if (error) return error
   return p.includes('run-offline') ? { ok: false, msg: 'nickPromptPreview: unexpected "run-offline"' } : { ok: true }
 })
 
@@ -4055,15 +4048,15 @@ await testCase('T163c this repo: engineRepo is true -> Sam keeps the engine laye
     return { ok: true }
   }
   const flag = SUITE_ARGS.repoConfig.engineRepo
-  const e0 = eq('repo engineRepo', flag, true)
-  if (e0) return e0
+  const error0 = eq('repo engineRepo', flag, true)
+  if (error0) return error0
   const r = await r2Run('bug', ['workflows/deliver-pipeline.js'], { ...CONFIG, engineRepo: flag })
   const p = String(r.nickPromptPreview || '')
   for (const must of ['fixture `fixtures/incidents/', 'no-fixture', 'Refs #']) {
     if (!p.includes(must)) return { ok: false, msg: `this repo's Nick prompt lacks the R2 text ${JSON.stringify(must)}` }
   }
-  const src = SUITE_ARGS.fpSource
-  if (!src) {
+  const source = SUITE_ARGS.fpSource
+  if (!source) {
     log('SKIP — T163c Sam checks: SUITE_ARGS.fpSource absent')
     return { ok: true }
   }
@@ -4073,7 +4066,7 @@ await testCase('T163c this repo: engineRepo is true -> Sam keeps the engine laye
   for (const must of ['LAYER RULE:', '`simulate.*` seam', 'an `agent()`', 'a hook or a seam', 'patch-avoided:']) {
     if (!text.includes(must)) return { ok: false, msg: `this repo's Sam layer rule lacks ${JSON.stringify(must)}: ${JSON.stringify(text)}` }
   }
-  const uses = src.split('${SAM_LAYER_RULE}').length - 1
+  const uses = source.split('${SAM_LAYER_RULE}').length - 1
   return uses === 1 ? { ok: true } : { ok: false, msg: `SAM_LAYER_RULE interpolated ${uses} time(s) in the Sam prompt, expected 1` }
 })
 
@@ -4089,12 +4082,12 @@ await testCase('T98a plan-stale advisory → trace + planStaleFiles + planTarget
       morgan: [{ verdict: 'LGTM' }],
     },
   })
-  const e1 = eq('status', r.status, 'ready')
-  const e2 = includes('trace', r.trace, 'plan-stale:1')
-  const e3 = eq('planStaleFiles', r.planStaleFiles, ['workflows/deliver-pipeline.js'])
-  const e4 = eq('planTargetsChecked', r.planTargetsChecked, 2)
-  const err = e1 || e2 || e3 || e4
-  return err ? err : { ok: true }
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = includes('trace', r.trace, 'plan-stale:1')
+  const error3 = eq('planStaleFiles', r.planStaleFiles, ['workflows/deliver-pipeline.js'])
+  const error4 = eq('planTargetsChecked', r.planTargetsChecked, 2)
+  const error = error1 || error2 || error3 || error4
+  return error ? error : { ok: true }
 })
 
 // T98b (#103, negative control) — no targetFiles declared → probe never runs, off-path unchanged.
@@ -4103,14 +4096,14 @@ await testCase('T98b no targetFiles → probe skipped, no plan-stale trace, plan
     mode: 'auto',
     simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] },
   })
-  const e1 = eq('status', r.status, 'ready')
-  const e2 = r.trace.some(t => String(t).startsWith('plan-stale:'))
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = r.trace.some(t => String(t).startsWith('plan-stale:'))
     ? { ok: false, msg: `trace: expected no plan-stale entry, got ${JSON.stringify(r.trace)}` }
     : null
-  const e3 = eq('planTargetsChecked', r.planTargetsChecked, 0)
-  const e4 = eq('planStaleFiles', r.planStaleFiles, null)
-  const err = e1 || e2 || e3 || e4
-  return err ? err : { ok: true }
+  const error3 = eq('planTargetsChecked', r.planTargetsChecked, 0)
+  const error4 = eq('planStaleFiles', r.planStaleFiles, null)
+  const error = error1 || error2 || error3 || error4
+  return error ? error : { ok: true }
 })
 
 // T98c (#103, gate + sanitization) — planFreshness:'gate' escalates BEFORE Nick is spawned, and
@@ -4126,15 +4119,15 @@ await testCase('T98c plan-stale gate → escalate/plan-stale before Nick, unsafe
       planStaleFiles: ['workflows/deliver-pipeline.js'],
     },
   })
-  const e1 = eq('status', r.status, 'escalate')
-  const e2 = eq('reason', r.reason, 'plan-stale')
-  const e3 = eq('staleFiles', r.staleFiles, ['workflows/deliver-pipeline.js'])
-  const e4 = eq('planTargetsChecked', r.planTargetsChecked, 1)
-  const e5 = r.pr !== undefined
+  const error1 = eq('status', r.status, 'escalate')
+  const error2 = eq('reason', r.reason, 'plan-stale')
+  const error3 = eq('staleFiles', r.staleFiles, ['workflows/deliver-pipeline.js'])
+  const error4 = eq('planTargetsChecked', r.planTargetsChecked, 1)
+  const error5 = r.pr !== undefined
     ? { ok: false, msg: `pr: expected undefined (Nick never spawned), got ${JSON.stringify(r.pr)}` }
     : null
-  const err = e1 || e2 || e3 || e4 || e5
-  return err ? err : { ok: true }
+  const error = error1 || error2 || error3 || error4 || error5
+  return error ? error : { ok: true }
 })
 
 // T99 (real incident) — a worktree whose frozen base was ALREADY
@@ -4147,12 +4140,12 @@ await testCase('T99 provision-stale (fresh dispatch, worktree behind at creation
     mode: 'auto',
     simulate: { provisionBehindCount: 3, sam: 'GO', morgan: [{ verdict: 'LGTM' }] },
   })
-  const e1 = eq('status', r.status, 'escalate')
-  const e2 = eq('reason', r.reason, 'provision-stale')
-  const e3 = eq('behind', r.behind, 3)
-  const e4 = eq('trace', r.trace, ['provision-stale:3', 'Blocked'])
-  const err = e1 || e2 || e3 || e4
-  return err ? err : { ok: true }
+  const error1 = eq('status', r.status, 'escalate')
+  const error2 = eq('reason', r.reason, 'provision-stale')
+  const error3 = eq('behind', r.behind, 3)
+  const error4 = eq('trace', r.trace, ['provision-stale:3', 'Blocked'])
+  const error = error1 || error2 || error3 || error4
+  return error ? error : { ok: true }
 })
 
 // T100 (negative control, T99's sibling) — a RESUME (entryStage:'review') is never subject to
@@ -4165,12 +4158,12 @@ await testCase('T100 provision-stale probe skipped on resume (entryStage:review)
     prNumber: 42,
     simulate: { provisionBehindCount: 3, morgan: [{ verdict: 'LGTM' }] },
   })
-  const e1 = eq('status', r.status, 'ready')
-  const e2 = r.trace.includes('provision-stale:3')
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = r.trace.includes('provision-stale:3')
     ? { ok: false, msg: `trace: expected no provision-stale entry on a resume, got ${JSON.stringify(r.trace)}` }
     : null
-  const err = e1 || e2
-  return err ? err : { ok: true }
+  const error = error1 || error2
+  return error ? error : { ok: true }
 })
 
 // T101 (lgtmgate#161) — no `models` arg, no `config.models` → dryRun exposes the new
@@ -4178,16 +4171,16 @@ await testCase('T100 provision-stale probe skipped on resume (entryStage:review)
 // of this resolution (out of scope, unconditional literals), so they are not asserted here.
 await testCase('T101 models default (no models arg, no config.models) → dryRun exposes sonnet for all 3 roles', async () => {
   const r = await run({ dryRun: true, mode: 'manual' })
-  const err = eq('models', r.models, { scout: 'sonnet', planAudit: 'sonnet', morgan: 'sonnet' })
-  return err ? err : { ok: true }
+  const error = eq('models', r.models, { scout: 'sonnet', planAudit: 'sonnet', morgan: 'sonnet' })
+  return error ? error : { ok: true }
 })
 
 // T102 — an explicit `models.scout:'opus'` arg overrides just that role; the other two roles
 // stay on the 'sonnet' default (no config.models set).
 await testCase("T102 models.scout:'opus' arg → dryRun exposes the override, other roles stay sonnet", async () => {
   const r = await run({ dryRun: true, mode: 'manual', models: { scout: 'opus' } })
-  const err = eq('models', r.models, { scout: 'opus', planAudit: 'sonnet', morgan: 'sonnet' })
-  return err ? err : { ok: true }
+  const error = eq('models', r.models, { scout: 'opus', planAudit: 'sonnet', morgan: 'sonnet' })
+  return error ? error : { ok: true }
 })
 
 // T103 (same `??` idiom as T57's planAudit precedent) — arg wins over config.models per role;
@@ -4200,8 +4193,8 @@ await testCase('T103 models arg wins over config.models (per-role, same ?? idiom
     models: { scout: 'opus' },
     config: { ...CONFIG, models: { scout: 'haiku', morgan: 'haiku' } },
   })
-  const err = eq('models', r.models, { scout: 'opus', planAudit: 'sonnet', morgan: 'haiku' })
-  return err ? err : { ok: true }
+  const error = eq('models', r.models, { scout: 'opus', planAudit: 'sonnet', morgan: 'haiku' })
+  return error ? error : { ok: true }
 })
 
 // T104 (#162, absorbs #91/#119, positive) — Morgan returns LGTM but the live mergeability recheck
@@ -4217,11 +4210,11 @@ await testCase('T104 mergeable CONFLICTING at LGTM handoff → escalate, not rea
       mergeState: { mergeable: 'CONFLICTING', mergeStateStatus: 'DIRTY' },
     },
   })
-  const e1 = eq('status', r.status, 'escalate')
-  const e2 = eq('reason', r.reason, 'mergeable-conflicting')
-  const e3 = includes('trace', r.trace, 'mergeable-conflicting:DIRTY')
-  const err = e1 || e2 || e3
-  return err ? err : { ok: true }
+  const error1 = eq('status', r.status, 'escalate')
+  const error2 = eq('reason', r.reason, 'mergeable-conflicting')
+  const error3 = includes('trace', r.trace, 'mergeable-conflicting:DIRTY')
+  const error = error1 || error2 || error3
+  return error ? error : { ok: true }
 })
 
 // T105 (#162, negative control, mirrors T50) — no mergeState fixture declared → the recheck is a
@@ -4231,12 +4224,12 @@ await testCase('T105 no mergeState fixture → ready unchanged, no mergeable-con
     mode: 'auto',
     simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] },
   })
-  const e1 = eq('status', r.status, 'ready')
-  const e2 = r.trace.some(t => String(t).startsWith('mergeable-conflicting:'))
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = r.trace.some(t => String(t).startsWith('mergeable-conflicting:'))
     ? { ok: false, msg: `trace: expected no mergeable-conflicting entry, got ${JSON.stringify(r.trace)}` }
     : null
-  const err = e1 || e2
-  return err ? err : { ok: true }
+  const error = error1 || error2
+  return error ? error : { ok: true }
 })
 
 // provisionCmdPreview (claude-agent-pipeline#72) — same simulate-only seam as
@@ -4250,8 +4243,8 @@ await testCase('T104a provisionCmdPreview: envSymlink default (unset) -> PROVISI
     config: { ...CONFIG },
     simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] },
   })
-  const err = includes('provisionCmdPreview', r.provisionCmdPreview, 'PROVISION_ENV_SYMLINK="required" bash "$SCRIPT"')
-  return err ? err : { ok: true }
+  const error = includes('provisionCmdPreview', r.provisionCmdPreview, 'PROVISION_ENV_SYMLINK="required" bash "$SCRIPT"')
+  return error ? error : { ok: true }
 })
 
 await testCase('T104b provisionCmdPreview: envSymlink forbidden -> PROVISION_ENV_SYMLINK="forbidden"', async () => {
@@ -4260,8 +4253,8 @@ await testCase('T104b provisionCmdPreview: envSymlink forbidden -> PROVISION_ENV
     config: { ...CONFIG, preflight: { envSymlink: 'forbidden' } },
     simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] },
   })
-  const err = includes('provisionCmdPreview', r.provisionCmdPreview, 'PROVISION_ENV_SYMLINK="forbidden" bash "$SCRIPT"')
-  return err ? err : { ok: true }
+  const error = includes('provisionCmdPreview', r.provisionCmdPreview, 'PROVISION_ENV_SYMLINK="forbidden" bash "$SCRIPT"')
+  return error ? error : { ok: true }
 })
 
 await testCase('T104c provisionCmdPreview: envSymlink ignore -> PROVISION_ENV_SYMLINK="ignore"', async () => {
@@ -4270,8 +4263,8 @@ await testCase('T104c provisionCmdPreview: envSymlink ignore -> PROVISION_ENV_SY
     config: { ...CONFIG, preflight: { envSymlink: 'ignore' } },
     simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] },
   })
-  const err = includes('provisionCmdPreview', r.provisionCmdPreview, 'PROVISION_ENV_SYMLINK="ignore" bash "$SCRIPT"')
-  return err ? err : { ok: true }
+  const error = includes('provisionCmdPreview', r.provisionCmdPreview, 'PROVISION_ENV_SYMLINK="ignore" bash "$SCRIPT"')
+  return error ? error : { ok: true }
 })
 
 await testCase('T104d provisionCmdPreview: SCRIPT invocation + extraLinks args preserved around the env-symlink prefix', async () => {
@@ -4281,12 +4274,12 @@ await testCase('T104d provisionCmdPreview: SCRIPT invocation + extraLinks args p
     simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] },
   })
   const p = r.provisionCmdPreview
-  const e1 = includes('provisionCmdPreview', p, 'SCRIPT="/tmp/lgtmgate-test/scripts/provision-worktree.sh"; LEGACY_SCRIPT=')
-  const e2 = includes('provisionCmdPreview', p,
+  const error1 = includes('provisionCmdPreview', p, 'SCRIPT="/tmp/lgtmgate-test/scripts/provision-worktree.sh"; LEGACY_SCRIPT=')
+  const error2 = includes('provisionCmdPreview', p,
     'if [ -f "$SCRIPT" ]; then PROVISION_ENV_SYMLINK="required" bash "$SCRIPT" "/tmp/lgtmgate-test" ".venv" ".venv"; else')
-  const e3 = includes('provisionCmdPreview', p, '; fi')
-  const err = e1 || e2 || e3
-  return err ? err : { ok: true }
+  const error3 = includes('provisionCmdPreview', p, '; fi')
+  const error = error1 || error2 || error3
+  return error ? error : { ok: true }
 })
 
 // T104e (#344) — the composed provisioning command is EXECUTED against a temporary worktree: a consumer initialised
@@ -4360,16 +4353,16 @@ await testCase('T270 all blockers checklist-wording-defect (amend off) → verif
       morgan: [{ verdict: 'REQUIRED_CHANGES', items: [line], itemOwners: [{ item: line, itemOwner: 'checklist-wording-defect', proof: '$ grep -c FOO file\n2' }] }],
     },
   })
-  const e1 = eq('status', r.status, 'verified-untickable')
-  const e2 = eq('untickableItems', r.untickableItems, [{ id: 1, item: line, proof: '$ grep -c FOO file\n2' }])
-  return e1 || e2 || nickTrace(r) || { ok: true }
+  const error1 = eq('status', r.status, 'verified-untickable')
+  const error2 = eq('untickableItems', r.untickableItems, [{ id: 1, item: line, proof: '$ grep -c FOO file\n2' }])
+  return error1 || error2 || nickTrace(r) || { ok: true }
 })
 
 // T271 (#132) — a failed required check reaches Nick's preflight-fix prompt with the failing step name
 // and the last 40 log lines (the 50-line tail is capped, the first lines are dropped).
 await testCase('T271 failed required check → Nick preflight-fix prompt carries failing step name and log lines', async () => {
   const lines = []
-  for (let i = 1; i <= 49; i++) lines.push(`log-line-${i}`)
+  for (let index = 1; index <= 49; index++) lines.push(`log-line-${index}`)
   lines.push("KeyError: 'merge-state-42-0'")
   const r = await run({
     mode: 'auto',
@@ -4387,12 +4380,12 @@ await testCase('T271 failed required check → Nick preflight-fix prompt carries
     },
   })
   const p = String(r.preflightFixPromptPreview || '')
-  const e1 = eq('status', r.status, 'ready')
-  const e2 = includes('step name', p, 'Run scripts/test-run-offline.sh')
-  const e3 = includes('log line', p, "KeyError: 'merge-state-42-0'")
-  const e4 = p.includes('log-line-1\n') ? { ok: false, msg: 'first line of the 50 must be dropped by the 40-line cap' } : null
-  const e5 = includes('kept tail start', p, 'log-line-11\n')
-  return e1 || e2 || e3 || e4 || e5 || { ok: true }
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = includes('step name', p, 'Run scripts/test-run-offline.sh')
+  const error3 = includes('log line', p, "KeyError: 'merge-state-42-0'")
+  const error4 = p.includes('log-line-1\n') ? { ok: false, msg: 'first line of the 50 must be dropped by the 40-line cap' } : null
+  const error5 = includes('kept tail start', p, 'log-line-11\n')
+  return error1 || error2 || error3 || error4 || error5 || { ok: true }
 })
 
 // T109 — Morgan classifies a REQUIRED_CHANGES item as a checklist-wording-defect with a concrete
@@ -4419,10 +4412,10 @@ await testCase('T109 plan-amend round (checklist-wording-defect, all items route
       ],
     },
   })
-  const e1 = eq('status', r.status, 'ready')
-  const e2 = includes('trace', r.trace, 'plan-amend-round:1')
-  const e3 = includes('trace', r.trace, 'nick-skipped-plan-only:1')
-  return (e1 || e2 || e3) ? (e1 || e2 || e3) : { ok: true }
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = includes('trace', r.trace, 'plan-amend-round:1')
+  const error3 = includes('trace', r.trace, 'nick-skipped-plan-only:1')
+  return (error1 || error2 || error3) ? (error1 || error2 || error3) : { ok: true }
 })
 
 // T110 — neutral default: Morgan returns REQUIRED_CHANGES with no `itemOwners` at all. classifyBlockers
@@ -4436,10 +4429,10 @@ await testCase('T110 no itemOwners (neutral default) → ready, no plan-route/pl
       morgan: [{ verdict: 'REQUIRED_CHANGES', items: ['fix the null guard'] }, { verdict: 'LGTM' }],
     },
   })
-  const e1 = eq('status', r.status, 'ready')
+  const error1 = eq('status', r.status, 'ready')
   const bad = (r.trace || []).find(t => /^plan-amend-round|^plan-route-shadow/.test(String(t)))
-  const e2 = bad ? { ok: false, msg: `trace: unexpected routing entry ${JSON.stringify(bad)}` } : null
-  return (e1 || e2) ? (e1 || e2) : { ok: true }
+  const error2 = bad ? { ok: false, msg: `trace: unexpected routing entry ${JSON.stringify(bad)}` } : null
+  return (error1 || error2) ? (error1 || error2) : { ok: true }
 })
 
 // T111 — budget exhausted: maxPlanAmendRounds:1, and the FRESH verdict after the one allowed
@@ -4465,9 +4458,9 @@ await testCase('T111 plan-defect persists through the amendment round → escala
       ],
     },
   })
-  const e1 = eq('status', r.status, 'escalate')
-  const e2 = eq('reason', r.reason, 'plan-defect-persists')
-  return (e1 || e2) ? (e1 || e2) : { ok: true }
+  const error1 = eq('status', r.status, 'escalate')
+  const error2 = eq('reason', r.reason, 'plan-defect-persists')
+  return (error1 || error2) ? (error1 || error2) : { ok: true }
 })
 
 // T112 — shadow mode: maxPlanAmendRounds OMITTED (shipped default 0) with a fully-formed
@@ -4488,11 +4481,11 @@ await testCase('T112 shadow mode (maxPlanAmendRounds default 0) → classifies b
       ],
     },
   })
-  const e1 = eq('status', r.status, 'ready')
-  const e2 = includes('trace', r.trace, 'plan-route-shadow:1')
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = includes('trace', r.trace, 'plan-route-shadow:1')
   const bad = (r.trace || []).find(t => /^plan-amend-round/.test(String(t)))
-  const e3 = bad ? { ok: false, msg: `trace: unexpected plan-amend-round entry ${JSON.stringify(bad)}` } : null
-  return (e1 || e2 || e3) ? (e1 || e2 || e3) : { ok: true }
+  const error3 = bad ? { ok: false, msg: `trace: unexpected plan-amend-round entry ${JSON.stringify(bad)}` } : null
+  return (error1 || error2 || error3) ? (error1 || error2 || error3) : { ok: true }
 })
 
 // T113 — simulate.acceptanceSpliceProbe drives the REAL spliceAcceptanceBlock (no hand-duplicated
@@ -4508,7 +4501,7 @@ await testCase('T113 acceptanceSpliceProbe (real function) — markers absent �
       acceptanceSpliceProbe: { body: 'No acceptance markers anywhere in this body.', checklist: '- [ ] a' },
     },
   })
-  const e1 = eq('acceptanceSpliceProbe (markers absent)', r1.acceptanceSpliceProbe, null)
+  const error1 = eq('acceptanceSpliceProbe (markers absent)', r1.acceptanceSpliceProbe, null)
 
   const fencedExampleBody =
     'Some doc text explaining the format.\n' +
@@ -4533,10 +4526,10 @@ await testCase('T113 acceptanceSpliceProbe (real function) — markers absent �
   const out = String(r2.acceptanceSpliceProbe ?? '')
   const keptFencedExample = out.includes('EXAMPLE fenced item — never touch this one')
   const replacedRealOnly = out.includes('amended item') && !out.includes('real item one')
-  const e2 = (!keptFencedExample || !replacedRealOnly)
+  const error2 = (!keptFencedExample || !replacedRealOnly)
     ? { ok: false, msg: `acceptanceSpliceProbe (fenced example before real pair) mis-spliced: ${JSON.stringify(out)}` }
     : null
-  return (e1 || e2) ? (e1 || e2) : { ok: true }
+  return (error1 || error2) ? (error1 || error2) : { ok: true }
 })
 
 // T114 — a plan owner with an EMPTY proof is fail-safe: classifyBlockers falls back to
@@ -4553,10 +4546,10 @@ await testCase('T114 plan owner with empty proof → falls back to code-defect (
       ],
     },
   })
-  const e1 = eq('status', r.status, 'ready')
+  const error1 = eq('status', r.status, 'ready')
   const bad = (r.trace || []).find(t => /^plan-amend-round|^plan-route-shadow/.test(String(t)))
-  const e2 = bad ? { ok: false, msg: `trace: unexpected routing entry ${JSON.stringify(bad)}` } : null
-  return (e1 || e2) ? (e1 || e2) : { ok: true }
+  const error2 = bad ? { ok: false, msg: `trace: unexpected routing entry ${JSON.stringify(bad)}` } : null
+  return (error1 || error2) ? (error1 || error2) : { ok: true }
 })
 
 // T115 — maxPlanAmendRounds validation mirrors T70d's pattern: an invalid value throws under
@@ -4569,9 +4562,9 @@ await testCase('T115 maxPlanAmendRounds:-1 → throws under dryRun (zero agent s
       maxPlanAmendRounds: -1,
     })
     return { ok: false, msg: 'expected run() to throw, it did not' }
-  } catch (e) {
-    if (!e.message.includes('maxPlanAmendRounds')) {
-      return { ok: false, msg: `wrong error message: ${e.message}` }
+  } catch (error) {
+    if (!error.message.includes('maxPlanAmendRounds')) {
+      return { ok: false, msg: `wrong error message: ${error.message}` }
     }
     return { ok: true }
   }
@@ -4587,17 +4580,17 @@ await testCase('T116 uncovered open sub-issue → non-closing "(see #N)" referen
     simulate: { sam: 'GO', openSubIssues: ['91'], morgan: [{ verdict: 'LGTM' }] },
   })
   const p = r.nickPromptPreview
-  const e1 = includes('nickPromptPreview', p, '`(see #162)`')
-  const e2 = includes('nickPromptPreview', p, 'lgtmgate#193')
+  const error1 = includes('nickPromptPreview', p, '`(see #162)`')
+  const error2 = includes('nickPromptPreview', p, 'lgtmgate#193')
   // Negative assertion targets the backtick-quoted composed first-line literal specifically
   // (`` `Closes #162` ``) — the gate note itself legitimately double-quotes "Closes #162" as
   // prose explaining what it intentionally avoided, so a bare substring check would false-fail.
-  const e3 = p.includes('`Closes #162`')
+  const error3 = p.includes('`Closes #162`')
     ? { ok: false, msg: `expected nickPromptPreview NOT to include the composed literal "\`Closes #162\`" (uncovered sub-issue), got ${JSON.stringify(p)}` }
     : null
-  const e4 = eq('subIssuesUncovered', r.subIssuesUncovered, ['91'])
-  const err = e1 || e2 || e3 || e4
-  return err ? err : { ok: true }
+  const error4 = eq('subIssuesUncovered', r.subIssuesUncovered, ['91'])
+  const error = error1 || error2 || error3 || error4
+  return error ? error : { ok: true }
 })
 
 // T117 (#193, negative control) — zero open sub-issues (the common case): the Closes# line stays
@@ -4608,8 +4601,8 @@ await testCase('T117 zero open sub-issues → Closes #N unchanged (common-case b
     mode: 'auto',
     simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] },
   })
-  const err = includes('nickPromptPreview', r.nickPromptPreview, 'Closes #162')
-  return err ? err : { ok: true }
+  const error = includes('nickPromptPreview', r.nickPromptPreview, 'Closes #162')
+  return error ? error : { ok: true }
 })
 
 // T118 (#193) — the one open sub-issue IS already in this run's own samAbsorbedIssues bundle, so
@@ -4620,8 +4613,8 @@ await testCase('T118 open sub-issue already covered by samAbsorbedIssues → Clo
     mode: 'auto',
     simulate: { sam: 'GO', samAbsorbedIssues: ['91'], openSubIssues: ['91'], morgan: [{ verdict: 'LGTM' }] },
   })
-  const err = includes('nickPromptPreview', r.nickPromptPreview, 'Closes #162')
-  return err ? err : { ok: true }
+  const error = includes('nickPromptPreview', r.nickPromptPreview, 'Closes #162')
+  return error ? error : { ok: true }
 })
 
 // T122 — Morgan review fix (PR #121): off-path regression where an empty/absent `items` (MORGAN.items
@@ -4640,11 +4633,11 @@ await testCase('T122 off-path empty items (no itemOwners) → Nick still dispatc
       morgan: [{ verdict: 'REQUIRED_CHANGES' }, { verdict: 'LGTM' }],
     },
   })
-  const e1 = eq('status', r.status, 'escalate')
-  const e2 = eq('reason', r.reason, 'nick-no-op')
+  const error1 = eq('status', r.status, 'escalate')
+  const error2 = eq('reason', r.reason, 'nick-no-op')
   const bad = (r.trace || []).find(t => /^nick-skipped-plan-only/.test(String(t)))
-  const e3 = bad ? { ok: false, msg: `trace: unexpected skip entry ${JSON.stringify(bad)} — Nick must be dispatched off-path` } : null
-  return (e1 || e2 || e3) ? (e1 || e2 || e3) : { ok: true }
+  const error3 = bad ? { ok: false, msg: `trace: unexpected skip entry ${JSON.stringify(bad)} — Nick must be dispatched off-path` } : null
+  return (error1 || error2 || error3) ? (error1 || error2 || error3) : { ok: true }
 })
 
 // ---------------------------------------------------------------------------
@@ -4660,8 +4653,8 @@ await testCase('T106 branch-conformance guard also runs on entryStage:review res
     prNumber: 777,
     simulate: { branchCheckRaw: 'features/issue-1', morgan: [{ verdict: 'LGTM' }] },
   })
-  const err = eq('status', r.status, 'ready')
-  return err ? err : { ok: true }
+  const error = eq('status', r.status, 'ready')
+  return error ? error : { ok: true }
 })
 
 // T107 (#45) — the guard fires on an entryStage:'review' resume with a mismatched branch too —
@@ -4675,12 +4668,12 @@ await testCase('T107 branch-conformance guard fires on entryStage:review resume 
     prNumber: 777,
     simulate: { branchCheckRaw: 'feat-issue-1', morgan: [{ verdict: 'LGTM' }] },
   })
-  const e1 = eq('status', r.status, 'escalate')
-  const e2 = eq('reason', r.reason, 'branch-mismatch')
-  const e3 = eq('actualBranch', r.actualBranch, 'feat-issue-1')
-  const e4 = eq('expectedBranch', r.expectedBranch, 'features/issue-1')
-  const err = e1 || e2 || e3 || e4
-  return err ? err : { ok: true }
+  const error1 = eq('status', r.status, 'escalate')
+  const error2 = eq('reason', r.reason, 'branch-mismatch')
+  const error3 = eq('actualBranch', r.actualBranch, 'feat-issue-1')
+  const error4 = eq('expectedBranch', r.expectedBranch, 'features/issue-1')
+  const error = error1 || error2 || error3 || error4
+  return error ? error : { ok: true }
 })
 
 // T232a (#232) — branchOverride is used verbatim as the expected branch.
@@ -4692,10 +4685,10 @@ await testCase('T232a branchOverride set → expectedBranch equals the override 
     branchOverride: 'feat/issue-216-v2',
     simulate: { branchCheckRaw: 'feat-issue-1', morgan: [{ verdict: 'LGTM' }] },
   })
-  const e1 = eq('status', r.status, 'escalate')
-  const e2 = eq('expectedBranch', r.expectedBranch, 'feat/issue-216-v2')
-  const err = e1 || e2
-  return err ? err : { ok: true }
+  const error1 = eq('status', r.status, 'escalate')
+  const error2 = eq('expectedBranch', r.expectedBranch, 'feat/issue-216-v2')
+  const error = error1 || error2
+  return error ? error : { ok: true }
 })
 
 // T232b (#232) — unset / whitespace-only override leaves the default untouched.
@@ -4707,10 +4700,10 @@ await testCase('T232b branchOverride unset or blank → expectedBranch unchanged
     branchOverride: '   ',
     simulate: { branchCheckRaw: 'feat-issue-1', morgan: [{ verdict: 'LGTM' }] },
   })
-  const e1 = eq('status', r.status, 'escalate')
-  const e2 = eq('expectedBranch', r.expectedBranch, 'features/issue-1')
-  const err = e1 || e2
-  return err ? err : { ok: true }
+  const error1 = eq('status', r.status, 'escalate')
+  const error2 = eq('expectedBranch', r.expectedBranch, 'features/issue-1')
+  const error = error1 || error2
+  return error ? error : { ok: true }
 })
 
 // T232c (#232) — review resume on an override branch is accepted; negative control: with the
@@ -4723,7 +4716,7 @@ await testCase('T232c branchOverride + matching PR head on review resume → rea
     branchOverride: 'feat/issue-216-v2',
     simulate: { branchCheckRaw: 'feat/issue-216-v2', morgan: [{ verdict: 'LGTM' }] },
   })
-  const e1 = eq('status', ok.status, 'ready')
+  const error1 = eq('status', ok.status, 'ready')
   const neg = await run({
     mode: 'auto',
     entryStage: 'review',
@@ -4731,12 +4724,12 @@ await testCase('T232c branchOverride + matching PR head on review resume → rea
     branchOverride: 'feat/issue-216-v2',
     simulate: { branchCheckRaw: 'features/issue-1', configBranchPrefixRaw: 'features/', morgan: [{ verdict: 'LGTM' }] },
   })
-  const e2 = eq('neg.status', neg.status, 'escalate')
-  const e3 = eq('neg.reason', neg.reason, 'branch-mismatch')
+  const error2 = eq('neg.status', neg.status, 'escalate')
+  const error3 = eq('neg.reason', neg.reason, 'branch-mismatch')
   const bad = (neg.trace || []).includes('branch-check-reconciled')
-  const e4 = bad ? { ok: false, msg: 'reconcile must be skipped when branchOverride is set' } : null
-  const err = e1 || e2 || e3 || e4
-  return err ? err : { ok: true }
+  const error4 = bad ? { ok: false, msg: 'reconcile must be skipped when branchOverride is set' } : null
+  const error = error1 || error2 || error3 || error4
+  return error ? error : { ok: true }
 })
 
 // T232d (#232) — a top-level branchPrefix arg that differs from config is ignored, loudly.
@@ -4748,10 +4741,10 @@ await testCase('T232d top-level branchPrefix arg differing from config → trace
     branchPrefix: 'feat/',
     simulate: { branchCheckRaw: 'feat-issue-1', morgan: [{ verdict: 'LGTM' }] },
   })
-  const e1 = eq('expectedBranch', r.expectedBranch, 'features/issue-1')
-  const e2 = (r.trace || []).includes('branch-prefix-arg-ignored') ? null : { ok: false, msg: `trace missing branch-prefix-arg-ignored: ${JSON.stringify(r.trace)}` }
-  const err = e1 || e2
-  return err ? err : { ok: true }
+  const error1 = eq('expectedBranch', r.expectedBranch, 'features/issue-1')
+  const error2 = (r.trace || []).includes('branch-prefix-arg-ignored') ? null : { ok: false, msg: `trace missing branch-prefix-arg-ignored: ${JSON.stringify(r.trace)}` }
+  const error = error1 || error2
+  return error ? error : { ok: true }
 })
 
 // T232e (#232) — an override with shell-unsafe characters throws (it is interpolated into Nick's prompt).
@@ -4759,8 +4752,8 @@ await testCase('T232e branchOverride with unsafe characters → throws', async (
   try {
     await run({ mode: 'auto', dryRun: false, branchOverride: 'feat/x; rm -rf /', simulate: { sam: 'GO' } })
     return { ok: false, msg: 'expected run() to throw, it did not' }
-  } catch (e) {
-    return e.message.includes('Invalid branchOverride') ? { ok: true } : { ok: false, msg: `wrong error message: ${e.message}` }
+  } catch (error) {
+    return error.message.includes('Invalid branchOverride') ? { ok: true } : { ok: false, msg: `wrong error message: ${error.message}` }
   }
 })
 
@@ -4774,10 +4767,10 @@ await testCase('T267a config.branchPrefix absent → expectedBranch defaults, tr
     config: { ...CONFIG, branchPrefix: undefined },
     simulate: { branchCheckRaw: 'nightly-issue-1', morgan: [{ verdict: 'LGTM' }] },
   })
-  const e1 = eq('expectedBranch', r.expectedBranch, 'features/issue-1')
-  const e2 = (r.trace || []).includes('branch-prefix-fallback-default') ? null : { ok: false, msg: `trace missing branch-prefix-fallback-default: ${JSON.stringify(r.trace)}` }
-  const err = e1 || e2
-  return err ? err : { ok: true }
+  const error1 = eq('expectedBranch', r.expectedBranch, 'features/issue-1')
+  const error2 = (r.trace || []).includes('branch-prefix-fallback-default') ? null : { ok: false, msg: `trace missing branch-prefix-fallback-default: ${JSON.stringify(r.trace)}` }
+  const error = error1 || error2
+  return error ? error : { ok: true }
 })
 
 // T267b (#267) — the real-world misuse pattern: branchPrefix passed top-level (not nested in
@@ -4792,11 +4785,11 @@ await testCase('T267b config.branchPrefix absent + top-level branchPrefix arg �
     config: { ...CONFIG, branchPrefix: undefined },
     simulate: { branchCheckRaw: 'nightly-issue-1', morgan: [{ verdict: 'LGTM' }] },
   })
-  const e1 = eq('expectedBranch', r.expectedBranch, 'features/issue-1')
-  const e2 = (r.trace || []).includes('branch-prefix-fallback-default') ? null : { ok: false, msg: `trace missing branch-prefix-fallback-default: ${JSON.stringify(r.trace)}` }
-  const e3 = (r.trace || []).includes('branch-prefix-arg-ignored') ? null : { ok: false, msg: `trace missing branch-prefix-arg-ignored: ${JSON.stringify(r.trace)}` }
-  const err = e1 || e2 || e3
-  return err ? err : { ok: true }
+  const error1 = eq('expectedBranch', r.expectedBranch, 'features/issue-1')
+  const error2 = (r.trace || []).includes('branch-prefix-fallback-default') ? null : { ok: false, msg: `trace missing branch-prefix-fallback-default: ${JSON.stringify(r.trace)}` }
+  const error3 = (r.trace || []).includes('branch-prefix-arg-ignored') ? null : { ok: false, msg: `trace missing branch-prefix-arg-ignored: ${JSON.stringify(r.trace)}` }
+  const error = error1 || error2 || error3
+  return error ? error : { ok: true }
 })
 
 // T267c (#267, negative control) — config.branchPrefix genuinely set, even to a value matching
@@ -4823,10 +4816,10 @@ await testCase('T108 preflight prompt inlines the SANDBOX_INSTALL_HINT text its 
     config: { ...CONFIG },
     simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] },
   })
-  const e1 = includes('preflightPromptPreview', r.preflightPromptPreview, '(see hint below)')
-  const e2 = includes('preflightPromptPreview', r.preflightPromptPreview, 'SSLCertVerificationError')
-  const err = e1 || e2
-  return err ? err : { ok: true }
+  const error1 = includes('preflightPromptPreview', r.preflightPromptPreview, '(see hint below)')
+  const error2 = includes('preflightPromptPreview', r.preflightPromptPreview, 'SSLCertVerificationError')
+  const error = error1 || error2
+  return error ? error : { ok: true }
 })
 
 // T263a (#263, real incident #262 companion) — a sandbox write-allowlist gap on the target
@@ -4840,17 +4833,17 @@ await testCase('T263a (#263) worktree git-dir not writable → escalate before N
       gitDirWritable: { writable: false, gitDir: '/path/to/repo/.git/worktrees/issue-1' },
     },
   })
-  const e1 = eq('status', r.status, 'escalate')
-  const e2 = eq('reason', r.reason, 'worktree-git-dir-not-writable')
-  const e3 = eq('gitDir', r.gitDir, '/path/to/repo/.git/worktrees/issue-1')
-  const e4 = r.trace.includes('worktree-git-dir-not-writable:/path/to/repo/.git/worktrees/issue-1')
+  const error1 = eq('status', r.status, 'escalate')
+  const error2 = eq('reason', r.reason, 'worktree-git-dir-not-writable')
+  const error3 = eq('gitDir', r.gitDir, '/path/to/repo/.git/worktrees/issue-1')
+  const error4 = r.trace.includes('worktree-git-dir-not-writable:/path/to/repo/.git/worktrees/issue-1')
     ? null
     : { ok: false, msg: `trace: expected write-probe entry, got ${JSON.stringify(r.trace)}` }
-  const e5 = r.pr !== undefined
+  const error5 = r.pr !== undefined
     ? { ok: false, msg: `pr: expected undefined (Nick never spawned), got ${JSON.stringify(r.pr)}` }
     : null
-  const err = e1 || e2 || e3 || e4 || e5
-  return err ? err : { ok: true }
+  const error = error1 || error2 || error3 || error4 || error5
+  return error ? error : { ok: true }
 })
 
 // T263b (#263, negative control) — a writable git-dir is a no-op: proceeds through Dev/Review
@@ -4864,21 +4857,21 @@ await testCase('T263b (#263) worktree git-dir writable → no escalate, proceeds
       morgan: [{ verdict: 'LGTM' }],
     },
   })
-  const e1 = eq('status', r.status, 'ready')
-  const e2 = r.trace.some(t => String(t).startsWith('worktree-git-dir-not-writable:'))
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = r.trace.some(t => String(t).startsWith('worktree-git-dir-not-writable:'))
     ? { ok: false, msg: `trace: expected no write-probe escalate entry, got ${JSON.stringify(r.trace)}` }
     : null
-  const err = e1 || e2
-  return err ? err : { ok: true }
+  const error = error1 || error2
+  return error ? error : { ok: true }
 })
 
 // ---------------------------------------------------------------------------
 // worktreeFreshnessNote — extracted from the workflow markers (no suite-local copy, so it cannot drift)
 // ---------------------------------------------------------------------------
 const worktreeFreshnessNote = (() => {
-  const src = SUITE_ARGS.fpSource
-  if (!src) return null
-  const block = extractBetween(src, '// --- worktreeFreshnessNote:start ---', '// --- worktreeFreshnessNote:end ---')
+  const source = SUITE_ARGS.fpSource
+  if (!source) return null
+  const block = extractBetween(source, '// --- worktreeFreshnessNote:start ---', '// --- worktreeFreshnessNote:end ---')
   return block ? new Function(block + '\nreturn worktreeFreshnessNote')() : null
 })()
 
@@ -4990,47 +4983,47 @@ await testCase('T109j worktreeFreshnessNote: behind:100 → plural "commits"', a
 // REQUIRED_CHANGES. Source-level: the shared ACCEPTANCE_PRESENCE_RULE literal is present and is
 // interpolated into both Morgan prompts.
 await testCase('T9030 Morgan prompts (initial + re-review) treat an absent or empty acceptance block as REQUIRED_CHANGES', async () => {
-  const src = SUITE_ARGS.fpSource
-  if (!src) {
+  const source = SUITE_ARGS.fpSource
+  if (!source) {
     log('SKIP — T9030: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
     return { ok: true }
   }
-  const e1 = includes('literal items line', src, 'Acceptance block absent or empty')
-  const e2 = eq('interpolations in the Morgan prompts', src.split('${ACCEPTANCE_PRESENCE_RULE}').length - 1, 2)
-  return (e1 || e2) ? (e1 || e2) : { ok: true }
+  const error1 = includes('literal items line', source, 'Acceptance block absent or empty')
+  const error2 = eq('interpolations in the Morgan prompts', source.split('${ACCEPTANCE_PRESENCE_RULE}').length - 1, 2)
+  return (error1 || error2) ? (error1 || error2) : { ok: true }
 })
 
 // T9036 (#36, #37) — acceptance items are executed commands describing repo states only. Source-level:
 // the shared rule is defined once, interpolated once (Sam prompt), and the blocking check sits in the
 // planCheck prompt and the plan-audit prompt.
 await testCase('T9036 ACCEPTANCE_PROOF_RULE defined once, interpolated once; ACCEPTANCE PROOF CHECK in planCheck and audit prompts', async () => {
-  const src = SUITE_ARGS.fpSource
-  if (!src) {
+  const source = SUITE_ARGS.fpSource
+  if (!source) {
     log('SKIP — T9036: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
     return { ok: true }
   }
-  const e1 = eq('ACCEPTANCE_PROOF_RULE occurrences (definition + interpolation)', src.split('ACCEPTANCE_PROOF_RULE').length - 1, 2)
-  const e2 = eq('interpolations in the Sam prompt', src.split('${ACCEPTANCE_PROOF_RULE}').length - 1, 1)
-  const e3 = eq('ACCEPTANCE PROOF CHECK (planCheck + audit)', src.split('ACCEPTANCE PROOF CHECK').length - 1, 2)
-  return (e1 || e2 || e3) ? (e1 || e2 || e3) : { ok: true }
+  const error1 = eq('ACCEPTANCE_PROOF_RULE occurrences (definition + interpolation)', source.split('ACCEPTANCE_PROOF_RULE').length - 1, 2)
+  const error2 = eq('interpolations in the Sam prompt', source.split('${ACCEPTANCE_PROOF_RULE}').length - 1, 1)
+  const error3 = eq('ACCEPTANCE PROOF CHECK (planCheck + audit)', source.split('ACCEPTANCE PROOF CHECK').length - 1, 2)
+  return (error1 || error2 || error3) ? (error1 || error2 || error3) : { ok: true }
 })
 
 // T9028 (#28) — when a Sam acceptance item may be tagged human-gate. Source-level: the shared rule constant
 // is defined once and interpolated once, inside samScoutPrompt, and its text asks "act" versus "only confirm".
 await testCase('T9028 HUMAN_GATE_TAG_RULE defined once, interpolated once in samScoutPrompt (#28)', async () => {
-  const src = SUITE_ARGS.fpSource
-  if (!src) {
+  const source = SUITE_ARGS.fpSource
+  if (!source) {
     log('SKIP — T9028: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
     return { ok: true }
   }
-  const e1 = eq('HUMAN_GATE_TAG_RULE occurrences (definition + interpolation)', src.split('HUMAN_GATE_TAG_RULE').length - 1, 2)
-  const e2 = eq('interpolations', src.split('${HUMAN_GATE_TAG_RULE}').length - 1, 1)
-  const from = src.indexOf('const samScoutPrompt =')
-  const to = from < 0 ? -1 : src.indexOf('// Plan stage', from)
-  const scout = from < 0 || to < 0 ? '' : src.slice(from, to)
-  const e3 = includes('interpolated inside samScoutPrompt', scout, '${HUMAN_GATE_TAG_RULE}')
-  const e4 = includes('rule text asks act versus confirm', src, 'only to confirm that an action already happened')
-  return (e1 || e2 || e3 || e4) ? (e1 || e2 || e3 || e4) : { ok: true }
+  const error1 = eq('HUMAN_GATE_TAG_RULE occurrences (definition + interpolation)', source.split('HUMAN_GATE_TAG_RULE').length - 1, 2)
+  const error2 = eq('interpolations', source.split('${HUMAN_GATE_TAG_RULE}').length - 1, 1)
+  const from = source.indexOf('const samScoutPrompt =')
+  const to = from < 0 ? -1 : source.indexOf('// Plan stage', from)
+  const scout = from < 0 || to < 0 ? '' : source.slice(from, to)
+  const error3 = includes('interpolated inside samScoutPrompt', scout, '${HUMAN_GATE_TAG_RULE}')
+  const error4 = includes('rule text asks act versus confirm', source, 'only to confirm that an action already happened')
+  return (error1 || error2 || error3 || error4) ? (error1 || error2 || error3 || error4) : { ok: true }
 })
 
 // T9028b (#28) — the human-gate tag rule must not contradict the texts Sam also reads. Source-level, on the
@@ -5040,14 +5033,14 @@ await testCase('T9028 HUMAN_GATE_TAG_RULE defined once, interpolated once in sam
 // reach") is gone and the schema description and ACCEPTANCE_ITEMS_RULE state the new test. The Sam persona and
 // the two pr-acceptance copies are not readable here: the sam-parity guard (scripts/guards.cjs) checks them.
 await testCase('T9028b human-gate definition and proof exemption agree across the engine texts (#28)', async () => {
-  const src = SUITE_ARGS.fpSource
-  if (!src) {
+  const source = SUITE_ARGS.fpSource
+  if (!source) {
     log('SKIP — T9028b: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
     return { ok: true }
   }
   const EXEMPTION = 'read-only confirmation of an action that was already authorized and executed'
   const GATE_TEST = 'a decision, an authorization or an action to perform, or a judgement no read-only command can confirm'
-  const lines = src.split('\n')
+  const lines = source.split('\n')
   const line = (pred) => lines.find(pred) || ''
   const proofRule = line((l) => l.startsWith('const ACCEPTANCE_PROOF_RULE = '))
   const itemsRule = line((l) => l.startsWith('const ACCEPTANCE_ITEMS_RULE = '))
@@ -5062,7 +5055,7 @@ await testCase('T9028b human-gate definition and proof exemption agree across th
     includes('plan-check still refuses a "no known X" claim', planCheck, '"no known X"'),
     includes('human-gate test in the schema description', schema, GATE_TEST),
     includes('human-gate test in ACCEPTANCE_ITEMS_RULE', itemsRule, GATE_TEST),
-    eq('old definition "an external system out of reach" occurrences', src.split('an external system out of reach').length - 1, 0),
+    eq('old definition "an external system out of reach" occurrences', source.split('an external system out of reach').length - 1, 0),
   ]
   const bad = checks.filter((c) => c)
   return bad.length ? { ok: false, msg: bad.map((b) => b.msg.slice(0, 90)).join(' | ') } : { ok: true }
@@ -5073,37 +5066,37 @@ await testCase('T9028b human-gate definition and proof exemption agree across th
 // sub_issues listing and carries the hidden marker key exactly once in the engine (the persona side is pinned
 // by the sam-parity guard in scripts/guards.cjs).
 await testCase('T9029 FOLLOWUP_ISSUE_RULE defined once, interpolated once in samScoutPrompt, names sub_issues (#29)', async () => {
-  const src = SUITE_ARGS.fpSource
-  if (!src) {
+  const source = SUITE_ARGS.fpSource
+  if (!source) {
     log('SKIP — T9029: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
     return { ok: true }
   }
   const MARKER_KEY = 'pipeline-followup:issue-'
-  const defLine = src.split('\n').find((l) => l.startsWith('const FOLLOWUP_ISSUE_RULE = ')) || ''
-  const e1 = eq('FOLLOWUP_ISSUE_RULE occurrences (definition + interpolation)', src.split('FOLLOWUP_ISSUE_RULE').length - 1, 2)
-  const e2 = eq('interpolations', src.split('${FOLLOWUP_ISSUE_RULE}').length - 1, 1)
-  const from = src.indexOf('const samScoutPrompt =')
-  const to = from < 0 ? -1 : src.indexOf('// Plan stage', from)
-  const scout = from < 0 || to < 0 ? '' : src.slice(from, to)
-  const e3 = includes('interpolated inside samScoutPrompt', scout, '${FOLLOWUP_ISSUE_RULE}')
-  const e4 = includes('rule text names the sub_issues listing', defLine, 'sub_issues')
+  const deferredLine = source.split('\n').find((l) => l.startsWith('const FOLLOWUP_ISSUE_RULE = ')) || ''
+  const error1 = eq('FOLLOWUP_ISSUE_RULE occurrences (definition + interpolation)', source.split('FOLLOWUP_ISSUE_RULE').length - 1, 2)
+  const error2 = eq('interpolations', source.split('${FOLLOWUP_ISSUE_RULE}').length - 1, 1)
+  const from = source.indexOf('const samScoutPrompt =')
+  const to = from < 0 ? -1 : source.indexOf('// Plan stage', from)
+  const scout = from < 0 || to < 0 ? '' : source.slice(from, to)
+  const error3 = includes('interpolated inside samScoutPrompt', scout, '${FOLLOWUP_ISSUE_RULE}')
+  const error4 = includes('rule text names the sub_issues listing', deferredLine, 'sub_issues')
   // The marker literal opens the filing marker and the prefix scan of the jq filter: two occurrences, both in the rule.
-  const e5 = eq('marker key occurrences in the engine', src.split(MARKER_KEY).length - 1, 2)
-  const e6 = includes('marker key sits in the rule definition', defLine, MARKER_KEY)
+  const error5 = eq('marker key occurrences in the engine', source.split(MARKER_KEY).length - 1, 2)
+  const error6 = includes('marker key sits in the rule definition', deferredLine, MARKER_KEY)
   // The scan matches the prefix up to its colon (never the model-invented slug), before every filing, through --jq filters.
-  const e7 = includes('filing marker keeps the slug', defLine, '<!-- pipeline-followup:issue-<N>:<short-scope-slug> -->')
-  const e8 = includes('scan matches the prefix with its trailing colon', defLine, 'contains("pipeline-followup:issue-<N>:")')
-  const e9 = includes('trigger is every filing', defLine, 'Before every filing')
-  const e10 = defLine.includes('On every relaunch, before filing') ? { ok: false, error: 'the relaunch trigger is back in the rule' } : null
-  const e11 = includes('children listing is filtered by --jq', defLine, 'issues/<N>/sub_issues --jq')
-  const e12 = includes('open listing is filtered by --jq', defLine, 'per_page=100" --jq')
-  const e13 = includes('filter selects', defLine, 'select(')
-  const e14 = includes('filter drops pull requests', defLine, 'pull_request')
-  const e15 = includes('filter survives a null body', defLine, '(.body // "")')
-  const e16 = includes('fails closed on a failed listing', defLine, 'file nothing and name the failure')
-  const e17 = includes('only an open issue is reused', defLine, 'closed one is never reused')
-  const e18 = includes('file write carries the Bash caution', defLine, 'absolute path, 1 command per call')
-  const first = [e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, e12, e13, e14, e15, e16, e17, e18].find((e) => e)
+  const error7 = includes('filing marker keeps the slug', deferredLine, '<!-- pipeline-followup:issue-<N>:<short-scope-slug> -->')
+  const error8 = includes('scan matches the prefix with its trailing colon', deferredLine, 'contains("pipeline-followup:issue-<N>:")')
+  const error9 = includes('trigger is every filing', deferredLine, 'Before every filing')
+  const error10 = deferredLine.includes('On every relaunch, before filing') ? { ok: false, error: 'the relaunch trigger is back in the rule' } : null
+  const error11 = includes('children listing is filtered by --jq', deferredLine, 'issues/<N>/sub_issues --jq')
+  const error12 = includes('open listing is filtered by --jq', deferredLine, 'per_page=100" --jq')
+  const error13 = includes('filter selects', deferredLine, 'select(')
+  const error14 = includes('filter drops pull requests', deferredLine, 'pull_request')
+  const error15 = includes('filter survives a null body', deferredLine, '(.body // "")')
+  const error16 = includes('fails closed on a failed listing', deferredLine, 'file nothing and name the failure')
+  const error17 = includes('only an open issue is reused', deferredLine, 'closed one is never reused')
+  const error18 = includes('file write carries the Bash caution', deferredLine, 'absolute path, 1 command per call')
+  const first = [error1, error2, error3, error4, error5, error6, error7, error8, error9, error10, error11, error12, error13, error14, error15, error16, error17, error18].find((error) => error)
   return first || { ok: true }
 })
 
@@ -5111,82 +5104,82 @@ await testCase('T9029 FOLLOWUP_ISSUE_RULE defined once, interpolated once in sam
 // declared phase and is entered before any agent call, and every agent label carries the issue number.
 // Source-anchored: the suite-scope log() cannot intercept the pipeline's own log (run-flow-suite.cjs).
 await testCase('T130 run identity: first log is deliver #<issue>, Setup phase first (#130)', async () => {
-  const src = SUITE_ARGS.fpSource
-  if (!src) {
+  const source = SUITE_ARGS.fpSource
+  if (!source) {
     log('SKIP — T130: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
     return { ok: true }
   }
-  const idx = (needle) => src.indexOf(needle)
-  const firstTitle = /title: ['"]([^'"]+)['"]/.exec(src)
-  const e1 = eq('first meta phase title', firstTitle && firstTitle[1], 'Setup')
-  if (e1) return e1
-  const iLog = idx('log(`deliver #${issue} — ')
-  const iSetup = idx("phase('Setup')")
-  const iRoot = idx('log(`worktreeRoot: ')
-  const iRecheck = idx("label: 'config-project-recheck'")
-  const iProv = idx("label: 'provision'")
-  const iDiag = idx("phase('Diagnose')")
-  const order = [['deliver log', iLog], ['phase(Setup)', iSetup], ['worktreeRoot log', iRoot], ["label: 'config-project-recheck'", iRecheck], ["label: 'provision'", iProv], ["phase('Diagnose')", iDiag]]
-  for (const [n, i] of order) if (i < 0) return { ok: false, msg: `${n} not found in pipeline source` }
+  const index = (needle) => source.indexOf(needle)
+  const firstTitle = /title: ['"]([^'"]+)['"]/.exec(source)
+  const error1 = eq('first meta phase title', firstTitle && firstTitle[1], 'Setup')
+  if (error1) return error1
+  const indexLog = index('log(`deliver #${issue} — ')
+  const indexSetup = index("phase('Setup')")
+  const indexRoot = index('log(`worktreeRoot: ')
+  const indexRecheck = index("label: 'config-project-recheck'")
+  const indexProv = index("label: 'provision'")
+  const indexDiag = index("phase('Diagnose')")
+  const order = [['deliver log', indexLog], ['phase(Setup)', indexSetup], ['worktreeRoot log', indexRoot], ["label: 'config-project-recheck'", indexRecheck], ["label: 'provision'", indexProv], ["phase('Diagnose')", indexDiag]]
+  for (const [n, index_] of order) if (index_ < 0) return { ok: false, msg: `${n} not found in pipeline source` }
   for (let k = 1; k < order.length; k++) {
     if (!(order[k - 1][1] < order[k][1])) return { ok: false, msg: `expected ${order[k - 1][0]} before ${order[k][0]}` }
   }
-  const e2 = eq('old status label gone', src.includes('label: `status:'), false)
+  const error2 = eq('old status label gone', source.includes('label: `status:'), false)
   // The status write is a pr-write probe (#85): its agent label is probe-${issue}-pr-write-status-<name>-r0.
-  const e3 = eq('status write goes through prWrite', src.includes("prWrite('status'"), true)
+  const error3 = eq('status write goes through prWrite', source.includes("prWrite('status'"), true)
   // probe() call sites (#82) pass a bare `label` + `onFail`; probe() itself builds the agent label
   // `probe-${issue}-<name>-<label>-r<round>`, so the issue number is still in every agent label.
-  const bad = src.split('\n').filter(l => l.includes('label:') && !l.includes('${issue}') && !l.includes('onFail'))
-  const e4 = eq('agent labels without ${issue}', bad.length, 0)
-  return e2 || e3 || e4 || { ok: true }
+  const bad = source.split('\n').filter(l => l.includes('label:') && !l.includes('${issue}') && !l.includes('onFail'))
+  const error4 = eq('agent labels without ${issue}', bad.length, 0)
+  return error2 || error3 || error4 || { ok: true }
 })
 
 // T86 (#86) — the engine reads only `simulate.probes`; every probe('x') call-site name is registered
 // in PROBES; no seam carries a `?? ` default (defaults live in SIM_DEFAULTS above). Source-anchored,
 // each detector has a negative control.
-const engineCode = (src) => src.split('\n').filter(l => !/^\s*\/\//.test(l))
-const probeCallNames = (src) => [...engineCode(src).join('\n').matchAll(/\bprobe\('([^']+)'/g)].map(m => m[1])
-const probesRegistered = (src) => {
-  const m = /const PROBES = \{([\s\S]*?)\n\}/.exec(src)
+const engineCode = (source) => source.split('\n').filter(l => !/^\s*\/\//.test(l))
+const probeCallNames = (source) => [...engineCode(source).join('\n').matchAll(/\bprobe\('([^']+)'/g)].map(m => m[1])
+const probesRegistered = (source) => {
+  const m = /const PROBES = \{([\s\S]*?)\n\}/.exec(source)
   return m ? [...m[1].matchAll(/^\s*'([^']+)'\s*:/gm)].map(x => x[1]) : []
 }
-const probesMissing = (src) => { const reg = probesRegistered(src); return [...new Set(probeCallNames(src))].filter(n => !reg.includes(n)) }
-const seamDefaultLines = (src) => engineCode(src).filter(l => l.includes('simulate.probes') && l.includes('?? '))
-const simulateKeys = (src) => [...new Set([...engineCode(src).join('\n').matchAll(/simulate\??\.([A-Za-z_][A-Za-z0-9_]*)/g)].map(m => m[1]))]
+const probesMissing = (source) => { const reg = probesRegistered(source); return [...new Set(probeCallNames(source))].filter(n => !reg.includes(n)) }
+const seamDefaultLines = (source) => engineCode(source).filter(l => l.includes('simulate.probes') && l.includes('?? '))
+const simulateKeys = (source) => [...new Set([...engineCode(source).join('\n').matchAll(/simulate\??\.([A-Za-z_][A-Za-z0-9_]*)/g)].map(m => m[1]))]
 
 await testCase('T86a every probe(x) name used by the engine is registered in PROBES (#86)', async () => {
-  const src = SUITE_ARGS.fpSource
-  if (!src) {
+  const source = SUITE_ARGS.fpSource
+  if (!source) {
     log('SKIP — T86a: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
     return { ok: true }
   }
   const control = eq('negative control', probesMissing("const PROBES = {\n  'a': 'a',\n}\nawait probe('a', 1)\nawait probe('b', 2)\n"), ['b'])
   if (control) return control
-  const e0 = eq('PROBES is populated', probesRegistered(src).length > 0, true)
-  if (e0) return e0
-  return eq('probe names missing from PROBES', probesMissing(src), []) || { ok: true }
+  const error0 = eq('PROBES is populated', probesRegistered(source).length > 0, true)
+  if (error0) return error0
+  return eq('probe names missing from PROBES', probesMissing(source), []) || { ok: true }
 })
 
 await testCase('T86b no `??` on a `simulate.probes` read line in the engine (#86)', async () => {
-  const src = SUITE_ARGS.fpSource
-  if (!src) {
+  const source = SUITE_ARGS.fpSource
+  if (!source) {
     log('SKIP — T86b: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
     return { ok: true }
   }
   const control = eq('negative control', seamDefaultLines('const x = simulate.probes.a ?? 1\nconst y = simulate.probes.b\n').length, 1)
   if (control) return control
-  return eq('simulate.probes read lines with a ?? default', seamDefaultLines(src), []) || { ok: true }
+  return eq('simulate.probes read lines with a ?? default', seamDefaultLines(source), []) || { ok: true }
 })
 
 await testCase('T86c the engine reads only simulate.probes (#86)', async () => {
-  const src = SUITE_ARGS.fpSource
-  if (!src) {
+  const source = SUITE_ARGS.fpSource
+  if (!source) {
     log('SKIP — T86c: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
     return { ok: true }
   }
   const control = eq('negative control', simulateKeys('simulate.probes.a\nsimulate?.other\n'), ['probes', 'other'])
   if (control) return control
-  return eq('simulate keys read by the engine', simulateKeys(src), ['probes']) || { ok: true }
+  return eq('simulate keys read by the engine', simulateKeys(source), ['probes']) || { ok: true }
 })
 
 // ---------------------------------------------------------------------------
@@ -5200,10 +5193,10 @@ await testCase('T182a acceptance items round-trip: parse(render(x)) deep-equals 
   const fns = t182Block()
   if (!fns) return t182Skip('T182a')
   const x = fns.numberItems(T182_ITEMS)
-  const e1 = eq('numberItems', x, T182_CANON)
-  const e2 = eq('parse(render(x))', fns.parseChecklist(fns.renderChecklist(x)), x)
-  const e3 = eq('rendered lines against the hand-written oracle', fns.renderChecklist(x).split('\n'), t182Lines(T182_ITEMS))
-  if (e1 || e2 || e3) return e1 || e2 || e3
+  const error1 = eq('numberItems', x, T182_CANON)
+  const error2 = eq('parse(render(x))', fns.parseChecklist(fns.renderChecklist(x)), x)
+  const error3 = eq('rendered lines against the hand-written oracle', fns.renderChecklist(x).split('\n'), t182Lines(T182_ITEMS))
+  if (error1 || error2 || error3) return error1 || error2 || error3
   // Negative control: a reader that loses the human-gate flag must NOT reproduce x, so the equality above can fail.
   const flagLost = fns.parseChecklist(fns.renderChecklist(x)).map((it) => ({ ...it, humanGate: false }))
   const control = eq('negative control (a reader that drops the human-gate flag)', JSON.stringify(flagLost) === JSON.stringify(x), false)
@@ -5261,14 +5254,14 @@ await testCase('T182b parseChecklist reads a body with or without ids to the sam
     '<!-- decision-log:start -->', '## Decision log', '- round 0 — REQUIRED_CHANGES (1 blocker)', '<!-- decision-log:end -->', '',
     '- [ ] a stray box outside the block',
   ].join('\n')
-  const e1 = eq('with ids', fns.parseChecklist(body(t182Lines(T182_ITEMS))), T182_CANON)
-  const e2 = eq('legacy body, no ids', fns.parseChecklist(body(t182Lines(T182_ITEMS, false))), T182_CANON)
-  const e3 = eq('CRLF line endings', fns.parseChecklist(body(t182Lines(T182_ITEMS)).split('\n').join('\r\n')), T182_CANON)
-  const e4 = eq('bare checklist, no markers', fns.parseChecklist(t182Lines(T182_ITEMS).join('\n')), T182_CANON)
-  const e5 = eq('a lone start marker reads nothing', fns.parseChecklist('<!-- acceptance:start -->\n' + t182Lines(T182_ITEMS).join('\n')), [])
-  const e6 = eq('empty / absent text', [fns.parseChecklist(''), fns.parseChecklist(undefined), fns.parseChecklist(null)], [[], [], []])
+  const error1 = eq('with ids', fns.parseChecklist(body(t182Lines(T182_ITEMS))), T182_CANON)
+  const error2 = eq('legacy body, no ids', fns.parseChecklist(body(t182Lines(T182_ITEMS, false))), T182_CANON)
+  const error3 = eq('CRLF line endings', fns.parseChecklist(body(t182Lines(T182_ITEMS)).split('\n').join('\r\n')), T182_CANON)
+  const error4 = eq('bare checklist, no markers', fns.parseChecklist(t182Lines(T182_ITEMS).join('\n')), T182_CANON)
+  const error5 = eq('a lone start marker reads nothing', fns.parseChecklist('<!-- acceptance:start -->\n' + t182Lines(T182_ITEMS).join('\n')), [])
+  const error6 = eq('empty / absent text', [fns.parseChecklist(''), fns.parseChecklist(undefined), fns.parseChecklist(null)], [[], [], []])
   const proven = ' — proven: `node scripts/guards.cjs` -> 0'
-  const e7 = eq('ticked lines keep their suffix', fns.parseChecklist([
+  const error7 = eq('ticked lines keep their suffix', fns.parseChecklist([
     '<!-- acceptance:start -->',
     '- [x] <!-- ac:1 --> ' + T182_ITEMS[0].text + proven,
     '- [X] [human-gate] ' + T182_ITEMS[1].text + proven,
@@ -5277,11 +5270,11 @@ await testCase('T182b parseChecklist reads a body with or without ids to the sam
     { id: 1, text: T182_ITEMS[0].text + proven, humanGate: false },
     { id: 2, text: T182_ITEMS[1].text + proven, humanGate: true },
   ])
-  const e8 = eq('an id comment keeps its number', fns.parseChecklist('- [ ] <!-- ac:4 --> four\n- [ ] <!-- ac:9 --> [human-gate] nine'), [
+  const error8 = eq('an id comment keeps its number', fns.parseChecklist('- [ ] <!-- ac:4 --> four\n- [ ] <!-- ac:9 --> [human-gate] nine'), [
     { id: 4, text: 'four', humanGate: false },
     { id: 9, text: 'nine', humanGate: true },
   ])
-  return e1 || e2 || e3 || e4 || e5 || e6 || e7 || e8 || { ok: true }
+  return error1 || error2 || error3 || error4 || error5 || error6 || error7 || error8 || { ok: true }
 })
 
 // T182c (#182, closes #169) — a human-gate item that carries a command is not a human gate, refused NOT_CONFORMING then
@@ -5291,20 +5284,20 @@ await testCase('T182b parseChecklist reads a body with or without ids to the sam
 await testCase('T182c a human-gate item carrying a command is refused NOT_CONFORMING, then passes once amended (command field by the script, command in the text by the plan check)', async () => {
   const withCommand = T182_ITEMS.map((it) => (it.humanGate ? { ...it, command: 'node scripts/guards.cjs' } : it))
   const r1 = await run({ mode: 'semi', simulate: { sam: { 1: t182Sam(withCommand), 2: t182Sam(T182_ITEMS) }, planCheck: T182_CONFORMING } })
-  const e1 = eq('command field: status', r1.status, 'plan-ready')
-  const e2 = eq('command field: refusals', t182Refusals(r1), ['acceptance-items-refused:1'])
+  const error1 = eq('command field: status', r1.status, 'plan-ready')
+  const error2 = eq('command field: refusals', t182Refusals(r1), ['acceptance-items-refused:1'])
   const withSpan = T182_ITEMS.map((it) => (it.humanGate ? { ...it, text: 'the maintainer confirms `node scripts/guards.cjs` is the right check' } : it))
   const judged = 'item 2: a human-gate item whose text holds a command that decides it'
   const refusedTwice = { 1: { verdict: 'NOT_CONFORMING', issues: [judged] }, 2: { verdict: 'NOT_CONFORMING', issues: [judged] } }
   const r2 = await run({ mode: 'semi', simulate: { sam: { 1: t182Sam(withSpan), 2: t182Sam(withSpan) }, planCheck: refusedTwice } })
-  const e3 = eq('command in the text, kept: status', r2.status, 'escalate')
-  const e4 = eq('command in the text, kept: the issues are the plan check\'s', r2.planCheckIssues, [judged])
-  const e5 = eq('command in the text, kept: no script refusal', t182Refusals(r2), [])
+  const error3 = eq('command in the text, kept: status', r2.status, 'escalate')
+  const error4 = eq('command in the text, kept: the issues are the plan check\'s', r2.planCheckIssues, [judged])
+  const error5 = eq('command in the text, kept: no script refusal', t182Refusals(r2), [])
   const amended = { 1: { verdict: 'NOT_CONFORMING', issues: [judged] }, 2: { verdict: 'CONFORMING' } }
   const r3 = await run({ mode: 'semi', simulate: { sam: { 1: t182Sam(withSpan), 2: t182Sam(T182_ITEMS) }, planCheck: amended } })
-  const e6 = eq('command in the text, amended: status', r3.status, 'plan-ready')
-  const e7 = eq('command in the text, amended: no script refusal', t182Refusals(r3), [])
-  return e1 || e2 || e3 || e4 || e5 || e6 || e7 || { ok: true }
+  const error6 = eq('command in the text, amended: status', r3.status, 'plan-ready')
+  const error7 = eq('command in the text, amended: no script refusal', t182Refusals(r3), [])
+  return error1 || error2 || error3 || error4 || error5 || error6 || error7 || { ok: true }
 })
 
 // T182d (#182) — a genuine human gate (a judgement, no command) passes the plan gate untouched, and the block the
@@ -5313,12 +5306,12 @@ await testCase('T182c a human-gate item carrying a command is refused NOT_CONFOR
 await testCase('T182d a genuine human-gate item passes the plan gate; the rendered block reaches Nick verbatim', async () => {
   const r = await run({ mode: 'auto', simulate: { sam: { 1: t182Sam(T182_ITEMS) }, prBody: t182GateTickedBody(), morgan: [{ verdict: 'LGTM', boxes: [{ id: 1, proven: true, proof: 'p1' }, { id: 2, proven: true, proof: 'p2' }, { id: 3, proven: true, proof: 'p3' }] }] } })
   const p = String(r.nickPromptPreview || '')
-  const e1 = eq('status', r.status, 'ready')
-  const e2 = eq('refusals', t182Refusals(r), [])
-  const e3 = includes('Nick prompt carries the rendered lines', p, t182Lines(T182_ITEMS).join('\n'))
-  const e4 = includes('Nick prompt asks for them verbatim', p, 'paste exactly these lines between the markers')
-  const e5 = eq('boxes ids', (r.boxes || []).map((b) => b.id), [1, 2, 3])
-  return e1 || e2 || e3 || e4 || e5 || { ok: true }
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = eq('refusals', t182Refusals(r), [])
+  const error3 = includes('Nick prompt carries the rendered lines', p, t182Lines(T182_ITEMS).join('\n'))
+  const error4 = includes('Nick prompt asks for them verbatim', p, 'paste exactly these lines between the markers')
+  const error5 = eq('boxes ids', (r.boxes || []).map((b) => b.id), [1, 2, 3])
+  return error1 || error2 || error3 || error4 || error5 || { ok: true }
 })
 
 // T182e (#182) — Morgan returns boxes [{ id, proven, proof }]; the script maps them by id to the rendered items and the
@@ -5341,15 +5334,15 @@ await testCase('T182e Morgan boxes are mapped by id to the rendered items, in it
       }],
     },
   })
-  const e1 = eq('status', r.status, 'ready-pending-human')
-  const e2 = eq('boxes', r.boxes, [
+  const error1 = eq('status', r.status, 'ready-pending-human')
+  const error2 = eq('boxes', r.boxes, [
     { id: 1, text: T182_ITEMS[0].text, humanGate: false, proven: true, proof: '$ node scripts/guards.cjs\n0' },
     { id: 2, text: T182_ITEMS[1].text, humanGate: true, proven: false, proof: '' },
     { id: 3, text: T182_ITEMS[2].text, humanGate: false, proven: true, proof: 'failed=0' },
   ])
-  const e3 = includes('trace', r.trace || [], 'boxes-unknown-id:9')
-  const e4 = (r.trace || []).some((t) => String(t).startsWith('boxes-missing:')) ? { ok: false, msg: `unexpected boxes-missing in ${JSON.stringify(r.trace)}` } : null
-  return e1 || e2 || e3 || e4 || { ok: true }
+  const error3 = includes('trace', r.trace || [], 'boxes-unknown-id:9')
+  const error4 = (r.trace || []).some((t) => String(t).startsWith('boxes-missing:')) ? { ok: false, msg: `unexpected boxes-missing in ${JSON.stringify(r.trace)}` } : null
+  return error1 || error2 || error3 || error4 || { ok: true }
 })
 
 // T182f (#182, #169) — the refusal is not a one-off: a gate item that carries a `command` field is refused on every
@@ -5357,23 +5350,23 @@ await testCase('T182e Morgan boxes are mapped by id to the rendered items, in it
 // same command written only in the gate item's text passes the script (the plan-check model, permissive here, judges
 // it), and a proven item may carry its command.
 await testCase('T182f a human-gate item with a command field is refused on every attempt -> escalate plan-not-conforming; the command in the text alone and a proven item with a command pass the script', async () => {
-  const cmdField = [{ text: 'the maintainer reads the output and judges the wording', humanGate: true, command: 'node -e "1"' }]
-  const r1 = await run({ mode: 'auto', simulate: { sam: { 1: t182Sam(cmdField), 2: t182Sam(cmdField) }, planCheck: T182_CONFORMING } })
+  const commandField = [{ text: 'the maintainer reads the output and judges the wording', humanGate: true, command: 'node -e "1"' }]
+  const r1 = await run({ mode: 'auto', simulate: { sam: { 1: t182Sam(commandField), 2: t182Sam(commandField) }, planCheck: T182_CONFORMING } })
   const first = String((r1.planCheckIssues || [])[0] || '')
-  const e1 = eq('status', r1.status, 'escalate')
-  const e2 = eq('reason', r1.reason, 'plan-not-conforming')
-  const e3 = includes('planCheckIssues[0] names the item', first, 'item 1')
-  const e4 = includes('planCheckIssues[0] quotes the command', first, 'node -e "1"')
-  const e5 = eq('refusals', t182Refusals(r1), ['acceptance-items-refused:1', 'acceptance-items-refused:2'])
+  const error1 = eq('status', r1.status, 'escalate')
+  const error2 = eq('reason', r1.reason, 'plan-not-conforming')
+  const error3 = includes('planCheckIssues[0] names the item', first, 'item 1')
+  const error4 = includes('planCheckIssues[0] quotes the command', first, 'node -e "1"')
+  const error5 = eq('refusals', t182Refusals(r1), ['acceptance-items-refused:1', 'acceptance-items-refused:2'])
   const inText = [{ text: 'the maintainer reads `node -e "1"` and judges the wording', humanGate: true }]
   const r2 = await run({ mode: 'semi', simulate: { sam: { 1: t182Sam(inText) }, planCheck: T182_CONFORMING } })
-  const e6 = eq('command in the text only: status', r2.status, 'plan-ready')
-  const e7 = eq('command in the text only: refusals', t182Refusals(r2), [])
+  const error6 = eq('command in the text only: status', r2.status, 'plan-ready')
+  const error7 = eq('command in the text only: refusals', t182Refusals(r2), [])
   const proven = [{ text: '`bash scripts/x.sh` exits 0', humanGate: false, command: 'bash scripts/x.sh' }]
   const r3 = await run({ mode: 'semi', simulate: { sam: { 1: t182Sam(proven) }, planCheck: T182_CONFORMING } })
-  const e8 = eq('proven item with a command: status', r3.status, 'plan-ready')
-  const e9 = eq('proven item with a command: refusals', t182Refusals(r3), [])
-  return e1 || e2 || e3 || e4 || e5 || e6 || e7 || e8 || e9 || { ok: true }
+  const error8 = eq('proven item with a command: status', r3.status, 'plan-ready')
+  const error9 = eq('proven item with a command: refusals', t182Refusals(r3), [])
+  return error1 || error2 || error3 || error4 || error5 || error6 || error7 || error8 || error9 || { ok: true }
 })
 
 // T182g (#182, #169) — the validator as a table: every refused shape names its item number, every accepted shape returns [].
@@ -5416,33 +5409,33 @@ await testCase('T182g validateAcceptanceItems: each refused shape names its item
     if (issues.length !== 0) return { ok: false, msg: `${label}: expected no issue, got ${JSON.stringify(issues)}` }
   }
   const both = fns.validateAcceptanceItems([{ text: '' }, { text: 'fine' }, { text: 'x', humanGate: 'no' }])
-  const e1 = eq('one issue per bad item, in item order', both.map((s) => s.split(':')[0]), ['item 1', 'item 3'])
-  return e1 || { ok: true }
+  const error1 = eq('one issue per bad item, in item order', both.map((s) => s.split(':')[0]), ['item 1', 'item 3'])
+  return error1 || { ok: true }
 })
 
 // T182h (#182) — source-anchored: the new text is interpolated where the contract needs it, once per site, and the two
 // prompt notes vanish without a block so a legacy run's prompts stay byte-identical.
 await testCase('T182h source: ACCEPTANCE_ITEMS_RULE once, the Nick note once, the Morgan note twice, the human-gate note twice; notes are empty without a block', async () => {
-  const src = SUITE_ARGS.fpSource
+  const source = SUITE_ARGS.fpSource
   const fns = t182Block()
-  if (!src || !fns) return t182Skip('T182h')
-  const count = (needle) => src.split(needle).length - 1
-  const e1 = eq('ACCEPTANCE_ITEMS_RULE interpolations (Sam prompt)', count('${ACCEPTANCE_ITEMS_RULE}'), 1)
-  const e2 = eq('nickBlockNote interpolations (Nick prompt)', count('${nickBlockNote(acceptanceBlock)}'), 1)
-  const e3 = eq('morganBoxesNote interpolations (initial + re-review)', count('${morganBoxesNote(acceptanceBlock)}'), 2)
-  const e4 = eq('HUMAN_GATE_CHECK_NOTE interpolations (plan-check + plan-audit)', count('${HUMAN_GATE_CHECK_NOTE}'), 2)
-  const rule = src.split('\n').find((l) => l.startsWith('const ACCEPTANCE_ITEMS_RULE = ')) || ''
+  if (!source || !fns) return t182Skip('T182h')
+  const count = (needle) => source.split(needle).length - 1
+  const error1 = eq('ACCEPTANCE_ITEMS_RULE interpolations (Sam prompt)', count('${ACCEPTANCE_ITEMS_RULE}'), 1)
+  const error2 = eq('nickBlockNote interpolations (Nick prompt)', count('${nickBlockNote(acceptanceBlock)}'), 1)
+  const error3 = eq('morganBoxesNote interpolations (initial + re-review)', count('${morganBoxesNote(acceptanceBlock)}'), 2)
+  const error4 = eq('HUMAN_GATE_CHECK_NOTE interpolations (plan-check + plan-audit)', count('${HUMAN_GATE_CHECK_NOTE}'), 2)
+  const rule = source.split('\n').find((l) => l.startsWith('const ACCEPTANCE_ITEMS_RULE = ')) || ''
   const missing = ['acceptanceItems', '<!-- ac:N -->', '[human-gate]', 'a command written in its text is judged by the plan check'].filter((w) => !rule.includes(w))
-  const e5 = missing.length ? { ok: false, msg: `ACCEPTANCE_ITEMS_RULE lacks ${JSON.stringify(missing)}` } : null
-  const e6 = eq('both notes are empty without a block', [fns.nickBlockNote(''), fns.nickBlockNote(undefined), fns.morganBoxesNote(''), fns.morganBoxesNote(undefined)], ['', '', '', ''])
+  const error5 = missing.length ? { ok: false, msg: `ACCEPTANCE_ITEMS_RULE lacks ${JSON.stringify(missing)}` } : null
+  const error6 = eq('both notes are empty without a block', [fns.nickBlockNote(''), fns.nickBlockNote(undefined), fns.morganBoxesNote(''), fns.morganBoxesNote(undefined)], ['', '', '', ''])
   const block = t182Lines(T182_ITEMS).join('\n')
-  const e7 = includes('Nick note carries the block', fns.nickBlockNote(block), block)
-  const e8 = includes('Morgan note carries the block', fns.morganBoxesNote(block), block)
-  const e9 = includes('Morgan note names the id comment', fns.morganBoxesNote(block), '<!-- ac:n --> comment included')
-  const e10 = includes('Morgan note asks for the boxes', fns.morganBoxesNote(block), 'return boxes')
-  const e11 = includes('Sam schema carries acceptanceItems', src, '    acceptanceItems: {\n      type: \'array\',')
-  const e12 = includes('Morgan schema carries boxes', src, '    boxes: {\n      type: \'array\',')
-  return e1 || e2 || e3 || e4 || e5 || e6 || e7 || e8 || e9 || e10 || e11 || e12 || { ok: true }
+  const error7 = includes('Nick note carries the block', fns.nickBlockNote(block), block)
+  const error8 = includes('Morgan note carries the block', fns.morganBoxesNote(block), block)
+  const error9 = includes('Morgan note names the id comment', fns.morganBoxesNote(block), '<!-- ac:n --> comment included')
+  const error10 = includes('Morgan note asks for the boxes', fns.morganBoxesNote(block), 'return boxes')
+  const error11 = includes('Sam schema carries acceptanceItems', source, '    acceptanceItems: {\n      type: \'array\',')
+  const error12 = includes('Morgan schema carries boxes', source, '    boxes: {\n      type: \'array\',')
+  return error1 || error2 || error3 || error4 || error5 || error6 || error7 || error8 || error9 || error10 || error11 || error12 || { ok: true }
 })
 
 // T182i (#153, #182) — the plan gate judges the returned text: a summary plan that lacks the rendered item lines is
@@ -5451,13 +5444,13 @@ await testCase('T182i a summary-only plan is refused with one line per missing i
   const summary = { plan: '## Plan\nsummary only\ntargetFiles: none', acceptanceItems: T182_ITEMS }
   const r1 = await run({ mode: 'auto', simulate: { sam: { 1: summary, 2: summary }, planCheck: T182_CONFORMING } })
   const issues = r1.planCheckIssues || []
-  const e1 = eq('status', r1.status, 'escalate')
-  const e2 = eq('reason', r1.reason, 'plan-not-conforming')
-  const e3 = eq('planCheckIssues.length', issues.length, 1 + T182_ITEMS.length)
-  const e4 = includes('planCheckIssues[1] names the first line to write', String(issues[1] || ''), t182Lines(T182_ITEMS)[0])
+  const error1 = eq('status', r1.status, 'escalate')
+  const error2 = eq('reason', r1.reason, 'plan-not-conforming')
+  const error3 = eq('planCheckIssues.length', issues.length, 1 + T182_ITEMS.length)
+  const error4 = includes('planCheckIssues[1] names the first line to write', String(issues[1] || ''), t182Lines(T182_ITEMS)[0])
   const r2 = await run({ mode: 'semi', simulate: { sam: { 1: t182Sam(T182_ITEMS, false) }, planCheck: T182_CONFORMING } })
-  const e5 = eq('lines without ids: status', r2.status, 'plan-ready')
-  return e1 || e2 || e3 || e4 || e5 || { ok: true }
+  const error5 = eq('lines without ids: status', r2.status, 'plan-ready')
+  return error1 || error2 || error3 || error4 || error5 || { ok: true }
 })
 
 // T307a-c (#307) — the script refuses Sam's `targetFiles` before any model call: empty without the explicit
@@ -5503,12 +5496,12 @@ await testCase('T307c controls: an explicit `targetFiles: none` line with an emp
 // (Green on the base engine too: nothing is rendered or mapped without Sam's items.)
 await testCase('T182j legacy Sam shape: no rendered block for Nick, no boxes on the payload, no boxes- or acceptance-items- trace', async () => {
   const r = await run({ mode: 'auto', simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM', boxes: [{ id: 1, proven: true, proof: 'x' }] }] } })
-  const e1 = eq('status', r.status, 'ready')
-  const e2 = String(r.nickPromptPreview || '').includes('rendered the acceptance checklist') ? { ok: false, msg: 'Nick prompt carries a rendered block on the legacy path' } : null
-  const e3 = eq('boxes', r.boxes, undefined)
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = String(r.nickPromptPreview || '').includes('rendered the acceptance checklist') ? { ok: false, msg: 'Nick prompt carries a rendered block on the legacy path' } : null
+  const error3 = eq('boxes', r.boxes, undefined)
   const bad = (r.trace || []).find((t) => String(t).startsWith('boxes-') || String(t).startsWith('acceptance-items-'))
-  const e4 = bad ? { ok: false, msg: `unexpected trace entry ${JSON.stringify(bad)}` } : null
-  return e1 || e2 || e3 || e4 || { ok: true }
+  const error4 = bad ? { ok: false, msg: `unexpected trace entry ${JSON.stringify(bad)}` } : null
+  return error1 || error2 || error3 || error4 || { ok: true }
 })
 
 // T182k (#97, #182) — the plan-amendment round takes the checklist as items too: the amended items are checked and
@@ -5521,7 +5514,7 @@ await testCase('T182k plan amendment with items: valid items feed the sync (read
     maxPlanAmendRounds: 1,
     simulate: {
       // No human gate here: the amendment re-renders the block with every box open, so a gate a person had ticked is open again.
-      sam: { 1: t182Sam(T182_ITEMS.map((i) => ({ ...i, humanGate: false }))) },
+      sam: { 1: t182Sam(T182_ITEMS.map((index) => ({ ...index, humanGate: false }))) },
       samAcceptanceChecklist: '',
       morgan: [
         { verdict: 'REQUIRED_CHANGES', items: [wording], itemOwners: [{ item: wording, itemOwner: 'checklist-wording-defect', proof: 'the command prints 1, the item says 0' }] },
@@ -5529,8 +5522,8 @@ await testCase('T182k plan amendment with items: valid items feed the sync (read
       ],
     },
   })
-  const e1 = eq('valid amendment: status', r1.status, 'ready')
-  const e2 = includes('valid amendment: trace', r1.trace || [], 'plan-amend-round:1')
+  const error1 = eq('valid amendment: status', r1.status, 'ready')
+  const error2 = includes('valid amendment: trace', r1.trace || [], 'plan-amend-round:1')
   const refused = [{ text: 'a person judges it', humanGate: true, command: 'node scripts/guards.cjs' }]
   const r2 = await run({
     mode: 'auto',
@@ -5544,9 +5537,9 @@ await testCase('T182k plan amendment with items: valid items feed the sync (read
       ],
     },
   })
-  const e3 = eq('refused amendment: status', r2.status, 'escalate')
-  const e4 = eq('refused amendment: reason', r2.reason, 'acceptance-sync-failed')
-  return e1 || e2 || e3 || e4 || { ok: true }
+  const error3 = eq('refused amendment: status', r2.status, 'escalate')
+  const error4 = eq('refused amendment: reason', r2.reason, 'acceptance-sync-failed')
+  return error1 || error2 || error3 || error4 || { ok: true }
 })
 
 // T182l-n (#182, PR #190 review) — the `semi` flow stops at plan-ready and the Lead relaunches at entryStage dev
@@ -5558,15 +5551,15 @@ await testCase('T182l a semi relaunch at entryStage dev with an id-bearing planT
   if (!fns) return t182Skip('T182l')
   const r = await run({ mode: 'semi', entryStage: 'dev', planText: t182PlanText(), simulate: { prBody: t182GateTickedBody(), morgan: [{ verdict: 'LGTM', boxes: [{ id: 1, proven: true, proof: 'p1' }, { id: 2, proven: true, proof: 'p2' }, { id: 3, proven: true, proof: 'p3' }] }] } })
   const p = String(r.nickPromptPreview || '')
-  const e1 = eq('status', r.status, 'ready')
-  const e2 = includes('Nick prompt carries exactly the rendered block', p, fns.nickBlockNote(t182Lines(T182_ITEMS).join('\n')))
-  const e3 = p.includes('step one') ? { ok: false, msg: 'a task-list line without an id reached the Nick prompt' } : null
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = includes('Nick prompt carries exactly the rendered block', p, fns.nickBlockNote(t182Lines(T182_ITEMS).join('\n')))
+  const error3 = p.includes('step one') ? { ok: false, msg: 'a task-list line without an id reached the Nick prompt' } : null
   // The reader itself: a checklist written twice (artifact + index copy) keeps one item per id, and a plan without any
   // id yields null (the legacy path). A malformed id comment inside the checklist yields null too (all or nothing, T182r).
   const twice = t182PlanText() + '\n## Index copy\n' + t182Lines(T182_ITEMS).join('\n') + '\n'
-  const e4 = eq('itemsFromPlan: one item per id', fns.itemsFromPlan(twice), T182_CANON)
-  const e5 = eq('itemsFromPlan: no id -> null', [fns.itemsFromPlan(t182PlanText(false)), fns.itemsFromPlan(''), fns.itemsFromPlan(undefined)], [null, null, null])
-  return e1 || e2 || e3 || e4 || e5 || { ok: true }
+  const error4 = eq('itemsFromPlan: one item per id', fns.itemsFromPlan(twice), T182_CANON)
+  const error5 = eq('itemsFromPlan: no id -> null', [fns.itemsFromPlan(t182PlanText(false)), fns.itemsFromPlan(''), fns.itemsFromPlan(undefined)], [null, null, null])
+  return error1 || error2 || error3 || error4 || error5 || { ok: true }
 })
 await testCase('T182m a semi relaunch at entryStage review with an id-bearing planText: Morgan boxes are mapped by id', async () => {
   const r = await run({
@@ -5582,20 +5575,20 @@ await testCase('T182m a semi relaunch at entryStage review with an id-bearing pl
       }],
     },
   })
-  const e1 = eq('status', r.status, 'ready-pending-human')
-  const e2 = eq('boxes', r.boxes, [
+  const error1 = eq('status', r.status, 'ready-pending-human')
+  const error2 = eq('boxes', r.boxes, [
     { id: 1, text: T182_ITEMS[0].text, humanGate: false, proven: true, proof: '0' },
     { id: 2, text: T182_ITEMS[1].text, humanGate: true, proven: false, proof: '' },
     { id: 3, text: T182_ITEMS[2].text, humanGate: false, proven: true, proof: 'failed=0' },
   ])
   const bad = (r.trace || []).find((t) => String(t).startsWith('boxes-'))
-  const e3 = bad ? { ok: false, msg: `unexpected trace entry ${JSON.stringify(bad)}` } : null
-  return e1 || e2 || e3 || { ok: true }
+  const error3 = bad ? { ok: false, msg: `unexpected trace entry ${JSON.stringify(bad)}` } : null
+  return error1 || error2 || error3 || { ok: true }
 })
 await testCase('T182n a relaunch with a legacy planText (no ids): no rendered block for Nick, no boxes from Morgan', async () => {
   const r1 = await run({ mode: 'semi', entryStage: 'dev', planText: t182PlanText(false), simulate: { morgan: [{ verdict: 'LGTM' }] } })
-  const e1 = eq('dev: status', r1.status, 'ready')
-  const e2 = String(r1.nickPromptPreview || '').includes('rendered the acceptance checklist') ? { ok: false, msg: 'Nick prompt carries a rendered block for a legacy plan' } : null
+  const error1 = eq('dev: status', r1.status, 'ready')
+  const error2 = String(r1.nickPromptPreview || '').includes('rendered the acceptance checklist') ? { ok: false, msg: 'Nick prompt carries a rendered block for a legacy plan' } : null
   const r2 = await run({
     mode: 'semi',
     entryStage: 'review',
@@ -5603,11 +5596,11 @@ await testCase('T182n a relaunch with a legacy planText (no ids): no rendered bl
     planText: t182PlanText(false),
     simulate: { morgan: [{ verdict: 'LGTM', boxes: [{ id: 1, proven: true, proof: 'x' }] }] },
   })
-  const e3 = eq('review: status', r2.status, 'ready')
-  const e4 = eq('review: boxes', r2.boxes, undefined)
+  const error3 = eq('review: status', r2.status, 'ready')
+  const error4 = eq('review: boxes', r2.boxes, undefined)
   const bad = [...(r1.trace || []), ...(r2.trace || [])].find((t) => String(t).startsWith('boxes-'))
-  const e5 = bad ? { ok: false, msg: `unexpected trace entry ${JSON.stringify(bad)}` } : null
-  return e1 || e2 || e3 || e4 || e5 || { ok: true }
+  const error5 = bad ? { ok: false, msg: `unexpected trace entry ${JSON.stringify(bad)}` } : null
+  return error1 || error2 || error3 || error4 || error5 || { ok: true }
 })
 
 // T182o-p (#169, PR #190 review) — the human-gate validator checks structure: the #169 incident, double-backtick
@@ -5630,12 +5623,12 @@ await testCase('T182o validator: a command in a gate item\'s text passes the scr
     ['a span with a pipe', 'a person reads `cat x | head` and judges', 'cat x | head'],
     ['a bare executable then a path', 'a person runs bash scripts/x.sh and judges the colours', 'bash scripts/x.sh'],
   ]
-  for (const [label, text, cmd] of commands) {
+  for (const [label, text, command] of commands) {
     const inText = gate(text)
     if (inText.length !== 0) return { ok: false, msg: `${label}, in the text only: expected no refusal from the script, got ${JSON.stringify(inText)}` }
-    const inField = gate(text, cmd)
-    if (inField.length !== 1 || !inField[0].startsWith('item 1: flagged humanGate but carries the command') || !inField[0].includes(cmd)) {
-      return { ok: false, msg: `${label}, in the command field: expected one refusal quoting ${JSON.stringify(cmd)}, got ${JSON.stringify(inField)}` }
+    const inField = gate(text, command)
+    if (inField.length !== 1 || !inField[0].startsWith('item 1: flagged humanGate but carries the command') || !inField[0].includes(command)) {
+      return { ok: false, msg: `${label}, in the command field: expected one refusal quoting ${JSON.stringify(command)}, got ${JSON.stringify(inField)}` }
     }
   }
   const accepted = [
@@ -5655,19 +5648,19 @@ await testCase('T182o validator: a command in a gate item\'s text passes the scr
 await testCase('T182p plan gate: the #169 incident carried as a command field is refused NOT_CONFORMING then passes once amended; written in the text only, it reaches the plan check; UI-copy and heading gates pass first time', async () => {
   const incident = T182_ITEMS.map((it) => (it.humanGate ? { ...it, command: 'node -e \'…render(…, { locale: "fr-FR" })\'' } : it))
   const r1 = await run({ mode: 'semi', simulate: { sam: { 1: t182Sam(incident), 2: t182Sam(T182_ITEMS) }, planCheck: T182_CONFORMING } })
-  const e1 = eq('incident as a command field: status', r1.status, 'plan-ready')
-  const e2 = eq('incident as a command field: refusals', t182Refusals(r1), ['acceptance-items-refused:1'])
+  const error1 = eq('incident as a command field: status', r1.status, 'plan-ready')
+  const error2 = eq('incident as a command field: refusals', t182Refusals(r1), ['acceptance-items-refused:1'])
   const inText = T182_ITEMS.map((it) => (it.humanGate ? { ...it, text: T182_INCIDENT } : it))
   const judged = 'item 2: the human gate holds the node -e command that decides it'
   const r2 = await run({ mode: 'semi', simulate: { sam: { 1: t182Sam(inText), 2: t182Sam(inText) }, planCheck: { 1: { verdict: 'NOT_CONFORMING', issues: [judged] }, 2: { verdict: 'NOT_CONFORMING', issues: [judged] } } } })
-  const e3 = eq('incident in the text: status', r2.status, 'escalate')
-  const e4 = eq('incident in the text: the issues are the plan check\'s', r2.planCheckIssues, [judged])
-  const e5 = eq('incident in the text: no script refusal', t182Refusals(r2), [])
+  const error3 = eq('incident in the text: status', r2.status, 'escalate')
+  const error4 = eq('incident in the text: the issues are the plan check\'s', r2.planCheckIssues, [judged])
+  const error5 = eq('incident in the text: no script refusal', t182Refusals(r2), [])
   const judgedOk = [{ text: T182_UI_COPY, humanGate: true }, { text: T182_HEADING, humanGate: true }]
   const r3 = await run({ mode: 'semi', simulate: { sam: { 1: t182Sam(judgedOk) }, planCheck: T182_CONFORMING } })
-  const e6 = eq('UI copy and heading: status', r3.status, 'plan-ready')
-  const e7 = eq('UI copy and heading: refusals', t182Refusals(r3), [])
-  return e1 || e2 || e3 || e4 || e5 || e6 || e7 || { ok: true }
+  const error6 = eq('UI copy and heading: status', r3.status, 'plan-ready')
+  const error7 = eq('UI copy and heading: refusals', t182Refusals(r3), [])
+  return error1 || error2 || error3 || error4 || error5 || error6 || error7 || { ok: true }
 })
 
 // T182q (#169, PR #190 review round 2) — the validator checks STRUCTURE only: a human-gate item is refused for a
@@ -5695,54 +5688,54 @@ await testCase('T182q validator checks structure only: prose with backticks or p
   }
   const prose = T182_PROSE.map((text) => ({ text, humanGate: true }))
   const r1 = await run({ mode: 'semi', simulate: { sam: { 1: t182Sam(prose) }, planCheck: T182_CONFORMING } })
-  const e1 = eq('prose gates: status', r1.status, 'plan-ready')
-  const e2 = eq('prose gates: refusals', t182Refusals(r1), [])
-  const withCommand = prose.map((it, i) => (i === 2 ? { ...it, command: 'bundle exec rspec' } : it))
+  const error1 = eq('prose gates: status', r1.status, 'plan-ready')
+  const error2 = eq('prose gates: refusals', t182Refusals(r1), [])
+  const withCommand = prose.map((it, index) => (index === 2 ? { ...it, command: 'bundle exec rspec' } : it))
   const r2 = await run({ mode: 'semi', simulate: { sam: { 1: t182Sam(withCommand), 2: t182Sam(prose) }, planCheck: T182_CONFORMING } })
-  const e3 = eq('a gate with a command field: status', r2.status, 'plan-ready')
-  const e4 = eq('a gate with a command field: refusals', t182Refusals(r2), ['acceptance-items-refused:1'])
-  return e1 || e2 || e3 || e4 || { ok: true }
+  const error3 = eq('a gate with a command field: status', r2.status, 'plan-ready')
+  const error4 = eq('a gate with a command field: refusals', t182Refusals(r2), ['acceptance-items-refused:1'])
+  return error1 || error2 || error3 || error4 || { ok: true }
 })
 
 // T182r (#182, PR #190 review round 2) — itemsFromPlan is all-or-nothing: a checklist where some lines carry an id and
 // others do not yields null (the legacy path: no block for Nick, no boxes), never a partial list that would drop the
 // id-less item from the block Nick pastes. Same when the lines are spaced by blank lines, or an id comment is malformed.
-const t182Mixed = (sep, middle = t182Lines(T182_ITEMS, false)[1]) =>
-  '## Plan\n- [ ] step one: a task, not an acceptance item\n\n## Acceptance checklist\n' + [t182Lines(T182_ITEMS)[0], middle, t182Lines(T182_ITEMS)[2]].join(sep) + '\n'
+const t182Mixed = (separator, middle = t182Lines(T182_ITEMS, false)[1]) =>
+  '## Plan\n- [ ] step one: a task, not an acceptance item\n\n## Acceptance checklist\n' + [t182Lines(T182_ITEMS)[0], middle, t182Lines(T182_ITEMS)[2]].join(separator) + '\n'
 await testCase('T182r a mixed plan (ids on lines 1 and 3, none on line 2) yields no items: a semi relaunch at entryStage dev gets no block note and no boxes', async () => {
   const fns = t182Block()
   if (!fns) return t182Skip('T182r')
-  const e1 = eq('itemsFromPlan: mixed, adjacent / blank-separated / malformed id', [
+  const error1 = eq('itemsFromPlan: mixed, adjacent / blank-separated / malformed id', [
     fns.itemsFromPlan(t182Mixed('\n')),
     fns.itemsFromPlan(t182Mixed('\n\n')),
     fns.itemsFromPlan(t182Mixed('\n', '- [ ] <!-- ac:x --> [human-gate] ' + T182_ITEMS[1].text)),
   ], [null, null, null])
   // Control: the same plan with the id on line 2 rebuilds all three items, so the null above is the mix, not the shape.
-  const e2 = eq('itemsFromPlan: control, every line with its id', fns.itemsFromPlan(t182Mixed('\n', t182Lines(T182_ITEMS)[1])), T182_CANON)
+  const error2 = eq('itemsFromPlan: control, every line with its id', fns.itemsFromPlan(t182Mixed('\n', t182Lines(T182_ITEMS)[1])), T182_CANON)
   const r = await run({
     mode: 'semi',
     entryStage: 'dev',
     planText: t182Mixed('\n'),
     simulate: { morgan: [{ verdict: 'LGTM', boxes: [{ id: 1, proven: true, proof: '0' }, { id: 3, proven: true, proof: 'failed=0' }] }] },
   })
-  const e3 = eq('status', r.status, 'ready')
-  const e4 = String(r.nickPromptPreview || '').includes('rendered the acceptance checklist') ? { ok: false, msg: 'Nick prompt carries a partial rendered block for a mixed plan' } : null
-  const e5 = eq('boxes', r.boxes, undefined)
-  return e1 || e2 || e3 || e4 || e5 || { ok: true }
+  const error3 = eq('status', r.status, 'ready')
+  const error4 = String(r.nickPromptPreview || '').includes('rendered the acceptance checklist') ? { ok: false, msg: 'Nick prompt carries a partial rendered block for a mixed plan' } : null
+  const error5 = eq('boxes', r.boxes, undefined)
+  return error1 || error2 || error3 || error4 || error5 || { ok: true }
 })
 
 // T182s (#169, PR #190 review round 2) — source-anchored: the judgement of a command written in a human-gate item's text
 // is the plan-check model's, through HUMAN_GATE_CHECK_NOTE, which says so plainly; the engine keeps no program-name list,
 // path-prefix list, shell-operator list or prose/backtick parser for it (neutrality: no stack is known to the engine).
 await testCase('T182s source: the human-gate note sends a command in the text to the plan check; no program-name list or prose parser in the engine', async () => {
-  const src = SUITE_ARGS.fpSource
-  if (!src) return t182Skip('T182s')
-  const note = src.split('\n').find((l) => l.startsWith('const HUMAN_GATE_CHECK_NOTE = ')) || ''
+  const source = SUITE_ARGS.fpSource
+  if (!source) return t182Skip('T182s')
+  const note = source.split('\n').find((l) => l.startsWith('const HUMAN_GATE_CHECK_NOTE = ')) || ''
   const missing = ['NOT conforming when its text contains a command that could decide it', 'a judgement about wording, layout or taste is conforming'].filter((w) => !note.includes(w))
-  const e1 = missing.length ? { ok: false, msg: `HUMAN_GATE_CHECK_NOTE lacks ${JSON.stringify(missing)}` } : null
-  const banned = ['COMMAND_NAMES', 'PATH_PREFIXES', 'SHELL_OPERATORS', 'holdsBareCommand', 'holdsCommandSpan', 'isCommandSpan', 'codeSpans'].filter((w) => src.includes(w))
-  const e2 = eq('prose heuristics left in the engine', banned, [])
-  return e1 || e2 || { ok: true }
+  const error1 = missing.length ? { ok: false, msg: `HUMAN_GATE_CHECK_NOTE lacks ${JSON.stringify(missing)}` } : null
+  const banned = ['COMMAND_NAMES', 'PATH_PREFIXES', 'SHELL_OPERATORS', 'holdsBareCommand', 'holdsCommandSpan', 'isCommandSpan', 'codeSpans'].filter((w) => source.includes(w))
+  const error2 = eq('prose heuristics left in the engine', banned, [])
+  return error1 || error2 || { ok: true }
 })
 
 // T182t (#182, PR #190 review round 3) — itemsFromPlan rebuilds a list only when the plan holds ONE checklist: every run of
@@ -5764,14 +5757,14 @@ const t182Once = '## Plan\n- [ ] step one: a task, not an acceptance item\n\n## 
 await testCase('T182t itemsFromPlan: two different id\'d checklists in a plan give null (example block then real list, real list then stale copy); the same list twice and a single list give the 3 items; a semi relaunch gets no block note and no boxes', async () => {
   const fns = t182Block()
   if (!fns) return t182Skip('T182t')
-  const e1 = eq('example block before the real checklist -> null', fns.itemsFromPlan(t182ExampleThenReal), null)
-  const e2 = eq('real checklist then a stale copy with an extra ac:4 line -> null', fns.itemsFromPlan(t182RealThenStale), null)
-  const e3 = eq('same checklist written twice -> the 3 items', fns.itemsFromPlan(t182Twice), T182_CANON)
-  const e4 = eq('a single checklist -> the 3 items', fns.itemsFromPlan(t182Once), T182_CANON)
+  const error1 = eq('example block before the real checklist -> null', fns.itemsFromPlan(t182ExampleThenReal), null)
+  const error2 = eq('real checklist then a stale copy with an extra ac:4 line -> null', fns.itemsFromPlan(t182RealThenStale), null)
+  const error3 = eq('same checklist written twice -> the 3 items', fns.itemsFromPlan(t182Twice), T182_CANON)
+  const error4 = eq('a single checklist -> the 3 items', fns.itemsFromPlan(t182Once), T182_CANON)
   // Any difference between two runs refuses: a flag, a text, an id order alone.
   const flagged = '## A\n' + t182Lines(T182_ITEMS).join('\n') + '\n\n## B\n' + t182Lines([T182_ITEMS[0], { ...T182_ITEMS[1], humanGate: false }, T182_ITEMS[2]]).join('\n') + '\n'
   const reworded = '## A\n' + t182Lines(T182_ITEMS).join('\n') + '\n\n## B\n' + t182Lines([{ ...T182_ITEMS[0], text: T182_ITEMS[0].text + ' today' }, T182_ITEMS[1], T182_ITEMS[2]]).join('\n') + '\n'
-  const e5 = eq('copies differing by a flag / by a word -> null', [fns.itemsFromPlan(flagged), fns.itemsFromPlan(reworded)], [null, null])
+  const error5 = eq('copies differing by a flag / by a word -> null', [fns.itemsFromPlan(flagged), fns.itemsFromPlan(reworded)], [null, null])
   // The flow: a semi relaunch at entryStage dev with the example-then-real plan keeps no items.
   const r = await run({
     mode: 'semi',
@@ -5779,15 +5772,15 @@ await testCase('T182t itemsFromPlan: two different id\'d checklists in a plan gi
     planText: t182ExampleThenReal,
     simulate: { morgan: [{ verdict: 'LGTM', boxes: [{ id: 1, proven: true, proof: '0' }, { id: 2, proven: true, proof: 'x' }, { id: 3, proven: true, proof: 'failed=0' }] }] },
   })
-  const e6 = eq('status', r.status, 'ready')
-  const e7 = String(r.nickPromptPreview || '').includes('rendered the acceptance checklist') ? { ok: false, msg: 'Nick prompt carries a rendered block for a plan holding two different checklists' } : null
-  const e8 = eq('boxes', r.boxes, undefined)
+  const error6 = eq('status', r.status, 'ready')
+  const error7 = String(r.nickPromptPreview || '').includes('rendered the acceptance checklist') ? { ok: false, msg: 'Nick prompt carries a rendered block for a plan holding two different checklists' } : null
+  const error8 = eq('boxes', r.boxes, undefined)
   const bad = (r.trace || []).find((t) => String(t).startsWith('boxes-'))
-  const e9 = bad ? { ok: false, msg: `unexpected trace entry ${JSON.stringify(bad)}` } : null
+  const error9 = bad ? { ok: false, msg: `unexpected trace entry ${JSON.stringify(bad)}` } : null
   // Control: the same flow with the identical list written twice rebuilds the 3 items.
   const c = await run({ mode: 'semi', entryStage: 'dev', planText: t182Twice, simulate: { morgan: [{ verdict: 'LGTM' }] } })
-  const e10 = includes('control: Nick prompt carries the block for the list written twice', String(c.nickPromptPreview || ''), fns.nickBlockNote(t182Lines(T182_ITEMS).join('\n')))
-  return e1 || e2 || e3 || e4 || e5 || e6 || e7 || e8 || e9 || e10 || { ok: true }
+  const error10 = includes('control: Nick prompt carries the block for the list written twice', String(c.nickPromptPreview || ''), fns.nickBlockNote(t182Lines(T182_ITEMS).join('\n')))
+  return error1 || error2 || error3 || error4 || error5 || error6 || error7 || error8 || error9 || error10 || { ok: true }
 })
 
 // ---------------------------------------------------------------------------
@@ -5801,7 +5794,7 @@ const T183_PLAIN = [
   { text: '`bash templates/test-probe-run.sh | tail -n 1` ends with `failed=0`', humanGate: false },
   { text: '`node scripts/run-flow-suite.cjs | tail -n 1` ends with `failed=0`', humanGate: false },
 ]
-const t183Boxes = (...proven) => proven.map((p, i) => ({ id: i + 1, proven: p, proof: p ? `proof ${i + 1}` : '' }))
+const t183Boxes = (...proven) => proven.map((p, index) => ({ id: index + 1, proven: p, proof: p ? `proof ${index + 1}` : '' }))
 const t183Body = (lines) => 'Closes #183\n\n<!-- acceptance:start -->\n' + lines.join('\n') + '\n<!-- acceptance:end -->\n'
 
 await testCase('T183d Morgan proving 2 of 3 boxes leaves exactly ids 1 and 3 ticked in the body, the human gate open', async () => {
@@ -5817,13 +5810,13 @@ await testCase('T183d Morgan proving 2 of 3 boxes leaves exactly ids 1 and 3 tic
     },
   })
   const p = String(r.prBodyPreview || '')
-  const e1 = eq('status', r.status, 'ready-pending-human')
-  const e2 = includes('box 1 ticked', p, '- [x] <!-- ac:1 --> ' + T182_ITEMS[0].text)
-  const e3 = includes('the gate stays open, tag and text intact', p, lines[1])
-  const e4 = includes('box 3 ticked', p, '- [x] <!-- ac:3 --> ' + T182_ITEMS[2].text)
-  const e5 = eq('ticked boxes in the body', p.split('- [x] ').length - 1, 2)
-  const e6 = includes('trace', r.trace || [], 'acceptance-ticked:0')
-  return e1 || e2 || e3 || e4 || e5 || e6 || { ok: true }
+  const error1 = eq('status', r.status, 'ready-pending-human')
+  const error2 = includes('box 1 ticked', p, '- [x] <!-- ac:1 --> ' + T182_ITEMS[0].text)
+  const error3 = includes('the gate stays open, tag and text intact', p, lines[1])
+  const error4 = includes('box 3 ticked', p, '- [x] <!-- ac:3 --> ' + T182_ITEMS[2].text)
+  const error5 = eq('ticked boxes in the body', p.split('- [x] ').length - 1, 2)
+  const error6 = includes('trace', r.trace || [], 'acceptance-ticked:0')
+  return error1 || error2 || error3 || error4 || error5 || error6 || { ok: true }
 })
 
 await testCase('T183e a refused tick returns verified-untickable with the box ids in untickableItems', async () => {
@@ -5836,42 +5829,42 @@ await testCase('T183e a refused tick returns verified-untickable with the box id
       acceptanceSync: false,
     },
   })
-  const e1 = eq('status', r.status, 'verified-untickable')
-  const e2 = eq('untickableItems ids', (r.untickableItems || []).map((i) => i.id), [1, 2, 3])
-  const e3 = eq('untickableItems lines', (r.untickableItems || []).map((i) => i.item), lines)
-  const e4 = eq('resumable', r.resumable, true)
-  const e5 = includes('trace', r.trace || [], 'acceptance-tick-refused:0')
-  return e1 || e2 || e3 || e4 || e5 || nickTrace(r) || { ok: true }
+  const error1 = eq('status', r.status, 'verified-untickable')
+  const error2 = eq('untickableItems ids', (r.untickableItems || []).map((index) => index.id), [1, 2, 3])
+  const error3 = eq('untickableItems lines', (r.untickableItems || []).map((index) => index.item), lines)
+  const error4 = eq('resumable', r.resumable, true)
+  const error5 = includes('trace', r.trace || [], 'acceptance-tick-refused:0')
+  return error1 || error2 || error3 || error4 || error5 || nickTrace(r) || { ok: true }
 })
 
 await testCase('T183f a human gate is told by its id, not by a [human-gate] tag in Morgan\'s line', async () => {
   const untagged = '- [ ] <!-- ac:2 --> ' + T182_ITEMS[1].text
   const r = await run({ mode: 'auto', simulate: { sam: { 1: t182Sam(T182_ITEMS) }, morgan: [{ verdict: 'REQUIRED_CHANGES', items: [untagged] }] } })
-  const e1 = eq('status', r.status, 'ready-pending-human')
-  const e2 = eq('humanGateItems.length', r.humanGateItems?.length, 1)
+  const error1 = eq('status', r.status, 'ready-pending-human')
+  const error2 = eq('humanGateItems.length', r.humanGateItems?.length, 1)
   // Control: the tag alone, on a line with no id comment, is no gate. It is a code blocker (Nick round, then LGTM).
   const tagOnly = '- [ ] [human-gate] ' + T182_ITEMS[1].text
   const c = await run({ mode: 'auto', simulate: { sam: { 1: t182Sam(T182_ITEMS) }, prBody: t182GateTickedBody(), morgan: [{ verdict: 'REQUIRED_CHANGES', items: [tagOnly] }, { verdict: 'LGTM', boxes: t183Boxes(true, true, true) }] } })
-  const e3 = eq('control: status', c.status, 'ready')
-  const e4 = c.humanGateItems === undefined ? null : { ok: false, msg: 'control: a tag without an id was taken for a human gate' }
-  return e1 || e2 || e3 || e4 || { ok: true }
+  const error3 = eq('control: status', c.status, 'ready')
+  const error4 = c.humanGateItems === undefined ? null : { ok: false, msg: 'control: a tag without an id was taken for a human gate' }
+  return error1 || error2 || error3 || error4 || { ok: true }
 })
 
 await testCase('T249 a human gate ticked in the body is settled even when Morgan still lists it (REQUIRED_CHANGES -> ready)', async () => {
   const r = await run({ mode: 'auto', simulate: { sam: { 1: t182Sam(T182_ITEMS) }, prBody: t182GateTickedBody(), morgan: [{ verdict: 'REQUIRED_CHANGES', items: [t182Lines(T182_ITEMS)[1]], boxes: t183Boxes(true, false, true) }] } })
-  const e1 = eq('status', r.status, 'ready')
-  const e2 = r.humanGateItems === undefined ? null : { ok: false, msg: 'humanGateItems carried for a settled gate' }
-  const e3 = includes('trace', r.trace || [], 'human-gate-settled:2')
-  return e1 || e2 || e3 || { ok: true }
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = r.humanGateItems === undefined ? null : { ok: false, msg: 'humanGateItems carried for a settled gate' }
+  const error3 = includes('trace', r.trace || [], 'human-gate-settled:2')
+  return error1 || error2 || error3 || { ok: true }
 })
 
 await testCase('T249b the same review with the gate unticked in the body stays ready-pending-human', async () => {
   const lines = t182Lines(T182_ITEMS)
   const body = 'Closes #182\n\n<!-- acceptance:start -->\n' + lines.join('\n') + '\n<!-- acceptance:end -->\n'
   const r = await run({ mode: 'auto', simulate: { sam: { 1: t182Sam(T182_ITEMS) }, prBody: body, morgan: [{ verdict: 'REQUIRED_CHANGES', items: [lines[1]], boxes: t183Boxes(true, false, true) }] } })
-  const e1 = eq('status', r.status, 'ready-pending-human')
-  const e2 = eq('humanGateItems', r.humanGateItems, [lines[1]])
-  return e1 || e2 || { ok: true }
+  const error1 = eq('status', r.status, 'ready-pending-human')
+  const error2 = eq('humanGateItems', r.humanGateItems, [lines[1]])
+  return error1 || error2 || { ok: true }
 })
 
 await testCase('T183g a refused tick + an open human gate → ready-pending-human carrying humanGateItems and untickableItems', async () => {
@@ -5884,10 +5877,10 @@ await testCase('T183g a refused tick + an open human gate → ready-pending-huma
       acceptanceSync: false,
     },
   })
-  const e1 = eq('status', r.status, 'ready-pending-human')
-  const e2 = eq('humanGateItems', r.humanGateItems, [lines[1]])
-  const e3 = eq('untickableItems ids', (r.untickableItems || []).map((i) => i.id), [1, 3])
-  return e1 || e2 || e3 || { ok: true }
+  const error1 = eq('status', r.status, 'ready-pending-human')
+  const error2 = eq('humanGateItems', r.humanGateItems, [lines[1]])
+  const error3 = eq('untickableItems ids', (r.untickableItems || []).map((index) => index.id), [1, 3])
+  return error1 || error2 || error3 || { ok: true }
 })
 
 await testCase('T183h an LGTM with a non-gate box not proven is forced to REQUIRED_CHANGES, then ready once every box is proven', async () => {
@@ -5902,9 +5895,9 @@ await testCase('T183h an LGTM with a non-gate box not proven is forced to REQUIR
       ],
     },
   })
-  const e1 = eq('status', r.status, 'ready')
-  const e2 = eq('rounds', r.rounds, 1)
-  const e3 = includes('trace', r.trace || [], 'acceptance-open-lgtm:0')
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = eq('rounds', r.rounds, 1)
+  const error3 = includes('trace', r.trace || [], 'acceptance-open-lgtm:0')
   // The unproven box is what the first round blocks on: with a single verdict it is the REQUIRED_CHANGES items (gate(review) pauses a semi run).
   const s = await run({
     mode: 'semi',
@@ -5913,9 +5906,9 @@ await testCase('T183h an LGTM with a non-gate box not proven is forced to REQUIR
     planText: t182Sam(T183_PLAIN).plan,
     simulate: { morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, false, true) }] },
   })
-  const e4 = eq('semi: status', s.status, 'needs-revision')
-  const e5 = eq('semi: items', s.items, [lines[1]])
-  return e1 || e2 || e3 || e4 || e5 || { ok: true }
+  const error4 = eq('semi: status', s.status, 'needs-revision')
+  const error5 = eq('semi: items', s.items, [lines[1]])
+  return error1 || error2 || error3 || error4 || error5 || { ok: true }
 })
 
 await testCase('T183i the same id reworded in two rounds is the same blocker → escalate no-progress; two different ids loop', async () => {
@@ -5930,8 +5923,8 @@ await testCase('T183i the same id reworded in two rounds is the same blocker →
       ],
     },
   })
-  const e1 = eq('status', r.status, 'escalate')
-  const e2 = eq('reason', r.reason, 'no-progress')
+  const error1 = eq('status', r.status, 'escalate')
+  const error2 = eq('reason', r.reason, 'no-progress')
   const c = await run({
     mode: 'auto',
     simulate: {
@@ -5943,9 +5936,9 @@ await testCase('T183i the same id reworded in two rounds is the same blocker →
       ],
     },
   })
-  const e3 = eq('control: status', c.status, 'ready')
-  const e4 = eq('control: rounds', c.rounds, 2)
-  return e1 || e2 || e3 || e4 || { ok: true }
+  const error3 = eq('control: status', c.status, 'ready')
+  const error4 = eq('control: rounds', c.rounds, 2)
+  return error1 || error2 || error3 || error4 || { ok: true }
 })
 
 await testCase('T183j a checklist-wording blocker on an id is parked (CP-9): verified-untickable, no Nick round; an empty proof is a code blocker', async () => {
@@ -5959,9 +5952,9 @@ await testCase('T183j a checklist-wording blocker on an id is parked (CP-9): ver
       morgan: [{ verdict: 'REQUIRED_CHANGES', items: [lines[0]], boxes: t183Boxes(false, true), itemOwners: [owner('$ grep -c FOO file\n2')] }],
     },
   })
-  const e1 = eq('status', r.status, 'verified-untickable')
-  const e2 = eq('untickableItems[0].id', r.untickableItems?.[0]?.id, 1)
-  const e3 = eq('untickableItems[0].item', r.untickableItems?.[0]?.item, lines[0])
+  const error1 = eq('status', r.status, 'verified-untickable')
+  const error2 = eq('untickableItems[0].id', r.untickableItems?.[0]?.id, 1)
+  const error3 = eq('untickableItems[0].item', r.untickableItems?.[0]?.item, lines[0])
   const c = await run({
     mode: 'auto',
     simulate: {
@@ -5970,23 +5963,23 @@ await testCase('T183j a checklist-wording blocker on an id is parked (CP-9): ver
       headSha: { 1: 'sha-abc123' },
     },
   })
-  const e4 = eq('control: status', c.status, 'escalate')
-  const e5 = eq('control: reason', c.reason, 'nick-no-op')
-  return e1 || e2 || e3 || nickTrace(r) || e4 || e5 || { ok: true }
+  const error4 = eq('control: status', c.status, 'escalate')
+  const error5 = eq('control: reason', c.reason, 'nick-no-op')
+  return error1 || error2 || error3 || nickTrace(r) || error4 || error5 || { ok: true }
 })
 
 await testCase('T183k source: the normalisation and the textual gates are gone; Morgan is told the workflow ticks', async () => {
-  const src = SUITE_ARGS.fpSource
+  const source = SUITE_ARGS.fpSource
   const fns = t182Block()
-  if (!src || !fns) return t182Skip('T183k')
+  if (!source || !fns) return t182Skip('T183k')
   const banned = ['normItem', 'HUMAN_GATE_RE', 'isHumanGate', 'allHumanGate', 'classifyUntickable', 'UNTICKABLE_LINE_RULE', 'proven-untickable']
-  const present = banned.filter((w) => src.includes(w))
-  const e1 = present.length ? { ok: false, msg: `the engine still holds ${JSON.stringify(present)}` } : null
+  const present = banned.filter((w) => source.includes(w))
+  const error1 = present.length ? { ok: false, msg: `the engine still holds ${JSON.stringify(present)}` } : null
   const note = fns.morganBoxesNote(t182Lines(T182_ITEMS).join('\n'))
-  const e2 = includes('Morgan note: the workflow ticks', note, 'the workflow ticks by id the boxes you return as proven')
-  const e3 = includes('Morgan note: Morgan does not edit the body', note, 'You do not edit the PR body')
-  const e4 = includes('Morgan note: a gate is proven only when a person checked it', note, 'only when the PR body already shows it checked by a person')
-  return e1 || e2 || e3 || e4 || { ok: true }
+  const error2 = includes('Morgan note: the workflow ticks', note, 'the workflow ticks by id the boxes you return as proven')
+  const error3 = includes('Morgan note: Morgan does not edit the body', note, 'You do not edit the PR body')
+  const error4 = includes('Morgan note: a gate is proven only when a person checked it', note, 'only when the PR body already shows it checked by a person')
+  return error1 || error2 || error3 || error4 || { ok: true }
 })
 
 // ---------------------------------------------------------------------------
@@ -5998,11 +5991,10 @@ await testCase('T183k source: the normalisation and the textual gates are gone; 
 // already ticked, F9 the reason of a refused write, F10 a rejected artifact proof naming no box, F12 CRLF bodies, F13
 // contradicting duplicate ids.
 const t183Splice = () => {
-  const src = SUITE_ARGS.fpSource
-  if (!src) return null
-  const block = extractBetween(src, '// --- prBodySplice:start ---', '// --- prBodySplice:end ---')
+  const source = SUITE_ARGS.fpSource
+  if (!source) return null
+  const block = extractBetween(source, '// --- prBodySplice:start ---', '// --- prBodySplice:end ---')
   if (!block) throw new Error('prBodySplice:start/:end markers not found in the pipeline source')
-  // eslint-disable-next-line no-new-func
   return new Function(block + '\nreturn { spliceAcceptanceBlock, tickAcceptanceBlock, checkedAcceptanceIds, spliceDecisionLogBlock, decisionLogEntries, composeDecisionLogBlock }')()
 }
 
@@ -6019,41 +6011,41 @@ await testCase('T164a two review runs leave ONE decision-log pair holding both r
   const r2 = await run({ mode: 'auto', entryStage: 'review', prNumber: 190, simulate: { branchCheckRaw: 'features/issue-1', morgan: [{ verdict: 'LGTM' }], prBody: r1.prBodyPreview } })
   const body = String(r2.prBodyPreview || '')
   const lines = ['- round 0 — REQUIRED_CHANGES (1 blocker)', '- round 1 — LGTM', '- round 2 — LGTM']
-  const e1 = eq('run 1 log', r1.decisionLog, lines.slice(0, 2))
-  const e2 = eq('run 1 carries nothing', (r1.trace || []).filter((t) => String(t).startsWith('decision-log-carried')), [])
-  const e3 = eq('run 2 status', r2.status, 'ready')
-  const e4 = eq('start markers', countOccurrences(body, DL_START), 1)
-  const e5 = eq('end markers', countOccurrences(body, DL_END), 1)
-  const e6 = eq('both runs\' rounds inside the one block, in order', body.slice(body.indexOf(DL_START), body.indexOf(DL_END)).split('\n').filter((l) => l.startsWith('- round ')), lines)
-  const e7 = eq('run 2 log', r2.decisionLog, lines)
-  const e8 = includes('run 2 trace', r2.trace, 'decision-log-carried:2')
-  const e9 = eq('acceptance block untouched', countUncheckedBoxes(body), countUncheckedBoxes(PR385_BODY_REAL))
-  return e1 || e2 || e3 || e4 || e5 || e6 || e7 || e8 || e9 || { ok: true }
+  const error1 = eq('run 1 log', r1.decisionLog, lines.slice(0, 2))
+  const error2 = eq('run 1 carries nothing', (r1.trace || []).filter((t) => String(t).startsWith('decision-log-carried')), [])
+  const error3 = eq('run 2 status', r2.status, 'ready')
+  const error4 = eq('start markers', countOccurrences(body, DL_START), 1)
+  const error5 = eq('end markers', countOccurrences(body, DL_END), 1)
+  const error6 = eq('both runs\' rounds inside the one block, in order', body.slice(body.indexOf(DL_START), body.indexOf(DL_END)).split('\n').filter((l) => l.startsWith('- round ')), lines)
+  const error7 = eq('run 2 log', r2.decisionLog, lines)
+  const error8 = includes('run 2 trace', r2.trace, 'decision-log-carried:2')
+  const error9 = eq('acceptance block untouched', countUncheckedBoxes(body), countUncheckedBoxes(PR385_BODY_REAL))
+  return error1 || error2 || error3 || error4 || error5 || error6 || error7 || error8 || error9 || { ok: true }
 })
 
 await testCase('T164b a round whose only open boxes are human gates logs pending human gate', async () => {
   const gate = { text: 'the maintainer reads the rendered page and posts approval', humanGate: true }
   const gate2 = { text: 'the maintainer confirms the second render', humanGate: true }
   const real = { text: '`grep -c FOO file` prints `1`', humanGate: false }
-  const accBody = (items) => 'Closes #164\n\n<!-- acceptance:start -->\n' + t182Lines(items).join('\n') + '\n<!-- acceptance:end -->\n' + DL_START + '\n' + DL_END + '\n'
+  const accumulatorBody = (items) => 'Closes #164\n\n<!-- acceptance:start -->\n' + t182Lines(items).join('\n') + '\n<!-- acceptance:end -->\n' + DL_START + '\n' + DL_END + '\n'
   // (i) the T18 shape: one gate -> pending human gate, never REQUIRED_CHANGES, in the log and in the body
-  const a = await run({ mode: 'auto', simulate: { sam: { 1: t182Sam([gate]) }, morgan: [{ verdict: 'REQUIRED_CHANGES', items: t182Lines([gate]) }], prBody: accBody([gate]) } })
-  const e1 = eq('(i) status', a.status, 'ready-pending-human')
-  const e2 = eq('(i) log', a.decisionLog, ['- round 0 — pending human gate (1 box)'])
-  const e3 = includes('(i) body', String(a.prBodyPreview || ''), '- round 0 — pending human gate (1 box)')
-  const e4 = eq('(i) no REQUIRED_CHANGES in the body block', String(a.prBodyPreview || '').split(DL_START)[1].includes('REQUIRED_CHANGES'), false)
+  const a = await run({ mode: 'auto', simulate: { sam: { 1: t182Sam([gate]) }, morgan: [{ verdict: 'REQUIRED_CHANGES', items: t182Lines([gate]) }], prBody: accumulatorBody([gate]) } })
+  const error1 = eq('(i) status', a.status, 'ready-pending-human')
+  const error2 = eq('(i) log', a.decisionLog, ['- round 0 — pending human gate (1 box)'])
+  const error3 = includes('(i) body', String(a.prBodyPreview || ''), '- round 0 — pending human gate (1 box)')
+  const error4 = eq('(i) no REQUIRED_CHANGES in the body block', String(a.prBodyPreview || '').split(DL_START)[1].includes('REQUIRED_CHANGES'), false)
   // (ii) the T19 shape: a gate and a real blocker, then the gate alone
   const l2 = t182Lines([gate, real])
   const b = await run({ mode: 'auto', simulate: { sam: { 1: t182Sam([gate, real]) }, morgan: [{ verdict: 'REQUIRED_CHANGES', items: [l2[0], l2[1]] }, { verdict: 'REQUIRED_CHANGES', items: [l2[0]] }] } })
-  const e5 = eq('(ii) status', b.status, 'ready-pending-human')
-  const e6 = eq('(ii) log', b.decisionLog, ['- round 0 — REQUIRED_CHANGES (2 blockers)', '- round 1 — pending human gate (1 box)'])
+  const error5 = eq('(ii) status', b.status, 'ready-pending-human')
+  const error6 = eq('(ii) log', b.decisionLog, ['- round 0 — REQUIRED_CHANGES (2 blockers)', '- round 1 — pending human gate (1 box)'])
   // (iii) two gates in one round
   const c = await run({ mode: 'auto', simulate: { sam: { 1: t182Sam([gate, gate2]) }, morgan: [{ verdict: 'REQUIRED_CHANGES', items: t182Lines([gate, gate2]) }] } })
-  const e7 = eq('(iii) log', c.decisionLog, ['- round 0 — pending human gate (2 boxes)'])
+  const error7 = eq('(iii) log', c.decisionLog, ['- round 0 — pending human gate (2 boxes)'])
   // (iv) control: a non-gate item still reads REQUIRED_CHANGES
   const d = await run({ mode: 'auto', simulate: { sam: 'GO', morgan: [{ verdict: 'REQUIRED_CHANGES', items: ['a'] }, { verdict: 'LGTM' }] } })
-  const e8 = eq('(iv) log', d.decisionLog, ['- round 0 — REQUIRED_CHANGES (1 blocker)', '- round 1 — LGTM'])
-  return e1 || e2 || e3 || e4 || e5 || e6 || e7 || e8 || { ok: true }
+  const error8 = eq('(iv) log', d.decisionLog, ['- round 0 — REQUIRED_CHANGES (1 blocker)', '- round 1 — LGTM'])
+  return error1 || error2 || error3 || error4 || error5 || error6 || error7 || error8 || { ok: true }
 })
 
 await testCase('T164c block level: an indented end marker keeps one block, the entries reader', async () => {
@@ -6062,18 +6054,18 @@ await testCase('T164c block level: an indented end marker keeps one block, the e
   // The shape of PR #146's body: the start marker at column 0, the heading, the rounds and the end marker indented.
   const pr146 = 'Closes #146\n\n## What this ships\n- x\n\n' + DL_START + '\n  ## Decision log\n  - round 0 — REQUIRED_CHANGES (1 blocker)\n  - round 1 — LGTM\n  ' + DL_END + '\n'
   const out = fns.spliceDecisionLogBlock(pr146, fns.composeDecisionLogBlock(['- round 0 — a', '- round 1 — b', '- round 2 — c']))
-  const e1 = eq('one start marker', countOccurrences(out, DL_START), 1)
-  const e2 = eq('one end marker', countOccurrences(out, DL_END), 1)
-  const e3 = includes('new lines', out, '- round 2 — c\n' + DL_END)
-  const e4 = eq('old lines gone', out.includes('REQUIRED_CHANGES'), false)
-  const e5 = eq('entries of the indented shape, trimmed', fns.decisionLogEntries(pr146), ['- round 0 — REQUIRED_CHANGES (1 blocker)', '- round 1 — LGTM'])
-  const e6 = eq('entries of a fenced example only', fns.decisionLogEntries(FENCED_EXAMPLE_BODY), [])
-  const e7 = eq('entries of an empty body', fns.decisionLogEntries(''), [])
+  const error1 = eq('one start marker', countOccurrences(out, DL_START), 1)
+  const error2 = eq('one end marker', countOccurrences(out, DL_END), 1)
+  const error3 = includes('new lines', out, '- round 2 — c\n' + DL_END)
+  const error4 = eq('old lines gone', out.includes('REQUIRED_CHANGES'), false)
+  const error5 = eq('entries of the indented shape, trimmed', fns.decisionLogEntries(pr146), ['- round 0 — REQUIRED_CHANGES (1 blocker)', '- round 1 — LGTM'])
+  const error6 = eq('entries of a fenced example only', fns.decisionLogEntries(FENCED_EXAMPLE_BODY), [])
+  const error7 = eq('entries of an empty body', fns.decisionLogEntries(''), [])
   // A fenced example AFTER the real column-0 block is never taken for the end of a block that has its own.
   const after = 'x\n\n' + DL_START + '\n- round 0 — LGTM\n' + DL_END + '\n\n```\n  ' + DL_START + '\n  - round 9 — example\n  ' + DL_END + '\n```\n'
-  const e8 = eq('real block entries with a fenced example after it', fns.decisionLogEntries(after), ['- round 0 — LGTM'])
-  const e9 = eq('the example after is untouched by a splice', fns.spliceDecisionLogBlock(after, fns.composeDecisionLogBlock(['- round 0 — LGTM', '- round 1 — LGTM'])).includes('  - round 9 — example'), true)
-  return e1 || e2 || e3 || e4 || e5 || e6 || e7 || e8 || e9 || { ok: true }
+  const error8 = eq('real block entries with a fenced example after it', fns.decisionLogEntries(after), ['- round 0 — LGTM'])
+  const error9 = eq('the example after is untouched by a splice', fns.spliceDecisionLogBlock(after, fns.composeDecisionLogBlock(['- round 0 — LGTM', '- round 1 — LGTM'])).includes('  - round 9 — example'), true)
+  return error1 || error2 || error3 || error4 || error5 || error6 || error7 || error8 || error9 || { ok: true }
 })
 
 // The shape of PR #146's body: three decision-log blocks (start at column 0, end marker indented), text between them and an
@@ -6093,21 +6085,21 @@ await testCase('T164d block level: a body with 2 or 3 decision-log blocks collap
   if (!fns) return t182Skip('T164d')
   const block = fns.composeDecisionLogBlock([...PR146_ROUNDS, '- round 3 — LGTM'])
   const out = fns.spliceDecisionLogBlock(PR146_BODY, block)
-  const e1 = eq('entries of the 3 blocks, in body order', fns.decisionLogEntries(PR146_BODY), PR146_ROUNDS)
-  const e2 = eq('one start marker', countOccurrences(out, DL_START), 1)
-  const e3 = eq('one end marker', countOccurrences(out, DL_END), 1)
-  const e4 = eq('the outside text is byte-identical, the new block at the place of the last', out, pr146Outside(block))
-  const e5 = eq('the acceptance block untouched', out.includes(DL_ACC), true)
-  const e6 = eq('idempotent: the same splice again', fns.spliceDecisionLogBlock(out, block), out)
+  const error1 = eq('entries of the 3 blocks, in body order', fns.decisionLogEntries(PR146_BODY), PR146_ROUNDS)
+  const error2 = eq('one start marker', countOccurrences(out, DL_START), 1)
+  const error3 = eq('one end marker', countOccurrences(out, DL_END), 1)
+  const error4 = eq('the outside text is byte-identical, the new block at the place of the last', out, pr146Outside(block))
+  const error5 = eq('the acceptance block untouched', out.includes(DL_ACC), true)
+  const error6 = eq('idempotent: the same splice again', fns.spliceDecisionLogBlock(out, block), out)
   // Two blocks, column-0 end markers.
   const two = 'a\n\n' + fns.composeDecisionLogBlock(['- round 0 — x']) + '\n\nb\n\n' + fns.composeDecisionLogBlock(['- round 1 — y']) + '\n'
   const block2 = fns.composeDecisionLogBlock(['- round 0 — x', '- round 1 — y', '- round 2 — z'])
-  const e7 = eq('2 blocks: entries', fns.decisionLogEntries(two), ['- round 0 — x', '- round 1 — y'])
-  const e8 = eq('2 blocks: one pair, outside text kept', fns.spliceDecisionLogBlock(two, block2), 'a\n\n\nb\n\n' + block2 + '\n')
+  const error7 = eq('2 blocks: entries', fns.decisionLogEntries(two), ['- round 0 — x', '- round 1 — y'])
+  const error8 = eq('2 blocks: one pair, outside text kept', fns.spliceDecisionLogBlock(two, block2), 'a\n\n\nb\n\n' + block2 + '\n')
   // A fenced example before the real blocks is not one of them.
   const fenced = fns.decisionLogEntries('```\n  ' + DL_START + '\n  - round 9 — example\n  ' + DL_END + '\n```\n' + PR146_BODY)
-  const e9 = eq('a fenced example before the blocks is not carried', fenced, PR146_ROUNDS)
-  return e1 || e2 || e3 || e4 || e5 || e6 || e7 || e8 || e9 || { ok: true }
+  const error9 = eq('a fenced example before the blocks is not carried', fenced, PR146_ROUNDS)
+  return error1 || error2 || error3 || error4 || error5 || error6 || error7 || error8 || error9 || { ok: true }
 })
 
 await testCase('T164e a relaunch at entryStage review on the 3-block body ends with exactly one marker pair holding every round', async () => {
@@ -6115,13 +6107,13 @@ await testCase('T164e a relaunch at entryStage review on the 3-block body ends w
   const r = await run({ mode: 'auto', entryStage: 'review', prNumber: 146, simulate: { branchCheckRaw: 'features/issue-1', morgan: [{ verdict: 'LGTM' }], prBody: body } })
   const out = String(r.prBodyPreview || '')
   const lines = [...PR146_ROUNDS, '- round 3 — LGTM']
-  const e1 = eq('status', r.status, 'ready')
-  const e2 = eq('start markers', countOccurrences(out, DL_START), 1)
-  const e3 = eq('end markers', countOccurrences(out, DL_END), 1)
-  const e4 = eq('every round inside the one block, in order', out.slice(out.indexOf(DL_START), out.indexOf(DL_END)).split('\n').filter((l) => l.startsWith('- round ')), lines)
-  const e5 = eq('log', r.decisionLog, lines)
-  const e6 = includes('trace', r.trace, 'decision-log-carried:3')
-  return e1 || e2 || e3 || e4 || e5 || e6 || { ok: true }
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = eq('start markers', countOccurrences(out, DL_START), 1)
+  const error3 = eq('end markers', countOccurrences(out, DL_END), 1)
+  const error4 = eq('every round inside the one block, in order', out.slice(out.indexOf(DL_START), out.indexOf(DL_END)).split('\n').filter((l) => l.startsWith('- round ')), lines)
+  const error5 = eq('log', r.decisionLog, lines)
+  const error6 = includes('trace', r.trace, 'decision-log-carried:3')
+  return error1 || error2 || error3 || error4 || error5 || error6 || { ok: true }
 })
 
 // An unreadable prior block must never replace an existing one with a shorter one: with no prior read the run writes no
@@ -6129,15 +6121,15 @@ await testCase('T164e a relaunch at entryStage review on the 3-block body ends w
 // unreadable read is simulate.probes.prBody null (the body the read could not get); the run's own log is still returned.
 await testCase('T164f no prior read of the decision log (unreadable body): no block written, a trace token, the run goes on', async () => {
   const r = await run({ mode: 'auto', simulate: { sam: 'GO', morgan: [{ verdict: 'REQUIRED_CHANGES', items: ['a'] }, { verdict: 'LGTM' }], prBody: null } })
-  const e1 = eq('status', r.status, 'ready')
-  const e2 = eq('no body written for the decision log', r.prBodyPreview, null)
-  const e3 = eq('trace token, once', (r.trace || []).filter((t) => String(t).startsWith('decision-log-skipped')), ['decision-log-skipped:no-prior-read'])
-  const e4 = eq('the run\'s own log is still returned', r.decisionLog, ['- round 0 — REQUIRED_CHANGES (1 blocker)', '- round 1 — LGTM'])
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = eq('no body written for the decision log', r.prBodyPreview, null)
+  const error3 = eq('trace token, once', (r.trace || []).filter((t) => String(t).startsWith('decision-log-skipped')), ['decision-log-skipped:no-prior-read'])
+  const error4 = eq('the run\'s own log is still returned', r.decisionLog, ['- round 0 — REQUIRED_CHANGES (1 blocker)', '- round 1 — LGTM'])
   // Control: a readable body is written (no token).
   const c = await run({ mode: 'auto', simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }], prBody: PR385_BODY_REAL } })
-  const e5 = eq('control: no token', (c.trace || []).filter((t) => String(t).startsWith('decision-log-skipped')), [])
-  const e6 = includes('control: block written', String(c.prBodyPreview || ''), '- round 0 — LGTM')
-  return e1 || e2 || e3 || e4 || e5 || e6 || { ok: true }
+  const error5 = eq('control: no token', (c.trace || []).filter((t) => String(t).startsWith('decision-log-skipped')), [])
+  const error6 = includes('control: block written', String(c.prBodyPreview || ''), '- round 0 — LGTM')
+  return error1 || error2 || error3 || error4 || error5 || error6 || { ok: true }
 })
 
 // M12: the wording `pending human gate` follows the same condition as the status ready-pending-human: a REQUIRED_CHANGES verdict
@@ -6146,8 +6138,8 @@ await testCase('T164g a regression verdict with only human-gate lines open does 
   const gate = { text: 'the maintainer reads the rendered page and posts approval', humanGate: true }
   const lines = t182Lines([gate])
   const r = await run({ mode: 'auto', simulate: { sam: { 1: t182Sam([gate]) }, morgan: [{ verdict: 'REGRESSION_DETECTED', items: lines }, { verdict: 'REQUIRED_CHANGES', items: lines }] } })
-  const e1 = eq('log', r.decisionLog, ['- round 0 — REGRESSION_DETECTED (1 blocker)', '- round 1 — pending human gate (1 box)'])
-  return e1 || { ok: true }
+  const error1 = eq('log', r.decisionLog, ['- round 0 — REGRESSION_DETECTED (1 blocker)', '- round 1 — pending human gate (1 box)'])
+  return error1 || { ok: true }
 })
 
 const T183_L3 = t182Lines(T183_PLAIN)
@@ -6159,19 +6151,19 @@ const t183Ticked = (p) => p.split('\n').filter((l) => l.startsWith('- [x] '))
 await testCase('T183l a line Nick added to the acceptance block (no id) survives the tick, untouched and never ticked', async () => {
   const r = await t183Review({ prBody: t183Body([...T183_L3, T183_R2_LINE]), morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, true, true) }] })
   const p = String(r.prBodyPreview || '')
-  const e1 = eq('status', r.status, 'ready')
-  const e2 = eq('the 3 id boxes ticked', t183Ticked(p).length, 3)
-  const e3 = eq('the extra line, open, once, after the rendered lines', p.split('\n').filter((l) => l === T183_R2_LINE), [T183_R2_LINE])
-  const e4 = eq('order: rendered lines then the extra line', p.indexOf(T183_R2_LINE) > p.indexOf('- [x] <!-- ac:3 -->'), true)
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = eq('the 3 id boxes ticked', t183Ticked(p).length, 3)
+  const error3 = eq('the extra line, open, once, after the rendered lines', p.split('\n').filter((l) => l === T183_R2_LINE), [T183_R2_LINE])
+  const error4 = eq('order: rendered lines then the extra line', p.indexOf(T183_R2_LINE) > p.indexOf('- [x] <!-- ac:3 -->'), true)
   // Control: a line a person already ticked stays ticked.
   const c = await t183Review({ prBody: t183Body([...T183_L3, '- [x] a note a person ticked']), morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, true, true) }] })
-  const e5 = includes('control: a ticked id-less line stays ticked', String(c.prBodyPreview || ''), '\n- [x] a note a person ticked\n')
+  const error5 = includes('control: a ticked id-less line stays ticked', String(c.prBodyPreview || ''), '\n- [x] a note a person ticked\n')
   // The same at the block level (the engine block is the one pr-body-splice.cjs carries).
   const fns = t183Splice()
   if (!fns) return t182Skip('T183l')
   const out = fns.tickAcceptanceBlock(t183Body([...T183_L3, T183_R2_LINE]), T183_L3.join('\n'), [1, 2, 3], [])
-  const e6 = includes('block level', out, '- [x] <!-- ac:3 --> ' + T183_PLAIN[2].text + '\n' + T183_R2_LINE + '\n<!-- acceptance:end -->')
-  return e1 || e2 || e3 || e4 || e5 || e6 || { ok: true }
+  const error6 = includes('block level', out, '- [x] <!-- ac:3 --> ' + T183_PLAIN[2].text + '\n' + T183_R2_LINE + '\n<!-- acceptance:end -->')
+  return error1 || error2 || error3 || error4 || error5 || error6 || { ok: true }
 })
 
 await testCase('T183m marker pairs inside a fenced code block are ignored, before or after the real block: the real block is the one ticked', async () => {
@@ -6185,29 +6177,29 @@ await testCase('T183m marker pairs inside a fenced code block are ignored, befor
   for (const [name, body] of Object.entries(shapes)) {
     const r = await t183Review({ prBody: body, morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, true, true) }] })
     const p = String(r.prBodyPreview || '')
-    const e1 = eq(name + ': status', r.status, 'ready')
-    const e2 = eq(name + ': the 3 real boxes ticked', t183Ticked(p).length, 3)
-    const e3 = includes(name + ': the example is intact', p, fence)
-    if (e1 || e2 || e3) return e1 || e2 || e3
+    const error1 = eq(name + ': status', r.status, 'ready')
+    const error2 = eq(name + ': the 3 real boxes ticked', t183Ticked(p).length, 3)
+    const error3 = includes(name + ': the example is intact', p, fence)
+    if (error1 || error2 || error3) return error1 || error2 || error3
   }
   const fns = t183Splice()
   if (!fns) return t182Skip('T183m')
-  const e4 = eq('splice acceptance: the real block replaced, the example intact', fns.spliceAcceptanceBlock(shapes.both, '- [ ] <!-- ac:1 --> new'),
+  const error4 = eq('splice acceptance: the real block replaced, the example intact', fns.spliceAcceptanceBlock(shapes.both, '- [ ] <!-- ac:1 --> new'),
     'Closes #183\n\n' + fence + '\n<!-- acceptance:start -->\n- [ ] <!-- ac:1 --> new\n<!-- acceptance:end -->\n\n' + fence)
-  const e5 = eq('a body whose only pair is fenced has no block', fns.tickAcceptanceBlock('x\n' + fence, T183_L3.join('\n'), [1], []), null)
-  return e4 || e5 || { ok: true }
+  const error5 = eq('a body whose only pair is fenced has no block', fns.tickAcceptanceBlock('x\n' + fence, T183_L3.join('\n'), [1], []), null)
+  return error4 || error5 || { ok: true }
 })
 
 await testCase('T183n an LGTM without `boxes` is an LGTM with no box proven: needs-revision, every box blocks', async () => {
   const absent = await t183Review({ prBody: t183Body(T183_L3), morgan: [{ verdict: 'LGTM' }] })
   const empty = await t183Review({ prBody: t183Body(T183_L3), morgan: [{ verdict: 'LGTM', boxes: [] }] })
-  const e1 = eq('absent: status', absent.status, 'needs-revision')
-  const e2 = eq('absent: items', absent.items, T183_L3)
-  const e3 = eq('absent: trace', (absent.trace || []).filter((t) => /^(boxes-|acceptance-)/.test(String(t))), ['boxes-missing:1', 'boxes-missing:2', 'boxes-missing:3', 'acceptance-open-lgtm:0'])
-  const e4 = eq('same trace as boxes: []', (empty.trace || []).filter((t) => /^(boxes-|acceptance-)/.test(String(t))), (absent.trace || []).filter((t) => /^(boxes-|acceptance-)/.test(String(t))))
-  const e5 = eq('same items as boxes: []', empty.items, absent.items)
-  const e6 = eq('no box ticked', t183Ticked(String(absent.prBodyPreview || '')), [])
-  return e1 || e2 || e3 || e4 || e5 || e6 || { ok: true }
+  const error1 = eq('absent: status', absent.status, 'needs-revision')
+  const error2 = eq('absent: items', absent.items, T183_L3)
+  const error3 = eq('absent: trace', (absent.trace || []).filter((t) => /^(boxes-|acceptance-)/.test(String(t))), ['boxes-missing:1', 'boxes-missing:2', 'boxes-missing:3', 'acceptance-open-lgtm:0'])
+  const error4 = eq('same trace as boxes: []', (empty.trace || []).filter((t) => /^(boxes-|acceptance-)/.test(String(t))), (absent.trace || []).filter((t) => /^(boxes-|acceptance-)/.test(String(t))))
+  const error5 = eq('same items as boxes: []', empty.items, absent.items)
+  const error6 = eq('no box ticked', t183Ticked(String(absent.prBodyPreview || '')), [])
+  return error1 || error2 || error3 || error4 || error5 || error6 || { ok: true }
 })
 
 await testCase('T183o a plan amendment resets the blocker history: a different box now carrying the old id is not the same blocker', async () => {
@@ -6228,13 +6220,13 @@ await testCase('T183o a plan amendment resets the blocker history: a different b
       ],
     },
   })
-  const e1 = eq('status', r.status, 'ready')
-  const e2 = includes('the amendment happened', r.trace || [], 'plan-amend-round:1')
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = includes('the amendment happened', r.trace || [], 'plan-amend-round:1')
   // Control: with no amendment between them, the same id in two rounds is still the same blocker.
   const c = await run({ mode: 'auto', simulate: { sam: { 1: t182Sam(A) }, morgan: [{ verdict: 'REQUIRED_CHANGES', items: [la[1]] }, { verdict: 'REQUIRED_CHANGES', items: [la[1]] }] } })
-  const e3 = eq('control: status', c.status, 'escalate')
-  const e4 = eq('control: reason', c.reason, 'no-progress')
-  return e1 || e2 || e3 || e4 || { ok: true }
+  const error3 = eq('control: status', c.status, 'escalate')
+  const error4 = eq('control: reason', c.reason, 'no-progress')
+  return error1 || error2 || error3 || error4 || { ok: true }
 })
 
 await testCase('T183p a box is proven only with a proof: proven:true with an empty, blank or absent proof is not ticked, whatever the verdict', async () => {
@@ -6242,22 +6234,22 @@ await testCase('T183p a box is proven only with a proof: proven:true with an emp
   if (!fns) return t182Skip('T183p')
   const items = fns.numberItems(T183_PLAIN)
   const m = fns.mapBoxes(items, [{ id: 1, proven: true, proof: '' }, { id: 2, proven: true }, { id: 3, proven: true, proof: '   \n' }])
-  const e1 = eq('mapBoxes: none proven', m.boxes.map((b) => b.proven), [false, false, false])
+  const error1 = eq('mapBoxes: none proven', m.boxes.map((b) => b.proven), [false, false, false])
   const ok = fns.mapBoxes(items, [{ id: 1, proven: true, proof: 'exit 0' }])
-  const e2 = eq('mapBoxes control: a real proof is proven', ok.boxes.map((b) => [b.id, b.proven, b.proof]), [[1, true, 'exit 0']])
+  const error2 = eq('mapBoxes control: a real proof is proven', ok.boxes.map((b) => [b.id, b.proven, b.proof]), [[1, true, 'exit 0']])
   const r = await t183Review({ prBody: t183Body(T183_L3), morgan: [{ verdict: 'LGTM', boxes: [{ id: 1, proven: true, proof: '' }, { id: 2, proven: true }, { id: 3, proven: true, proof: '   ' }] }] })
-  const e3 = eq('flow: status', r.status, 'needs-revision')
-  const e4 = eq('flow: items', r.items, T183_L3)
-  const e5 = eq('flow: no box ticked', t183Ticked(String(r.prBodyPreview || '')), [])
-  return e1 || e2 || e3 || e4 || e5 || { ok: true }
+  const error3 = eq('flow: status', r.status, 'needs-revision')
+  const error4 = eq('flow: items', r.items, T183_L3)
+  const error5 = eq('flow: no box ticked', t183Ticked(String(r.prBodyPreview || '')), [])
+  return error1 || error2 || error3 || error4 || error5 || { ok: true }
 })
 
 await testCase('T183q unproven boxes are judged before the tick: a refused tick no longer hides them (needs-revision, or ready-pending-human for a gate)', async () => {
   // A non-gate box not proven, the others proven, the tick refused: the box blocks, the run is no verified-untickable.
   const y = await t183Review({ prBody: t183Body(T183_L3), acceptanceSync: false, morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, false, true) }] })
-  const e1 = eq('semi: status', y.status, 'needs-revision')
-  const e2 = eq('semi: items start with the unproven box', (y.items || [])[0], T183_L3[1])
-  const e3 = includes('semi: trace', y.trace || [], 'acceptance-open-lgtm:0')
+  const error1 = eq('semi: status', y.status, 'needs-revision')
+  const error2 = eq('semi: items start with the unproven box', (y.items || [])[0], T183_L3[1])
+  const error3 = includes('semi: trace', y.trace || [], 'acceptance-open-lgtm:0')
   // Auto: the Nick round happens for the unproven box; only when everything is proven does the refusal park the run.
   const lines = T183_L3
   const a = await run({
@@ -6268,18 +6260,18 @@ await testCase('T183q unproven boxes are judged before the tick: a refused tick 
       morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, false, true) }, { verdict: 'LGTM', boxes: t183Boxes(true, true, true) }],
     },
   })
-  const e4 = eq('auto: status', a.status, 'verified-untickable')
-  const e5 = eq('auto: one Nick round happened for the unproven box', a.round, 1)
-  const e6 = eq('auto: untickableItems', (a.untickableItems || []).map((i) => i.item), lines)
+  const error4 = eq('auto: status', a.status, 'verified-untickable')
+  const error5 = eq('auto: one Nick round happened for the unproven box', a.round, 1)
+  const error6 = eq('auto: untickableItems', (a.untickableItems || []).map((index) => index.item), lines)
   // A human gate not proven, the tick refused: ready-pending-human carrying the gate and the proven boxes.
   const g = await run({ mode: 'auto', simulate: { sam: { 1: t182Sam(T182_ITEMS) }, acceptanceSync: false, morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, false, true) }] } })
-  const e7 = eq('gate: status', g.status, 'ready-pending-human')
-  const e8 = eq('gate: humanGateItems', g.humanGateItems, [t182Lines(T182_ITEMS)[1]])
-  const e9 = eq('gate: untickableItems ids', (g.untickableItems || []).map((i) => i.id), [1, 3])
+  const error7 = eq('gate: status', g.status, 'ready-pending-human')
+  const error8 = eq('gate: humanGateItems', g.humanGateItems, [t182Lines(T182_ITEMS)[1]])
+  const error9 = eq('gate: untickableItems ids', (g.untickableItems || []).map((index) => index.id), [1, 3])
   // Everything proven and the write refused is still verified-untickable (T183e), with the box 2 REQUIRED_CHANGES form too.
   const p = await run({ mode: 'auto', simulate: { sam: { 1: t182Sam(T183_PLAIN) }, acceptanceSync: false, morgan: [{ verdict: 'REQUIRED_CHANGES', items: [lines[1]], boxes: t183Boxes(true, false, true) }, { verdict: 'LGTM', boxes: t183Boxes(true, true, true) }] } })
-  const e10 = eq('all proven last: status', p.status, 'verified-untickable')
-  return e1 || e2 || e3 || e4 || e5 || e6 || e7 || e8 || e9 || e10 || { ok: true }
+  const error10 = eq('all proven last: status', p.status, 'verified-untickable')
+  return error1 || error2 || error3 || error4 || error5 || error6 || error7 || error8 || error9 || error10 || { ok: true }
 })
 
 await testCase('T183r a box ticked in the body but absent from Morgan\'s boxes is missing, not settled: the tick reopens it and an LGTM blocks on it', async () => {
@@ -6287,82 +6279,82 @@ await testCase('T183r a box ticked in the body but absent from Morgan\'s boxes i
   const body = t183Body(['- [x] ' + T183_L3[0].slice(6), T183_L3[1], T183_L3[2]])
   const r = await t183Review({ prBody: body, morgan: [{ verdict: 'LGTM', boxes: [{ id: 2, proven: true, proof: 'p2' }, { id: 3, proven: true, proof: 'p3' }] }] })
   const p = String(r.prBodyPreview || '')
-  const e1 = eq('status', r.status, 'needs-revision')
-  const e2 = eq('items: the box returned by no one', r.items, [T183_L3[0]])
-  const e3 = includes('boxes-missing:1', r.trace || [], 'boxes-missing:1')
-  const e4 = includes('box 1 reopened', p, '- [ ] <!-- ac:1 --> ' + T183_PLAIN[0].text)
-  const e5 = eq('boxes 2 and 3 ticked', t183Ticked(p).length, 2)
+  const error1 = eq('status', r.status, 'needs-revision')
+  const error2 = eq('items: the box returned by no one', r.items, [T183_L3[0]])
+  const error3 = includes('boxes-missing:1', r.trace || [], 'boxes-missing:1')
+  const error4 = includes('box 1 reopened', p, '- [ ] <!-- ac:1 --> ' + T183_PLAIN[0].text)
+  const error5 = eq('boxes 2 and 3 ticked', t183Ticked(p).length, 2)
   // REQUIRED_CHANGES form: the same, for every box she returned nothing for.
   const w = await t183Review({ prBody: body, morgan: [{ verdict: 'REQUIRED_CHANGES', items: [T183_L3[1]], boxes: [{ id: 3, proven: true, proof: 'p3' }] }] })
   const wp = String(w.prBodyPreview || '')
-  const e6 = includes('REQUIRED_CHANGES: box 1 reopened', wp, '- [ ] <!-- ac:1 --> ')
-  const e7 = eq('REQUIRED_CHANGES: boxes-missing 1 and 2', (w.trace || []).filter((t) => String(t).startsWith('boxes-missing')), ['boxes-missing:1', 'boxes-missing:2'])
+  const error6 = includes('REQUIRED_CHANGES: box 1 reopened', wp, '- [ ] <!-- ac:1 --> ')
+  const error7 = eq('REQUIRED_CHANGES: boxes-missing 1 and 2', (w.trace || []).filter((t) => String(t).startsWith('boxes-missing')), ['boxes-missing:1', 'boxes-missing:2'])
   // Control: the box open in the body and returned by no one is missing too.
   const c = await t183Review({ prBody: t183Body(T183_L3), morgan: [{ verdict: 'LGTM', boxes: [{ id: 2, proven: true, proof: 'p2' }, { id: 3, proven: true, proof: 'p3' }] }] })
-  const e8 = eq('control: status', c.status, 'needs-revision')
-  const e9 = includes('control: boxes-missing:1', c.trace || [], 'boxes-missing:1')
+  const error8 = eq('control: status', c.status, 'needs-revision')
+  const error9 = includes('control: boxes-missing:1', c.trace || [], 'boxes-missing:1')
   // A box Morgan explicitly says is not proven is reopened even when the body shows it ticked.
   const u = await t183Review({ prBody: body, morgan: [{ verdict: 'REQUIRED_CHANGES', items: [T183_L3[0]], boxes: t183Boxes(false, true, true) }] })
-  const e10 = includes('explicitly unproven: reopened', String(u.prBodyPreview || ''), '- [ ] <!-- ac:1 --> ')
+  const error10 = includes('explicitly unproven: reopened', String(u.prBodyPreview || ''), '- [ ] <!-- ac:1 --> ')
   // Every box returned and proven settles it, whatever the body showed.
   const k = await t183Review({ prBody: body, morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, true, true) }] })
-  const e11 = eq('all returned and proven: ready', k.status, 'ready')
+  const error11 = eq('all returned and proven: ready', k.status, 'ready')
   // The block-level helper: ids of a body that are ticked.
   const fns = t183Splice()
   if (!fns) return t182Skip('T183r')
-  const e12 = eq('checkedAcceptanceIds', fns.checkedAcceptanceIds(body), [1])
-  return e1 || e2 || e3 || e4 || e5 || e6 || e7 || e8 || e9 || e10 || e11 || e12 || { ok: true }
+  const error12 = eq('checkedAcceptanceIds', fns.checkedAcceptanceIds(body), [1])
+  return error1 || error2 || error3 || error4 || error5 || error6 || error7 || error8 || error9 || error10 || error11 || error12 || { ok: true }
 })
 
 await testCase('T183s a refused tick carries the probe reason (tickReason) and a stale-read is retried once before parking', async () => {
   const sims = (acceptanceSync) => ({ sam: { 1: t182Sam(T183_PLAIN) }, acceptanceSync, morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, true, true) }] })
   // A refusal that is not a stale read: no retry, the reason is in the result and the trace.
   const w = await run({ mode: 'auto', simulate: sims('write-failed') })
-  const e1 = eq('write-failed: status', w.status, 'verified-untickable')
-  const e2 = eq('write-failed: tickReason', w.tickReason, 'write-failed')
-  const e3 = eq('write-failed: no retry', (w.trace || []).filter((t) => String(t).startsWith('acceptance-tick-retry')), [])
-  const e4 = includes('write-failed: trace', w.trace || [], 'acceptance-tick-reason:write-failed')
+  const error1 = eq('write-failed: status', w.status, 'verified-untickable')
+  const error2 = eq('write-failed: tickReason', w.tickReason, 'write-failed')
+  const error3 = eq('write-failed: no retry', (w.trace || []).filter((t) => String(t).startsWith('acceptance-tick-retry')), [])
+  const error4 = includes('write-failed: trace', w.trace || [], 'acceptance-tick-reason:write-failed')
   const n = await run({ mode: 'auto', simulate: sims('no-markers') })
-  const e5 = eq('no-markers: tickReason', n.tickReason, 'no-markers')
+  const error5 = eq('no-markers: tickReason', n.tickReason, 'no-markers')
   const f = await run({ mode: 'auto', simulate: sims(false) })
-  const e6 = eq('refused (no reason given): status', f.status, 'verified-untickable')
-  const e7 = eq('refused (no reason given): tickReason', f.tickReason, 'write-failed')
+  const error6 = eq('refused (no reason given): status', f.status, 'verified-untickable')
+  const error7 = eq('refused (no reason given): tickReason', f.tickReason, 'write-failed')
   // A stale read that stays stale: retried once, then parked with its reason.
   const s = await run({ mode: 'auto', simulate: sims(['stale-read', 'stale-read']) })
-  const e8 = eq('stale twice: status', s.status, 'verified-untickable')
-  const e9 = eq('stale twice: tickReason', s.tickReason, 'stale-read')
-  const e10 = eq('stale twice: exactly one retry', (s.trace || []).filter((t) => String(t).startsWith('acceptance-tick-retry')), ['acceptance-tick-retry:0'])
+  const error8 = eq('stale twice: status', s.status, 'verified-untickable')
+  const error9 = eq('stale twice: tickReason', s.tickReason, 'stale-read')
+  const error10 = eq('stale twice: exactly one retry', (s.trace || []).filter((t) => String(t).startsWith('acceptance-tick-retry')), ['acceptance-tick-retry:0'])
   // A stale read the retry heals: the tick landed, the run is ready, no tickReason.
   const h = await run({ mode: 'auto', simulate: sims(['stale-read', true]) })
-  const e11 = eq('stale then written: status', h.status, 'ready')
-  const e12 = eq('stale then written: no tickReason', h.tickReason, undefined)
-  const e13 = includes('stale then written: ticked', h.trace || [], 'acceptance-ticked:0')
+  const error11 = eq('stale then written: status', h.status, 'ready')
+  const error12 = eq('stale then written: no tickReason', h.tickReason, undefined)
+  const error13 = includes('stale then written: ticked', h.trace || [], 'acceptance-ticked:0')
   // A probe that gave no usable answer at all.
   const u = await run({ mode: 'auto', simulate: sims('probe-unavailable') })
-  const e14 = eq('probe unavailable: tickReason', u.tickReason, 'probe-unavailable')
+  const error14 = eq('probe unavailable: tickReason', u.tickReason, 'probe-unavailable')
   // The reason also rides the semi needs-revision of a refused tick with an unproven box.
   const y = await t183Review({ prBody: t183Body(T183_L3), acceptanceSync: 'guard-failed-restored', morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, false, true) }] })
-  const e15 = eq('needs-revision: tickReason', y.tickReason, 'guard-failed-restored')
-  return e1 || e2 || e3 || e4 || e5 || e6 || e7 || e8 || e9 || e10 || e11 || e12 || e13 || e14 || e15 || { ok: true }
+  const error15 = eq('needs-revision: tickReason', y.tickReason, 'guard-failed-restored')
+  return error1 || error2 || error3 || error4 || error5 || error6 || error7 || error8 || error9 || error10 || error11 || error12 || error13 || error14 || error15 || { ok: true }
 })
 
 await testCase('T212a a tick retried after a digest mismatch lands: ready, one retry, ticked', async () => {
   // The script refused the copied tick command before writing (#212): the retry reads the body afresh and ticks it.
   const r = await run({ mode: 'auto', simulate: { sam: { 1: t182Sam(T183_PLAIN) }, acceptanceSync: ['cmd-mismatch', true], morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, true, true) }] } })
-  const e1 = eq('status', r.status, 'ready')
-  const e2 = eq('no tickReason', r.tickReason, undefined)
-  const e3 = eq('exactly one retry', (r.trace || []).filter((t) => String(t).startsWith('acceptance-tick-retry')), ['acceptance-tick-retry:0'])
-  const e4 = includes('ticked', r.trace || [], 'acceptance-ticked:0')
-  return e1 || e2 || e3 || e4 || { ok: true }
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = eq('no tickReason', r.tickReason, undefined)
+  const error3 = eq('exactly one retry', (r.trace || []).filter((t) => String(t).startsWith('acceptance-tick-retry')), ['acceptance-tick-retry:0'])
+  const error4 = includes('ticked', r.trace || [], 'acceptance-ticked:0')
+  return error1 || error2 || error3 || error4 || { ok: true }
 })
 
 await testCase('T212b a tick retried after a digest mismatch that repeats parks: verified-untickable, tickReason cmd-mismatch, one retry', async () => {
   const r = await run({ mode: 'auto', simulate: { sam: { 1: t182Sam(T183_PLAIN) }, acceptanceSync: ['cmd-mismatch', 'cmd-mismatch'], morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, true, true) }] } })
-  const e1 = eq('status', r.status, 'verified-untickable')
-  const e2 = eq('tickReason', r.tickReason, 'cmd-mismatch')
-  const e3 = eq('exactly one retry', (r.trace || []).filter((t) => String(t).startsWith('acceptance-tick-retry')), ['acceptance-tick-retry:0'])
-  const e4 = includes('refused trace', r.trace || [], 'acceptance-tick-reason:cmd-mismatch')
-  return e1 || e2 || e3 || e4 || { ok: true }
+  const error1 = eq('status', r.status, 'verified-untickable')
+  const error2 = eq('tickReason', r.tickReason, 'cmd-mismatch')
+  const error3 = eq('exactly one retry', (r.trace || []).filter((t) => String(t).startsWith('acceptance-tick-retry')), ['acceptance-tick-retry:0'])
+  const error4 = includes('refused trace', r.trace || [], 'acceptance-tick-reason:cmd-mismatch')
+  return error1 || error2 || error3 || error4 || { ok: true }
 })
 
 // #239: a PR read that failed for a NAMED cause (the preflight branch probe's `readFailed`) stops the run at the start of the
@@ -6372,62 +6364,62 @@ await testCase('T239a an unreadable PR at the start of the review stage escalate
   const classes = ['tls', 'auth', 'rate-limit', 'not-found', 'other']
   for (const c of classes) {
     const r = await t183Review({ branchCheckRaw: { readFailed: c }, prBody: t183Body(T183_L3), morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, true, true) }] }, { mode: 'auto' })
-    const e1 = eq(c + ': status', r.status, 'escalate')
-    const e2 = eq(c + ': reason', r.reason, 'pr-read-failed:' + c)
-    const e3 = includes(c + ': trace', r.trace || [], 'pr-read-failed:' + c)
-    const e4 = eq(c + ': no review ran (no decision log)', r.decisionLog, undefined)
-    const e5 = eq(c + ': nothing ticked', (r.trace || []).filter((t) => String(t).startsWith('acceptance-ticked')), [])
-    const e6 = eq(c + ': the PR named', r.pr, 190)
-    const bad = e1 || e2 || e3 || e4 || e5 || e6
+    const error1 = eq(c + ': status', r.status, 'escalate')
+    const error2 = eq(c + ': reason', r.reason, 'pr-read-failed:' + c)
+    const error3 = includes(c + ': trace', r.trace || [], 'pr-read-failed:' + c)
+    const error4 = eq(c + ': no review ran (no decision log)', r.decisionLog, undefined)
+    const error5 = eq(c + ': nothing ticked', (r.trace || []).filter((t) => String(t).startsWith('acceptance-ticked')), [])
+    const error6 = eq(c + ': the PR named', r.pr, 190)
+    const bad = error1 || error2 || error3 || error4 || error5 || error6
     if (bad) return bad
   }
   // Control: a string answer (the real head ref) is unchanged: the run reaches the reviewer and is ready.
   const ok = await t183Review({ branchCheckRaw: 'features/issue-1', prBody: t183Body(T183_L3), morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, true, true) }] }, { mode: 'auto' })
-  const e7 = eq('control: a readable PR reaches the reviewer', ok.status, 'ready')
+  const error7 = eq('control: a readable PR reaches the reviewer', ok.status, 'ready')
   // Control: an object answer with no named cause (or an out-of-set one) is not a read failure: fail-open as before.
   const un = await t183Review({ branchCheckRaw: { readFailed: 'x509: unknown authority' }, prBody: t183Body(T183_L3), morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, true, true) }] }, { mode: 'auto' })
-  const e8 = eq('control: an out-of-set cause is no named failure', (un.trace || []).filter((t) => String(t).startsWith('pr-read-failed')), [])
-  return e7 || e8 || { ok: true }
+  const error8 = eq('control: an out-of-set cause is no named failure', (un.trace || []).filter((t) => String(t).startsWith('pr-read-failed')), [])
+  return error7 || error8 || { ok: true }
 })
 
 await testCase('T239b the Dev-end branch guard of a fresh run escalates pr-read-failed:<class> before the review stage', async () => {
   const r = await run({ mode: 'auto', simulate: { sam: 'GO', branchCheckRaw: { readFailed: 'tls' }, morgan: [{ verdict: 'LGTM' }] } })
-  const e1 = eq('status', r.status, 'escalate')
-  const e2 = eq('reason', r.reason, 'pr-read-failed:tls')
-  const e3 = includes('trace', r.trace || [], 'pr-read-failed:tls')
-  const e4 = eq('no Review phase', (r.trace || []).filter((t) => String(t) === 'Review'), [])
-  const e5 = eq('no review ran', r.decisionLog, undefined)
-  return e1 || e2 || e3 || e4 || e5 || { ok: true }
+  const error1 = eq('status', r.status, 'escalate')
+  const error2 = eq('reason', r.reason, 'pr-read-failed:tls')
+  const error3 = includes('trace', r.trace || [], 'pr-read-failed:tls')
+  const error4 = eq('no Review phase', (r.trace || []).filter((t) => String(t) === 'Review'), [])
+  const error5 = eq('no review ran', r.decisionLog, undefined)
+  return error1 || error2 || error3 || error4 || error5 || { ok: true }
 })
 
 await testCase('T239c a refused tick carries the cause of a failed read (tickDetail), a refusal with no detail has no tickDetail key', async () => {
   const r = await t183Review({ prBody: t183Body(T183_L3), acceptanceSync: { reason: 'read-failed', detail: 'tls' }, morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, true, true) }] })
-  const e1 = eq('status', r.status, 'verified-untickable')
-  const e2 = eq('tickReason', r.tickReason, 'read-failed')
-  const e3 = eq('tickDetail', r.tickDetail, 'tls')
+  const error1 = eq('status', r.status, 'verified-untickable')
+  const error2 = eq('tickReason', r.tickReason, 'read-failed')
+  const error3 = eq('tickDetail', r.tickDetail, 'tls')
   // Control: the same refusal without a detail (a bare reason string) names no tickDetail.
   const c = await t183Review({ prBody: t183Body(T183_L3), acceptanceSync: 'read-failed', morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, true, true) }] })
-  const e4 = eq('control: tickReason', c.tickReason, 'read-failed')
-  const e5 = eq('control: no tickDetail key', 'tickDetail' in c, false)
+  const error4 = eq('control: tickReason', c.tickReason, 'read-failed')
+  const error5 = eq('control: no tickDetail key', 'tickDetail' in c, false)
   // The detail also rides the semi needs-revision of a refused tick with an unproven box.
   const y = await t183Review({ prBody: t183Body(T183_L3), acceptanceSync: { reason: 'read-failed', detail: 'auth' }, morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, false, true) }] })
-  const e6 = eq('needs-revision: tickDetail', y.tickDetail, 'auth')
-  return e1 || e2 || e3 || e4 || e5 || e6 || { ok: true }
+  const error6 = eq('needs-revision: tickDetail', y.tickDetail, 'auth')
+  return error1 || error2 || error3 || error4 || error5 || error6 || { ok: true }
 })
 
 await testCase('T183t a rejected artifact proof that names no box ticks nothing this round; one that names a box un-proves only that box', async () => {
   const proof = (item) => [{ item, path: 'report.md', exists: false, mtime: '2026-01-02T00:00:00Z', bytes: 1 }]
   const none = await t183Review({ prBody: t183Body(T183_L3), artifactFloor: '2026-01-01T00:00:00Z', morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, true, true), artifactProofs: proof('report.md was produced') }] })
-  const e1 = eq('no box named: status', none.status, 'needs-revision')
-  const e2 = eq('no box named: items', none.items, ['report.md was produced'])
-  const e3 = eq('no box named: nothing ticked', t183Ticked(String(none.prBodyPreview || '')), [])
+  const error1 = eq('no box named: status', none.status, 'needs-revision')
+  const error2 = eq('no box named: items', none.items, ['report.md was produced'])
+  const error3 = eq('no box named: nothing ticked', t183Ticked(String(none.prBodyPreview || '')), [])
   const unknown = await t183Review({ prBody: t183Body(T183_L3), artifactFloor: '2026-01-01T00:00:00Z', morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, true, true), artifactProofs: proof('- [ ] <!-- ac:9 --> no such box') }] })
-  const e4 = eq('an id no box carries: nothing ticked', t183Ticked(String(unknown.prBodyPreview || '')), [])
+  const error4 = eq('an id no box carries: nothing ticked', t183Ticked(String(unknown.prBodyPreview || '')), [])
   const named = await t183Review({ prBody: t183Body(T183_L3), artifactFloor: '2026-01-01T00:00:00Z', morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, true, true), artifactProofs: proof(T183_L3[1]) }] })
-  const e5 = eq('box 2 named: status', named.status, 'needs-revision')
-  const e6 = eq('box 2 named: items', named.items, [T183_L3[1]])
-  const e7 = eq('box 2 named: boxes 1 and 3 ticked', t183Ticked(String(named.prBodyPreview || '')).length, 2)
-  return e1 || e2 || e3 || e4 || e5 || e6 || e7 || { ok: true }
+  const error5 = eq('box 2 named: status', named.status, 'needs-revision')
+  const error6 = eq('box 2 named: items', named.items, [T183_L3[1]])
+  const error7 = eq('box 2 named: boxes 1 and 3 ticked', t183Ticked(String(named.prBodyPreview || '')).length, 2)
+  return error1 || error2 || error3 || error4 || error5 || error6 || error7 || { ok: true }
 })
 
 await testCase('T183u a CRLF body keeps its line breaks through the tick and the splice, and a tick that changes nothing writes the same bytes', async () => {
@@ -6436,19 +6428,19 @@ await testCase('T183u a CRLF body keeps its line breaks through the tick and the
   const crlf = (s) => s.split('\n').join('\r\n')
   const rendered = T183_L3.join('\n')
   const body = crlf('x\n<!-- acceptance:start -->\n- [x] <!-- ac:1 --> ' + T183_PLAIN[0].text + '\n' + T183_L3[1] + '\n' + T183_L3[2] + '\n<!-- acceptance:end -->\ny\n')
-  const e1 = eq('tick that changes nothing is byte-identical', fns.tickAcceptanceBlock(body, rendered, [1], []), body)
+  const error1 = eq('tick that changes nothing is byte-identical', fns.tickAcceptanceBlock(body, rendered, [1], []), body)
   const ticked = fns.tickAcceptanceBlock(body, rendered, [1, 2], [])
-  const e2 = eq('a real tick: every line break of the output is CRLF', ticked.split('\r\n').join('').includes('\n'), false)
-  const e3 = includes('a real tick ticked box 2', ticked, '- [x] <!-- ac:2 --> ')
+  const error2 = eq('a real tick: every line break of the output is CRLF', ticked.split('\r\n').join('').includes('\n'), false)
+  const error3 = includes('a real tick ticked box 2', ticked, '- [x] <!-- ac:2 --> ')
   const spliced = fns.spliceAcceptanceBlock(body, '- [ ] <!-- ac:1 --> new\n- [ ] <!-- ac:2 --> new2')
-  const e4 = eq('splice: every line break of the output is CRLF', spliced.split('\r\n').join('').includes('\n'), false)
+  const error4 = eq('splice: every line break of the output is CRLF', spliced.split('\r\n').join('').includes('\n'), false)
   // An LF body stays LF.
   const lf = 'x\n<!-- acceptance:start -->\n' + rendered + '\n<!-- acceptance:end -->\n'
-  const e5 = eq('LF body stays LF', fns.tickAcceptanceBlock(lf, rendered, [], []).includes('\r'), false)
+  const error5 = eq('LF body stays LF', fns.tickAcceptanceBlock(lf, rendered, [], []).includes('\r'), false)
   // An id-less line of a CRLF block survives with the body's line break.
   const withExtra = crlf('x\n<!-- acceptance:start -->\n' + rendered + '\n' + T183_R2_LINE + '\n<!-- acceptance:end -->\n')
-  const e6 = eq('CRLF body with an extra line is stable', fns.tickAcceptanceBlock(withExtra, rendered, [], []), withExtra)
-  return e1 || e2 || e3 || e4 || e5 || e6 || { ok: true }
+  const error6 = eq('CRLF body with an extra line is stable', fns.tickAcceptanceBlock(withExtra, rendered, [], []), withExtra)
+  return error1 || error2 || error3 || error4 || error5 || error6 || { ok: true }
 })
 
 await testCase('T183v two entries for one id that contradict each other: the box is not proven', async () => {
@@ -6457,33 +6449,33 @@ await testCase('T183v two entries for one id that contradict each other: the box
   const items = fns.numberItems(T183_PLAIN)
   const a = fns.mapBoxes(items, [{ id: 1, proven: true, proof: 'ok' }, { id: 1, proven: false, proof: '' }])
   const b = fns.mapBoxes(items, [{ id: 1, proven: false, proof: '' }, { id: 1, proven: true, proof: 'ok' }])
-  const e1 = eq('proven then unproven', a.boxes.map((x) => [x.id, x.proven]), [[1, false]])
-  const e2 = eq('unproven then proven', b.boxes.map((x) => [x.id, x.proven]), [[1, false]])
+  const error1 = eq('proven then unproven', a.boxes.map((x) => [x.id, x.proven]), [[1, false]])
+  const error2 = eq('unproven then proven', b.boxes.map((x) => [x.id, x.proven]), [[1, false]])
   const c = fns.mapBoxes(items, [{ id: 1, proven: true, proof: 'ok' }, { id: 1, proven: true, proof: 'again' }])
-  const e3 = eq('control: two agreeing entries', c.boxes.map((x) => [x.id, x.proven]), [[1, true]])
+  const error3 = eq('control: two agreeing entries', c.boxes.map((x) => [x.id, x.proven]), [[1, true]])
   const r = await t183Review({ prBody: t183Body(T183_L3), morgan: [{ verdict: 'LGTM', boxes: [{ id: 1, proven: true, proof: 'ok' }, { id: 1, proven: false }, { id: 2, proven: true, proof: 'p' }, { id: 3, proven: true, proof: 'p' }] }] })
-  const e4 = eq('flow: status', r.status, 'needs-revision')
-  const e5 = eq('flow: boxes 2 and 3 ticked, 1 open', t183Ticked(String(r.prBodyPreview || '')).length, 2)
-  return e1 || e2 || e3 || e4 || e5 || { ok: true }
+  const error4 = eq('flow: status', r.status, 'needs-revision')
+  const error5 = eq('flow: boxes 2 and 3 ticked, 1 open', t183Ticked(String(r.prBodyPreview || '')).length, 2)
+  return error1 || error2 || error3 || error4 || error5 || { ok: true }
 })
 
 await testCase('T183w in an id run Morgan is told she ticks nothing and LGTM needs every box proven; the run without ids keeps its text', async () => {
-  const src = SUITE_ARGS.fpSource
+  const source = SUITE_ARGS.fpSource
   const fns = t182Block()
-  if (!src || !fns) return t182Skip('T183w')
+  if (!source || !fns) return t182Skip('T183w')
   const idRule = fns.morganItemsRule(t182Lines(T182_ITEMS).join('\n'))
-  const e1 = includes('id run: Morgan ticks nothing', idRule, 'you tick none')
-  const e2 = includes('id run: an entry for EACH box, an already ticked one included', idRule, 'one entry for EACH box, including a box that already reads [x] in the PR body')
-  const e2b = idRule.includes('every box reads [ ]') ? { ok: false, msg: 'the id-run rule still says every box reads [ ] when Morgan reads the body (false from round 1)' } : null
+  const error1 = includes('id run: Morgan ticks nothing', idRule, 'you tick none')
+  const error2 = includes('id run: an entry for EACH box, an already ticked one included', idRule, 'one entry for EACH box, including a box that already reads [x] in the PR body')
+  const error2b = idRule.includes('every box reads [ ]') ? { ok: false, msg: 'the id-run rule still says every box reads [ ] when Morgan reads the body (false from round 1)' } : null
   const note = fns.morganBoxesNote(t182Lines(T182_ITEMS).join('\n'))
-  const e2c = includes('boxes note: an entry for EVERY box, an already ticked one included', note, 'Return an entry for EVERY box above, including a box that already reads [x] in the PR body')
-  const e3 = includes('id run: LGTM needs every box proven', idRule, 'LGTM only when EVERY box is proven')
+  const error2c = includes('boxes note: an entry for EVERY box, an already ticked one included', note, 'Return an entry for EVERY box above, including a box that already reads [x] in the PR body')
+  const error3 = includes('id run: LGTM needs every box proven', idRule, 'LGTM only when EVERY box is proven')
   const legacy = fns.morganItemsRule('')
-  const e4 = includes('no ids: the historical sentence', legacy, 'Emit `REQUIRED_CHANGES` whenever any box is unticked (human-gate or not). ')
-  const e5 = eq('no ids: starts like it always did', legacy.startsWith('For each remaining unticked acceptance box, put in `items` the **verbatim checklist line** it blocks on'), true)
-  const e6 = eq('both Morgan prompts interpolate the rule', src.split('${morganItemsRule(acceptanceBlock)}').length - 1, 2)
-  const e7 = eq('the historical sentence is written once (in the rule)', src.split('Emit `REQUIRED_CHANGES` whenever any box is unticked').length - 1, 1)
-  return e1 || e2 || e2b || e2c || e3 || e4 || e5 || e6 || e7 || { ok: true }
+  const error4 = includes('no ids: the historical sentence', legacy, 'Emit `REQUIRED_CHANGES` whenever any box is unticked (human-gate or not). ')
+  const error5 = eq('no ids: starts like it always did', legacy.startsWith('For each remaining unticked acceptance box, put in `items` the **verbatim checklist line** it blocks on'), true)
+  const error6 = eq('both Morgan prompts interpolate the rule', source.split('${morganItemsRule(acceptanceBlock)}').length - 1, 2)
+  const error7 = eq('the historical sentence is written once (in the rule)', source.split('Emit `REQUIRED_CHANGES` whenever any box is unticked').length - 1, 1)
+  return error1 || error2 || error2b || error2c || error3 || error4 || error5 || error6 || error7 || { ok: true }
 })
 
 // The lines a block can hold besides the rendered id boxes (second review round, G1): the tick replaces ONLY the lines of an
@@ -6508,31 +6500,31 @@ await testCase('T183x every line of the acceptance block that is not an id box s
     // Between the id boxes, so that "after the rendered lines" and "in the order it had" are both observable.
     const r = await t183Review({ prBody: t183Body([T183_L3[0], foreign, T183_L3[1], 'last: ' + foreign, T183_L3[2]]), morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, true, true) }] })
     const p = String(r.prBodyPreview || '')
-    const e1 = eq(name + ': status', r.status, 'ready')
-    const e2 = eq(name + ': the 3 id boxes ticked', t183Ticked(p).length, 3)
+    const error1 = eq(name + ': status', r.status, 'ready')
+    const error2 = eq(name + ': the 3 id boxes ticked', t183Ticked(p).length, 3)
     const tail = '\n' + foreign + '\nlast: ' + foreign + '\n<!-- acceptance:end -->'
-    const e3 = includes(name + ': the foreign lines, in order, right after the rendered lines', p, '- [x] <!-- ac:3 --> ' + T183_PLAIN[2].text + tail)
-    const e4 = foreign === '' ? null : eq(name + ': the foreign line is not duplicated', p.split('\n' + foreign + '\n').length - 1, 1)
-    if (e1 || e2 || e3 || e4) return e1 || e2 || e3 || e4
+    const error3 = includes(name + ': the foreign lines, in order, right after the rendered lines', p, '- [x] <!-- ac:3 --> ' + T183_PLAIN[2].text + tail)
+    const error4 = foreign === '' ? null : eq(name + ': the foreign line is not duplicated', p.split('\n' + foreign + '\n').length - 1, 1)
+    if (error1 || error2 || error3 || error4) return error1 || error2 || error3 || error4
     if (!fns) continue
     // Block level: stable on a second pass, and the same over CRLF.
     const body = t183Body([T183_L3[0], foreign, T183_L3[1], 'last: ' + foreign, T183_L3[2]])
     const once = fns.tickAcceptanceBlock(body, T183_L3.join('\n'), [1, 2, 3], [])
-    const e5 = eq(name + ': block level, the foreign lines kept after the rendered ones', once, 'Closes #183\n\n<!-- acceptance:start -->\n' + T183_L3.join('\n').split('- [ ] ').join('- [x] ') + tail + '\n')
-    const e6 = eq(name + ': a second tick changes nothing', fns.tickAcceptanceBlock(once, T183_L3.join('\n'), [1, 2, 3], []), once)
+    const error5 = eq(name + ': block level, the foreign lines kept after the rendered ones', once, 'Closes #183\n\n<!-- acceptance:start -->\n' + T183_L3.join('\n').split('- [ ] ').join('- [x] ') + tail + '\n')
+    const error6 = eq(name + ': a second tick changes nothing', fns.tickAcceptanceBlock(once, T183_L3.join('\n'), [1, 2, 3], []), once)
     const c = crlf(body)
     const cOnce = fns.tickAcceptanceBlock(c, T183_L3.join('\n'), [1, 2, 3], [])
-    const e7 = eq(name + ': CRLF: the output is the LF output with CRLF line breaks', cOnce, crlf(once))
-    const e8 = eq(name + ': CRLF: a second tick changes nothing', fns.tickAcceptanceBlock(cOnce, T183_L3.join('\n'), [1, 2, 3], []), cOnce)
-    if (e5 || e6 || e7 || e8) return e5 || e6 || e7 || e8
+    const error7 = eq(name + ': CRLF: the output is the LF output with CRLF line breaks', cOnce, crlf(once))
+    const error8 = eq(name + ': CRLF: a second tick changes nothing', fns.tickAcceptanceBlock(cOnce, T183_L3.join('\n'), [1, 2, 3], []), cOnce)
+    if (error5 || error6 || error7 || error8) return error5 || error6 || error7 || error8
   }
   // Blank lines at the end of the block are lines too: kept, and a second pass changes nothing.
   if (fns) {
     const padded = t183Body([...T183_L3, '', ''])
     const once = fns.tickAcceptanceBlock(padded, T183_L3.join('\n'), [1, 2, 3], [])
-    const e0 = eq('trailing blank lines kept', once, 'Closes #183\n\n<!-- acceptance:start -->\n' + T183_L3.join('\n').split('- [ ] ').join('- [x] ') + '\n\n\n<!-- acceptance:end -->\n')
-    const e0b = eq('trailing blank lines: a second tick changes nothing', fns.tickAcceptanceBlock(once, T183_L3.join('\n'), [1, 2, 3], []), once)
-    if (e0 || e0b) return e0 || e0b
+    const error0 = eq('trailing blank lines kept', once, 'Closes #183\n\n<!-- acceptance:start -->\n' + T183_L3.join('\n').split('- [ ] ').join('- [x] ') + '\n\n\n<!-- acceptance:end -->\n')
+    const error0b = eq('trailing blank lines: a second tick changes nothing', fns.tickAcceptanceBlock(once, T183_L3.join('\n'), [1, 2, 3], []), once)
+    if (error0 || error0b) return error0 || error0b
   }
   // The same lines read by checkedAcceptanceIds: only an id box counts.
   if (!fns) return t182Skip('T183x')
@@ -6550,24 +6542,24 @@ await testCase('T183y a box settled at an earlier round is not settled again wit
       { verdict: 'LGTM', boxes: t183Boxes(true, true, true) },
     ],
   }, { mode: 'auto' })
-  const e1 = includes('R1: only the third round ticked the last boxes', r.trace || [], 'acceptance-ticked:2')
-  const e2 = eq('R1: status', r.status, 'ready')
-  const e3 = includes('R1: boxes 1 missing at round 1', r.trace || [], 'boxes-missing:1')
-  const e4 = includes('R1: boxes 2 missing at round 1', r.trace || [], 'boxes-missing:2')
-  const e5 = includes('R1: the LGTM of round 1 was refused', r.trace || [], 'acceptance-open-lgtm:1')
+  const error1 = includes('R1: only the third round ticked the last boxes', r.trace || [], 'acceptance-ticked:2')
+  const error2 = eq('R1: status', r.status, 'ready')
+  const error3 = includes('R1: boxes 1 missing at round 1', r.trace || [], 'boxes-missing:1')
+  const error4 = includes('R1: boxes 2 missing at round 1', r.trace || [], 'boxes-missing:2')
+  const error5 = includes('R1: the LGTM of round 1 was refused', r.trace || [], 'acceptance-open-lgtm:1')
   // R1b: Morgan ticked everything herself (old habit) and answers LGTM with no boxes over a body already all [x].
   const allTicked = t183Body(T183_L3.map((l) => '- [x] ' + l.slice(6)))
   const b = await t183Review({ prBody: allTicked, morgan: [{ verdict: 'LGTM' }] })
-  const e6 = eq('R1b: status', b.status, 'needs-revision')
-  const e7 = eq('R1b: every box blocks', b.items, T183_L3)
-  const e8 = eq('R1b: boxes-missing 1 2 3', (b.trace || []).filter((t) => String(t).startsWith('boxes-missing')), ['boxes-missing:1', 'boxes-missing:2', 'boxes-missing:3'])
-  const e9 = eq('R1b: nothing stays ticked', t183Ticked(String(b.prBodyPreview || '')), [])
+  const error6 = eq('R1b: status', b.status, 'needs-revision')
+  const error7 = eq('R1b: every box blocks', b.items, T183_L3)
+  const error8 = eq('R1b: boxes-missing 1 2 3', (b.trace || []).filter((t) => String(t).startsWith('boxes-missing')), ['boxes-missing:1', 'boxes-missing:2', 'boxes-missing:3'])
+  const error9 = eq('R1b: nothing stays ticked', t183Ticked(String(b.prBodyPreview || '')), [])
   // The mapping itself: a ticked box nobody returned is missing, whatever the body shows.
   const fns = t182Block()
   if (!fns) return t182Skip('T183y')
   const m = fns.mapBoxes(fns.numberItems(T183_PLAIN), [{ id: 3, proven: true, proof: 'p3' }], [1, 2, 3])
-  const e10 = eq('mapBoxes: missing', m.missing, [1, 2])
-  return e1 || e2 || e3 || e4 || e5 || e6 || e7 || e8 || e9 || e10 || { ok: true }
+  const error10 = eq('mapBoxes: missing', m.missing, [1, 2])
+  return error1 || error2 || error3 || error4 || error5 || error6 || error7 || error8 || error9 || error10 || { ok: true }
 })
 
 await testCase('T183z a human-gate box is settled by the body alone: ticked by a person, never by Morgan\'s proven', async () => {
@@ -6576,30 +6568,30 @@ await testCase('T183z a human-gate box is settled by the body alone: ticked by a
   const proof = (id) => ({ id, proven: true, proof: 'proof ' + id })
   // (a) The gate is open in the body and Morgan says proven: the gate is still open, ready-pending-human, never ready, never ticked.
   const a = await gate(gateLines, [proof(1), proof(2), proof(3)])
-  const e1 = eq('(a) status', a.status, 'ready-pending-human')
-  const e2 = eq('(a) humanGateItems', a.humanGateItems, [gateLines[1]])
-  const e3 = includes('(a) the gate stays open', String(a.prBodyPreview || ''), gateLines[1])
-  const e4 = eq('(a) boxes 1 and 3 ticked, the gate not', t183Ticked(String(a.prBodyPreview || '')).length, 2)
-  const e4b = eq('(a) the gate box is not proven in the payload, whatever Morgan returned', (a.boxes || []).map((b) => [b.id, b.proven]), [[1, true], [2, false], [3, true]])
+  const error1 = eq('(a) status', a.status, 'ready-pending-human')
+  const error2 = eq('(a) humanGateItems', a.humanGateItems, [gateLines[1]])
+  const error3 = includes('(a) the gate stays open', String(a.prBodyPreview || ''), gateLines[1])
+  const error4 = eq('(a) boxes 1 and 3 ticked, the gate not', t183Ticked(String(a.prBodyPreview || '')).length, 2)
+  const error4b = eq('(a) the gate box is not proven in the payload, whatever Morgan returned', (a.boxes || []).map((b) => [b.id, b.proven]), [[1, true], [2, false], [3, true]])
   // (b) The gate was ticked by a person: it is settled with an empty proof, with proven false, and with no entry at all.
   const ticked = [gateLines[0], '- [x] ' + gateLines[1].slice(6), gateLines[2]]
   const b1 = await gate(ticked, [proof(1), { id: 2, proven: true, proof: '' }, proof(3)])
-  const e5 = eq('(b) empty proof: status', b1.status, 'ready')
-  const e5b = eq('(b) empty proof: the gate box is proven in the payload', (b1.boxes || []).map((b) => [b.id, b.proven]), [[1, true], [2, true], [3, true]])
+  const error5 = eq('(b) empty proof: status', b1.status, 'ready')
+  const error5b = eq('(b) empty proof: the gate box is proven in the payload', (b1.boxes || []).map((b) => [b.id, b.proven]), [[1, true], [2, true], [3, true]])
   const b2 = await gate(ticked, [proof(1), { id: 2, proven: false, proof: '' }, proof(3)])
-  const e6 = eq('(b) proven false: status', b2.status, 'ready')
+  const error6 = eq('(b) proven false: status', b2.status, 'ready')
   const b3 = await gate(ticked, [proof(1), proof(3)])
-  const e7 = eq('(b) no entry: status', b3.status, 'ready')
-  const e8 = eq('(b) no entry: no boxes-missing for the gate', (b3.trace || []).filter((t) => String(t).startsWith('boxes-missing')), [])
+  const error7 = eq('(b) no entry: status', b3.status, 'ready')
+  const error8 = eq('(b) no entry: no boxes-missing for the gate', (b3.trace || []).filter((t) => String(t).startsWith('boxes-missing')), [])
   // (c) The gate was ticked by a person and Morgan returns a proof: ready, and the tick stays.
   const c = await gate(ticked, [proof(1), proof(2), proof(3)])
-  const e9 = eq('(c) status', c.status, 'ready')
-  const e10 = includes('(c) the gate stays ticked', String(c.prBodyPreview || ''), '- [x] <!-- ac:2 --> [human-gate] ')
+  const error9 = eq('(c) status', c.status, 'ready')
+  const error10 = includes('(c) the gate stays ticked', String(c.prBodyPreview || ''), '- [x] <!-- ac:2 --> [human-gate] ')
   // (d) A non-gate box is still missing when the gate is settled: the gate does not stand for it.
   const d = await gate(ticked, [proof(1)])
-  const e11 = eq('(d) status', d.status, 'needs-revision')
-  const e12 = eq('(d) trace', (d.trace || []).filter((t) => String(t).startsWith('boxes-missing')), ['boxes-missing:3'])
-  return e1 || e2 || e3 || e4 || e4b || e5 || e5b || e6 || e7 || e8 || e9 || e10 || e11 || e12 || { ok: true }
+  const error11 = eq('(d) status', d.status, 'needs-revision')
+  const error12 = eq('(d) trace', (d.trace || []).filter((t) => String(t).startsWith('boxes-missing')), ['boxes-missing:3'])
+  return error1 || error2 || error3 || error4 || error4b || error5 || error5b || error6 || error7 || error8 || error9 || error10 || error11 || error12 || { ok: true }
 })
 
 await testCase('T183za the fence scanner: tilde and longer fences, a fence inside the block, a fence never closed (the tick fails closed with no-markers)', async () => {
@@ -6621,49 +6613,48 @@ await testCase('T183za the fence scanner: tilde and longer fences, a fence insid
   for (const [name, body] of Object.entries(shapes)) {
     const r = await t183Review({ prBody: body, morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, true, true) }] })
     const p = String(r.prBodyPreview || '')
-    const e1 = eq(name + ': status', r.status, 'ready')
-    const e2 = eq(name + ': the 3 real boxes ticked', t183Ticked(p).length, 3)
-    const e3 = includes(name + ': the example is intact', p, '<!-- acceptance:start -->\n- [ ] an example box\n<!-- acceptance:end -->')
-    const e4 = includes(name + ': the real block is the ticked one', p, '<!-- acceptance:start -->\n' + ticked3 + '\n<!-- acceptance:end -->')
-    if (e1 || e2 || e3 || e4) return e1 || e2 || e3 || e4
+    const error1 = eq(name + ': status', r.status, 'ready')
+    const error2 = eq(name + ': the 3 real boxes ticked', t183Ticked(p).length, 3)
+    const error3 = includes(name + ': the example is intact', p, '<!-- acceptance:start -->\n- [ ] an example box\n<!-- acceptance:end -->')
+    const error4 = includes(name + ': the real block is the ticked one', p, '<!-- acceptance:start -->\n' + ticked3 + '\n<!-- acceptance:end -->')
+    if (error1 || error2 || error3 || error4) return error1 || error2 || error3 || error4
     if (!fns) continue
-    const e5 = eq(name + ': checked ids are the real block\'s', fns.checkedAcceptanceIds(p), [1, 2, 3])
-    const e6 = includes(name + ': splice replaces the real block only', fns.spliceAcceptanceBlock(body, '- [ ] <!-- ac:1 --> new'), real.replace(T183_L3.join('\n'), '- [ ] <!-- ac:1 --> new'))
-    if (e5 || e6) return e5 || e6
+    const error5 = eq(name + ': checked ids are the real block\'s', fns.checkedAcceptanceIds(p), [1, 2, 3])
+    const error6 = includes(name + ': splice replaces the real block only', fns.spliceAcceptanceBlock(body, '- [ ] <!-- ac:1 --> new'), real.replace(T183_L3.join('\n'), '- [ ] <!-- ac:1 --> new'))
+    if (error5 || error6) return error5 || error6
   }
   // A fence inside the block itself: the marker pair it holds (the start would cut the block) is no marker, and the id-looking line it holds is no box.
   const inner = '```\n<!-- acceptance:start -->\n- [ ] <!-- ac:2 --> fenced id example\n<!-- acceptance:end -->\n```'
   const body = 'Closes #183\n\n<!-- acceptance:start -->\n' + [T183_L3[0], inner, T183_L3[1], T183_L3[2]].join('\n') + '\n<!-- acceptance:end -->\n'
   const r = await t183Review({ prBody: body, morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, true, true) }] })
   const p = String(r.prBodyPreview || '')
-  const e7 = eq('fence in the block: status', r.status, 'ready')
-  const e8 = includes('fence in the block: rendered boxes ticked, the fence kept after them', p, '<!-- acceptance:start -->\n' + ticked3 + '\n' + inner + '\n<!-- acceptance:end -->')
-  if (e7 || e8) return e7 || e8
+  const error7 = eq('fence in the block: status', r.status, 'ready')
+  const error8 = includes('fence in the block: rendered boxes ticked, the fence kept after them', p, '<!-- acceptance:start -->\n' + ticked3 + '\n' + inner + '\n<!-- acceptance:end -->')
+  if (error7 || error8) return error7 || error8
   if (fns) {
-    const e9 = eq('fence in the block: checked ids', fns.checkedAcceptanceIds(body.replace('- [ ] <!-- ac:2 --> fenced id example', '- [x] <!-- ac:2 --> fenced id example')), [])
-    if (e9) return e9
+    const error9 = eq('fence in the block: checked ids', fns.checkedAcceptanceIds(body.replace('- [ ] <!-- ac:2 --> fenced id example', '- [x] <!-- ac:2 --> fenced id example')), [])
+    if (error9) return error9
   }
   // A fence never closed BEFORE the block swallows it: no block, the tick fails closed, the run is parked with its reason.
   const open = 'Closes #183\n\n```\nan example, never closed\n\n' + real
   const o = await t183Review({ prBody: open, morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, true, true) }] })
-  const e10 = eq('never closed before the block: status', o.status, 'verified-untickable')
-  const e11 = eq('never closed before the block: tickReason', o.tickReason, 'no-markers')
-  const e12 = includes('never closed before the block: trace', o.trace || [], 'acceptance-tick-reason:no-markers')
-  const e13 = eq('never closed before the block: the body is untouched', o.prBodyPreview === undefined || o.prBodyPreview === null || String(o.prBodyPreview).includes('- [x]') === false, true)
-  if (!fns) return e10 || e11 || e12 || e13 || t182Skip('T183za')
-  const e14 = eq('never closed before the block: block level', fns.tickAcceptanceBlock(open, T183_L3.join('\n'), [1, 2, 3], []), null)
-  return e10 || e11 || e12 || e13 || e14 || { ok: true }
+  const error10 = eq('never closed before the block: status', o.status, 'verified-untickable')
+  const error11 = eq('never closed before the block: tickReason', o.tickReason, 'no-markers')
+  const error12 = includes('never closed before the block: trace', o.trace || [], 'acceptance-tick-reason:no-markers')
+  const error13 = eq('never closed before the block: the body is untouched', o.prBodyPreview === undefined || o.prBodyPreview === null || String(o.prBodyPreview).includes('- [x]') === false, true)
+  if (!fns) return error10 || error11 || error12 || error13 || t182Skip('T183za')
+  const error14 = eq('never closed before the block: block level', fns.tickAcceptanceBlock(open, T183_L3.join('\n'), [1, 2, 3], []), null)
+  return error10 || error11 || error12 || error13 || error14 || { ok: true }
 })
 
 // T237 (#237) — acceptanceBoxes drops the first line of the block text when it is blank: a line of only carriage returns,
 // whatever their number (a string replace stripped ONE). The function is read from the engine block by its markers (as
 // t183Splice does), so `--fp <base copy>` replays the case on the base.
 const t237Boxes = () => {
-  const src = SUITE_ARGS.fpSource
-  if (!src) return null
-  const block = extractBetween(src, '// --- prBodySplice:start ---', '// --- prBodySplice:end ---')
+  const source = SUITE_ARGS.fpSource
+  if (!source) return null
+  const block = extractBetween(source, '// --- prBodySplice:start ---', '// --- prBodySplice:end ---')
   if (!block) throw new Error('prBodySplice:start/:end markers not found in the pipeline source')
-  // eslint-disable-next-line no-new-func
   return new Function(block + '\nreturn acceptanceBoxes')()
 }
 
@@ -6681,8 +6672,8 @@ await testCase('T237a acceptanceBoxes: a first line of only carriage returns is 
   ]
   for (const [head, foreign] of rows) {
     const got = boxes(head + '- [ ] <!-- ac:1 --> a\r\n')
-    const e = eq(`first line ${JSON.stringify(head)}: foreign`, got.foreign, foreign) || eq(`first line ${JSON.stringify(head)}: ids`, [...got.checkedById], [[1, false]])
-    if (e) return e
+    const error = eq(`first line ${JSON.stringify(head)}: foreign`, got.foreign, foreign) || eq(`first line ${JSON.stringify(head)}: ids`, [...got.checkedById], [[1, false]])
+    if (error) return error
   }
   return { ok: true }
 })
@@ -6694,11 +6685,11 @@ const t141Skip = (id) => { log(`SKIP — ${id}: SUITE_ARGS.phaseTitles absent (s
 
 await testCase('T141a a run without any loop records exactly Setup, Diagnose, Plan, Dev, Review', async () => {
   const r = await run({ mode: 'auto', simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] } })
-  const e1 = eq('status', r.status, 'ready')
+  const error1 = eq('status', r.status, 'ready')
   const titles = t141Titles()
-  if (!titles) return e1 || t141Skip('T141a')
-  const e2 = eq('phase titles', titles, ['Setup', 'Diagnose', 'Plan', 'Dev', 'Review'])
-  return e1 || e2 || { ok: true }
+  if (!titles) return error1 || t141Skip('T141a')
+  const error2 = eq('phase titles', titles, ['Setup', 'Diagnose', 'Plan', 'Dev', 'Review'])
+  return error1 || error2 || { ok: true }
 })
 
 await testCase('T141b two fix rounds record Review 2 then Review 3, each title at most 16 characters', async () => {
@@ -6709,23 +6700,23 @@ await testCase('T141b two fix rounds record Review 2 then Review 3, each title a
       morgan: [{ verdict: 'REQUIRED_CHANGES', items: ['a'] }, { verdict: 'REQUIRED_CHANGES', items: ['b'] }, { verdict: 'LGTM' }],
     },
   })
-  const e1 = eq('status', r.status, 'ready')
-  const e2 = eq('rounds', r.rounds, 2)
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = eq('rounds', r.rounds, 2)
   const titles = t141Titles()
-  if (!titles) return e1 || e2 || t141Skip('T141b')
-  const e3 = eq('phase titles', titles, ['Setup', 'Diagnose', 'Plan', 'Dev', 'Review', 'Review 2', 'Review 3'])
-  const e4 = eq('titles over 16 characters', titles.filter((t) => t.length > 16), [])
-  return e1 || e2 || e3 || e4 || { ok: true }
+  if (!titles) return error1 || error2 || t141Skip('T141b')
+  const error3 = eq('phase titles', titles, ['Setup', 'Diagnose', 'Plan', 'Dev', 'Review', 'Review 2', 'Review 3'])
+  const error4 = eq('titles over 16 characters', titles.filter((t) => t.length > 16), [])
+  return error1 || error2 || error3 || error4 || { ok: true }
 })
 
 await testCase('T141c a refused plan planned again records Plan 2', async () => {
   const withCommand = T182_ITEMS.map((it) => (it.humanGate ? { ...it, command: 'node scripts/guards.cjs' } : it))
   const r = await run({ mode: 'semi', simulate: { sam: { 1: t182Sam(withCommand), 2: t182Sam(T182_ITEMS) }, planCheck: T182_CONFORMING } })
-  const e1 = eq('status', r.status, 'plan-ready')
+  const error1 = eq('status', r.status, 'plan-ready')
   const titles = t141Titles()
-  if (!titles) return e1 || t141Skip('T141c')
-  const e2 = eq('phase titles', titles, ['Setup', 'Diagnose', 'Plan', 'Plan 2'])
-  return e1 || e2 || { ok: true }
+  if (!titles) return error1 || t141Skip('T141c')
+  const error2 = eq('phase titles', titles, ['Setup', 'Diagnose', 'Plan', 'Plan 2'])
+  return error1 || error2 || { ok: true }
 })
 
 // The per-call `phase:` options never reach the harness in simulate mode (callAgent returns the fixture before agent()), so
@@ -6733,32 +6724,32 @@ await testCase('T141c a refused plan planned again records Plan 2', async () => 
 // roundPhase declaration to the round's Morgan call) the plan-amend scout, the Nick fix and Morgan pass `phase: roundPhase`
 // and no literal `phase: 'Review'` or `phase: 'Plan'` remains.
 await testCase('T141d the plan scout passes planPhase and the review loop calls pass roundPhase, never a fixed title', async () => {
-  const src = SUITE_ARGS.fpSource
-  if (!src) {
+  const source = SUITE_ARGS.fpSource
+  if (!source) {
     log('SKIP — T141d: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
     return { ok: true }
   }
-  const optsLine = (from, label) => {
-    const at = src.indexOf(label, from)
+  const optionsLine = (from, label) => {
+    const at = source.indexOf(label, from)
     if (at < 0) return null
-    const start = src.lastIndexOf('\n', at) + 1
-    const end = src.indexOf('\n', at)
-    return { line: src.slice(start, end), end }
+    const start = source.lastIndexOf('\n', at) + 1
+    const end = source.indexOf('\n', at)
+    return { line: source.slice(start, end), end }
   }
-  const scout = optsLine(0, 'label: `scout-issue-${issue}-${planPass}`')
-  const e1 = scout && scout.line.includes('phase: planPhase') ? null : { ok: false, msg: 'the plan-loop scout must pass `phase: planPhase`' }
-  const loopStart = src.indexOf('const roundPhase = ')
+  const scout = optionsLine(0, 'label: `scout-issue-${issue}-${planPass}`')
+  const error1 = scout && scout.line.includes('phase: planPhase') ? null : { ok: false, msg: 'the plan-loop scout must pass `phase: planPhase`' }
+  const loopStart = source.indexOf('const roundPhase = ')
   if (loopStart < 0) return { ok: false, msg: 'const roundPhase declaration not found' }
-  const amend = optsLine(loopStart, 'label: `scout-amend-${issue}-r${round}`')
-  const nick = optsLine(loopStart, 'label: `nick-pr-${issue}-${pr}`')
-  const morgan = optsLine(loopStart, 'label: `morgan-pr-${issue}-${pr}-r${round}`')
-  const e2 = amend && amend.line.includes('phase: roundPhase') ? null : { ok: false, msg: 'the plan-amend scout must pass `phase: roundPhase`' }
-  const e3 = nick && nick.line.includes('phase: roundPhase') ? null : { ok: false, msg: 'the Nick fix call must pass `phase: roundPhase`' }
-  const e4 = morgan && morgan.line.includes('phase: roundPhase') ? null : { ok: false, msg: 'the review-loop Morgan call must pass `phase: roundPhase`' }
-  const region = morgan ? src.slice(loopStart, morgan.end) : ''
-  const e5 = /phase:\s*['"`](Review|Plan)['"`]/.test(region)
+  const amend = optionsLine(loopStart, 'label: `scout-amend-${issue}-r${round}`')
+  const nick = optionsLine(loopStart, 'label: `nick-pr-${issue}-${pr}`')
+  const morgan = optionsLine(loopStart, 'label: `morgan-pr-${issue}-${pr}-r${round}`')
+  const error2 = amend && amend.line.includes('phase: roundPhase') ? null : { ok: false, msg: 'the plan-amend scout must pass `phase: roundPhase`' }
+  const error3 = nick && nick.line.includes('phase: roundPhase') ? null : { ok: false, msg: 'the Nick fix call must pass `phase: roundPhase`' }
+  const error4 = morgan && morgan.line.includes('phase: roundPhase') ? null : { ok: false, msg: 'the review-loop Morgan call must pass `phase: roundPhase`' }
+  const region = morgan ? source.slice(loopStart, morgan.end) : ''
+  const error5 = /phase:\s*['"`](Review|Plan)['"`]/.test(region)
     ? { ok: false, msg: "a literal `phase: 'Review'` or `phase: 'Plan'` remains in the review loop" } : null
-  return e1 || e2 || e3 || e4 || e5 || { ok: true }
+  return error1 || error2 || error3 || error4 || error5 || { ok: true }
 })
 
 // ---------------------------------------------------------------------------
@@ -6790,11 +6781,11 @@ await testCase('T184a two rounds with identical blockers → escalate no-progres
       ],
     },
   })
-  const e1 = eq('status', r.status, 'escalate')
-  const e2 = eq('reason', r.reason, 'no-progress')
-  const e3 = eq('round', r.round, 1)
-  const e4 = eq('progress', r.progress, 'flat')
-  return e1 || e2 || e3 || e4 || { ok: true }
+  const error1 = eq('status', r.status, 'escalate')
+  const error2 = eq('reason', r.reason, 'no-progress')
+  const error3 = eq('round', r.round, 1)
+  const error4 = eq('progress', r.progress, 'flat')
+  return error1 || error2 || error3 || error4 || { ok: true }
 })
 
 await testCase('T184b LGTM + every non-gate box proven + CI green → ready at round 0', async () => {
@@ -6805,10 +6796,10 @@ await testCase('T184b LGTM + every non-gate box proven + CI green → ready at r
       morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, true, true) }],
     },
   })
-  const e1 = eq('status', r.status, 'ready')
-  const e2 = eq('rounds', r.rounds, 0)
-  const e3 = (r.trace || []).includes('ci-not-green:0') ? { ok: false, msg: 'ci-not-green traced on a green run' } : null
-  return e1 || e2 || e3 || { ok: true }
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = eq('rounds', r.rounds, 0)
+  const error3 = (r.trace || []).includes('ci-not-green:0') ? { ok: false, msg: 'ci-not-green traced on a green run' } : null
+  return error1 || error2 || error3 || { ok: true }
 })
 
 await testCase('T184c LGTM with one open non-gate box is never ready: it loops, then stops on no-progress', async () => {
@@ -6823,10 +6814,10 @@ await testCase('T184c LGTM with one open non-gate box is never ready: it loops, 
       ],
     },
   })
-  const e1 = r.status === 'ready' ? { ok: false, msg: 'ready with a box not proven' } : null
-  const e2 = eq('status', r.status, 'escalate')
-  const e3 = eq('reason', r.reason, 'no-progress')
-  const e4 = includes('trace', r.trace || [], 'acceptance-open-lgtm:0')
+  const error1 = r.status === 'ready' ? { ok: false, msg: 'ready with a box not proven' } : null
+  const error2 = eq('status', r.status, 'escalate')
+  const error3 = eq('reason', r.reason, 'no-progress')
+  const error4 = includes('trace', r.trace || [], 'acceptance-open-lgtm:0')
   // Control: with a single verdict the run stops at the review gate carrying the box-2 line.
   const s = await run({
     mode: 'semi',
@@ -6835,19 +6826,19 @@ await testCase('T184c LGTM with one open non-gate box is never ready: it loops, 
     planText: t182Sam(T183_PLAIN).plan,
     simulate: { morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, false, true) }] },
   })
-  const e5 = eq('control: status', s.status, 'needs-revision')
-  const e6 = eq('control: items', s.items, [lines[1]])
-  return e1 || e2 || e3 || e4 || e5 || e6 || { ok: true }
+  const error5 = eq('control: status', s.status, 'needs-revision')
+  const error6 = eq('control: items', s.items, [lines[1]])
+  return error1 || error2 || error3 || error4 || error5 || error6 || { ok: true }
 })
 
 await testCase('T184d a verdict outside the schema escalates at round 0: verdict-malformed, no Nick round', async () => {
   const r = await run({ mode: 'auto', simulate: { sam: 'GO', morgan: [{ verdict: 'MAYBE' }] } })
-  const e1 = eq('status', r.status, 'escalate')
-  const e2 = eq('reason', r.reason, 'verdict-malformed')
-  const e3 = eq('round', r.round, 0)
-  const e4 = eq('problem', r.problem, 'verdict')
-  const e5 = includes('trace', r.trace || [], 'verdict-malformed:0')
-  return e1 || e2 || e3 || e4 || e5 || nickTrace(r) || { ok: true }
+  const error1 = eq('status', r.status, 'escalate')
+  const error2 = eq('reason', r.reason, 'verdict-malformed')
+  const error3 = eq('round', r.round, 0)
+  const error4 = eq('problem', r.problem, 'verdict')
+  const error5 = includes('trace', r.trace || [], 'verdict-malformed:0')
+  return error1 || error2 || error3 || error4 || error5 || nickTrace(r) || { ok: true }
 })
 
 await testCase('T184e a verdict malformed by shape in a later round escalates at once; a valid REGRESSION_DETECTED then LGTM is ready', async () => {
@@ -6861,17 +6852,17 @@ await testCase('T184e a verdict malformed by shape in a later round escalates at
       ],
     },
   })
-  const e1 = eq('status', r.status, 'escalate')
-  const e2 = eq('reason', r.reason, 'verdict-malformed')
-  const e3 = eq('round', r.round, 1)
-  const e4 = eq('problem', r.problem, 'items')
+  const error1 = eq('status', r.status, 'escalate')
+  const error2 = eq('reason', r.reason, 'verdict-malformed')
+  const error3 = eq('round', r.round, 1)
+  const error4 = eq('problem', r.problem, 'items')
   const c = await run({
     mode: 'auto',
     simulate: { sam: 'GO', morgan: [{ verdict: 'REGRESSION_DETECTED', items: ['a'] }, { verdict: 'LGTM' }] },
   })
-  const e5 = eq('control: status', c.status, 'ready')
-  const e6 = eq('control: rounds', c.rounds, 1)
-  return e1 || e2 || e3 || e4 || e5 || e6 || { ok: true }
+  const error5 = eq('control: status', c.status, 'ready')
+  const error6 = eq('control: rounds', c.rounds, 1)
+  return error1 || error2 || error3 || error4 || error5 || error6 || { ok: true }
 })
 
 await testCase('T184f reviewProgress and verdictProblem tables (the engine\'s own functions)', async () => {
@@ -6879,58 +6870,58 @@ await testCase('T184f reviewProgress and verdictProblem tables (the engine\'s ow
   if (!fns) return t182Skip('T184f')
   const mk = (n, text) => `- [ ] <!-- ac:${n} --> ${text}`
   const rp = fns.reviewProgress
-  const e1 = eq('identical -> flat', rp(['a', 'b'], ['a', 'b']), 'flat')
-  const e2 = eq('same box id reworded -> flat', rp([mk(1, 'old wording')], [mk(1, 'new wording')]), 'flat')
-  const e3 = eq('one resolved -> progress', rp(['a', 'b'], ['a']), 'progress')
-  const e4 = eq('resolved + added -> progress', rp(['a'], ['b']), 'progress')
-  const e5 = eq('prev null -> progress', rp(null, ['a']), 'progress')
-  const e6 = eq('prev empty -> progress', rp([], ['a']), 'progress')
-  const e7 = eq('prev subset of cur -> regressed', rp(['a'], ['a', 'b']), 'regressed')
-  const e8 = eq('box ids: 1 -> 1,2 -> regressed', rp([mk(1, 'x')], [mk(1, 'x'), mk(2, 'y')]), 'regressed')
+  const error1 = eq('identical -> flat', rp(['a', 'b'], ['a', 'b']), 'flat')
+  const error2 = eq('same box id reworded -> flat', rp([mk(1, 'old wording')], [mk(1, 'new wording')]), 'flat')
+  const error3 = eq('one resolved -> progress', rp(['a', 'b'], ['a']), 'progress')
+  const error4 = eq('resolved + added -> progress', rp(['a'], ['b']), 'progress')
+  const error5 = eq('prev null -> progress', rp(null, ['a']), 'progress')
+  const error6 = eq('prev empty -> progress', rp([], ['a']), 'progress')
+  const error7 = eq('prev subset of cur -> regressed', rp(['a'], ['a', 'b']), 'regressed')
+  const error8 = eq('box ids: 1 -> 1,2 -> regressed', rp([mk(1, 'x')], [mk(1, 'x'), mk(2, 'y')]), 'regressed')
   const vp = fns.verdictProblem
-  const e9 = eq('valid verdict -> null', vp({ verdict: 'LGTM', items: ['a'], boxes: [], ciGreen: true }, T184_SCHEMA), null)
-  const e10 = eq('unknown verdict -> verdict', vp({ verdict: 'MAYBE' }, T184_SCHEMA), 'verdict')
-  const e11 = eq('missing verdict -> verdict', vp({ items: [] }, T184_SCHEMA), 'verdict')
-  const e12 = eq('items not an array -> items', vp({ verdict: 'LGTM', items: 'oops' }, T184_SCHEMA), 'items')
-  const e13 = eq('items holding a non-string -> items', vp({ verdict: 'LGTM', items: ['a', 3] }, T184_SCHEMA), 'items')
-  const e14 = eq('ciGreen not a boolean -> ciGreen', vp({ verdict: 'LGTM', ciGreen: 'yes' }, T184_SCHEMA), 'ciGreen')
-  const e15 = eq('boxes not an array -> boxes', vp({ verdict: 'LGTM', boxes: {} }, T184_SCHEMA), 'boxes')
-  const e16 = eq('not an object -> not-an-object', vp('LGTM', T184_SCHEMA), 'not-an-object')
-  const e17 = eq('array -> not-an-object', vp([], T184_SCHEMA), 'not-an-object')
-  return e1 || e2 || e3 || e4 || e5 || e6 || e7 || e8 || e9 || e10 || e11 || e12 || e13 || e14 || e15 || e16 || e17 || { ok: true }
+  const error9 = eq('valid verdict -> null', vp({ verdict: 'LGTM', items: ['a'], boxes: [], ciGreen: true }, T184_SCHEMA), null)
+  const error10 = eq('unknown verdict -> verdict', vp({ verdict: 'MAYBE' }, T184_SCHEMA), 'verdict')
+  const error11 = eq('missing verdict -> verdict', vp({ items: [] }, T184_SCHEMA), 'verdict')
+  const error12 = eq('items not an array -> items', vp({ verdict: 'LGTM', items: 'oops' }, T184_SCHEMA), 'items')
+  const error13 = eq('items holding a non-string -> items', vp({ verdict: 'LGTM', items: ['a', 3] }, T184_SCHEMA), 'items')
+  const error14 = eq('ciGreen not a boolean -> ciGreen', vp({ verdict: 'LGTM', ciGreen: 'yes' }, T184_SCHEMA), 'ciGreen')
+  const error15 = eq('boxes not an array -> boxes', vp({ verdict: 'LGTM', boxes: {} }, T184_SCHEMA), 'boxes')
+  const error16 = eq('not an object -> not-an-object', vp('LGTM', T184_SCHEMA), 'not-an-object')
+  const error17 = eq('array -> not-an-object', vp([], T184_SCHEMA), 'not-an-object')
+  return error1 || error2 || error3 || error4 || error5 || error6 || error7 || error8 || error9 || error10 || error11 || error12 || error13 || error14 || error15 || error16 || error17 || { ok: true }
 })
 
 await testCase('T184g the CI half of the ready gate: a red CI at LGTM is REQUIRED_CHANGES, a persistent one stops on no-progress; ciBlocker table', async () => {
   const r = await run({ mode: 'auto', simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM', ciGreen: false }, { verdict: 'LGTM' }] } })
-  const e1 = eq('status', r.status, 'ready')
-  const e2 = eq('rounds', r.rounds, 1)
-  const e3 = includes('trace', r.trace || [], 'ci-not-green:0')
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = eq('rounds', r.rounds, 1)
+  const error3 = includes('trace', r.trace || [], 'ci-not-green:0')
   const p = await run({ mode: 'auto', simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM', ciGreen: false }, { verdict: 'LGTM', ciGreen: false }] } })
-  const e4 = eq('persistent: status', p.status, 'escalate')
-  const e5 = eq('persistent: reason', p.reason, 'no-progress')
+  const error4 = eq('persistent: status', p.status, 'escalate')
+  const error5 = eq('persistent: reason', p.reason, 'no-progress')
   const fns = t182Block()
-  if (!fns) return e1 || e2 || e3 || e4 || e5 || t182Skip('T184g')
-  const cb = fns.ciBlocker
-  const e6 = eq('green wins over a Morgan false', cb('green', false), null)
-  const e7 = typeof cb('failing', true) === 'string' ? null : { ok: false, msg: 'failing + true must give a blocker line' }
-  const e8 = typeof cb('pending', true) === 'string' ? null : { ok: false, msg: 'pending + true must give a blocker line' }
+  if (!fns) return error1 || error2 || error3 || error4 || error5 || t182Skip('T184g')
+  const callback = fns.ciBlocker
+  const error6 = eq('green wins over a Morgan false', callback('green', false), null)
+  const error7 = typeof callback('failing', true) === 'string' ? null : { ok: false, msg: 'failing + true must give a blocker line' }
+  const error8 = typeof callback('pending', true) === 'string' ? null : { ok: false, msg: 'pending + true must give a blocker line' }
   // The probe ANSWERED 'none' (no check on the head): Morgan's word decides. No evidence at all (null, absent: the probe
   // failed or is an older script): a blocker unless Morgan reported ciGreen true.
   const isLine = (label, x) => (typeof x === 'string' && x !== '' ? null : { ok: false, msg: `${label} must give a blocker line, got ${JSON.stringify(x)}` })
-  const e9 = isLine('null + false', cb(null, false))
-  const e10 = isLine('none + false', cb('none', false))
-  const e11 = eq('null + true -> null', cb(null, true), null)
-  const e12 = isLine('undefined + undefined', cb(undefined, undefined)) || isLine('null + undefined', cb(null, undefined))
-  const e12b = eq('undefined + true -> null', cb(undefined, true), null)
-  const e12c = eq('none + undefined -> null', cb('none', undefined), null) || eq('none + true -> null', cb('none', true), null)
-  const e12d = eq('the no-evidence line is the same sentence as the one of the Morgan report', cb(null, undefined), cb('none', false))
-  const e13 = eq('the line is stable across calls', cb('failing', true), cb('failing', true))
+  const error9 = isLine('null + false', callback(null, false))
+  const error10 = isLine('none + false', callback('none', false))
+  const error11 = eq('null + true -> null', callback(null, true), null)
+  const error12 = isLine('undefined + undefined', callback(undefined, undefined)) || isLine('null + undefined', callback(null, undefined))
+  const error12b = eq('undefined + true -> null', callback(undefined, true), null)
+  const error12c = eq('none + undefined -> null', callback('none', undefined), null) || eq('none + true -> null', callback('none', true), null)
+  const error12d = eq('the no-evidence line is the same sentence as the one of the Morgan report', callback(null, undefined), callback('none', false))
+  const error13 = eq('the line is stable across calls', callback('failing', true), callback('failing', true))
   // 'absent' (a configured check GitHub never reports) is its own STABLE line naming the names, never the 'pending' sentence
-  const abs = cb('absent', true, ['build', 'deploy'])
-  const e14 = eq('absent line', abs, 'config.ciChecks names check(s) not reported on the PR head: build, deploy')
-  const e15 = eq('absent wins over a Morgan true and is stable', cb('absent', true, ['build', 'deploy']), cb('absent', false, ['build', 'deploy']))
-  const e16 = eq('absent is not the pending sentence', abs === cb('pending', true, ['build']) ? 'same' : 'distinct', 'distinct')
-  return e1 || e2 || e3 || e4 || e5 || e6 || e7 || e8 || e9 || e10 || e11 || e12 || e12b || e12c || e12d || e13 || e14 || e15 || e16 || { ok: true }
+  const abs = callback('absent', true, ['build', 'deploy'])
+  const error14 = eq('absent line', abs, 'config.ciChecks names check(s) not reported on the PR head: build, deploy')
+  const error15 = eq('absent wins over a Morgan true and is stable', callback('absent', true, ['build', 'deploy']), callback('absent', false, ['build', 'deploy']))
+  const error16 = eq('absent is not the pending sentence', abs === callback('pending', true, ['build']) ? 'same' : 'distinct', 'distinct')
+  return error1 || error2 || error3 || error4 || error5 || error6 || error7 || error8 || error9 || error10 || error11 || error12 || error12b || error12c || error12d || error13 || error14 || error15 || error16 || { ok: true }
 })
 
 await testCase('T184h ciScope: the CI state is judged over config.ciChecks only, else the overall state', async () => {
@@ -6938,31 +6929,31 @@ await testCase('T184h ciScope: the CI state is judged over config.ciChecks only,
   if (!fns) return t182Skip('T184h')
   const cs = fns.ciScope
   const map = { guards: 'green', 'smoke-install': 'green', CodeQL: 'pending', 'Analyze (python)': 'failing' }
-  const req = ['guards', 'smoke-install']
-  const e1 = eq('filtered-out failing + pending optional checks -> green', cs('failing', map, req), 'green')
-  const e2 = eq('a configured check failing -> failing', cs('green', { ...map, guards: 'failing' }, req), 'failing')
-  const e3 = eq('a configured check pending -> pending', cs('green', { ...map, 'smoke-install': 'pending' }, req), 'pending')
-  const e4 = eq('a configured name absent from the map -> absent (not pending: nothing is pending)', cs('green', { guards: 'green' }, req), 'absent')
-  const e5 = eq('failing wins over an absent name', cs('green', { guards: 'failing' }, req), 'failing')
-  const e6 = eq('failing wins over a pending one', cs('green', { guards: 'pending', 'smoke-install': 'failing' }, req), 'failing')
-  const e7 = eq('no config.ciChecks (undefined) -> overall', cs('failing', map, undefined), 'failing')
-  const e8 = eq('empty config.ciChecks -> overall', cs('pending', map, []), 'pending')
-  const e9 = eq('no map (null) -> overall', cs('green', null, req), 'green')
-  const e10 = eq('no map (undefined) -> overall, null stays null', cs(null, undefined, req), null)
-  const e11 = eq('an empty map with configured names -> absent', cs('none', {}, req), 'absent')
-  const e12 = eq('an inherited property name is not a check', cs('green', {}, ['constructor']), 'absent')
-  const e13 = eq('__proto__ is not a check either', cs('green', {}, ['__proto__']), 'absent')
-  const e14 = eq('a non-array config.ciChecks -> overall', cs('failing', map, 'guards'), 'failing')
-  const e15 = eq('a map of the wrong type -> overall', cs('failing', ['guards'], req), 'failing')
+  const request = ['guards', 'smoke-install']
+  const error1 = eq('filtered-out failing + pending optional checks -> green', cs('failing', map, request), 'green')
+  const error2 = eq('a configured check failing -> failing', cs('green', { ...map, guards: 'failing' }, request), 'failing')
+  const error3 = eq('a configured check pending -> pending', cs('green', { ...map, 'smoke-install': 'pending' }, request), 'pending')
+  const error4 = eq('a configured name absent from the map -> absent (not pending: nothing is pending)', cs('green', { guards: 'green' }, request), 'absent')
+  const error5 = eq('failing wins over an absent name', cs('green', { guards: 'failing' }, request), 'failing')
+  const error6 = eq('failing wins over a pending one', cs('green', { guards: 'pending', 'smoke-install': 'failing' }, request), 'failing')
+  const error7 = eq('no config.ciChecks (undefined) -> overall', cs('failing', map, undefined), 'failing')
+  const error8 = eq('empty config.ciChecks -> overall', cs('pending', map, []), 'pending')
+  const error9 = eq('no map (null) -> overall', cs('green', null, request), 'green')
+  const error10 = eq('no map (undefined) -> overall, null stays null', cs(null, undefined, request), null)
+  const error11 = eq('an empty map with configured names -> absent', cs('none', {}, request), 'absent')
+  const error12 = eq('an inherited property name is not a check', cs('green', {}, ['constructor']), 'absent')
+  const error13 = eq('__proto__ is not a check either', cs('green', {}, ['__proto__']), 'absent')
+  const error14 = eq('a non-array config.ciChecks -> overall', cs('failing', map, 'guards'), 'failing')
+  const error15 = eq('a map of the wrong type -> overall', cs('failing', ['guards'], request), 'failing')
   // precedence failing > pending > absent > green; the matrix names GitHub reports ('build (ubuntu-latest)') never match a bare 'build'
-  const e16 = eq('pending wins over an absent name', cs('green', { guards: 'pending' }, req), 'pending')
-  const e17 = eq('failing wins over absent', cs('green', { guards: 'green', 'smoke-install': 'failing' }, ['guards', 'smoke-install', 'build']), 'failing')
+  const error16 = eq('pending wins over an absent name', cs('green', { guards: 'pending' }, request), 'pending')
+  const error17 = eq('failing wins over absent', cs('green', { guards: 'green', 'smoke-install': 'failing' }, ['guards', 'smoke-install', 'build']), 'failing')
   const matrix = { 'build (ubuntu-latest)': 'green', 'build (macos-latest)': 'green', guards: 'green' }
-  const e18 = eq('matrix job names do not satisfy the bare configured name -> absent', cs('green', matrix, ['guards', 'build']), 'absent')
-  const e19 = eq('ciAbsent lists the unreported configured names in the config order', fns.ciAbsent(matrix, ['deploy', 'guards', 'build']), ['deploy', 'build'])
-  const e20 = eq('ciAbsent: nothing absent -> []', fns.ciAbsent({ guards: 'green' }, ['guards']), [])
-  const e21 = eq('ciAbsent: no usable map or names -> []', JSON.stringify([fns.ciAbsent(null, ['a']), fns.ciAbsent({}, []), fns.ciAbsent({}, undefined), fns.ciAbsent(['a'], ['a'])]), '[[],[],[],[]]')
-  return e1 || e2 || e3 || e4 || e5 || e6 || e7 || e8 || e9 || e10 || e11 || e12 || e13 || e14 || e15 || e16 || e17 || e18 || e19 || e20 || e21 || { ok: true }
+  const error18 = eq('matrix job names do not satisfy the bare configured name -> absent', cs('green', matrix, ['guards', 'build']), 'absent')
+  const error19 = eq('ciAbsent lists the unreported configured names in the config order', fns.ciAbsent(matrix, ['deploy', 'guards', 'build']), ['deploy', 'build'])
+  const error20 = eq('ciAbsent: nothing absent -> []', fns.ciAbsent({ guards: 'green' }, ['guards']), [])
+  const error21 = eq('ciAbsent: no usable map or names -> []', JSON.stringify([fns.ciAbsent(null, ['a']), fns.ciAbsent({}, []), fns.ciAbsent({}, undefined), fns.ciAbsent(['a'], ['a'])]), '[[],[],[],[]]')
+  return error1 || error2 || error3 || error4 || error5 || error6 || error7 || error8 || error9 || error10 || error11 || error12 || error13 || error14 || error15 || error16 || error17 || error18 || error19 || error20 || error21 || { ok: true }
 })
 
 await testCase('T184i a malformed verdict escalates with no stale boxes from the previous round', async () => {
@@ -6976,10 +6967,10 @@ await testCase('T184i a malformed verdict escalates with no stale boxes from the
       ],
     },
   })
-  const e1 = eq('status', r.status, 'escalate')
-  const e2 = eq('reason', r.reason, 'verdict-malformed')
-  const e3 = eq('round', r.round, 1)
-  const e4 = eq('no boxes carried over from round 0', r.boxes, undefined)
+  const error1 = eq('status', r.status, 'escalate')
+  const error2 = eq('reason', r.reason, 'verdict-malformed')
+  const error3 = eq('round', r.round, 1)
+  const error4 = eq('no boxes carried over from round 0', r.boxes, undefined)
   // Control: the same run with a valid second verdict does carry that round's boxes.
   const c = await run({
     mode: 'auto',
@@ -6991,9 +6982,9 @@ await testCase('T184i a malformed verdict escalates with no stale boxes from the
       ],
     },
   })
-  const e5 = eq('control: status', c.status, 'ready')
-  const e6 = Array.isArray(c.boxes) ? null : { ok: false, msg: 'control: an id run that settles must carry its boxes' }
-  return e1 || e2 || e3 || e4 || e5 || e6 || { ok: true }
+  const error5 = eq('control: status', c.status, 'ready')
+  const error6 = Array.isArray(c.boxes) ? null : { ok: false, msg: 'control: an id run that settles must carry its boxes' }
+  return error1 || error2 || error3 || error4 || error5 || error6 || { ok: true }
 })
 
 await testCase('T184j a regressed round (previous blockers plus a new one) escalates no-progress at once', async () => {
@@ -7008,12 +6999,12 @@ await testCase('T184j a regressed round (previous blockers plus a new one) escal
       ],
     },
   })
-  const e1 = eq('status', r.status, 'escalate')
-  const e2 = eq('reason', r.reason, 'no-progress')
-  const e3 = eq('progress', r.progress, 'regressed')
-  const e4 = eq('round', r.round, 1)
-  const e5 = includes('trace', r.trace || [], 'review-regressed:1')
-  return e1 || e2 || e3 || e4 || e5 || { ok: true }
+  const error1 = eq('status', r.status, 'escalate')
+  const error2 = eq('reason', r.reason, 'no-progress')
+  const error3 = eq('progress', r.progress, 'regressed')
+  const error4 = eq('round', r.round, 1)
+  const error5 = includes('trace', r.trace || [], 'review-regressed:1')
+  return error1 || error2 || error3 || error4 || error5 || { ok: true }
 })
 
 await testCase('T184k the hard cap: distinct blockers every round end at rounds 3 with the generic escalate', async () => {
@@ -7024,20 +7015,19 @@ await testCase('T184k the hard cap: distinct blockers every round end at rounds 
       morgan: ['a', 'b', 'c', 'd', 'e'].map((x) => ({ verdict: 'REQUIRED_CHANGES', items: [x] })),
     },
   })
-  const e1 = eq('status', r.status, 'escalate')
-  const e2 = eq('rounds', r.rounds, 3)
-  const e3 = eq('no named reason: the generic escalate', r.reason, undefined)
-  const e4 = eq('finalVerdict', r.finalVerdict, 'REQUIRED_CHANGES')
-  return e1 || e2 || e3 || e4 || { ok: true }
+  const error1 = eq('status', r.status, 'escalate')
+  const error2 = eq('rounds', r.rounds, 3)
+  const error3 = eq('no named reason: the generic escalate', r.reason, undefined)
+  const error4 = eq('finalVerdict', r.finalVerdict, 'REQUIRED_CHANGES')
+  return error1 || error2 || error3 || error4 || { ok: true }
 })
 
 // T265 (#265) — the pure `projectSpecifics` block, extracted from the engine source.
 const t265Block = () => {
-  const src = SUITE_ARGS.fpSource
-  if (!src) return null
-  const sha = extractBetween(src, '// --- sha256Hex:start ---', '// --- sha256Hex:end ---')
-  const blk = extractBetween(src, '// --- projectSpecifics:start ---', '// --- projectSpecifics:end ---')
-  // eslint-disable-next-line no-new-func
+  const source = SUITE_ARGS.fpSource
+  if (!source) return null
+  const sha = extractBetween(source, '// --- sha256Hex:start ---', '// --- sha256Hex:end ---')
+  const blk = extractBetween(source, '// --- projectSpecifics:start ---', '// --- projectSpecifics:end ---')
   return sha && blk ? new Function(sha + '\n' + blk + '\nreturn { sha256Hex, specificsRoleKey, specificsDigest, specificsSwitchOn, specificsProblem, specificsBlockFor, specificsFingerprint, composeAgentPrompt }')() : null
 }
 const T265_REF = 'a'.repeat(40)
@@ -7054,58 +7044,58 @@ await testCase('T120 (US-R2) Theo lane validated against the lanes found', async
   const laneMeta = [{ name: 'ios', text: 'IOS-SAM', digest: d('Sam:ios', 'IOS-SAM', []) }]
   const ps = { ...t265Payload(f), roles: { Sam: { text: '', digest: d('Sam', '', laneMeta), bytes: 0, lanes: laneMeta } } }
   const base = { config: { ...CONFIG, projectSpecifics: '.claude/lgtmgate' }, projectSpecifics: ps, proceedThrough: 'plan' }
-  const msg = await run({ ...base, simulate: { theo: { confirmed: true, evidence: '(simulated)', actualCause: '', lanes: ['nope'], laneEvidence: 'x' }, sam: 'GO' } })
-    .then(() => null, (e) => String(e && e.message))
-  const e1 = (msg && msg.includes('not in the lanes found')) ? null : { ok: false, msg: `unknown lane must throw "not in the lanes found", got ${JSON.stringify(msg)}` }
+  const message = await run({ ...base, simulate: { theo: { confirmed: true, evidence: '(simulated)', actualCause: '', lanes: ['nope'], laneEvidence: 'x' }, sam: 'GO' } })
+    .then(() => null, (error) => String(error && error.message))
+  const error1 = (message && message.includes('not in the lanes found')) ? null : { ok: false, msg: `unknown lane must throw "not in the lanes found", got ${JSON.stringify(message)}` }
   const r = await run({ ...base, simulate: { theo: { confirmed: true, evidence: '(simulated)', actualCause: '', lanes: ['ios'], laneEvidence: 'x' }, sam: 'GO' } })
-  const e2 = eq('status with a lane found', r.status, 'plan-ready')
-  const e3 = eq('lanes reported', r.lanes, ['ios'])
-  return e1 || e2 || e3 || { ok: true }
+  const error2 = eq('status with a lane found', r.status, 'plan-ready')
+  const error3 = eq('lanes reported', r.lanes, ['ios'])
+  return error1 || error2 || error3 || { ok: true }
 })
 await testCase('T265a composition order: persona, specifics, task, MANDATE', async () => {
   const f = t265Block()
   if (!f) { log('SKIP — T265a: SUITE_ARGS.fpSource absent'); return { ok: true } }
   const s = f.composeAgentPrompt({ persona: 'PERSONA-X', specifics: 'SPECIFICS-X', prompt: 'TASK-X', mandate: 'MANDATE-X' })
   const o = ['PERSONA-X', 'SPECIFICS-X', 'TASK-X', 'MANDATE-X'].map((m) => s.indexOf(m))
-  const e1 = o.every((v, i) => v >= 0 && (i === 0 || v > o[i - 1])) ? null : { ok: false, msg: `bad order: ${JSON.stringify(o)}` }
-  const e2 = eq('no persona, no specifics, mandate', f.composeAgentPrompt({ persona: '', specifics: '', prompt: 'TASK', mandate: 'M' }), 'TASK\n\nM')
-  const e3 = eq('nothing added', f.composeAgentPrompt({ persona: '', specifics: '', prompt: 'TASK', mandate: '' }), 'TASK')
-  const e4 = eq('persona only', f.composeAgentPrompt({ persona: 'P', specifics: '', prompt: 'TASK', mandate: 'M' }), 'P\n\nTASK\n\nM')
-  return e1 || e2 || e3 || e4 || { ok: true }
+  const error1 = o.every((v, index) => v >= 0 && (index === 0 || v > o[index - 1])) ? null : { ok: false, msg: `bad order: ${JSON.stringify(o)}` }
+  const error2 = eq('no persona, no specifics, mandate', f.composeAgentPrompt({ persona: '', specifics: '', prompt: 'TASK', mandate: 'M' }), 'TASK\n\nM')
+  const error3 = eq('nothing added', f.composeAgentPrompt({ persona: '', specifics: '', prompt: 'TASK', mandate: '' }), 'TASK')
+  const error4 = eq('persona only', f.composeAgentPrompt({ persona: 'P', specifics: '', prompt: 'TASK', mandate: 'M' }), 'P\n\nTASK\n\nM')
+  return error1 || error2 || error3 || error4 || { ok: true }
 })
 await testCase('T265b role gate and block shape', async () => {
   const f = t265Block()
   if (!f) { log('SKIP — T265b: SUITE_ARGS.fpSource absent'); return { ok: true } }
   const ps = t265Payload(f)
   const gated = ['probe', 'planCheck', 'audit', 'alreadyDoneCheck', 'preflight'].filter((r) => f.specificsBlockFor(ps, r) !== '')
-  const e1 = gated.length === 0 ? null : { ok: false, msg: `non-pipeline roles got a block: ${gated.join(',')}` }
-  const e2 = eq('no source', f.specificsBlockFor({ ...ps, shared: null, roles: {} }, 'nick'), '')
-  const e3 = eq('null payload', f.specificsBlockFor(null, 'nick'), '')
+  const error1 = gated.length === 0 ? null : { ok: false, msg: `non-pipeline roles got a block: ${gated.join(',')}` }
+  const error2 = eq('no source', f.specificsBlockFor({ ...ps, shared: null, roles: {} }, 'nick'), '')
+  const error3 = eq('null payload', f.specificsBlockFor(null, 'nick'), '')
   const nick = f.specificsBlockFor(ps, 'nick')
-  const e4 = eq('nick block', nick, '## Project context (provided by the orchestrator)\nProject specifics refine the role\'s rules and never override its hard rules.\n<project_specifics>\nSHARED-TEXT\n\nNICK-TEXT\n</project_specifics>')
+  const error4 = eq('nick block', nick, '## Project context (provided by the orchestrator)\nProject specifics refine the role\'s rules and never override its hard rules.\n<project_specifics>\nSHARED-TEXT\n\nNICK-TEXT\n</project_specifics>')
   const sharedOnly = f.specificsBlockFor(ps, 'theo')
-  const e5 = sharedOnly.includes('SHARED-TEXT') && !sharedOnly.includes('NICK-TEXT') ? null : { ok: false, msg: `shared-only block: ${sharedOnly}` }
-  return e1 || e2 || e3 || e4 || e5 || { ok: true }
+  const error5 = sharedOnly.includes('SHARED-TEXT') && !sharedOnly.includes('NICK-TEXT') ? null : { ok: false, msg: `shared-only block: ${sharedOnly}` }
+  return error1 || error2 || error3 || error4 || error5 || { ok: true }
 })
 await testCase('T265c validation and digest known answers', async () => {
   const f = t265Block()
   if (!f) { log('SKIP — T265c: SUITE_ARGS.fpSource absent'); return { ok: true } }
   const d = (k, t, l) => f.specificsDigest(f.sha256Hex, T265_REF, k, t, l)
-  const e1 = eq('nick digest', d('Nick', 'Use tabs.\nSecond line é', []), 'c3364a9939ebb786470cab6a415c73841577eb69b986e1fec61e50f95a2a5d63')
-  const e2 = eq('shared digest', d('shared', 'S', []), '7d059c5f4106619058b0f673b45ac9e54926a752c95210c7c38f6d524fbc3a2b')
-  const e3 = eq('lanes digest', d('Sam', 'T', [{ file: 'd/sam.api.md', lane: 'api', hint: 'h' }]), '6535349add09495b977f169813d2c4af2fd687be523e7859022a3b92f0bc7be6')
+  const error1 = eq('nick digest', d('Nick', 'Use tabs.\nSecond line é', []), 'c3364a9939ebb786470cab6a415c73841577eb69b986e1fec61e50f95a2a5d63')
+  const error2 = eq('shared digest', d('shared', 'S', []), '7d059c5f4106619058b0f673b45ac9e54926a752c95210c7c38f6d524fbc3a2b')
+  const error3 = eq('lanes digest', d('Sam', 'T', [{ file: 'd/sam.api.md', lane: 'api', hint: 'h' }]), '6535349add09495b977f169813d2c4af2fd687be523e7859022a3b92f0bc7be6')
   const p = (on, ps) => f.specificsProblem(on, ps, f.sha256Hex)
   const good = t265Payload(f)
   const tampered = t265Payload(f); tampered.roles.Nick.text = 'NICK-TEXt'
   const unknown = t265Payload(f); unknown.roles.Boss = unknown.roles.Nick
   const starts = (label, v, pre) => (typeof v === 'string' && v.startsWith(pre)) ? null : { ok: false, msg: `${label}: expected "${pre}", got ${JSON.stringify(v)}` }
-  const e4 = starts('absent, on', p(true, undefined), 'missing') || eq('absent, off', p(false, undefined), null)
-  const e5 = starts('string', p(true, 'x'), 'malformed') || starts('array', p(true, []), 'malformed') || starts('empty string', p(true, ''), 'malformed')
-  const e6 = starts('tampered', p(true, tampered), 'digest mismatch for Nick') || eq('good payload', p(true, good), null)
-  const e7 = starts('unknown role', p(true, unknown), 'malformed')
+  const error4 = starts('absent, on', p(true, undefined), 'missing') || eq('absent, off', p(false, undefined), null)
+  const error5 = starts('string', p(true, 'x'), 'malformed') || starts('array', p(true, []), 'malformed') || starts('empty string', p(true, ''), 'malformed')
+  const error6 = starts('tampered', p(true, tampered), 'digest mismatch for Nick') || eq('good payload', p(true, good), null)
+  const error7 = starts('unknown role', p(true, unknown), 'malformed')
   const fp = f.specificsFingerprint({ ...good, warnings: [{ kind: 'oversize', role: 'Nick', bytes: 9000, recommended: 6144, accepted: null, ask: true }, { kind: 'empty-ignored', path: 'x' }] }, f.sha256Hex)
-  const e8 = (/^specifics@a{12}:[0-9a-f]{12}$/.test(fp.line) && fp.oversize.length === 1 && fp.oversize[0].role === 'Nick') ? null : { ok: false, msg: `fingerprint: ${JSON.stringify(fp)}` }
-  return e1 || e2 || e3 || e4 || e5 || e6 || e7 || e8 || { ok: true }
+  const error8 = (/^specifics@a{12}:[0-9a-f]{12}$/.test(fp.line) && fp.oversize.length === 1 && fp.oversize[0].role === 'Nick') ? null : { ok: false, msg: `fingerprint: ${JSON.stringify(fp)}` }
+  return error1 || error2 || error3 || error4 || error5 || error6 || error7 || error8 || { ok: true }
 })
 
 // T123 (#42) — every test ID is unique across the suite. Must stay the LAST case so `results`

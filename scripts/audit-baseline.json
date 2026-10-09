@@ -3,9 +3,7 @@
     "unicorn/name-replacements": 16
   },
   "templates/test-deliver-pipeline.js": {
-    "max-lines": 1,
-    "suppression": 10,
-    "unicorn/name-replacements": 1127
+    "max-lines": 1
   },
   "tests/scripts/test-capture-incident.sh": {
     "max-lines": 1
