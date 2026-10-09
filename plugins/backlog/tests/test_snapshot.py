@@ -84,7 +84,8 @@ class TestSnapshot(Base):
     def test_permissions_and_the_rollback_script(self):
         self.snapshot()
         target = self.default_dir()
-        mode = lambda p: stat.S_IMODE(p.stat().st_mode)  # noqa: E731
+        def mode(p):
+            return stat.S_IMODE(p.stat().st_mode)
         self.assertEqual(mode(target), 0o700)
         self.assertEqual(mode(target / "snapshot.json"), 0o600)
         self.assertEqual(mode(target / "snapshot.sha256"), 0o600)

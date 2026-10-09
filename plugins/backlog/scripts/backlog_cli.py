@@ -19,16 +19,16 @@ from typing import List, Optional
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-import backlog_catchup  # noqa: E402
-import backlog_config  # noqa: E402
-import backlog_file  # noqa: E402
-import backlog_guard  # noqa: E402
-import backlog_labelsync  # noqa: E402
-import backlog_lint  # noqa: E402
-import backlog_set  # noqa: E402
-import backlog_snapshot  # noqa: E402
-import backlog_triage  # noqa: E402
-import next_item  # noqa: E402
+import backlog_catchup
+import backlog_config
+import backlog_file
+import backlog_guard
+import backlog_labelsync
+import backlog_lint
+import backlog_set
+import backlog_snapshot
+import backlog_triage
+import next_item
 
 USAGE = "usage: backlog_cli.py [--project-dir DIR] {config,next,lint,file,inbox,triage-check,label-sync,snapshot,rollback,catchup,set,guard} ..."
 
@@ -66,7 +66,7 @@ def _guard(rest: List[str], cfg) -> int:
             return 0
         reason = backlog_guard.check(rest[1], cfg)
         ask = None if reason else backlog_guard.check_ask(rest[1], cfg)
-    except Exception:  # noqa: BLE001 -- a guard bug must never block the user's shell
+    except Exception:  # fail open: a guard bug must never block the user's shell
         return 0
     if reason:
         print(reason)

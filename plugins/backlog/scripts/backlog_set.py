@@ -97,12 +97,7 @@ def _refuse(text: str) -> int:
     return 1
 
 
-def main(argv: List[str], cfg, gh=None, apply_runner=None) -> int:
-    parser = build_parser(cfg)
-    args = parser.parse_args(argv)
-    requested = _requested(args)
-    dep_add = sorted(set(args.blocked_by))
-    dep_remove = sorted(set(args.unblock))
+def _check_args(args, parser, requested, dep_add, dep_remove, cfg) -> Optional[int]:
     if not requested and not dep_add and not dep_remove:
         parser.error("give at least one of --status, --type, --size, --exec, --priority, --area, --blocked-by, --unblock")
     if args.issue in dep_add or args.issue in dep_remove:
@@ -115,6 +110,90 @@ def main(argv: List[str], cfg, gh=None, apply_runner=None) -> int:
     error = repo_assertion_error(cfg, args.repo)
     if error:
         return _refuse(error)
+    return None
+
+
+def _dep_changes(args, issue: dict, dep_add: List[int], dep_remove: List[int]) -> Tuple[List[int], List[int]]:
+    live_blockers = _live_blockers(issue)
+    add_links = [n for n in dep_add if n not in live_blockers]
+    remove_links = [n for n in dep_remove if n in live_blockers]
+    for number in dep_add:
+        if number in live_blockers:
+            print("[%s] #%d blocked-by #%d noop (already blocked)" % (TAG, args.issue, number))
+    for number in dep_remove:
+        if number not in live_blockers:
+            print("[%s] #%d unblock #%d noop (not blocked by it)" % (TAG, args.issue, number))
+    return add_links, remove_links
+
+
+def _target_labels(issue: dict, requested) -> Tuple[frozenset, frozenset]:
+    before = frozenset(label_names(issue))
+    after = set(before)
+    for axis, label in requested:
+        prefix = axis + ":"
+        after = {name for name in after if not name.startswith(prefix)}
+        after.add(label)
+    return before, frozenset(after)
+
+
+def _check_labels(args, cfg, gh, issue, live_labels, requested, before, after, reason):
+    """Validate the label change; returns (exit code or None to go on, promotion verdict or None)."""
+    added_capped = sorted((after - before) & set(cfg.caps))
+    open_issues: List[dict] = []
+    if added_capped:
+        try:
+            open_issues = gh.fetch_issues("open", OPEN_LIMIT)
+        except (RuntimeError, ValueError, KeyError, TypeError, OSError, json.JSONDecodeError) as exc:
+            print("[%s] error: %s" % (TAG, printable(exc)))
+            return 1, None
+
+    results = validate([Proposal(args.issue, before, after, reason, "high")], [issue], live_labels, cfg)
+    codes = list(results[0].codes)
+    for label in added_capped:
+        total = sum(1 for i in open_issues if is_open(i) and label in label_names(i)) + 1
+        if total > cfg.caps[label]:
+            codes.append("cap-exceeded:%s" % label)
+    promoting = effective_promotion(before, after, cfg)
+    print(_plan_line(args.issue, requested, before, after, promoting))
+    if codes:
+        return _refuse("rejected: %s" % ",".join(codes)), None
+    if not promoting:
+        return None, None
+    verdict = check_promotion(issue, after, cfg)
+    facts = verdict.facts
+    print("[%s] promotion: checkboxes=%d size=%s type=%s blockers=%d verdict=%s" % (
+        TAG, facts["checkboxes"], printable(facts["size"]) or "-", printable(facts["type"]) or "-",
+        facts["blockers"], "ok" if verdict.ok else "refused"))
+    if not verdict.ok:
+        return _refuse("promotion: %s" % ",".join(printable(code) for code in verdict.codes)), None
+    return None, verdict
+
+
+def _write(args, cfg, apply_runner, before, after, reason, verdict, labels_change, deps_change, add_links, remove_links) -> int:
+    if labels_change:
+        edit = LabelEdit(
+            issue=args.issue,
+            before=tuple(sorted(before)),
+            after=tuple(sorted(after)),
+            add=tuple(sorted(after - before)),
+            remove=tuple(sorted(before - after)),
+            reason=reason,
+        )
+        rc = execute_set(cfg, edit, reason, verdict, apply_runner=apply_runner)
+        if rc != 0 or not deps_change:
+            return rc
+    return execute_deps(cfg, args.issue, add_links, remove_links, reason, dep_runner=apply_runner)
+
+
+def main(argv: List[str], cfg, gh=None, apply_runner=None) -> int:
+    parser = build_parser(cfg)
+    args = parser.parse_args(argv)
+    requested = _requested(args)
+    dep_add = sorted(set(args.blocked_by))
+    dep_remove = sorted(set(args.unblock))
+    refused = _check_args(args, parser, requested, dep_add, dep_remove, cfg)
+    if refused is not None:
+        return refused
 
     # A promotion (ready / an agent executor) is decided from the arguments, BEFORE any read: a repo that did not
     # opt in with `promotion: checked` never reaches gh for it.
@@ -143,24 +222,9 @@ def main(argv: List[str], cfg, gh=None, apply_runner=None) -> int:
     if not is_open(issue):
         return _refuse("rejected: issue-not-open")
 
-    live_blockers = _live_blockers(issue)
-    add_links = [n for n in dep_add if n not in live_blockers]
-    remove_links = [n for n in dep_remove if n in live_blockers]
-    for number in dep_add:
-        if number in live_blockers:
-            print("[%s] #%d blocked-by #%d noop (already blocked)" % (TAG, args.issue, number))
-    for number in dep_remove:
-        if number not in live_blockers:
-            print("[%s] #%d unblock #%d noop (not blocked by it)" % (TAG, args.issue, number))
+    add_links, remove_links = _dep_changes(args, issue, dep_add, dep_remove)
     deps_change = bool(add_links or remove_links)
-
-    before = frozenset(label_names(issue))
-    after = set(before)
-    for axis, label in requested:
-        prefix = axis + ":"
-        after = {name for name in after if not name.startswith(prefix)}
-        after.add(label)
-    after = frozenset(after)
+    before, after = _target_labels(issue, requested)
     labels_change = after != before
     if not labels_change and not deps_change:
         print("[%s] #%d noop (already in the target state)" % (TAG, args.issue))
@@ -169,33 +233,9 @@ def main(argv: List[str], cfg, gh=None, apply_runner=None) -> int:
     reason = printable(args.reason).strip()[:MAX_REASON] or "set"
     verdict = None
     if labels_change:
-        added_capped = sorted((after - before) & set(cfg.caps))
-        open_issues: List[dict] = []
-        if added_capped:
-            try:
-                open_issues = gh.fetch_issues("open", OPEN_LIMIT)
-            except (RuntimeError, ValueError, KeyError, TypeError, OSError, json.JSONDecodeError) as exc:
-                print("[%s] error: %s" % (TAG, printable(exc)))
-                return 1
-
-        results = validate([Proposal(args.issue, before, after, reason, "high")], [issue], live_labels, cfg)
-        codes = list(results[0].codes)
-        for label in added_capped:
-            total = sum(1 for i in open_issues if is_open(i) and label in label_names(i)) + 1
-            if total > cfg.caps[label]:
-                codes.append("cap-exceeded:%s" % label)
-        promoting = effective_promotion(before, after, cfg)
-        print(_plan_line(args.issue, requested, before, after, promoting))
-        if codes:
-            return _refuse("rejected: %s" % ",".join(codes))
-        if promoting:
-            verdict = check_promotion(issue, after, cfg)
-            facts = verdict.facts
-            print("[%s] promotion: checkboxes=%d size=%s type=%s blockers=%d verdict=%s" % (
-                TAG, facts["checkboxes"], printable(facts["size"]) or "-", printable(facts["type"]) or "-",
-                facts["blockers"], "ok" if verdict.ok else "refused"))
-            if not verdict.ok:
-                return _refuse("promotion: %s" % ",".join(printable(code) for code in verdict.codes))
+        rc, verdict = _check_labels(args, cfg, gh, issue, live_labels, requested, before, after, reason)
+        if rc is not None:
+            return rc
     for number in add_links:
         print("[%s] #%d planned blocked-by: +#%d" % (TAG, args.issue, number))
     for number in remove_links:
@@ -203,17 +243,5 @@ def main(argv: List[str], cfg, gh=None, apply_runner=None) -> int:
     if not args.apply:
         print("[%s] dry-run only: nothing was written (add --apply)" % TAG)
         return 0
-
-    if labels_change:
-        edit = LabelEdit(
-            issue=args.issue,
-            before=tuple(sorted(before)),
-            after=tuple(sorted(after)),
-            add=tuple(sorted(after - before)),
-            remove=tuple(sorted(before - after)),
-            reason=reason,
-        )
-        rc = execute_set(cfg, edit, reason, verdict, apply_runner=apply_runner)
-        if rc != 0 or not deps_change:
-            return rc
-    return execute_deps(cfg, args.issue, add_links, remove_links, reason, dep_runner=apply_runner)
+    return _write(args, cfg, apply_runner, before, after, reason, verdict, labels_change, deps_change,
+                  add_links, remove_links)

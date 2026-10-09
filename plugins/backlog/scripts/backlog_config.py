@@ -344,8 +344,7 @@ def _block(data: Dict[str, Any], key: str) -> Dict[str, Any]:
     return raw
 
 
-def _with_catchup_keys(cfg: Config, data: Dict[str, Any]) -> Config:
-    """Validate the additive catch-up keys against the already-validated taxonomy."""
+def _legacy_map(cfg: Config, data: Dict[str, Any]) -> Dict[str, str]:
     targets = cfg.axis_label_names()
     reserved_targets = {cfg.role_label("ready")} | set(cfg.role_labels("agent"))
     legacy_map: Dict[str, str] = {}
@@ -359,7 +358,10 @@ def _with_catchup_keys(cfg: Config, data: Dict[str, Any]) -> Config:
         if target in reserved_targets:
             raise ConfigError("legacy_map.%s: promotion to %s stays a human triage decision" % (legacy, target))
         legacy_map[legacy] = target
+    return legacy_map
 
+
+def _legacy_keep(data: Dict[str, Any], legacy_map: Dict[str, str]) -> List[str]:
     raw_keep = data.get("legacy_keep")
     legacy_keep: List[str] = []
     if raw_keep is not None:
@@ -367,7 +369,10 @@ def _with_catchup_keys(cfg: Config, data: Dict[str, Any]) -> Config:
         for name in legacy_keep:
             if name not in legacy_map:
                 raise ConfigError("legacy_keep: %r is not a key of legacy_map" % name)
+    return legacy_keep
 
+
+def _label_colors(data: Dict[str, Any]) -> Dict[str, str]:
     label_colors: Dict[str, str] = {}
     for axis, color in _block(data, "label_colors").items():
         if axis not in AXES:
@@ -377,46 +382,56 @@ def _with_catchup_keys(cfg: Config, data: Dict[str, Any]) -> Config:
         if not isinstance(color, str) or not _COLOR_RE.match(color):
             raise ConfigError("label_colors.%s must be 6 hex characters without '#'" % axis)
         label_colors[axis] = color.lower()
-    raw_prompt = data.get("apply_prompt")
-    apply_prompt = "none" if raw_prompt in (None, "") else raw_prompt
-    if apply_prompt not in APPLY_PROMPTS:
-        raise ConfigError("apply_prompt must be one of %s" % ", ".join(APPLY_PROMPTS))
-    raw_promotion = data.get("promotion")
-    promotion = "none" if raw_promotion in (None, "") else raw_promotion
-    if promotion not in PROMOTIONS:
-        raise ConfigError("promotion must be one of %s" % ", ".join(PROMOTIONS))
-    raw_gating = data.get("exec_gating")
-    exec_gating = "promotion" if raw_gating in (None, "") else raw_gating
-    if exec_gating not in EXEC_GATINGS:
-        raise ConfigError("exec_gating must be one of %s" % ", ".join(EXEC_GATINGS))
+    return label_colors
 
+
+def _choice(data: Dict[str, Any], key: str, default: str, allowed: Any) -> str:
+    raw = data.get(key)
+    value = default if raw in (None, "") else raw
+    if value not in allowed:
+        raise ConfigError("%s must be one of %s" % (key, ", ".join(allowed)))
+    return value
+
+
+def _intake_required(data: Dict[str, Any]) -> Tuple[str, ...]:
     raw_intake = data.get("intake_required")
     if raw_intake is None:
-        intake_required: Tuple[str, ...] = DEFAULT_INTAKE_REQUIRED
-    else:
-        if not isinstance(raw_intake, list) or not all(isinstance(item, str) for item in raw_intake):
-            raise ConfigError("intake_required must be an inline list of strings")
-        for item in raw_intake:
-            if item not in AXES:
-                raise ConfigError("intake_required: %r is not an axis (one of %s)" % (item, ", ".join(AXES)))
-        if len(set(raw_intake)) != len(raw_intake):
-            raise ConfigError("intake_required: duplicate values")
-        intake_required = tuple(raw_intake)
+        return DEFAULT_INTAKE_REQUIRED
+    if not isinstance(raw_intake, list) or not all(isinstance(item, str) for item in raw_intake):
+        raise ConfigError("intake_required must be an inline list of strings")
+    for item in raw_intake:
+        if item not in AXES:
+            raise ConfigError("intake_required: %r is not an axis (one of %s)" % (item, ", ".join(AXES)))
+    if len(set(raw_intake)) != len(raw_intake):
+        raise ConfigError("intake_required: duplicate values")
+    return tuple(raw_intake)
 
+
+def _guard_issue_create(data: Dict[str, Any]) -> bool:
     raw_guard_create = data.get("guard_issue_create")
     if raw_guard_create is None:
-        guard_issue_create = True
-    elif raw_guard_create in ("true", "false"):
-        guard_issue_create = raw_guard_create == "true"
-    else:
-        raise ConfigError("guard_issue_create must be true or false")
+        return True
+    if raw_guard_create in ("true", "false"):
+        return raw_guard_create == "true"
+    raise ConfigError("guard_issue_create must be true or false")
 
+
+def _with_catchup_keys(cfg: Config, data: Dict[str, Any]) -> Config:
+    """Validate the additive catch-up keys against the already-validated taxonomy."""
+    legacy_map = _legacy_map(cfg, data)
+    legacy_keep = _legacy_keep(data, legacy_map)
+    label_colors = _label_colors(data)
+    apply_prompt = _choice(data, "apply_prompt", "none", APPLY_PROMPTS)
+    promotion = _choice(data, "promotion", "none", PROMOTIONS)
+    exec_gating = _choice(data, "exec_gating", "promotion", EXEC_GATINGS)
+    intake_required = _intake_required(data)
+    guard_issue_create = _guard_issue_create(data)
     return replace(cfg, legacy_map=legacy_map, legacy_keep=tuple(legacy_keep), label_colors=label_colors,
                    apply_prompt=apply_prompt, promotion=promotion, exec_gating=exec_gating,
                    intake_required=intake_required, guard_issue_create=guard_issue_create)
 
 
-def _validate(data: Dict[str, Any], source: str) -> Config:
+def _check_header(data: Dict[str, Any]) -> str:
     unknown = sorted(set(data) - set(TOP_KEYS))
     if unknown:
         raise ConfigError("unknown key(s): " + ", ".join(unknown))
@@ -433,11 +448,10 @@ def _validate(data: Dict[str, Any], source: str) -> Config:
     mode = data["mode"]
     if mode not in MODES:
         raise ConfigError("invalid mode %r (one of %s)" % (mode, ", ".join(MODES)))
+    return mode
 
-    repo = data.get("repo")
-    if repo is not None and (not isinstance(repo, str) or not _REPO_RE.match(repo)):
-        raise ConfigError("`repo` must look like OWNER/NAME")
 
+def _labels_of(data: Dict[str, Any]) -> Dict[str, Any]:
     labels: Dict[str, Any] = dict(DEFAULT_LABELS)
     raw_labels = data.get("labels")
     if raw_labels is not None:
@@ -450,7 +464,10 @@ def _validate(data: Dict[str, Any], source: str) -> Config:
     reserved = [v for v in labels["status"] if v in RESERVED_STATUS_VALUES]
     if reserved:
         raise ConfigError("labels.status: %s reserved for the cadence contract" % ", ".join(reserved))
+    return labels
 
+
+def _roles_of(data: Dict[str, Any], labels: Dict[str, Any]) -> Dict[str, Any]:
     roles: Dict[str, Any] = dict(DEFAULT_ROLES)
     raw_roles = data.get("roles")
     if raw_roles is not None:
@@ -470,32 +487,47 @@ def _validate(data: Dict[str, Any], source: str) -> Config:
         for value in values:
             if value not in labels[axis]:
                 raise ConfigError("roles.%s: %r is not a value of labels.%s" % (role, value, axis))
+    return roles
 
-    def flags(key: str, default: List[str]) -> List[str]:
-        if key not in data:
-            return list(default)
-        return _str_list(data[key], key, _FLAG_RE)
 
-    executor_flags = flags("executor_flags", DEFAULT_EXECUTOR_FLAGS)
-    exclusions = flags("exclusions", DEFAULT_EXCLUSIONS)
-    protected = flags("protected", DEFAULT_PROTECTED)
+def _flag_list(data: Dict[str, Any], key: str, default: List[str]) -> List[str]:
+    if key not in data:
+        return list(default)
+    return _str_list(data[key], key, _FLAG_RE)
 
-    caps: Dict[str, int] = dict(DEFAULT_CAPS)
-    if "caps" in data:
-        raw_caps = data["caps"]
-        if raw_caps is None:
-            caps = {}
-        elif not isinstance(raw_caps, dict):
-            raise ConfigError("`caps` must be a block of `\"axis:value\": N`")
-        else:
-            caps = {}
-            known = frozenset("%s:%s" % (axis, v) for axis, vs in labels.items() for v in vs)
-            for name, cap in raw_caps.items():
-                if name not in known:
-                    raise ConfigError("caps: %r is not an axis:value label of this config" % name)
-                if isinstance(cap, bool) or not isinstance(cap, int) or cap < 0:
-                    raise ConfigError("caps.%s must be an integer >= 0" % name)
-                caps[name] = cap
+
+def _caps_of(data: Dict[str, Any], labels: Dict[str, Any]) -> Dict[str, int]:
+    if "caps" not in data:
+        return dict(DEFAULT_CAPS)
+    raw_caps = data["caps"]
+    if raw_caps is None:
+        return {}
+    if not isinstance(raw_caps, dict):
+        raise ConfigError("`caps` must be a block of `\"axis:value\": N`")
+    caps: Dict[str, int] = {}
+    known = frozenset("%s:%s" % (axis, v) for axis, vs in labels.items() for v in vs)
+    for name, cap in raw_caps.items():
+        if name not in known:
+            raise ConfigError("caps: %r is not an axis:value label of this config" % name)
+        if isinstance(cap, bool) or not isinstance(cap, int) or cap < 0:
+            raise ConfigError("caps.%s must be an integer >= 0" % name)
+        caps[name] = cap
+    return caps
+
+
+def _validate(data: Dict[str, Any], source: str) -> Config:
+    mode = _check_header(data)
+
+    repo = data.get("repo")
+    if repo is not None and (not isinstance(repo, str) or not _REPO_RE.match(repo)):
+        raise ConfigError("`repo` must look like OWNER/NAME")
+
+    labels = _labels_of(data)
+    roles = _roles_of(data, labels)
+    executor_flags = _flag_list(data, "executor_flags", DEFAULT_EXECUTOR_FLAGS)
+    exclusions = _flag_list(data, "exclusions", DEFAULT_EXCLUSIONS)
+    protected = _flag_list(data, "protected", DEFAULT_PROTECTED)
+    caps = _caps_of(data, labels)
 
     cfg = _build(labels, roles, mode, repo, "ok" if mode != "off" else "mode is off in the config", source,
                  executor_flags, exclusions, protected, caps)

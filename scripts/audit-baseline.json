@@ -1,22 +1,4 @@
 {
-  "plugins/backlog/scripts/backlog_apply.py": {
-    "max-lines": 1
-  },
-  "plugins/backlog/scripts/backlog_cli.py": {
-    "suppression": 11
-  },
-  "plugins/backlog/scripts/backlog_config.py": {
-    "PLR0915": 2
-  },
-  "plugins/backlog/scripts/backlog_file.py": {
-    "PLR0915": 1
-  },
-  "plugins/backlog/scripts/backlog_set.py": {
-    "PLR0915": 1
-  },
-  "plugins/backlog/tests/test_snapshot.py": {
-    "suppression": 1
-  },
   "scripts/agent-context.cjs": {
     "max-lines": 1,
     "max-lines-per-function": 1,
