@@ -183,7 +183,7 @@ version.
 
 **GitHub Release (human-only, last step of the publish sequence).** Once the stable pin points at
 the release commit and the stamp is verified, the maintainer creates the Release by hand — never an
-agent, never the unattended nightly runner:
+agent:
 `gh release create v<version> --target <release commit> --title "lgtmgate <version>" --notes-file <notes>`.
 The tag is the exact `plugin.json` `version` at the release commit (the `v1.2.0` release is the
 live example). The hand-written notes name what changed for a user and the PRs. The Release page is
