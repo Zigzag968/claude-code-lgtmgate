@@ -77,6 +77,31 @@ def _pr_ready_reminder(project_dir: str) -> str:
         return ""
 
 
+_CONFIG_CHECK_TIMEOUT = 2
+
+
+def _config_check(config_path: Path) -> Optional[list]:
+    """
+    Best-effort: run scripts/config-check.cjs (the single source of truth for
+    retired / recommended config keys) and return its `warn:` lines when its
+    last line says status=warn. None on ok or on any failure (no node, script
+    missing, timeout, odd output). MUST NEVER raise.
+    """
+    try:
+        root = os.environ.get("CLAUDE_PLUGIN_ROOT") or str(Path(__file__).resolve().parents[2])
+        res = subprocess.run(
+            ["node", str(Path(root) / "scripts" / "config-check.cjs"), str(config_path)],
+            capture_output=True, text=True, timeout=_CONFIG_CHECK_TIMEOUT,
+        )
+        out = [ln for ln in res.stdout.splitlines() if ln.strip()]
+        if res.returncode != 0 or not out or "status=warn" not in out[-1]:
+            return None
+        warns = [ln[len("warn: "):] for ln in out[:-1] if ln.startswith("warn: ")]
+        return warns or None
+    except Exception:
+        return None
+
+
 def _specifics_hint(project_dir: str, config_path: Path) -> str:
     """
     One line when the config sets `projectSpecifics` but its folder holds no
@@ -211,7 +236,12 @@ def build_stub() -> str:
     ]
 
     if configured:
-        lines.append("- Status: config detected, pipeline ready to use.")
+        warns = _config_check(config_path)
+        if warns:
+            lines.append("- Status: config detected but out of date for this engine (the pipeline still runs):")
+            lines.extend("  - " + w for w in warns)
+        else:
+            lines.append("- Status: config detected, pipeline ready to use.")
         hint = _specifics_hint(project_dir, config_path)
         if hint:
             lines.append(hint)
