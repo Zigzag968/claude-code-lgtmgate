@@ -5115,6 +5115,32 @@ await testCase('T9029 FOLLOWUP_ISSUE_RULE defined once, interpolated once in sam
   return first || { ok: true }
 })
 
+// T9010 (#10) — the request pin opens every real-agent prompt and names the run's issue; the simulate path is untouched.
+await testCase('T9010 REQUEST_PIN defined once, prepended in the real-agent path of callAgent only, names the issue (#10)', async () => {
+  const source = SUITE_ARGS.fpSource
+  if (!source) {
+    log('SKIP — T9010: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const NAME = 'REQUEST' + '_PIN'
+  const definitionStart = source.indexOf('const ' + NAME + ' = ')
+  const definitionEnd = definitionStart < 0 ? -1 : source.indexOf('\n\n', definitionStart)
+  const definition = definitionStart < 0 || definitionEnd < 0 ? '' : source.slice(definitionStart, definitionEnd)
+  const from = source.indexOf('async function callAgent(')
+  const to = from < 0 ? -1 : source.indexOf('const AGENT_DEATH', from)
+  const body = from < 0 || to < 0 ? '' : source.slice(from, to)
+  const simReturn = body.indexOf('return simFixture(role, round, prNumber)')
+  const use = body.indexOf(NAME + '(role)')
+  const error1 = eq('pin occurrences (definition + callAgent use)', source.split(NAME).length - 1, 2)
+  const error2 = includes('definition names the run issue', definition, '#\' + issue')
+  const error3 = includes('definition carries the unrelated-context rule', definition, 'unrelated context')
+  const error4 = simReturn < 0 || use < 0 || use < simReturn ? { ok: false, error: 'pin must be used after the simulate early return' } : null
+  const error5 = body.slice(0, Math.max(simReturn, 0)).includes(NAME) ? { ok: false, error: 'pin leaks into the simulate path' } : null
+  const error6 = includes('pin is the first text of the prompt', body, 'const finalPrompt = ' + NAME + '(role)')
+  const first = [error1, error2, error3, error4, error5, error6].find((error) => error)
+  return first || { ok: true }
+})
+
 // T130 (#130) — run identity: the first log() is `deliver #<issue> — <brief>`, `Setup` is the first
 // declared phase and is entered before any agent call, and every agent label carries the issue number.
 // Source-anchored: the suite-scope log() cannot intercept the pipeline's own log (run-flow-suite.cjs).
