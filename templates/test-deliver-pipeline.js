@@ -1750,18 +1750,12 @@ await testCase('T9005b the MORGAN schema declares committedInPr and artifactProo
   return (error1 || error2 || error3 || error4) ? (error1 || error2 || error3 || error4) : { ok: true }
 })
 
-// T9005c (#5) — a flagged proof must carry a positive numeric size: `bytes` missing, NaN or a string is
-// rejected `artifact-empty` (the unflagged rule is untouched: T45/T46/T47 and T9005 cases c/d).
+// T9005c (#5) — a flagged proof must carry a positive numeric size: `bytes: 0` is rejected `artifact-empty`
+// (a missing or non-numeric size is T9005f; the unflagged rule is untouched: T45/T46/T47 and T9005 cases c/d).
 await testCase('T9005c a committedInPr proof needs a positive numeric size (#5)', async () => {
   const old = { item: ARTIFACT_PROOF_ITEM, path: ARTIFACT_PROOF_PATH, exists: true, mtime: '2026-08-03T12:50:44Z', bytes: 4096 }
   const auto = (p) => run({ mode: 'auto', simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM', artifactProofs: [p] }], artifactFloor: ARTIFACT_FLOOR } })
-  const noBytes = { ...old, committedInPr: true }
-  delete noBytes.bytes
   const cases = [
-    ['bytes missing', noBytes],
-    ['bytes NaN', { ...old, committedInPr: true, bytes: NaN }],
-    ["bytes '0'", { ...old, committedInPr: true, bytes: '0' }],
-    ["bytes '4096'", { ...old, committedInPr: true, bytes: '4096' }],
     ['bytes 0', { ...old, committedInPr: true, bytes: 0 }],
   ]
   for (const [name, p] of cases) {
@@ -1773,6 +1767,34 @@ await testCase('T9005c a committedInPr proof needs a positive numeric size (#5)'
   }
   const ok = await auto({ ...old, committedInPr: true, bytes: 1 })
   return eq('flagged bytes 1: status', ok.status, 'ready') || { ok: true }
+})
+
+// T9005f (#396) — a committed proof with no finite size gets its own reason (`artifact-size-missing`), still an own-proof
+// defect: escalate, no Nick round. `bytes: 0` stays `artifact-empty`.
+await testCase('T9005f a committedInPr proof without a finite size is rejected artifact-size-missing, not artifact-empty (#396)', async () => {
+  const old = { item: ARTIFACT_PROOF_ITEM, path: ARTIFACT_PROOF_PATH, exists: true, mtime: '2026-08-03T12:50:44Z', bytes: 4096 }
+  const auto = (p) => run({ mode: 'auto', simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM', artifactProofs: [p] }], artifactFloor: ARTIFACT_FLOOR } })
+  const noBytes = { ...old, committedInPr: true }
+  delete noBytes.bytes
+  const cases = [
+    ['bytes missing', noBytes],
+    ['bytes NaN', { ...old, committedInPr: true, bytes: NaN }],
+    ["bytes '0'", { ...old, committedInPr: true, bytes: '0' }],
+    ["bytes '4096'", { ...old, committedInPr: true, bytes: '4096' }],
+  ]
+  for (const [name, p] of cases) {
+    const r = await auto(p)
+    const error = eq(`flagged ${name}: status`, r.status, 'escalate')
+      || eq(`flagged ${name}: reason`, r.reason, 'artifact-proof-rejected')
+      || includes(`flagged ${name}: trace`, r.trace || [], 'artifact-proof-rejected:artifact-size-missing')
+      || ((r.trace || []).includes('artifact-proof-rejected:artifact-empty') ? { ok: false, msg: `flagged ${name}: must not be reported artifact-empty` } : null)
+      || nickTrace(r)
+    if (error) return error
+  }
+  const zero = await auto({ ...old, committedInPr: true, bytes: 0 })
+  return eq('flagged bytes 0: reason', zero.reason, 'artifact-proof-rejected')
+    || includes('flagged bytes 0: trace', zero.trace || [], 'artifact-proof-rejected:artifact-empty')
+    || { ok: true }
 })
 
 // T9005e (#229) — committedInPr is cross-checked against the PR's changed files (pr-state `files`): a flagged path

@@ -1,0 +1,341 @@
+{
+  "name": "396-artifact-size-missing",
+  "args": {
+    "issue": 10,
+    "brief": "_",
+    "wtPath": "_",
+    "mode": "auto",
+    "issueType": "bug",
+    "config": {
+      "ghProject": {
+        "owner": "_",
+        "projectNumber": 1
+      },
+      "repo": "_",
+      "baseBranch": "_",
+      "branchPrefix": "feat/",
+      "worktreeRoot": "_",
+      "commands": {
+        "build": "_",
+        "test": "_",
+        "format": "_"
+      },
+      "ciChecks": [
+        "_",
+        "_"
+      ],
+      "oneWayDoorKinds": [
+        "status",
+        "agent",
+        "hook",
+        "seam"
+      ],
+      "engineRepo": true,
+      "oneWayDoorPaths": [
+        "hooks/**",
+        "!hooks/test-*",
+        "docs/critical-paths.md"
+      ],
+      "provision": {
+        "extraLinks": [
+          {
+            "src": "_",
+            "dst": "_"
+          },
+          {
+            "src": "_",
+            "dst": "_"
+          }
+        ]
+      },
+      "preflight": {
+        "canonicalStringBan": [],
+        "envSymlink": "ignore"
+      },
+      "regressionGuard": {
+        "testGlob": "",
+        "testFnPattern": "",
+        "baselineCmd": ""
+      }
+    },
+    "configLocal": {
+      "worktreeRoot": "_"
+    },
+    "pluginRoot": "_",
+    "sessionRoot": "_"
+  },
+  "calls": {
+    "probe-10-lines-plugin-version-r0": {
+      "line": "PROBE name=lines exit=0 sha=efeb88ffde44a1f4d412dc17f1a62559de099ceb2ed1c8d8075b5d69a71b2d6d cmd=faa7a8a1c26ebb071130b90d20d883cda8f6acb6cc149d06b15e3e1684c3ecfa json={\"lines\":[\"PLUGIN-VERSION:@@ENGINE_VERSION@@\"]}",
+      "verify": "VERIFY ok line=PROBE name=lines exit=0 sha=efeb88ffde44a1f4d412dc17f1a62559de099ceb2ed1c8d8075b5d69a71b2d6d cmd=faa7a8a1c26ebb071130b90d20d883cda8f6acb6cc149d06b15e3e1684c3ecfa json={\"lines\":[\"PLUGIN-VERSION:@@ENGINE_VERSION@@\"]}"
+    },
+    "probe-10-lines-session-root-r0": {
+      "line": "PROBE name=lines exit=0 sha=21249ccf86cf6dcb63777459ec1e7389f3b312cc5a786c5750469f76b8704ccf cmd=f1c91c83f9a578519acd89bd261f845f5f173eb26f2e60bc2fa5daf99ce1620f json={\"lines\":[\"SESSION-ROOT:same\"]}",
+      "verify": "VERIFY ok line=PROBE name=lines exit=0 sha=21249ccf86cf6dcb63777459ec1e7389f3b312cc5a786c5750469f76b8704ccf cmd=f1c91c83f9a578519acd89bd261f845f5f173eb26f2e60bc2fa5daf99ce1620f json={\"lines\":[\"SESSION-ROOT:same\"]}"
+    },
+    "probe-10-provision-provision-r0": {
+      "line": "PROBE name=provision exit=0 sha=4d92447c1231bc682cf29d4d5f85736a8470e7370052ea69f089d2969ad9da16 cmd=561012da722d8a2efc6b1badfc013d377e0358d0c6ff051a6b56bf141d797c85 json={\"version\":2,\"linked\":[\"node_modules\",\".venv\"],\"missing\":[],\"skipped\":false}",
+      "verify": "VERIFY ok line=PROBE name=provision exit=0 sha=4d92447c1231bc682cf29d4d5f85736a8470e7370052ea69f089d2969ad9da16 cmd=561012da722d8a2efc6b1badfc013d377e0358d0c6ff051a6b56bf141d797c85 json={\"version\":2,\"linked\":[\"node_modules\",\".venv\"],\"missing\":[],\"skipped\":false}"
+    },
+    "probe-10-provision-freshness-provision-freshness-r0": {
+      "line": "PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b cmd=5430d2285cdf1982f619b08cf794226d4a3e082cac2ffdb9d7944e1ef1cbccc9 json={\"state\":\"fresh\",\"behind\":0,\"own\":0}",
+      "verify": "VERIFY ok line=PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b cmd=5430d2285cdf1982f619b08cf794226d4a3e082cac2ffdb9d7944e1ef1cbccc9 json={\"state\":\"fresh\",\"behind\":0,\"own\":0}"
+    },
+    "diagnose-issue-10": {
+      "confirmed": true,
+      "evidence": "_",
+      "actualCause": "",
+      "persistentStateSignal": false,
+      "authSecurityBoundarySignal": false,
+      "deployConfigSignal": false,
+      "immatureVendorApiSignal": false,
+      "designStepSignalEvidence": "_",
+      "issueClassificationMismatch": false,
+      "lanes": [],
+      "laneEvidence": "_"
+    },
+    "scout-issue-10-1": {
+      "decision": "_",
+      "rationale": "_",
+      "planPath": "_",
+      "targetFiles": [
+        "_",
+        "_",
+        "_",
+        "_"
+      ],
+      "acceptanceItems": [
+        {
+          "text": "`grep -c 'REQUEST_PIN' workflows/deliver-pipeline.js` prints `2` (definition plus the `callAgent` use).",
+          "humanGate": false,
+          "command": "_"
+        },
+        {
+          "text": "`grep -c 'unrelated context' workflows/deliver-pipeline.js agents/theo.md` prints `workflows/deliver-pipeline.js:2` and `agents/theo.md:1` (the constant and `THEO_PERSONA`).",
+          "humanGate": false,
+          "command": "_"
+        },
+        {
+          "text": "`node scripts/run-flow-suite.cjs > $TMPDIR/out.txt 2>&1; grep -c 'PASS — T9010 ' $TMPDIR/out.txt` prints `1` (T9010 is free on main), and `tail -n 1 $TMPDIR/out.txt` prints `[flow-suite] status=test-ok passed=340 failed=0` (339 measured on main plus 1).",
+          "humanGate": false,
+          "command": "_"
+        },
+        {
+          "text": "`OFFLINE_STRICT=1 node scripts/run-offline.cjs --all fixtures > $TMPDIR/out.txt 2>&1; echo rc=$?; tail -n 1 $TMPDIR/out.txt` prints `rc=0` then `[offline] status=ok passed=65 failed=0` (64 measured on main plus the one R2 fixture of ac:8), and `git diff --name-status origin/main...HEAD -- fixtures` prints exactly `A<TAB>fixtures/incidents/10-request-pin.json` (no existing fixture changes: every replay still answers by label).",
+          "humanGate": false,
+          "command": "_"
+        },
+        {
+          "text": "`node scripts/guards.cjs > $TMPDIR/out.txt 2>&1; echo rc=$?` prints `rc=0`, and `bash tests/templates/test-canonical-guards.sh > $TMPDIR/out.txt 2>&1; echo rc=$?; tail -n 1 $TMPDIR/out.txt` prints `rc=0` then a line ending `failed=0` (R1 counters unchanged).",
+          "humanGate": false,
+          "command": "_"
+        },
+        {
+          "text": "`node scripts/audit.cjs --check` prints `PASS: audit:` and exits 0, and `git diff -- scripts/audit-baseline.json` prints nothing.",
+          "humanGate": false,
+          "command": "_"
+        },
+        {
+          "text": "`git diff --name-only origin/main...HEAD` lists only `workflows/deliver-pipeline.js` (the constant, the `callAgent` prefix, `THEO_PERSONA`), `agents/theo.md` (the rule), `templates/test-deliver-pipeline.js` (flow-suite case T9010) and `fixtures/incidents/10-request-pin.json` (R2 incident fixture); no template holds a byte-identical copy of the touched engine block, and `bash tests/templates/test-probe-run.sh` last line stays `[probe-run] status=ok passed=198 failed=0`.",
+          "humanGate": false,
+          "command": "_"
+        },
+        {
+          "text": "`node scripts/run-offline.cjs fixtures/incidents/10-request-pin.json; echo rc=$?` prints `[offline] status=ok passed=1 failed=0` then `rc=0` (R2 replay: green on the branch, red on main for the reason shown in the proof log).",
+          "humanGate": false,
+          "command": "_"
+        }
+      ],
+      "plan": "_\n\n_\n\n_\n\n_\n\n_\n_\n\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n\n_\n\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n\n_\n\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n- [ ] <!-- ac:1 --> `grep -c 'REQUEST_PIN' workflows/deliver-pipeline.js` prints `2` (definition plus the `callAgent` use).\n- [ ] <!-- ac:2 --> `grep -c 'unrelated context' workflows/deliver-pipeline.js agents/theo.md` prints `workflows/deliver-pipeline.js:2` and `agents/theo.md:1` (the constant and `THEO_PERSONA`).\n- [ ] <!-- ac:3 --> `node scripts/run-flow-suite.cjs > $TMPDIR/out.txt 2>&1; grep -c 'PASS — T9010 ' $TMPDIR/out.txt` prints `1` (T9010 is free on main), and `tail -n 1 $TMPDIR/out.txt` prints `[flow-suite] status=test-ok passed=340 failed=0` (339 measured on main plus 1).\n- [ ] <!-- ac:4 --> `OFFLINE_STRICT=1 node scripts/run-offline.cjs --all fixtures > $TMPDIR/out.txt 2>&1; echo rc=$?; tail -n 1 $TMPDIR/out.txt` prints `rc=0` then `[offline] status=ok passed=65 failed=0` (64 measured on main plus the one R2 fixture of ac:8), and `git diff --name-status origin/main...HEAD -- fixtures` prints exactly `A<TAB>fixtures/incidents/10-request-pin.json` (no existing fixture changes: every replay still answers by label).\n- [ ] <!-- ac:5 --> `node scripts/guards.cjs > $TMPDIR/out.txt 2>&1; echo rc=$?` prints `rc=0`, and `bash tests/templates/test-canonical-guards.sh > $TMPDIR/out.txt 2>&1; echo rc=$?; tail -n 1 $TMPDIR/out.txt` prints `rc=0` then a line ending `failed=0` (R1 counters unchanged).\n- [ ] <!-- ac:6 --> `node scripts/audit.cjs --check` prints `PASS: audit:` and exits 0, and `git diff -- scripts/audit-baseline.json` prints nothing.\n- [ ] <!-- ac:7 --> `git diff --name-only origin/main...HEAD` lists only `workflows/deliver-pipeline.js` (the constant, the `callAgent` prefix, `THEO_PERSONA`), `agents/theo.md` (the rule), `templates/test-deliver-pipeline.js` (flow-suite case T9010) and `fixtures/incidents/10-request-pin.json` (R2 incident fixture); no template holds a byte-identical copy of the touched engine block, and `bash tests/templates/test-probe-run.sh` last line stays `[probe-run] status=ok passed=198 failed=0`.\n- [ ] <!-- ac:8 --> `node scripts/run-offline.cjs fixtures/incidents/10-request-pin.json; echo rc=$?` prints `[offline] status=ok passed=1 failed=0` then `rc=0` (R2 replay: green on the branch, red on main for the reason shown in the proof log).\n_\n\n_\n\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n"
+    },
+    "plan-check-10-1": {
+      "verdict": "_",
+      "issues": [
+        "_",
+        "_"
+      ]
+    },
+    "scout-issue-10-2": {
+      "decision": "_",
+      "rationale": "_",
+      "planPath": "_",
+      "targetFiles": [
+        "_",
+        "_",
+        "_",
+        "_"
+      ],
+      "acceptanceItems": [
+        {
+          "text": "`grep -c 'REQUEST_PIN' workflows/deliver-pipeline.js` prints `2` (definition plus the `callAgent` use).",
+          "humanGate": false,
+          "command": "_"
+        },
+        {
+          "text": "`grep -c 'unrelated context' workflows/deliver-pipeline.js agents/theo.md` prints `workflows/deliver-pipeline.js:2` and `agents/theo.md:1` (the constant and `THEO_PERSONA`).",
+          "humanGate": false,
+          "command": "_"
+        },
+        {
+          "text": "`node scripts/run-flow-suite.cjs > $TMPDIR/out.txt 2>&1; grep -c 'PASS — T9010 ' $TMPDIR/out.txt` prints `1` (T9010 is free on main), and `tail -n 1 $TMPDIR/out.txt` prints `[flow-suite] status=test-ok passed=340 failed=0` (339 measured on main plus 1).",
+          "humanGate": false,
+          "command": "_"
+        },
+        {
+          "text": "`OFFLINE_STRICT=1 node scripts/run-offline.cjs --all fixtures > $TMPDIR/out.txt 2>&1; echo rc=$?; tail -n 1 $TMPDIR/out.txt` prints `rc=0` then `[offline] status=ok passed=65 failed=0` (64 measured on main plus the one R2 fixture of ac:8), and `git diff --name-status origin/main...HEAD -- fixtures` prints exactly `A<TAB>fixtures/incidents/10-request-pin.json` (no existing fixture changes: every replay still answers by label).",
+          "humanGate": false,
+          "command": "_"
+        },
+        {
+          "text": "`node scripts/guards.cjs > $TMPDIR/out.txt 2>&1; echo rc=$?` prints `rc=0`, and `bash tests/templates/test-canonical-guards.sh > $TMPDIR/out.txt 2>&1; echo rc=$?; tail -n 1 $TMPDIR/out.txt` prints `rc=0` then a line ending `failed=0` (R1 counters unchanged).",
+          "humanGate": false,
+          "command": "_"
+        },
+        {
+          "text": "`node scripts/audit.cjs --check` prints `PASS: audit:` and exits 0, and `git diff -- scripts/audit-baseline.json` prints nothing.",
+          "humanGate": false,
+          "command": "_"
+        },
+        {
+          "text": "`git diff --name-only origin/main...HEAD` lists only `workflows/deliver-pipeline.js` (the constant, the `callAgent` prefix, `THEO_PERSONA`), `agents/theo.md` (the rule), `templates/test-deliver-pipeline.js` (flow-suite case T9010) and `fixtures/incidents/10-request-pin.json` (R2 incident fixture); `grep -rlE '^(async )?function (callAgent|composeAgentPrompt)|^const (STRUCTURED_OUTPUT_MANDATE|THEO_PERSONA|REQUEST_PIN) =' templates; echo rc=$?` prints only `rc=1` (no template defines a copy of the touched engine blocks), and `bash tests/templates/test-probe-run.sh` last line stays `[probe-run] status=ok passed=198 failed=0`.",
+          "humanGate": false,
+          "command": "_"
+        },
+        {
+          "text": "`node scripts/run-offline.cjs fixtures/incidents/10-request-pin.json; echo rc=$?` prints `[offline] status=ok passed=1 failed=0` then `rc=0` (R2 replay: green on the branch, red on main for the reason shown in the proof log).",
+          "humanGate": false,
+          "command": "_"
+        }
+      ],
+      "plan": "_\n\n_\n\n_\n\n_\n\n_\n_\n\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n\n_\n\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n\n_\n\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n- [ ] <!-- ac:1 --> `grep -c 'REQUEST_PIN' workflows/deliver-pipeline.js` prints `2` (definition plus the `callAgent` use).\n- [ ] <!-- ac:2 --> `grep -c 'unrelated context' workflows/deliver-pipeline.js agents/theo.md` prints `workflows/deliver-pipeline.js:2` and `agents/theo.md:1` (the constant and `THEO_PERSONA`).\n- [ ] <!-- ac:3 --> `node scripts/run-flow-suite.cjs > $TMPDIR/out.txt 2>&1; grep -c 'PASS — T9010 ' $TMPDIR/out.txt` prints `1` (T9010 is free on main), and `tail -n 1 $TMPDIR/out.txt` prints `[flow-suite] status=test-ok passed=340 failed=0` (339 measured on main plus 1).\n- [ ] <!-- ac:4 --> `OFFLINE_STRICT=1 node scripts/run-offline.cjs --all fixtures > $TMPDIR/out.txt 2>&1; echo rc=$?; tail -n 1 $TMPDIR/out.txt` prints `rc=0` then `[offline] status=ok passed=65 failed=0` (64 measured on main plus the one R2 fixture of ac:8), and `git diff --name-status origin/main...HEAD -- fixtures` prints exactly `A<TAB>fixtures/incidents/10-request-pin.json` (no existing fixture changes: every replay still answers by label).\n- [ ] <!-- ac:5 --> `node scripts/guards.cjs > $TMPDIR/out.txt 2>&1; echo rc=$?` prints `rc=0`, and `bash tests/templates/test-canonical-guards.sh > $TMPDIR/out.txt 2>&1; echo rc=$?; tail -n 1 $TMPDIR/out.txt` prints `rc=0` then a line ending `failed=0` (R1 counters unchanged).\n- [ ] <!-- ac:6 --> `node scripts/audit.cjs --check` prints `PASS: audit:` and exits 0, and `git diff -- scripts/audit-baseline.json` prints nothing.\n- [ ] <!-- ac:7 --> `git diff --name-only origin/main...HEAD` lists only `workflows/deliver-pipeline.js` (the constant, the `callAgent` prefix, `THEO_PERSONA`), `agents/theo.md` (the rule), `templates/test-deliver-pipeline.js` (flow-suite case T9010) and `fixtures/incidents/10-request-pin.json` (R2 incident fixture); `grep -rlE '^(async )?function (callAgent|composeAgentPrompt)|^const (STRUCTURED_OUTPUT_MANDATE|THEO_PERSONA|REQUEST_PIN) =' templates; echo rc=$?` prints only `rc=1` (no template defines a copy of the touched engine blocks), and `bash tests/templates/test-probe-run.sh` last line stays `[probe-run] status=ok passed=198 failed=0`.\n- [ ] <!-- ac:8 --> `node scripts/run-offline.cjs fixtures/incidents/10-request-pin.json; echo rc=$?` prints `[offline] status=ok passed=1 failed=0` then `rc=0` (R2 replay: green on the branch, red on main for the reason shown in the proof log).\n_\n\n_\n\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n\n_"
+    },
+    "plan-check-10-2": {
+      "verdict": "CONFORMING",
+      "issues": []
+    },
+    "probe-10-preflight-dev-r0": {
+      "line": "PROBE name=preflight exit=0 sha=51a852e182d3797b5ec3e47cc07d07358e270cf2c543e18939223932337fbc64 cmd=3453c6a35a906325f0c1dd6699872609ef8756d28e7402e577a322f5a7418c78 json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/Volumes/<disk>/Dev/Apps/claude-code-lgtmgate/.git/worktrees/issue-10\",\"writable\":true,\"layout\":{\"verdict\":\"CONFORMING\",\"issues\":[]}}",
+      "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=51a852e182d3797b5ec3e47cc07d07358e270cf2c543e18939223932337fbc64 cmd=3453c6a35a906325f0c1dd6699872609ef8756d28e7402e577a322f5a7418c78 json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/Volumes/<disk>/Dev/Apps/claude-code-lgtmgate/.git/worktrees/issue-10\",\"writable\":true,\"layout\":{\"verdict\":\"CONFORMING\",\"issues\":[]}}"
+    },
+    "nick-issue-10": {
+      "prNumber": 395,
+      "branch": "_",
+      "testsPass": true,
+      "summary": "_"
+    },
+    "probe-10-preflight-branch-r0": {
+      "line": "PROBE name=preflight exit=0 sha=efcb11730fe2babfaad7ff87d843190b6a27eedaec5434faa7283bb3b1a6a05f cmd=c7de5c80227f02adfff406aff3df84f94560ff9211674fb72fe23fc613972b83 json={\"mode\":\"branch\",\"headRef\":\"feat/issue-10\",\"branchPrefix\":\"feat/\"}",
+      "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=efcb11730fe2babfaad7ff87d843190b6a27eedaec5434faa7283bb3b1a6a05f cmd=c7de5c80227f02adfff406aff3df84f94560ff9211674fb72fe23fc613972b83 json={\"mode\":\"branch\",\"headRef\":\"feat/issue-10\",\"branchPrefix\":\"feat/\"}"
+    },
+    "probe-10-git-rev-list-count-worktree-behind-395-r0": {
+      "line": "_",
+      "verify": "_"
+    },
+    "preflight-10-395-0": {
+      "pass": true,
+      "issues": [],
+      "failedChecks": [],
+      "testCommandRun": "_"
+    },
+    "probe-10-pr-state-window-start-r0": {
+      "line": "PROBE name=pr-state exit=0 sha=a73d582e80a0bf28c1ba0cfcb3c1af8cfefb0456bc570e0aa921e6e16daf85a4 cmd=a0f4aed0c46045ff43800d7f27e4e7d76ccd72ce50a66c83b5b06cf2c89c0aae json={\"now\":\"2026-10-10T16:44:48Z\",\"headRefName\":\"feat/issue-10\",\"headRefOid\":\"e46995ddc84b1c966d1a4f5662e43e3183f8f826\",\"bodyDigest\":\"34dd25d18b17\",\"acceptanceChecked\":[],\"decisionLog\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"BLOCKED\",\"lastCommitDate\":\"2026-10-10T16:43:19Z\",\"commitCount\":1,\"ciState\":\"pending\",\"ciChecks\":{\"Analyze (actions)\":\"green\",\"Analyze (javascript-typescript)\":\"pending\",\"Analyze (python)\":\"green\",\"CodeQL\":\"green\",\"guards\":\"pending\",\"smoke-install\":\"green\"},\"reviewCommentIds\":[],\"openIssues\":null,\"openIssuesTruncated\":false,\"files\":[\"agents/theo.md\",\"fixtures/incidents/10-request-pin.json\",\"templates/test-deliver-pipeline.js\",\"workflows/deliver-pipeline.js\"]}",
+      "verify": "VERIFY ok line=PROBE name=pr-state exit=0 sha=a73d582e80a0bf28c1ba0cfcb3c1af8cfefb0456bc570e0aa921e6e16daf85a4 cmd=a0f4aed0c46045ff43800d7f27e4e7d76ccd72ce50a66c83b5b06cf2c89c0aae json={\"now\":\"2026-10-10T16:44:48Z\",\"headRefName\":\"feat/issue-10\",\"headRefOid\":\"e46995ddc84b1c966d1a4f5662e43e3183f8f826\",\"bodyDigest\":\"34dd25d18b17\",\"acceptanceChecked\":[],\"decisionLog\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"BLOCKED\",\"lastCommitDate\":\"2026-10-10T16:43:19Z\",\"commitCount\":1,\"ciState\":\"pending\",\"ciChecks\":{\"Analyze (actions)\":\"green\",\"Analyze (javascript-typescript)\":\"pending\",\"Analyze (python)\":\"green\",\"CodeQL\":\"green\",\"guards\":\"pending\",\"smoke-install\":\"green\"},\"reviewCommentIds\":[],\"openIssues\":null,\"openIssuesTruncated\":false,\"files\":[\"agents/theo.md\",\"fixtures/incidents/10-request-pin.json\",\"templates/test-deliver-pipeline.js\",\"workflows/deliver-pipeline.js\"]}"
+    },
+    "morgan-pr-10-395-r0": {
+      "verdict": "LGTM",
+      "ciGreen": true,
+      "items": [],
+      "boxes": [
+        {
+          "id": 1,
+          "proven": true,
+          "proof": "_"
+        },
+        {
+          "id": 2,
+          "proven": true,
+          "proof": "_"
+        },
+        {
+          "id": 3,
+          "proven": true,
+          "proof": "_"
+        },
+        {
+          "id": 4,
+          "proven": true,
+          "proof": "_"
+        },
+        {
+          "id": 5,
+          "proven": true,
+          "proof": "_"
+        },
+        {
+          "id": 6,
+          "proven": true,
+          "proof": "_"
+        },
+        {
+          "id": 7,
+          "proven": true,
+          "proof": "_"
+        },
+        {
+          "id": 8,
+          "proven": true,
+          "proof": "_"
+        }
+      ],
+      "artifactProofs": [
+        {
+          "item": "- [ ] <!-- ac:8 --> `node scripts/run-offline.cjs fixtures/incidents/10-request-pin.json; echo rc=$?` prints `[offline] status=ok passed=1 failed=0` then `rc=0` (R2 replay: green on the branch, red on main for the reason shown in the proof log).",
+          "path": "_",
+          "exists": true,
+          "mtime": "_",
+          "committedInPr": true
+        }
+      ]
+    },
+    "probe-10-pr-state-window-end-r0": {
+      "line": "PROBE name=pr-state exit=0 sha=a8b32cf00378fe91a54034dccde0e3ca94c9910a227cd02b45dcb8ccea6a880c cmd=45c8ef01d622ee54fdb52abe61398f9ecf1136dd07d437a46091c10070e22098 json={\"now\":\"2026-10-10T16:49:21Z\",\"headRefName\":\"feat/issue-10\",\"headRefOid\":\"e46995ddc84b1c966d1a4f5662e43e3183f8f826\",\"bodyDigest\":\"34dd25d18b17\",\"acceptanceChecked\":[],\"decisionLog\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-10-10T16:43:19Z\",\"commitCount\":1,\"ciState\":\"green\",\"ciChecks\":{\"Analyze (actions)\":\"green\",\"Analyze (javascript-typescript)\":\"green\",\"Analyze (python)\":\"green\",\"CodeQL\":\"green\",\"guards\":\"green\",\"smoke-install\":\"green\"},\"reviewCommentIds\":[\"IC_kwDOUzMNuc8AAAABa5TC5A\"],\"openIssues\":[],\"openIssuesTruncated\":false,\"files\":[\"agents/theo.md\",\"fixtures/incidents/10-request-pin.json\",\"templates/test-deliver-pipeline.js\",\"workflows/deliver-pipeline.js\"]}",
+      "verify": "VERIFY ok line=PROBE name=pr-state exit=0 sha=a8b32cf00378fe91a54034dccde0e3ca94c9910a227cd02b45dcb8ccea6a880c cmd=45c8ef01d622ee54fdb52abe61398f9ecf1136dd07d437a46091c10070e22098 json={\"now\":\"2026-10-10T16:49:21Z\",\"headRefName\":\"feat/issue-10\",\"headRefOid\":\"e46995ddc84b1c966d1a4f5662e43e3183f8f826\",\"bodyDigest\":\"34dd25d18b17\",\"acceptanceChecked\":[],\"decisionLog\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-10-10T16:43:19Z\",\"commitCount\":1,\"ciState\":\"green\",\"ciChecks\":{\"Analyze (actions)\":\"green\",\"Analyze (javascript-typescript)\":\"green\",\"Analyze (python)\":\"green\",\"CodeQL\":\"green\",\"guards\":\"green\",\"smoke-install\":\"green\"},\"reviewCommentIds\":[\"IC_kwDOUzMNuc8AAAABa5TC5A\"],\"openIssues\":[],\"openIssuesTruncated\":false,\"files\":[\"agents/theo.md\",\"fixtures/incidents/10-request-pin.json\",\"templates/test-deliver-pipeline.js\",\"workflows/deliver-pipeline.js\"]}"
+    }
+  },
+  "expect": {
+    "status": "escalate",
+    "reason": "artifact-proof-rejected",
+    "trace": [
+      "probe:lines:haiku",
+      "probe:lines:haiku",
+      "probe:provision:haiku",
+      "probe:provision-freshness:haiku",
+      "probe:preflight:haiku",
+      "probe:preflight:haiku",
+      "probe:git-rev-list-count:haiku",
+      "probe:pr-state:haiku",
+      "probe:pr-state:haiku",
+      "artifact-proof-rejected:artifact-size-missing"
+    ],
+    "traceExact": true,
+    "callLabels": [
+      "probe-10-lines-plugin-version-r0",
+      "probe-10-lines-session-root-r0",
+      "probe-10-provision-provision-r0",
+      "probe-10-provision-freshness-provision-freshness-r0",
+      "diagnose-issue-10",
+      "scout-issue-10-1",
+      "plan-check-10-1",
+      "scout-issue-10-2",
+      "plan-check-10-2",
+      "probe-10-preflight-dev-r0",
+      "nick-issue-10",
+      "probe-10-preflight-branch-r0",
+      "probe-10-git-rev-list-count-worktree-behind-395-r0",
+      "preflight-10-395-0",
+      "probe-10-pr-state-window-start-r0",
+      "morgan-pr-10-395-r0",
+      "probe-10-pr-state-window-end-r0"
+    ]
+  }
+}

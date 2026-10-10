@@ -133,7 +133,7 @@ export const meta = {
 // `version`, checked against plugin.json by tests/templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '1.3.0-beta.17', cutFrom: 'dad6232' }
+const BUILD = { plugin: 'lgtmgate', version: '1.3.0-beta.18', cutFrom: '9fc84ec' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -1206,7 +1206,7 @@ const MORGAN = {
         'VERBATIM checklist line; mtime MUST include an explicit UTC \'Z\' or numeric timezone ' +
         'offset (e.g. `date -u +%Y-%m-%dT%H:%M:%SZ`) — a bare timestamp without Z/offset is rejected. ' +
         'committedInPr is optional and true only when the path is content of the PR head (it appears in ' +
-        '`git diff --name-only origin/<base>...HEAD`).',
+        '`git diff --name-only origin/<base>...HEAD`). bytes (from `wc -c`) is expected on every entry; a committed entry without it is rejected.',
       items: {
         type: 'object',
         properties: {
@@ -1675,8 +1675,11 @@ function staleArtifactBlockers(proofs, floorIso, prFiles, worktreePath) {
     if (p.exists !== true) {
       blockers.push({ item, reason: 'artifact-absent' }); continue
     }
-    if (Number.isFinite(p.bytes) ? p.bytes <= 0 : p.committedInPr === true) {
+    if (Number.isFinite(p.bytes) && p.bytes <= 0) {
       blockers.push({ item, reason: 'artifact-empty' }); continue
+    }
+    if (!Number.isFinite(p.bytes) && p.committedInPr === true) {
+      blockers.push({ item, reason: 'artifact-size-missing' }); continue
     }
     // DEBT(#191): a file committed in the PR has an mtime that predates the PR's last commit by construction, so no-valid-mtime and artifact-stale do not apply to it (no replayed fixture; proven by flow-suite case T9005)
     // #229: the flag is cross-checked against the PR's changed files (pr-state `files`); a path outside the list is treated as untracked
@@ -4065,11 +4068,11 @@ if (after('review', entryStage)) {
     const floorIso = await artifactFloorIso(round, endState)
     const blockers = staleArtifactBlockers(proofs, floorIso, artifactPrFiles(endState), wtPath)
     if (blockers.length === 0) return await settle(v)
-    // #7: an item-less LGTM whose every blocker is a defect of Morgan's OWN proof entry (empty artifact, malformed
+    // #7: an item-less LGTM whose every blocker is a defect of Morgan's OWN proof entry (empty artifact, no reported size, malformed
     // entry, no path, no parsable mtime) is not repairable by a dev round: the Review call sites escalate on the mark.
     // DEBT(#191): no replayed fixture (the incident journal predates the probe labels and the current engine cannot replay it); proven by flow-suite case T9007
     const ownProofDefect = v.verdict === 'LGTM' && (!Array.isArray(v.items) || v.items.length === 0) &&
-      blockers.every((b) => ['artifact-empty', 'malformed-proof', 'no-path', 'no-valid-mtime'].includes(b.reason))
+      blockers.every((b) => ['artifact-empty', 'artifact-size-missing', 'malformed-proof', 'no-path', 'no-valid-mtime'].includes(b.reason))
     const merged = [...(v.items || [])]
     for (const b of blockers) {
       trace.push(`artifact-proof-rejected:${b.reason}`)
@@ -4243,7 +4246,7 @@ if (after('review', entryStage)) {
     `traced to a named, freshly stat-ed path is NOT proof. Return one \`artifactProofs\` entry per such ` +
     `ticked box ({item: the verbatim checklist line, path, exists, mtime ISO-8601 — MUST include an ` +
     `explicit UTC 'Z' or numeric timezone offset (e.g. \`date -u +%Y-%m-%dT%H:%M:%SZ\`); a bare ` +
-    `timestamp without Z/offset is rejected, bytes}). Absent, ` +
+    `timestamp without Z/offset is rejected, bytes: the size from \`wc -c\`, required on EVERY entry}). Absent, ` +
     `empty or predating the latest commit (except a file committed in the PR, below) ⇒ the box stays UNTICKED and its verbatim line goes into ` +
     `\`items\` ⇒ REQUIRED_CHANGES, never a tick. ` +
     `COMMITTED-IN-PR EXCEPTION: when the artifact is itself content of the PR head (its path appears in ` +
