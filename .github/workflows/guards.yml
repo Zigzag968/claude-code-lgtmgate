@@ -77,6 +77,8 @@ jobs:
         run: bash tests/scripts/test-template-drift.sh
       - name: publish-fixture self-test
         run: bash tests/scripts/test-publish-fixture.sh
+      - name: stable-version self-test
+        run: bash tests/scripts/test-stable-version.sh
       - name: Stop-supervise watchdog regression test
         run: bash tests/hooks/test-Stop-supervise-runs.sh
       - name: deny-destructive-git hook regression test
