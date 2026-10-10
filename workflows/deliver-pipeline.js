@@ -133,7 +133,7 @@ export const meta = {
 // `version`, checked against plugin.json by tests/templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '1.3.0-beta.13', cutFrom: 'b688cf6' }
+const BUILD = { plugin: 'lgtmgate', version: '1.3.0-beta.14', cutFrom: '6b853f2' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -2936,7 +2936,8 @@ if (entryStage === 'plan') {
     : await (async () => {
         const result = await probe('provision-freshness',
           `cd "${wtPath}" && git fetch origin ${baseBranch} -q 2>/dev/null; B=$(git rev-list --count HEAD..origin/${baseBranch}); O=$(git rev-list --count origin/${baseBranch}..HEAD); if [ "$B" -gt 0 ] && [ "$O" -eq 0 ] && git merge --ff-only origin/${baseBranch} -q >/dev/null 2>&1; then echo "PROVISION-FRESHNESS:ffwd:$B"; elif [ "$B" -eq 0 ]; then echo "PROVISION-FRESHNESS:fresh:0:$O"; else echo "PROVISION-FRESHNESS:stale:$B:$O"; fi`,
-          { label: 'provision-freshness', onFail: (reason) => { log(`provisionBehindCount: probe failed (${reason}), skipping staleness preflight`); return null } })
+          // live state: a stored record from an earlier launch must never answer (#83)
+          { label: 'provision-freshness', noReuse: true, onFail: (reason) => { log(`provisionBehindCount: probe failed (${reason}), skipping staleness preflight`); return null } })
         return result && result.json && !result.json.error ? result.json : null
       })()
   if (provisionFresh?.state === 'ffwd') {
@@ -4262,7 +4263,8 @@ if (after('review', entryStage)) {
     try {
       const result = await probe('git-rev-list-count',
         `cd "${wtPath}" && git fetch origin ${baseBranch} -q 2>/dev/null; git rev-list --count HEAD..origin/${baseBranch}`,
-        { label: `worktree-behind-${pr}`, onFail: () => null })
+        // live state: a stored record from an earlier launch must never answer (#83)
+        { label: `worktree-behind-${pr}`, noReuse: true, onFail: () => null })
       return result && result.json && Number.isFinite(result.json.count) ? result.json.count : null
     } catch (error) {
       log(`worktreeBehindCount: probe failed (${error.message}), skipping freshness note`)
