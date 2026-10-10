@@ -181,6 +181,15 @@ Followed by a **mandatory stamp verification** (§9) — do not consider a relea
 landed until the installed cache's `buildStamp` / `installPath` actually shows the intended
 version.
 
+**GitHub Release (human-only, last step of the publish sequence).** Once the stable pin points at
+the release commit and the stamp is verified, the maintainer creates the Release by hand — never an
+agent:
+`gh release create v<version> --target <release commit> --title "lgtmgate <version>" --notes-file <notes>`.
+The tag is the exact `plugin.json` `version` at the release commit (the `v1.2.0` release is the
+live example). The hand-written notes name what changed for a user and the PRs. The Release page is
+the changelog users read, and no `CHANGELOG.md` is added. A Release makes the SHA of an old version
+easy to find, but not installable: there is no `--version` pin (§7).
+
 ## 5. Trust root
 
 **Updated 2026-09-30 — the repo went public on 2026-09-29 (open-source cutover, legacy#253/#283);
