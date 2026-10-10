@@ -22,31 +22,31 @@ const RECOMMENDED = [
   { anyOf: ['minPluginVersion'], label: 'minPluginVersion', effect: 'an older engine is not refused' }
 ]
 
-function present(cfg, key) {
-  const v = cfg[key]
+function present(config, key) {
+  const v = config[key]
   if (key === 'agentContext') return v !== null && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length > 0
   return typeof v === 'string' && v.trim() !== ''
 }
 
 function check(file) {
-  let cfg
+  let config
   try {
-    cfg = JSON.parse(fs.readFileSync(file, 'utf8'))
-    if (cfg === null || typeof cfg !== 'object' || Array.isArray(cfg)) throw new Error('not a JSON object')
-  } catch (e) {
-    return { lines: [`warn: ${file} is absent or not a readable JSON object (${e.message}); run /lgtmgate:init`], retired: 0, missing: 0 }
+    config = JSON.parse(fs.readFileSync(file, 'utf8'))
+    if (config === null || typeof config !== 'object' || Array.isArray(config)) throw new Error('not a JSON object')
+  } catch (error) {
+    return { lines: [`warn: ${file} is absent or not a readable JSON object (${error.message}); run /lgtmgate:init`], retired: 0, missing: 0 }
   }
   const lines = []
   let retired = 0
   let missing = 0
   for (const r of RETIRED) {
-    if (Object.prototype.hasOwnProperty.call(cfg, r.key)) {
+    if (Object.prototype.hasOwnProperty.call(config, r.key)) {
       retired++
       lines.push(`warn: retired key ${r.key} is ignored by the engine; replace it with ${r.replacement} (list the rule file there)`)
     }
   }
   for (const r of RECOMMENDED) {
-    if (!r.anyOf.some((k) => present(cfg, k))) {
+    if (!r.anyOf.some((k) => present(config, k))) {
       missing++
       lines.push(`warn: recommended key missing: ${r.label} (${r.effect})`)
     }
@@ -56,15 +56,15 @@ function check(file) {
 }
 
 function main() {
-  let res
+  let result
   try {
     const file = process.argv[2]
-    res = file ? check(file) : { lines: ['warn: no config path given; usage: node scripts/config-check.cjs <path to .claude/pipeline.config.json>'], retired: 0, missing: 0 }
-  } catch (e) {
-    res = { lines: [`warn: config check failed (${e && e.message})`], retired: 0, missing: 0 }
+    result = file ? check(file) : { lines: ['warn: no config path given; usage: node scripts/config-check.cjs <path to .claude/pipeline.config.json>'], retired: 0, missing: 0 }
+  } catch (error) {
+    result = { lines: [`warn: config check failed (${error && error.message})`], retired: 0, missing: 0 }
   }
-  const status = res.lines.length ? 'warn' : 'ok'
-  process.stdout.write(res.lines.concat(`[config-check] status=${status} retired=${res.retired} missing=${res.missing}`).join('\n') + '\n')
+  const status = result.lines.length ? 'warn' : 'ok'
+  process.stdout.write(result.lines.concat(`[config-check] status=${status} retired=${result.retired} missing=${result.missing}`).join('\n') + '\n')
   process.exitCode = 0
 }
 
