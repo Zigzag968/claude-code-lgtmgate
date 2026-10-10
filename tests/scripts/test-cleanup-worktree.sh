@@ -2,6 +2,7 @@
 # Regression test for scripts/cleanup-worktree.sh — bash + git only. Builds a temp repo and
 # linked worktrees under $TMPDIR, exports LGTMGATE_WORKTREE_ROOT, and puts a stub `gh` first
 # on PATH (its `pr view` answer comes from FAKE_PR_STATE). No network, no real gh.
+# Also covers the consumer layout: the script run from a plugin folder on a repo without scripts/.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts" && pwd)"
@@ -95,6 +96,22 @@ check "merged + clean worktree is removed and REMOVED is printed" \
   "$([ "$RC" -eq 0 ] && [ ! -d "$ROOT/wt-done" ] && printf '%s' "$OUT" | grep -q '^REMOVED ' && echo 1 || echo 0)"
 check "removed worktree is no longer registered" \
   "$(git -C "$MAIN" worktree list --porcelain | grep -q 'wt-done' && echo 0 || echo 1)"
+
+# --- consumer layout: script called from a plugin folder, repo has no scripts/ ------
+
+PLUGIN="$WORK/plugin"
+mkdir -p "$PLUGIN/scripts" "$PLUGIN/hooks"
+cp "$SCRIPT" "$PLUGIN/scripts/cleanup-worktree.sh"
+cp "$SCRIPT_DIR/../hooks/lib-worktree-root.sh" "$PLUGIN/hooks/lib-worktree-root.sh"
+CONSUMER="$WORK/consumer"
+mkdir -p "$CONSUMER"
+git -C "$CONSUMER" init -q -b main
+git -C "$CONSUMER" commit -q --allow-empty -m init
+git -C "$CONSUMER" worktree add -q -b feat/wt-consumer "$ROOT/wt-consumer" main
+OUT="$(cd "$CONSUMER" && export CLAUDE_PLUGIN_ROOT="$PLUGIN" && bash "$CLAUDE_PLUGIN_ROOT/scripts/cleanup-worktree.sh" "$ROOT/wt-consumer" 2>&1)"; RC=$?
+printf '%s\n' "$OUT"
+check "consumer layout: script called from the plugin folder removes a merged clean worktree" \
+  "$([ "$RC" -eq 0 ] && [ ! -e "$CONSUMER/scripts/cleanup-worktree.sh" ] && [ ! -d "$ROOT/wt-consumer" ] && printf '%s' "$OUT" | grep -q '^REMOVED ' && echo 1 || echo 0)"
 
 # --- static guard: never --force ---------------------------------------------------
 
