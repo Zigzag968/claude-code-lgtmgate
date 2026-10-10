@@ -1,6 +1,6 @@
 {
   "name": "lgtmgate",
-  "version": "1.3.0-beta.6",
+  "version": "1.3.0-beta.7",
   "description": "Stack-agnostic delivery pipeline: Theo (diagnose) -> Mia (PM) -> Sam (plan) -> Nick (dev+PR) -> Morgan (review), orchestrated by a per-project workflow and configured via .claude/pipeline.config.json.",
   "author": {
     "name": "Zigzag968"
