@@ -328,6 +328,28 @@ for f in g.json g.jsonl g.raw; do
   if [ "$rc" = 0 ]; then ok "false positives: --check $f exits 0"; else bad "--check $f: exit $rc"; fi
 done
 
+# ---- e-mail rule (#197): anchored on `@`, same addresses as before, linear on long runs ------------------------
+printf '%s\n' 'mail jane.doe+tag@corp-mail.example.org now' 'git@github.com:owner/repo.git' 'a@b' 'a@b.c' '@b.com' '..x@a.com' 'a@b.com, c.d@e-f.org; git@h.io' > "$TMP/em.raw"
+node "$RF" "$TMP/em.raw" >/dev/null 2>&1
+nth_line "e-mail rule: an address is rewritten inside a sentence" "$TMP/em.raw" 1 'mail redacted@example.com now'
+nth_line "e-mail rule: the git@ SSH remote form is kept" "$TMP/em.raw" 2 'git@github.com:owner/repo.git'
+nth_line "e-mail rule: a@b (no domain dot) is kept" "$TMP/em.raw" 3 'a@b'
+nth_line "e-mail rule: a@b.c (one-letter tld) is kept" "$TMP/em.raw" 4 'a@b.c'
+nth_line "e-mail rule: @b.com (no local part) is kept" "$TMP/em.raw" 5 '@b.com'
+nth_line "e-mail rule: a leading dot run stays outside the address" "$TMP/em.raw" 6 '..redacted@example.com'
+nth_line "e-mail rule: two addresses on a line are rewritten, git@ after them is kept" "$TMP/em.raw" 7 'redacted@example.com, redacted@example.com; git@h.io'
+for unit in 'abcdefgh.' 'a.a.a.'; do
+  node -e 'process.stdout.write(process.argv[1].repeat(Math.ceil(300000 / process.argv[1].length)))' "$unit" > "$TMP/big.raw"
+  cp "$TMP/big.raw" "$TMP/big.orig"
+  res=$(node -e '
+const { spawnSync } = require("child_process")
+const t = Date.now()
+const r = spawnSync("node", [process.argv[1], process.argv[2]], { timeout: 60000 })
+process.stdout.write((Date.now() - t) + " " + r.status)' "$RF" "$TMP/big.raw")
+  ms=${res% *}; rc=${res#* }
+  if [ "$rc" = 0 ] && cmp -s "$TMP/big.raw" "$TMP/big.orig" && [ "$ms" -lt 2000 ]; then ok "e-mail rule: 300 KB of $unit repeated is redacted in under 2 s"; else bad "e-mail rule: 300 KB of $unit repeated: $ms ms, exit $rc"; fi
+done
+
 rm -rf "$TMP"
 RESULT=ok; [ "$FAIL" -gt 0 ] && RESULT=fail
 echo "[test-redact-fixture] status=$RESULT passed=$PASS failed=$FAIL"
