@@ -1,0 +1,96 @@
+{
+  "name": "10-request-pin",
+  "note": "incident #10: the harness relays the session latest message ahead of a stage task; every real-agent prompt now opens with the REQUEST block",
+  "args": {
+    "pluginRoot": "/plugin",
+    "issue": 123,
+    "brief": "fix slugify accents",
+    "wtPath": "/wt/root/issue-123",
+    "config": {},
+    "mode": "semi"
+  },
+  "calls": {
+    "probe-123-lines-plugin-version-r0": {
+      "line": "PROBE name=lines exit=0 sha=4b0b2f33b20b777393f4cb55ea1d47c45786b52ad36822582a5ed67647e54ed5 cmd=2af1fd58e4141ac8977c54e48900baf5a81f43c1be46d2a1c6f38830f7582ec8 json={\"lines\":[\"PLUGIN-VERSION:@@ENGINE_VERSION@@\"]}",
+      "verify": "VERIFY ok line=PROBE name=lines exit=0 sha=4b0b2f33b20b777393f4cb55ea1d47c45786b52ad36822582a5ed67647e54ed5 cmd=2af1fd58e4141ac8977c54e48900baf5a81f43c1be46d2a1c6f38830f7582ec8 json={\"lines\":[\"PLUGIN-VERSION:@@ENGINE_VERSION@@\"]}"
+    },
+    "probe-123-provision-provision-r0": {
+      "line": "PROBE name=provision exit=0 sha=30ad404e7bf922808eeb13427c66400303e810a9392f80082fb0abe2fc6fc271 cmd=20f6ad78330a3ffb9e105bb5e441363f053d0b602012a9e594e36a64c9489f07 json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}",
+      "verify": "VERIFY ok line=PROBE name=provision exit=0 sha=30ad404e7bf922808eeb13427c66400303e810a9392f80082fb0abe2fc6fc271 cmd=20f6ad78330a3ffb9e105bb5e441363f053d0b602012a9e594e36a64c9489f07 json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}"
+    },
+    "probe-123-provision-freshness-provision-freshness-r0": {
+      "line": "PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b cmd=f7148584e77c9da7779115228bbfa0f4223ff89ed5d3031f3e51605249a7eaa7 json={\"state\":\"fresh\",\"behind\":0,\"own\":0}",
+      "verify": "VERIFY ok line=PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b cmd=f7148584e77c9da7779115228bbfa0f4223ff89ed5d3031f3e51605249a7eaa7 json={\"state\":\"fresh\",\"behind\":0,\"own\":0}"
+    },
+    "diagnose-issue-123": {
+      "confirmed": true,
+      "evidence": "reproduced: `node -e` prints the wrong slug",
+      "actualCause": "accent stripping",
+      "persistentStateSignal": false,
+      "authSecurityBoundarySignal": false,
+      "deployConfigSignal": false,
+      "immatureVendorApiSignal": false
+    },
+    "scout-issue-123-1": {
+      "decision": "GO",
+      "plan": "## Plan\n1. src/slugify.js: transliterate before stripping\n\n## Acceptance checklist\n- [ ] `npm test` passes",
+      "rationale": "",
+      "targetFiles": [
+        "src/slugify.js"
+      ],
+      "absorbedIssues": [],
+      "acceptanceChecklist": "- [ ] `npm test` passes"
+    },
+    "plan-check-123-1": {
+      "verdict": "CONFORMING",
+      "issues": []
+    }
+  },
+  "expect": {
+    "status": "plan-ready",
+    "promptIncludes": [
+      {
+        "label": "probe-123-lines-plugin-version-r0",
+        "nth": 0,
+        "includes": [
+          "REQUEST:",
+          "unrelated context"
+        ]
+      },
+      {
+        "label": "diagnose-issue-123",
+        "nth": 0,
+        "includes": [
+          "REQUEST:",
+          "unrelated context"
+        ]
+      },
+      {
+        "label": "scout-issue-123-1",
+        "nth": 0,
+        "includes": [
+          "REQUEST:",
+          "unrelated context"
+        ]
+      },
+      {
+        "label": "plan-check-123-1",
+        "nth": 0,
+        "includes": [
+          "REQUEST:",
+          "unrelated context"
+        ]
+      }
+    ],
+    "promptOrder": [
+      {
+        "label": "diagnose-issue-123",
+        "nth": 0,
+        "order": [
+          "REQUEST:",
+          "fix slugify accents"
+        ]
+      }
+    ]
+  }
+}
