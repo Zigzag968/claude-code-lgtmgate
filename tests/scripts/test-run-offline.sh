@@ -363,6 +363,11 @@ outok=$(node scripts/run-offline.cjs "$TMP/result-ok.json" 2>&1)
 outbad=$(node scripts/run-offline.cjs "$TMP/result-bad.json" 2>&1)
 case "$outok|$outbad" in *"status=ok passed=1"*"|"*"FAIL:"*"resultIncludes: result.status"*) ok "a violated resultIncludes fails the fixture, a satisfied one passes (#270)";; *) bad "resultIncludes: ok=[$outok] bad=[$outbad]";; esac
 
+# #241: a slow consumer behind the pipe must still receive the trailer (no process.exit cutting the tail).
+o1=$(node scripts/run-flow-suite.cjs 2>&1 | (sleep 2; tail -n 1))
+o2=$(OFFLINE_STRICT=1 node scripts/run-offline.cjs --all fixtures 2>&1 | (sleep 2; tail -n 1))
+case "$o1|$o2" in *"[flow-suite] status=test-ok passed="*" failed=0|[offline] status=ok passed="*" failed=0") ok "both runners keep their trailer behind a slow pipe (#241)";; *) bad "trailer lost behind a slow pipe: flow=[$o1] offline=[$o2]";; esac
+
 rm -rf "$TMP"
 RESULT=ok; [ "$FAIL" -gt 0 ] && RESULT=fail
 echo "[test-run-offline] status=$RESULT passed=$PASS failed=$FAIL"

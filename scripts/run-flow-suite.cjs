@@ -167,7 +167,9 @@ async function main() {
     for (const l of lines) process.stderr.write(l + '\n')
     process.stderr.write((error && error.stack ? error.stack : String(error)) + '\n')
     process.stdout.write(`[flow-suite] status=harness-error passed=0 failed=0\n`)
-    process.exit(1)
+    // exitCode + return, never process.exit: exit cuts the buffered stdout tail behind a pipe (#241).
+    process.exitCode = 1
+    return
   }
 
   for (const l of lines) process.stdout.write(l + '\n')
@@ -189,11 +191,11 @@ async function main() {
   // FLOW_SUITE_STRICT=1 (opt-in, guards.yml only) turns `failed > 0` into a real
   // non-zero exit — see the header note above.
   const strict = process.env.FLOW_SUITE_STRICT === '1'
-  process.exit(strict && failed > 0 ? 1 : 0)
+  process.exitCode = strict && failed > 0 ? 1 : 0
 }
 
 main().catch((error) => {
   console.error(error && error.stack ? error.stack : String(error))
   process.stdout.write(`[flow-suite] status=harness-error passed=0 failed=0\n`)
-  process.exit(1)
+  process.exitCode = 1
 })
