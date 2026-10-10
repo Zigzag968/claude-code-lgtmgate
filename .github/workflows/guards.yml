@@ -71,6 +71,8 @@ jobs:
         run: bash tests/scripts/test-context-print.sh
       - name: init-specifics self-test
         run: bash tests/scripts/test-init-specifics.sh
+      - name: config-check self-test
+        run: bash tests/scripts/test-config-check.sh
       - name: publish-fixture self-test
         run: bash tests/scripts/test-publish-fixture.sh
       - name: Stop-supervise watchdog regression test
