@@ -178,9 +178,9 @@ resolved `ready`/`no-go`/`escalate`), do a check-in pass rather than silently ab
 - **Only remove the worktree after an explicit order from the user** (uncommitted work could still live there). The SubagentStop hook only warns, never deletes.
 - On order:
   ```bash
-  bash <engine checkout>/scripts/cleanup-worktree.sh "<WORKTREE>"
+  bash ${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-worktree.sh "<WORKTREE>"
   ```
-  The script refuses unless the worktree is merged and clean; `hooks/deny-destructive-git.sh` denies a raw `git worktree remove`.
+  The script refuses unless the worktree is merged and clean; `hooks/deny-destructive-git.sh` denies a raw `git worktree remove`. It sources the hook library next to it (`../hooks/lib-worktree-root.sh`), so it is called from the plugin folder, from any repository; a consumer has no copy of it and `/lgtmgate:init` does not install one.
 
 ## Reporting
 Short status to the user at each milestone (plan-ready / dev-done / needs-revision / verified-untickable / ready / no-go / escalate): what happened + the next decision. Bullets, no prose.
