@@ -120,7 +120,9 @@ Restart the session, then in your target project run `/lgtmgate:init`. It genera
 - **Node.js**: runs `workflows/deliver-pipeline.js`, `scripts/run-flow-suite.cjs`, and the consumer's copied `.claude/workflows/test-deliver-pipeline.js`.
 - **Python 3**: runs `hooks/SessionStart/inject_stub.py`.
 - **`git`** with a `github.com` remote.
-- **Claude Code with the `Workflow` tool available** (every run is a `Workflow`).
+- **Claude Code 2.1.294 or later** (every run is a `Workflow`): 2.1.294 is the version this repository's tests and devcontainer pin (`.devcontainer/package.json`). Check: `claude --version`.
+- **A paid Claude plan with Workflows turned on**: dynamic workflows are available on paid plans; on Pro, turn them on from the Dynamic workflows row in `/config`. Check: `/config` shows the row switched on, and `/workflows` opens.
+- **Workflows not disabled**: the `disableWorkflows` setting (in `~/.claude/settings.json`, or in your organization's managed settings), or `CLAUDE_CODE_DISABLE_WORKFLOWS=1`, turns them off. Check: `jq '.disableWorkflows' ~/.claude/settings.json` does not print `true`, and `echo "$CLAUDE_CODE_DISABLE_WORKFLOWS"` prints nothing; for an organization setting, ask your admin or look for the Dynamic workflows row in `/config`.
 - **GitHub only**: issues, pull requests and `gh`; a `github.com` remote.
 - **A long macOS session**: a session open for more than about three days can lose the certificate bundle of its sandbox so that `git` and `gh` over HTTPS fail with TLS errors; restart it (details in #251).
 - **`bash`** (3.2 floor, see the `bash-3.2-floor` invariant in `tests/templates/test-canonical-guards.sh`).
@@ -217,6 +219,17 @@ a **code-review surface, not data**: review it with the same scrutiny as a chang
 script itself. The `.claude/lgtmgate/*.md` files read from the base are an operator instruction channel (same trust as `commands.*`): they reach the agents as project rules. See `SECURITY.md` for the full threat model.
 
 </details>
+
+## What a run costs
+
+Token cost is not measured here, so this README gives no figure. It is driven by the number of agent spawns (Theo, Sam, Nick, Morgan, plus Mia and the plan audit when enabled), the number of review rounds (each `REQUIRED_CHANGES` sends Nick back and Morgan again), and the size of the issue: a well-scoped issue means fewer rounds. Runs count toward your plan's usage limits. In an interactive session signed in with a claude.ai subscription (Claude Code 2.1.271 or later), a run that reaches the usage limit pauses until it resets and then continues; with `claude -p`, in a background session, or after the second wait, the affected agent fails instead (see [Supervision of runs in flight](#supervision-of-runs-in-flight)). Model per role is set in [Configuration & overrides](#configuration--overrides).
+
+## Known harness issues
+
+Open Claude Code issues this repository works around:
+
+- [anthropics/claude-code#96640](https://github.com/anthropics/claude-code/issues/96640): a Workflow launched mid-turn can relay a stale chat message to every agent; the `Stop` hook watchdog detects it and the Lead re-checks a surprising verdict ([docs/supervision.md](docs/supervision.md)).
+- [anthropics/claude-code#95369](https://github.com/anthropics/claude-code/issues/95369): the harness relays chat into subagents and demotes the computed task; same detection and re-check ([docs/supervision.md](docs/supervision.md)).
 
 ## Structure
 
