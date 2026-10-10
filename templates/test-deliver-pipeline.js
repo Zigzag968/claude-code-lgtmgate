@@ -2443,6 +2443,21 @@ await testCase('T272 probeCommands() extracted from source markers (#82)', async
   return checks.find(c => c) || { ok: true }
 })
 
+// T142 (#142) — the two remaining state-dependent probe calls read live state: neither may be answered
+// from a stored record of an earlier launch.
+await testCase('T142 live-state probes pass noReuse: true (provision-freshness, worktree-behind) (#142)', async () => {
+  const source = SUITE_ARGS.fpSource
+  if (!source) {
+    log('SKIP — T142: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const checks = [
+    eq('provision-freshness probe passes noReuse: true (live state, #142)', /probe\('provision-freshness',[\s\S]*?\{ label: 'provision-freshness', noReuse: true,/.test(source), true),
+    eq('worktree-behind probe passes noReuse: true (live state, #142)', /probe\('git-rev-list-count',[\s\S]*?\{ label: `worktree-behind-\$\{pr\}`, noReuse: true,/.test(source), true),
+  ]
+  return checks.find(c => c) || { ok: true }
+})
+
 // T257 (#257) — the tick of a 14-box checklist is a short command: the ids, no checklist text.
 await testCase('T257 tick-ids argv for a 14-box checklist carries the ids and no checklist text (#257)', async () => {
   const fns = t182Block()
