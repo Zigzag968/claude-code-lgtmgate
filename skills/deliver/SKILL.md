@@ -26,6 +26,7 @@ A run is driven from a session opened in the target repository (agents get the l
 ## 1. Read the config
 - Read `.claude/pipeline.config.json` (project root). Missing → stop: `Pipeline not configured. Run /lgtmgate:init first.`
 - Then run `node ${CLAUDE_PLUGIN_ROOT}/scripts/config-check.cjs .claude/pipeline.config.json` (read-only, always exit 0) and show its output unchanged. A `[config-check] status=warn` line means a retired or missing config key; it is a warning for the owner, never a reason to stop the launch. This runs before any agent is spawned (the first agent call is the §4 workflow launch).
+- Then run `node ${CLAUDE_PLUGIN_ROOT}/scripts/template-drift.cjs --root "${CLAUDE_PROJECT_DIR}"` (read-only, always exit 0) and show its output unchanged next to the config check. A `[template-drift] status=warn` line means a file init copied differs from the current template or is missing; it is a warning for the owner, never a reason to stop the launch. This also runs before any agent is spawned.
 - Keep the JSON object in memory: pass it as-is to the workflow (`config`) — ALWAYS, as the parsed object (never the JSON text, never omitted): the workflow has no filesystem and refuses to start without a `config` object (#13). Same for `configLocal` (`{}` if the file is absent).
 - Resolve which pipeline to launch (two branches, never a bare name):
   - The `lgtmgate` plugin (>=0.8.0) provides the **namespaced** workflow component
