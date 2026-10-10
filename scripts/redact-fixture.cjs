@@ -5,7 +5,7 @@
 // repo is public. One fixed rule table (RULES), no options. JSON files are parsed and every
 // string value and key is redacted on its DECODED form (so `\n`, `\"` inside JSON never
 // confuse the patterns), then re-serialised; other files are treated as plain text.
-// A rule has a `kind`: rewrite (each match of `re` becomes `to`), json-key (the string value of a
+// A rule has a `kind`: rewrite (each match of `re` becomes `to`, or an `apply` function returns the rewritten text), json-key (the string value of a
 // JSON key whose whole name matches `key` becomes `to`, as a parsed key AND as a `"key":"value"` pair
 // in any text: a string holding JSON, `\"key\":\"value\"` included, a .jsonl journal, a raw capture)
 // or refuse (never rewritten: a match stops the run). After the rewrite pass the whole table runs again on the output: a rule that
@@ -22,6 +22,37 @@
 const fs = require('fs')
 
 const { SECRET_REWRITES, PEM_RULE } = require('./lib/redaction-rules.cjs')
+
+const EMAIL_LOCAL = /[A-Za-z0-9._%+-]/
+const EMAIL_DOMAIN = /[A-Za-z0-9.-]/
+const inSet = (re, c) => c !== undefined && re.test(c)
+const isWord = (c) => inSet(/\w/, c)
+// Anchored on each `@` (linear, where a regex rescanning every run is quadratic): the local part is the run of
+// EMAIL_LOCAL chars before it, starting at the first word boundary that is not `git@`; the domain is the longest
+// `name.tld` (tld = 2+ letters ending on a word boundary) in the run after it.
+function redactEmails(text, to) {
+  let out = ''
+  let last = 0
+  for (let at = text.indexOf('@'); at !== -1; at = text.indexOf('@', Math.max(at + 1, last))) {
+    let start = at
+    while (start > last && inSet(EMAIL_LOCAL, text[start - 1])) start--
+    while (start < at && !(isWord(text[start - 1]) !== isWord(text[start]) && !text.startsWith('git@', start))) start++
+    if (start === at) continue
+    let end = at + 1
+    while (inSet(EMAIL_DOMAIN, text[end])) end++
+    let stop = -1
+    for (let dot = end - 1; dot >= at + 2 && stop < 0; dot--) {
+      if (text[dot] !== '.') continue
+      let m = dot + 1
+      while (inSet(/[A-Za-z]/, text[m])) m++
+      if (m - dot - 1 >= 2 && !isWord(text[m])) stop = m
+    }
+    if (stop < 0) continue
+    out += text.slice(last, start) + to
+    last = stop
+  }
+  return out + text.slice(last)
+}
 
 const RULES = [
   // GitHub tokens, API keys (shared with scripts/agent-context.cjs: scripts/lib/redaction-rules.cjs)
@@ -41,7 +72,7 @@ const RULES = [
   { id: 'dash-home', kind: 'rewrite', re: /(?<![\w.~-])-home-[\w.-]+/g, to: '-home-user' },
   { id: 'dash-volumes', kind: 'rewrite', re: /(?<![\w.~-])-Volumes-[\w.-]+/g, to: '-Volumes-disk' },
   // emails, except the `git@` SSH remote form (`git@github.com:owner/repo.git` is not personal data)
-  { id: 'email', kind: 'rewrite', re: /\b(?!git@)[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g, to: 'redacted@example.com' },
+  { id: 'email', kind: 'rewrite', apply: (s) => redactEmails(s, 'redacted@example.com') },
   // signed / tokenized URLs
   { id: 'signed-url', kind: 'rewrite', re: /([?&](?:token|sig|signature|X-Amz-Signature|access_token)=)[^&\s"'`\\]+/gi, to: '$1REDACTED' },
   // the string value of a secret-named JSON key (whole name, any case): `authSecurityBoundarySignal` is not one
@@ -98,9 +129,11 @@ function redactPairs(text, r) {
   return result + out.slice(last)
 }
 
+const rewrite = (r, s) => (r.apply ? r.apply(s) : s.replace(r.re, r.to))
+
 function redactText(text) {
   let out = text
-  for (const r of REWRITES) out = out.replace(r.re, r.to)
+  for (const r of REWRITES) out = rewrite(r, out)
   for (const r of KEY_RULES) out = redactPairs(out, r)
   return out
 }
@@ -137,7 +170,7 @@ function redactFile(raw, isJson) {
 function stringHits(s) {
   const ids = []
   for (const r of RULES) {
-    if (r.kind === 'rewrite' && s.replace(r.re, r.to) !== s) ids.push(r.id)
+    if (r.kind === 'rewrite' && rewrite(r, s) !== s) ids.push(r.id)
     else if (r.kind === 'json-key' && redactPairs(s, r) !== s) ids.push(r.id)
     else if (r.kind === 'refuse' && r.re.test(s)) ids.push(r.id)
   }
