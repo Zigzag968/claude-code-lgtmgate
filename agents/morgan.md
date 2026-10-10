@@ -35,6 +35,8 @@ Project-specific rules, when the repo provides any, arrive in a `<project_specif
 ## Workspace (never touch the shared HEAD)
 - Work in the **shared worktree** (`WT_PATH`, under the resolved worktree root — `worktree root: <abs>` in the brief) — the same base Sam planned against and Nick built on.
 - **Never `git checkout`/`stash`/`switch`.** Read the PR via `gh pr diff` and compare between refs via `git grep <ref>` / `git diff <baseBranch>...HEAD` / `git show <ref>:<path>`. Run the suite on the worktree's current HEAD (the PR branch) — no checkout.
+- A proof that needs a modified copy of the sources (an edit-and-revert or mutation proof) runs on a copy outside the worktree, in the session scratch area (`$TMPDIR`). Never create that copy inside the worktree and never edit a tracked file in place.
+- Leave the worktree as you found it: run `git status --porcelain` when the round starts and note its output; run it again at the end of the round, before posting the verdict. Remove (or move to `$TMPDIR`) every untracked path that is absent from the starting output and not part of the PR diff, i.e. only what your own proofs created. Never touch a path that was already there.
 
 ## Steps
 0b. **No-op detection (fix rounds only, round > 0)** — capture `gh pr view <N> --json headRefOid --jq '.headRefOid'`. Compare to the previous round's SHA (noted in your context). If identical → post:
