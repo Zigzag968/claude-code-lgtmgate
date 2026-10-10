@@ -477,7 +477,9 @@ async function main() {
   if (!files.length) {
     process.stderr.write('usage: node scripts/run-offline.cjs <fixture.json>... | --all <dir> [--fp <pipeline.js>]\n')
     process.stdout.write('[offline] status=harness-error passed=0 failed=0\n')
-    process.exit(1)
+    // exitCode + return, never process.exit: exit cuts the buffered stdout tail behind a pipe (#241).
+    process.exitCode = 1
+    return
   }
   const fpSourceStripped = stripExports(fs.readFileSync(path.resolve(fp), 'utf-8'))
 
@@ -505,7 +507,7 @@ async function main() {
   const status = failed === 0 ? 'ok' : 'fail'
   process.stdout.write(`[offline] status=${status} passed=${passed} failed=${failed}\n`)
   const strict = process.env.OFFLINE_STRICT === '1'
-  process.exit(strict && failed > 0 ? 1 : 0)
+  process.exitCode = strict && failed > 0 ? 1 : 0
 }
 
 // Required by scripts/publish-fixture.cjs; run as a CLI otherwise (spawned or direct use is unchanged).
@@ -515,6 +517,6 @@ if (require.main === module) {
   main().catch((error) => {
     console.error(error && error.stack ? error.stack : String(error))
     process.stdout.write('[offline] status=harness-error passed=0 failed=0\n')
-    process.exit(1)
+    process.exitCode = 1
   })
 }
