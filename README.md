@@ -235,6 +235,8 @@ Open Claude Code issues this repository works around:
 
 Where each kind of file lives, and what is enforced, is in [docs/layout.md](docs/layout.md).
 
+Every key, refusal, run reason and hook message a consumer can meet, with its remedy, is in [docs/consumer-reference.md](docs/consumer-reference.md).
+
 ## This repo is also a marketplace: the backlog plugin
 
 This repository plays two roles at once. At its root, it's the `lgtmgate` plugin you just installed. Its `.claude-plugin/marketplace.json` also makes it a Claude Code plugin **marketplace**, `zigzag-plugins`, a catalog that other plugins can be listed in, each with its own install command and version.

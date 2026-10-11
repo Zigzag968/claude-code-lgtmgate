@@ -1,4 +1,3 @@
-# Architecture
 ## Where the engine is going (6-12 months)
 - One gate to the world: every read or write outside the engine runs through `templates/probe-run.cjs`, bar the Lead copy of specifics, checked by digest.
 - One state registry: every run outcome is a typed status, and the Lead's table and the hooks are checked against it.
@@ -13,8 +12,9 @@
 3. Ratchet over thresholds: model calls outside `callAgent`, `simulate.*` seams and regex parsers never increase.
 4. Root cause over patch: the smallest change that removes the cause class; a shortcut is a declared `DEBT(#N)` exception.
 5. Fit over foresight: build what the issue needs, for every valid input, clean and tested; nothing speculative, never a shortcut that only passes the example.
+6. Say it where the consumer reads it: every consumer-facing key, refusal and run reason has one entry with its remedy in
+   `docs/consumer-reference.md`, a guard fails on a name without one, and a refusal message ends with a pointer to its entry.
 ## One-way doors (the run stops for the maintainer)
 - A new status, agent call, hook or seam (`oneWayDoorKinds`), or a change to a path listed in `oneWayDoorPaths`.
 ## How agents use this
 - Sam plans toward the destination and names the doctrine line he trades off; Morgan blocks on the checklist, CI, repo conventions and regression guard.
-- Checks: `node scripts/guards.cjs` and `bash tests/templates/test-canonical-guards.sh`; a failure names its rule.
