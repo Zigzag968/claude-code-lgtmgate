@@ -102,6 +102,58 @@ def _config_check(config_path: Path) -> Optional[list]:
         return None
 
 
+def _read_json_object(path: Path) -> dict:
+    """A JSON object read from path; {} on any failure or when it is not an object."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _loaded_plugin_lines(project_dir: str) -> list:
+    """
+    Up to two lines naming the loaded plugin version and marketplace, plus a
+    warning when the project's settings enable lgtmgate from another
+    marketplace than the loaded one. Reads only CLAUDE_PLUGIN_ROOT (manifest
+    and path layout .../cache/<marketplace>/lgtmgate/<version>) and the
+    project's .claude/settings{,.local}.json; no subprocess, no network, no
+    user-scope settings. MUST NEVER raise: any failure means "no lines".
+    """
+    try:
+        root = Path(os.environ.get("CLAUDE_PLUGIN_ROOT") or str(Path(__file__).resolve().parents[2]))
+        manifest = _read_json_object(root / ".claude-plugin" / "plugin.json")
+        version = manifest.get("version")
+        if not isinstance(version, str) or not version.strip():
+            version = None
+        marketplace = None
+        if root.parent.name == "lgtmgate" and "cache" in root.parts:
+            marketplace = root.parent.parent.name or None
+        lines = ["- Loaded plugin: lgtmgate {} from marketplace {}.".format(
+            version or "version unknown",
+            marketplace or "unknown (the plugin root is not under a plugin cache)")]
+        if marketplace:
+            others = set()
+            for name in ("settings.json", "settings.local.json"):
+                enabled = _read_json_object(Path(project_dir) / ".claude" / name).get("enabledPlugins")
+                if not isinstance(enabled, dict):
+                    continue
+                for key, val in enabled.items():
+                    if val is True and isinstance(key, str):
+                        plugin, _, mkt = key.rpartition("@")
+                        if plugin == "lgtmgate" and mkt and mkt != marketplace:
+                            others.add(mkt)
+            if others:
+                other = sorted(others)[0]
+                lines.append(
+                    "- WARNING: this project's settings enable lgtmgate@{} but this session loaded "
+                    "lgtmgate from {}: the install may be of another version; compare with "
+                    "claude plugin list (scripts/plugin-versions.sh reports LOADED-CACHE).".format(other, marketplace))
+        return lines
+    except Exception:
+        return []
+
+
 def _specifics_hint(project_dir: str, config_path: Path) -> str:
     """
     One line when the config sets `projectSpecifics` but its folder holds no
@@ -234,6 +286,7 @@ def build_stub() -> str:
         "silent past the threshold (`supervision.staleMinutes`) -> mark blocked/escalate. "
         "Never leave a dead run without a decision (the `Stop` guard hook reminds of this).",
     ]
+    lines.extend(_loaded_plugin_lines(project_dir))
 
     if configured:
         warns = _config_check(config_path)
