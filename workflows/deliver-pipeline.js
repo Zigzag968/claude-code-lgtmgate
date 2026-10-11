@@ -133,7 +133,7 @@ export const meta = {
 // `version`, checked against plugin.json by tests/templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '1.3.0-beta.40', cutFrom: '5536c13' }
+const BUILD = { plugin: 'lgtmgate', version: '1.3.0-beta.41', cutFrom: 'd85456f' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -2895,16 +2895,11 @@ if (entryStage !== 'plan') {
   // #429: with a plugin root the engine runs the plugin's own script (no per-consumer copy to keep in
   // step); without one (copied workflow, headless runner) it reads the worktree copy as before.
   const provisionScript = pluginRoot ? `${pluginRoot}/templates/provision-worktree.sh` : `${wtPath}/scripts/provision-worktree.sh`
-  // DEBT(#364): consumers initialised before the rename still carry the snake_case copy; used only when the kebab-case one is absent
-  const legacyProvisionScript = `${wtPath}/scripts/provision_worktree.sh`
-  const legacyLookup = pluginRoot
-    ? ''
-    : `LEGACY_SCRIPT="${legacyProvisionScript}"; if [ ! -f "$SCRIPT" ] && [ -f "$LEGACY_SCRIPT" ]; then SCRIPT="$LEGACY_SCRIPT"; fi; `
   const noScriptBranch = hardLinks.length === 0
     ? `echo "PROVISION-SKIPPED-NO-SCRIPT $SCRIPT (no provision.extraLinks configured - nothing to link)"; exit 0`
     : `echo "PROVISION-NO-SCRIPT $SCRIPT (${hardLinks.length} hard link(s) configured - cannot provision)" >&2; exit 2`
   const provisionCommand =
-    `SCRIPT="${provisionScript}"; ${legacyLookup}if [ -f "$SCRIPT" ]; then PROVISION_ENV_SYMLINK="${environmentSymlink}" bash "$SCRIPT" "${wtPath}"${provisionArguments}; else ${noScriptBranch}; fi`
+    `SCRIPT="${provisionScript}"; if [ -f "$SCRIPT" ]; then PROVISION_ENV_SYMLINK="${environmentSymlink}" bash "$SCRIPT" "${wtPath}"${provisionArguments}; else ${noScriptBranch}; fi`
   if (simulate) provisionCommandPreview = provisionCommand
   // #82: the call goes through probe() (probe-run gate): probe-run.cjs executes the command and keeps
   // the raw output, PARSERS.provision derives linked/missing/skipped in the script, the exit code

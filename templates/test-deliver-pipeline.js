@@ -4356,7 +4356,7 @@ await testCase('T104d provisionCmdPreview: SCRIPT invocation + extraLinks args p
     simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] },
   })
   const p = r.provisionCmdPreview
-  const error1 = includes('provisionCmdPreview', p, 'SCRIPT="/tmp/lgtmgate-test/scripts/provision-worktree.sh"; LEGACY_SCRIPT=')
+  const error1 = includes('provisionCmdPreview', p, 'SCRIPT="/tmp/lgtmgate-test/scripts/provision-worktree.sh"; if [ -f "$SCRIPT" ]')
   const error2 = includes('provisionCmdPreview', p,
     'if [ -f "$SCRIPT" ]; then PROVISION_ENV_SYMLINK="required" bash "$SCRIPT" "/tmp/lgtmgate-test" ".venv" ".venv"; else')
   const error3 = includes('provisionCmdPreview', p, '; fi')
@@ -4378,10 +4378,9 @@ await testCase('T104f provisionCmdPreview: hard pairs first, then --soft and the
   return error ? error : { ok: true }
 })
 
-// T104e (#344) — the composed provisioning command is EXECUTED against a temporary worktree: a consumer initialised
-// under the previous name (scripts/provision_worktree.sh) keeps provisioning; the new name wins when both exist.
-// DEBT(#364): removed together with the fallback.
-await testCase('T104e provisioning command executed: legacy-only copy runs, new name wins, none fails closed (#344)', async () => {
+// T104e (#344) — the composed provisioning command is EXECUTED against a temporary worktree: a present
+// scripts/provision-worktree.sh runs, a copy under the previous name (scripts/provision_worktree.sh) is ignored.
+await testCase('T104e provisioning command executed: a present script runs, a legacy-named copy is ignored, none fails closed (#344)', async () => {
   if (!SUITE_ARGS.fpSource) {
     log('SKIP — T104e: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
     return { ok: true }
@@ -4411,15 +4410,16 @@ await testCase('T104e provisioning command executed: legacy-only copy runs, new 
       return { status: result.status, output: `${result.stdout}${result.stderr}` }
     }
     const link = [{ src: '.venv', dst: '.venv' }]
+    const present = await execute([], ['provision-worktree.sh'])
     const legacyOnly = await execute([], ['provision_worktree.sh'])
-    const both = await execute([], ['provision_worktree.sh', 'provision-worktree.sh'])
     const none = await execute([], [])
     const noneWithLink = await execute(link, [])
     const checks = [
-      includes('legacy copy only: the legacy copy runs', legacyOnly.output, 'STUB-LEGACY'),
-      eq('legacy copy only: exit 0', legacyOnly.status, 0),
-      includes('both copies: the new name runs', both.output, 'STUB-NEW'),
-      eq('both copies: the legacy copy does not run', both.output.includes('STUB-LEGACY'), false),
+      includes('present script: it runs', present.output, 'STUB-NEW'),
+      eq('present script: exit 0', present.status, 0),
+      includes('legacy-named copy only: nothing to run, skipped', legacyOnly.output, 'PROVISION-SKIPPED-NO-SCRIPT'),
+      eq('legacy-named copy only: the legacy copy does not run', legacyOnly.output.includes('STUB-LEGACY'), false),
+      eq('legacy-named copy only: exit 0', legacyOnly.status, 0),
       includes('no copy, no links: skipped', none.output, 'PROVISION-SKIPPED-NO-SCRIPT'),
       eq('no copy, no links: exit 0', none.status, 0),
       eq('no copy, a hard link: fails closed (exit 2)', noneWithLink.status, 2),
@@ -4524,13 +4524,12 @@ await testCase('T429e provision with a plugin root whose script is absent, a har
   return failure ? failure : { ok: true }
 })
 
-await testCase('T429f provision command with a plugin root names the plugin script and carries no legacy lookup (#429)', async () => {
+await testCase('T429f provision command with a plugin root names the plugin script, and the worktree copy without one (#429)', async () => {
   const withRoot = await run({ wtPath: '/wt', pluginRoot: '/plug', mode: 'auto', config: { ...CONFIG, provision: { extraLinks: T429_LINK } }, simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] } })
   const noRoot = await run({ wtPath: '/wt', mode: 'auto', config: { ...CONFIG, provision: { extraLinks: T429_LINK } }, simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] } })
   const failure = [
     includes('names the plugin script', withRoot.provisionCmdPreview, 'SCRIPT="/plug/templates/provision-worktree.sh"; if [ -f "$SCRIPT" ]'),
-    eq('no legacy lookup with a plugin root', withRoot.provisionCmdPreview.includes('LEGACY_SCRIPT'), false),
-    includes('without a root the worktree copy is named', noRoot.provisionCmdPreview, 'SCRIPT="/wt/scripts/provision-worktree.sh"; LEGACY_SCRIPT='),
+    includes('without a root the worktree copy is named', noRoot.provisionCmdPreview, 'SCRIPT="/wt/scripts/provision-worktree.sh"; if [ -f "$SCRIPT" ]'),
   ].find(Boolean)
   return failure ? failure : { ok: true }
 })

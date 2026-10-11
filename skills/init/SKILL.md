@@ -34,8 +34,6 @@ Init no longer copies the acceptance rule, the flow suite or the status helper: 
 
 Provisioning needs no copy: when the Lead passes the plugin root, as `/lgtmgate:deliver` always does, the engine runs `${CLAUDE_PLUGIN_ROOT}/templates/provision-worktree.sh`. A project that runs a copied workflow without a plugin root (the workflow copied into the project with `config.probeRunPath`, or the headless runner) still needs the copy, and init does not install it for that case: copy `${CLAUDE_PLUGIN_ROOT}/templates/provision-worktree.sh` to `scripts/provision-worktree.sh` by hand, `chmod +x` it, commit and push it. Without it such a run with a required `provision.extraLinks` entry stops at provisioning with `PROVISION-NO-SCRIPT` (exit 2), and a run with none is skipped with `PROVISION-SKIPPED-NO-SCRIPT` (exit 0).
 
-**Upgrading from the previous name.** A consumer initialised earlier has `scripts/provision_worktree.sh` or `scripts/provision-worktree.sh`. With a plugin root neither copy is read any more: `git rm` any old copy, commit and push. A run without a plugin root keeps using the worktree copy, and the legacy-name fallback for that case is removed under #364.
-
 (1 `cp` command per file — no compounding.)
 
 **Commit + push BEFORE the first run (mandatory — MANDATORY, claude-agent-pipeline#51).** `git worktree add` always clones from a committed ref, not from the working tree of the main checkout that `init` just wrote to: until `.claude/lgtmgate`, `.claude/scripts` and `.claude/pipeline.config.json` are committed + pushed to `baseBranch`, a freshly created worktree does NOT have them and the pipeline fails on the very first task. Before the first `/lgtmgate:deliver`:

@@ -118,7 +118,7 @@ function check(root, pluginRoot) {
       const fix = exists(path.join(root, 'scripts/provision-worktree.sh'))
         ? `clean up: git rm ${row.target}`
         : `rename it when convenient: git mv ${row.target} scripts/provision-worktree.sh`
-      const fallback = exists(path.join(root, 'scripts/provision-worktree.sh')) ? 'the new name wins' : 'when no plugin root is passed the engine falls back to it while scripts/provision-worktree.sh is absent (the fallback goes under #364)'
+      const fallback = 'the engine does not read it (a run without a plugin root needs scripts/provision-worktree.sh)'
       lines.push(`info: ${row.target} [${row.role}] still present; ${fallback}; ${NONE}; ${fix}`)
       continue
     }
