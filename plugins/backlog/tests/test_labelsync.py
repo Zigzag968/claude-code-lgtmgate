@@ -40,21 +40,21 @@ class TestSpec(unittest.TestCase):
 
 
 class TestPlan(unittest.TestCase):
-    def test_create_ok_and_drift_with_case_insensitive_matching(self):
+    def test_create_ok_and_recolor_with_case_insensitive_matching(self):
         spec = [{"name": "type:bug", "color": "d73a4a", "description": ""},
                 {"name": "type:feature", "color": "0e8a16", "description": ""},
                 {"name": "type:chore", "color": "ededed", "description": ""}]
         current = [live("TYPE:BUG", "D73A4A"), live("type:feature", "ffffff", "ignored description")]
         kinds = {a.name: a.kind for a in backlog_labelsync.plan(spec, current)}
-        self.assertEqual(kinds, {"type:bug": "ok", "type:feature": "drift", "type:chore": "create"})
+        self.assertEqual(kinds, {"type:bug": "ok", "type:feature": "recolor", "type:chore": "create"})
 
     def test_unmanaged_lists_only_labels_outside_the_spec(self):
         spec = [{"name": "type:bug", "color": "d73a4a", "description": ""}]
         self.assertEqual(backlog_labelsync.unmanaged(spec, [live("type:bug"), live("nightly"), live("bug")]), ["bug", "nightly"])
 
-    def test_a_label_without_a_color_is_drift(self):
+    def test_a_label_without_a_color_is_recolor(self):
         spec = [{"name": "type:bug", "color": "d73a4a", "description": ""}]
-        self.assertEqual(backlog_labelsync.plan(spec, [{"name": "type:bug"}])[0].kind, "drift")
+        self.assertEqual(backlog_labelsync.plan(spec, [{"name": "type:bug"}])[0].kind, "recolor")
 
 
 class TestCli(unittest.TestCase):
@@ -65,9 +65,9 @@ class TestCli(unittest.TestCase):
             rc, out = run(["--live-file", str(path)])
         self.assertEqual(rc, 0)
         self.assertIn("[label-sync] ok type:bug", out)
-        self.assertIn("[label-sync] drift type:feature", out)
+        self.assertIn("[label-sync] recolor type:feature", out)
         self.assertIn("[label-sync] create type:chore", out)
-        self.assertIn("dry-run: create=13 ok=1 drift=1 unmanaged=1 (nothing written; --apply creates the missing labels, see the README)", out)
+        self.assertIn("dry-run: create=13 ok=1 recolor=1 unmanaged=1 (nothing written; --apply creates the missing labels and recolors the drifted ones, see the README)", out)
 
     def test_live_read_goes_through_fetch_labels_with_all_fields(self):
         runner = _support.FakeRunner(labels=[live("type:bug", "d73a4a", "bad"), "nightly"])

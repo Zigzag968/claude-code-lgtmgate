@@ -35,7 +35,7 @@ def dep_gh(mode="write-supervised", repo="acme/widgets", **kw):
 class TestDepGh(unittest.TestCase):
     def test_the_two_existing_allow_lists_are_untouched(self):
         self.assertEqual(backlog_gh.WRITE_ALLOW, frozenset({("issue", "create")}))
-        self.assertEqual(backlog_gh.APPLY_ALLOW, frozenset({("issue", "edit"), ("label", "create")}))
+        self.assertEqual(backlog_gh.APPLY_ALLOW, frozenset({("issue", "edit"), ("label", "create"), ("label", "edit")}))
 
     def test_it_is_a_sibling_not_a_subclass(self):
         self.assertFalse(issubclass(DepGh, Gh))

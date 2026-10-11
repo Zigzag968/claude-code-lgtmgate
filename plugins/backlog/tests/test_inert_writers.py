@@ -150,7 +150,7 @@ class TestTargetsTheConfiguredRepo(Base):
                 self.assertEqual(proc.returncode, 1, proc.stdout + proc.stderr)
                 self.assertIn("refused: mode", proc.stdout)
         for call in _support.gh_calls(self.log):
-            self.assertFalse(call.startswith(("issue edit", "label create")), call)
+            self.assertFalse(call.startswith(("issue edit", "label create", "label edit")), call)
 
 
 if __name__ == "__main__":
