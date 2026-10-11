@@ -200,12 +200,12 @@ Nothing stack-specific lives in the plugin. Everything project-dependent is read
 | `preflight.envNote` | free-form operator note injected verbatim ahead of every preflight check, notably the HARD test-command check (see the trust warning below) |
 | `preflight.envSymlink` | `required` (default, current behavior) / `forbidden` (envless-by-contract projects: preflight asserts `.env` is ABSENT) / `ignore` (check omitted); enum-validated, the value is never interpolated into agent text |
 | `provision.extraLinks` | `[{ "src": "<path>", "dst": "<path>" }]`: links from the main checkout into the worktree. `src` and `dst` are relative paths made of `[A-Za-z0-9._/-]` only, with no leading `-` or `/` and no empty, `.` or `..` segment; an entry that breaks this throws `Invalid provision.extraLinks entry` before anything runs |
-| `provision.extraLinks[].optional` | marks a configured link as soft: it reaches the script after a `--soft` marker; absent at provision time it is skipped with a warning (`WARN optional src missing:`) instead of a hard `provision-failed` escalate, present it is linked; a config with only optional links and no script skips loudly. Refresh `scripts/provision-worktree.sh` after a plugin update (an older copy fails with a usage error when an optional link is configured) |
+| `provision.extraLinks[].optional` | marks a configured link as soft: it reaches the script after a `--soft` marker; absent at provision time it is skipped with a warning (`WARN optional src missing:`) instead of a hard `provision-failed` escalate, present it is linked; a config with only optional links and no script skips loudly. A run with a plugin root uses the plugin's own script, so there is nothing to refresh; a worktree copy of `scripts/provision-worktree.sh` is read only on a run without one (an older copy fails with a usage error when an optional link is configured) |
 
 A dependency install blocked by sandbox TLS is reported as a blocker, never bypassed. The two
 levers that make the install unnecessary in the first place are (a) pre-linking the project's
-`.venv`/`node_modules` into the worktree via `provision.extraLinks` (consumed by
-`scripts/provision-worktree.sh`) and (b) `preflight.envNote` for run-specific environment
+`.venv`/`node_modules` into the worktree via `provision.extraLinks` (consumed by the
+plugin's `templates/provision-worktree.sh`) and (b) `preflight.envNote` for run-specific environment
 constraints.
 
 The agents (`agents/*.md`) are fully de-specialized and reusable on any stack: Swift/iOS, Node, Python, Rust, etc.

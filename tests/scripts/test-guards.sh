@@ -11,6 +11,7 @@
 # phase-titles (real titles, a 16-character title, a 17-character title, a case-insensitive prefix title either order, a whitespace-padded title, no phases list; #141).
 # audit (the default list runs the audit check: a baseline raised vs origin/main fails; #289; rename-aware rule 2 and NEW-RULE, #303).
 # The audit cases really run scripts/audit.cjs: like test-audit.sh this file needs `npm ci` and ruff at the version of ruff.toml on PATH.
+# canary-step (the real MAINTAINING.md passes; no section and a missing script name fail naming the rule; #432).
 # Ends with `[test-guards] status=<ok|fail> passed=<n> failed=<n>`.
 set -u
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -563,6 +564,19 @@ if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: audit: NEW-RULE max-lines'; 
 printf '# config\n' > "$AUD_CLONE/ruff.toml" && git -C "$AUD_CLONE" add ruff.toml
 aud_run
 if [ "$RC" -eq 0 ]; then ok "audit: NEW-RULE enters when a tool config file changes in the same branch"; else ko "audit NEW-RULE with config (rc=$RC) $OUT"; fi
+
+# ---- canary-step (#432) ----
+run_canary() { OUT="$(GUARDS_ROOT="$1" GUARDS_ONLY=canary-step node "$REPO_ROOT/scripts/guards.cjs" 2>&1)"; RC=$?; }
+mkdir -p "$T/cs-real" "$T/cs-none" "$T/cs-name"
+cp MAINTAINING.md "$T/cs-real/MAINTAINING.md"
+sed '/^### Canary re-initialised from scratch/,$d' MAINTAINING.md > "$T/cs-none/MAINTAINING.md"
+sed '/^### Canary re-initialised from scratch/,$s/config-check\.cjs/x.cjs/g' MAINTAINING.md > "$T/cs-name/MAINTAINING.md"
+run_canary "$T/cs-real"
+if [ "$RC" -eq 0 ] && echo "$OUT" | grep -q '^PASS: canary-step:'; then ok "canary-step: the real MAINTAINING.md -> PASS"; else ko "canary-step real (rc=$RC) $OUT"; fi
+run_canary "$T/cs-none"
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: canary-step: MAINTAINING.md has no heading'; then ok "canary-step: a MAINTAINING.md without the section -> FAIL naming the rule"; else ko "canary-step no section (rc=$RC) $OUT"; fi
+run_canary "$T/cs-name"
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: canary-step: MAINTAINING.md step does not name config-check.cjs$'; then ok "canary-step: a section missing one script name -> FAIL naming that script"; else ko "canary-step missing name (rc=$RC) $OUT"; fi
 
 STATUS=ok; [ "$FAIL_N" -eq 0 ] || STATUS=fail
 echo "[test-guards] status=${STATUS} passed=${PASS_N} failed=${FAIL_N}"

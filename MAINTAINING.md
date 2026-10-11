@@ -399,3 +399,11 @@ then `claude plugin install lgtmgate@zigzag-plugins`.
 - The label `found-by:consumer` marks an issue that reports a defect a consumer met (a consumer repository, its session or its canary run), whatever its `type:` label. It is put by hand, through REST: `gh api -X POST repos/{owner}/{repo}/issues/<n>/labels -f 'labels[]=found-by:consumer'`.
 - `bash scripts/consumer-defects.sh` counts them per release (read-only, REST only): one line per window between two tags with the issues created, still open and the date of the last one, then `[consumer-defects] total=<n> open=<k> last=<date>`; exit 2 when the listing cannot be read.
 - Release criterion: zero new `found-by:consumer` issue created during the freeze window, that is, once the candidate is tagged (`v<x.y.z>-rc.<n>`), the `unreleased` window of the script has `created=0` when the candidate is promoted. A new one reopens the freeze after its fix.
+
+### Canary re-initialised from scratch before every release candidate
+
+- Before every release candidate, the canary repository is re-initialised from scratch: a fresh clone, no copy of the previous config, `/lgtmgate:init` run in it (commands: `docs/canary-kit.md`).
+- It is then given one path-scoped rule file through a lane (`sam.<lane>.md` with `lane:` and `paths:`) and one listed context file.
+- First proof of the candidate: `scripts/template-drift.cjs`, `scripts/config-check.cjs` and `scripts/agent-context.cjs` are run against it; their outputs are posted before the canary run. The canary run itself follows.
+- Cost, stated: one more canary run per candidate. It is the price of the criterion: a canary that passes as `ready` with a hand-kept config says nothing about a consumer that installs from scratch or upgrades.
+- Second consumer: the criterion also needs a complete delivery by two consumers of different stacks, without a gesture from the Lead of this repository.

@@ -60,6 +60,10 @@ const h = crypto.createHash("sha256").update(new Function(blk + "\nreturn plugin
 const VP = "probe-123-lines-plugin-version-r0"
 for (const k of ["line", "verify"]) smoke.calls[VP][k] = smoke.calls[VP][k].split("@@ENGINE_VERSION@@").join("1.0.0-beta.3").replace(/cmd=[0-9a-f]{64}/, "cmd=" + h)
 smoke.args.pluginRoot = root
+// #429: with a plugin root the provisioning probe runs the plugin script, so its command (and cmd= digest) names that root
+const PROV = "probe-123-provision-provision-r0"
+const provCmd = `(SCRIPT="${root}/templates/provision-worktree.sh"; if [ -f "$SCRIPT" ]; then PROVISION_ENV_SYMLINK="required" bash "$SCRIPT" "${smoke.args.wtPath}"; else echo "PROVISION-SKIPPED-NO-SCRIPT $SCRIPT (no provision.extraLinks configured - nothing to link)"; exit 0; fi) 2>&1`
+for (const k of ["line", "verify"]) smoke.calls[PROV][k] = smoke.calls[PROV][k].replace(/cmd=[0-9a-f]{64}/, "cmd=" + crypto.createHash("sha256").update(provCmd).digest("hex"))
 const runDir = path.join(proj, "-proj", "sess1", "subagents", "workflows", runId)
 const recFile = path.join(proj, "-proj", "sess1", "workflows", runId + ".json")
 fs.mkdirSync(runDir, { recursive: true }); fs.mkdirSync(path.dirname(recFile), { recursive: true })

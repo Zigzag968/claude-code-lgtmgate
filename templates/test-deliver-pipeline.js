@@ -4388,6 +4388,109 @@ await testCase('T104e provisioning command executed: legacy-only copy runs, new 
   }
 })
 
+// T429 (#429) — with args.pluginRoot the engine runs the plugin's own provisioning script; without one it
+// reads the worktree copy. Each case executes the composed command in scratch roots (this repository holds
+// the script as a symlink, so it cannot show the consumer case) and logs the complete outcome.
+const t429Execute = async ({ withPluginRoot, pluginScript, copyScript, extraLinks }) => {
+  const childProcess = process.getBuiltinModule('child_process')
+  const fileSystem = process.getBuiltinModule('fs')
+  const operatingSystem = process.getBuiltinModule('os')
+  const pathModule = process.getBuiltinModule('path')
+  const scratch = fileSystem.mkdtempSync(pathModule.join(operatingSystem.tmpdir(), 't429-'))
+  try {
+    const worktree = pathModule.join(scratch, 'wt-1')
+    const pluginRoot = pathModule.join(scratch, 'plugin')
+    fileSystem.mkdirSync(pathModule.join(worktree, 'scripts'), { recursive: true })
+    fileSystem.mkdirSync(pathModule.join(pluginRoot, 'templates'), { recursive: true })
+    if (pluginScript) fileSystem.writeFileSync(pathModule.join(pluginRoot, 'templates', 'provision-worktree.sh'), 'echo STUB-PLUGIN\n')
+    if (copyScript) fileSystem.writeFileSync(pathModule.join(worktree, 'scripts', 'provision-worktree.sh'), 'echo STUB-COPY\n')
+    const r = await run({
+      wtPath: worktree,
+      ...(withPluginRoot ? { pluginRoot } : {}),
+      mode: 'auto',
+      config: { ...CONFIG, provision: { extraLinks } },
+      simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] },
+    })
+    const result = childProcess.spawnSync('sh', ['-c', r.provisionCmdPreview], { encoding: 'utf8' })
+    const output = `${result.stdout}${result.stderr}`
+    return { status: result.status, output, command: r.provisionCmdPreview, pluginRoot, shown: output.split(scratch).join('<scratch>').trim().replace(/\n/g, ' | ') }
+  } finally {
+    fileSystem.rmSync(scratch, { recursive: true, force: true })
+  }
+}
+const T429_LINK = [{ src: '.venv', dst: '.venv' }]
+
+await testCase('T429a provision with a plugin root and no worktree copy: the plugin script runs, exit 0 (#429)', async () => {
+  if (!SUITE_ARGS.fpSource) { log('SKIP — T429a: SUITE_ARGS.fpSource absent'); return { ok: true } }
+  const x = await t429Execute({ withPluginRoot: true, pluginScript: true, copyScript: false, extraLinks: T429_LINK })
+  log(`T429a exit=${x.status} output=${x.shown}`)
+  const failure = [
+    includes('the plugin script runs', x.output, 'STUB-PLUGIN'),
+    eq('exit 0', x.status, 0),
+  ].find(Boolean)
+  return failure ? failure : { ok: true }
+})
+
+await testCase('T429b provision without a plugin root and no copy, a hard link: PROVISION-NO-SCRIPT, exit 2 (#429)', async () => {
+  if (!SUITE_ARGS.fpSource) { log('SKIP — T429b: SUITE_ARGS.fpSource absent'); return { ok: true } }
+  const x = await t429Execute({ withPluginRoot: false, pluginScript: true, copyScript: false, extraLinks: T429_LINK })
+  log(`T429b exit=${x.status} output=${x.shown}`)
+  const failure = [
+    includes('fails closed with the marker', x.output, 'PROVISION-NO-SCRIPT'),
+    eq('exit 2', x.status, 2),
+    eq('the plugin script is not looked at', x.output.includes('STUB-PLUGIN'), false),
+  ].find(Boolean)
+  return failure ? failure : { ok: true }
+})
+
+await testCase('T429c provision without a plugin root and a worktree copy: the copy runs (#429)', async () => {
+  if (!SUITE_ARGS.fpSource) { log('SKIP — T429c: SUITE_ARGS.fpSource absent'); return { ok: true } }
+  const x = await t429Execute({ withPluginRoot: false, pluginScript: true, copyScript: true, extraLinks: T429_LINK })
+  log(`T429c exit=${x.status} output=${x.shown}`)
+  const failure = [
+    includes('the copy runs', x.output, 'STUB-COPY'),
+    eq('exit 0', x.status, 0),
+    eq('the plugin script does not run', x.output.includes('STUB-PLUGIN'), false),
+  ].find(Boolean)
+  return failure ? failure : { ok: true }
+})
+
+await testCase('T429d provision with a plugin root and a worktree copy: the plugin script wins, the copy does not run (#429)', async () => {
+  if (!SUITE_ARGS.fpSource) { log('SKIP — T429d: SUITE_ARGS.fpSource absent'); return { ok: true } }
+  const x = await t429Execute({ withPluginRoot: true, pluginScript: true, copyScript: true, extraLinks: T429_LINK })
+  log(`T429d exit=${x.status} output=${x.shown}`)
+  const failure = [
+    includes('the plugin script runs', x.output, 'STUB-PLUGIN'),
+    eq('the copy does not run', x.output.includes('STUB-COPY'), false),
+    eq('exit 0', x.status, 0),
+  ].find(Boolean)
+  return failure ? failure : { ok: true }
+})
+
+await testCase('T429e provision with a plugin root whose script is absent, a hard link: PROVISION-NO-SCRIPT naming the plugin path, exit 2 (#429)', async () => {
+  if (!SUITE_ARGS.fpSource) { log('SKIP — T429e: SUITE_ARGS.fpSource absent'); return { ok: true } }
+  const x = await t429Execute({ withPluginRoot: true, pluginScript: false, copyScript: true, extraLinks: T429_LINK })
+  log(`T429e exit=${x.status} output=${x.shown}`)
+  const failure = [
+    includes('fails closed with the marker', x.output, 'PROVISION-NO-SCRIPT'),
+    includes('the message names the plugin path', x.output, 'plugin/templates/provision-worktree.sh'),
+    eq('exit 2, never 127', x.status, 2),
+    eq('the worktree copy does not run', x.output.includes('STUB-COPY'), false),
+  ].find(Boolean)
+  return failure ? failure : { ok: true }
+})
+
+await testCase('T429f provision command with a plugin root names the plugin script and carries no legacy lookup (#429)', async () => {
+  const withRoot = await run({ wtPath: '/wt', pluginRoot: '/plug', mode: 'auto', config: { ...CONFIG, provision: { extraLinks: T429_LINK } }, simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] } })
+  const noRoot = await run({ wtPath: '/wt', mode: 'auto', config: { ...CONFIG, provision: { extraLinks: T429_LINK } }, simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] } })
+  const failure = [
+    includes('names the plugin script', withRoot.provisionCmdPreview, 'SCRIPT="/plug/templates/provision-worktree.sh"; if [ -f "$SCRIPT" ]'),
+    eq('no legacy lookup with a plugin root', withRoot.provisionCmdPreview.includes('LEGACY_SCRIPT'), false),
+    includes('without a root the worktree copy is named', noRoot.provisionCmdPreview, 'SCRIPT="/wt/scripts/provision-worktree.sh"; LEGACY_SCRIPT='),
+  ].find(Boolean)
+  return failure ? failure : { ok: true }
+})
+
 // ---------------------------------------------------------------------------
 // #97 — no-op gate widened to SHA+body; review-loop plan/code blocker routing
 // (T23b lives next to T23 above; T109-T115 below)

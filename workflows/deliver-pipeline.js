@@ -36,7 +36,7 @@ export const meta = {
 // | `resumeReason` | optional, null by default. Set by the Lead on an entryStage:'dev' relaunch that follows a status:'escalate', reason:'mergeable-conflicting' result (#170), to thread WHY the resume happens into Nick's prompt (#183) — otherwise Nick reasons only from branch/plan content. Allow-list deliberately narrow (one value today): a branch-mismatch or plan-stale escalate doesn't resolve by relaunching Nick with this same message. |
 // | `dryRun` | if true, validate args and return immediately (no agents spawned) |
 // | `probeOnly` | optional { name, cmd, label, round }: run ONE probe() (probe-run gate, #80) and return status 'dry-run-ok' reason 'probe-only'. Lets a run-offline fixture reach probe() while no engine call site is migrated yet. Not a simulate key. |
-// | `pluginRoot` | optional absolute path of the plugin root (#82). The Lead passes ${CLAUDE_PLUGIN_ROOT} for the plugin component and omits it for a local copy; the probe layer resolves templates/probe-run.cjs from it (the workflow has no filesystem or env). config.probeRunPath wins; fallback <wtPath>/templates/probe-run.cjs. When the templates come from pluginRoot (no config.probeRunPath), the manifest version of the root must equal this engine's BUILD.version, else the run escalates before provisioning (`plugin-version-skew` / `plugin-version-unreadable`, #195). |
+// | `pluginRoot` | optional absolute path of the plugin root (#82). The Lead passes ${CLAUDE_PLUGIN_ROOT} for the plugin component and omits it for a local copy; the probe layer resolves templates/probe-run.cjs from it (the workflow has no filesystem or env), and the provisioning script is read from the same root (templates/provision-worktree.sh, #429). config.probeRunPath wins; fallback <wtPath>/templates/probe-run.cjs. When the templates come from pluginRoot (no config.probeRunPath), the manifest version of the root must equal this engine's BUILD.version, else the run escalates before provisioning (`plugin-version-skew` / `plugin-version-unreadable`, #195). |
 // | `sessionRoot` | optional absolute path of the Lead session's project root (the workflow has no env). When given and not simulate, its git common dir must equal wtPath's, else the run escalates `session-root-mismatch` before provisioning (#177): agents get the launching session's instruction files. Omitted: the check is skipped with a log line. |
 // | `projectSpecifics` | optional object: the verbatim stdout of `scripts/agent-context.cjs` (skills/deliver/SKILL.md §3bis). Required when `config.projectSpecifics` or `config.agentContext` is set. Absent, malformed or a digest mismatch throws before any agent call; nothing is injected on a refusal. The per-role text is inserted in every prompt of that role; the fingerprint is returned as `specifics` and traced (#265). Lanes (#271): a role block may carry `lanes:[{name, persona?, paths?, hint?, files, text, digest, bytes}]`; each lane digest is verified too; only the lanes chosen for the run are injected (see `lanes`). |
 // | `lanes` | optional array of lane names: the `lanes` of the previous result, carried by the Lead on every `entryStage` dev\|review relaunch (else the `lanes:` line of `planText` is read). A name that is no lane of `projectSpecifics` throws. A plan run asks Theo for the lanes (only when lane files exist), validates them, adds the lanes whose `paths` hit Sam's `targetFiles` for Nick and Morgan, appends `lanes: a,b` to the plan it returns, and reports `lanes` (and `lanesUnresolved:true` when Theo gave none) on `finish()`. |
@@ -133,7 +133,7 @@ export const meta = {
 // `version`, checked against plugin.json by tests/templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '1.3.0-beta.32', cutFrom: 'ac7a295' }
+const BUILD = { plugin: 'lgtmgate', version: '1.3.0-beta.34', cutFrom: 'a4d75c5' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -2852,11 +2852,11 @@ if (entryStage !== 'plan') {
 // Gates HARD: any configured (hard) source missing stops the run as 'escalate'
 // (reason 'provision-failed'); the implicit `.env` link stays SOFT so the workflow remains
 // stack-agnostic for a repo whose MAIN has no `.env`.
-// Trust boundary: the script is executed from the WORKTREE (`${wtPath}/scripts/...`), so on any
-// resume entryStage ('dev'/'review') it is branch-controlled — trusted to exactly the degree the
-// branch under review is. Integrity of the DEPLOYED consumer copies (this repo's own included)
-// is a ship-time pre-condition (md5 equality against templates/provision-worktree.sh — see
-// skills/init/SKILL.md and the S4 cross-slice flag), not enforced by this file.
+// Trust boundary: with args.pluginRoot the script is the plugin's own `templates/provision-worktree.sh`
+// (trusted as the plugin and the probe-run.cjs that runs it are; the manifest version of the root is
+// checked against the engine by #195 when the templates come from pluginRoot), not the branch's. Without
+// a plugin root it is the WORKTREE copy (`${wtPath}/scripts/...`), so on any resume entryStage
+// ('dev'/'review') it is branch-controlled — trusted to exactly the degree the branch under review is.
 // ---------------------------------------------------------------------------
 
 {
@@ -2883,14 +2883,19 @@ if (entryStage !== 'plan') {
   const hardLinks = provisionLinks.filter(l => l.optional !== true)
   const softLinks = provisionLinks.filter(l => l.optional === true)
   const provisionArguments = hardLinks.map(pair).join('') + (softLinks.length ? ' --soft' + softLinks.map(pair).join('') : '')
-  const provisionScript = `${wtPath}/scripts/provision-worktree.sh`
+  // #429: with a plugin root the engine runs the plugin's own script (no per-consumer copy to keep in
+  // step); without one (copied workflow, headless runner) it reads the worktree copy as before.
+  const provisionScript = pluginRoot ? `${pluginRoot}/templates/provision-worktree.sh` : `${wtPath}/scripts/provision-worktree.sh`
   // DEBT(#364): consumers initialised before the rename still carry the snake_case copy; used only when the kebab-case one is absent
   const legacyProvisionScript = `${wtPath}/scripts/provision_worktree.sh`
+  const legacyLookup = pluginRoot
+    ? ''
+    : `LEGACY_SCRIPT="${legacyProvisionScript}"; if [ ! -f "$SCRIPT" ] && [ -f "$LEGACY_SCRIPT" ]; then SCRIPT="$LEGACY_SCRIPT"; fi; `
   const noScriptBranch = hardLinks.length === 0
     ? `echo "PROVISION-SKIPPED-NO-SCRIPT $SCRIPT (no provision.extraLinks configured - nothing to link)"; exit 0`
     : `echo "PROVISION-NO-SCRIPT $SCRIPT (${hardLinks.length} hard link(s) configured - cannot provision)" >&2; exit 2`
   const provisionCommand =
-    `SCRIPT="${provisionScript}"; LEGACY_SCRIPT="${legacyProvisionScript}"; if [ ! -f "$SCRIPT" ] && [ -f "$LEGACY_SCRIPT" ]; then SCRIPT="$LEGACY_SCRIPT"; fi; if [ -f "$SCRIPT" ]; then PROVISION_ENV_SYMLINK="${environmentSymlink}" bash "$SCRIPT" "${wtPath}"${provisionArguments}; else ${noScriptBranch}; fi`
+    `SCRIPT="${provisionScript}"; ${legacyLookup}if [ -f "$SCRIPT" ]; then PROVISION_ENV_SYMLINK="${environmentSymlink}" bash "$SCRIPT" "${wtPath}"${provisionArguments}; else ${noScriptBranch}; fi`
   if (simulate) provisionCommandPreview = provisionCommand
   // #82: the call goes through probe() (probe-run gate): probe-run.cjs executes the command and keeps
   // the raw output, PARSERS.provision derives linked/missing/skipped in the script, the exit code

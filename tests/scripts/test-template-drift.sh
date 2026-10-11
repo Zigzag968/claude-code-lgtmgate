@@ -30,17 +30,17 @@ D=$(fresh t1)
 run --root "$D"
 if [ "$rc" -eq 0 ] && [ "$(last)" = "[template-drift] status=ok read=1 optional=1 differs=0 absent=0" ] && has 'next: nothing to do before the run' && ! has 'order:' && ! has 'obsolete:' && ! has 'warn:'; then ok "T1 identical copies are quiet"; else bad "T1 rc=$rc $(cat "$TMP/out")"; fi
 
-# T2 read-by-engine copy differs on a line that is not a parsed token
+# T2 fallback copy differs: info only, it is read only on a run without a plugin root
 D=$(fresh t2)
 echo "local line" >> "$D/scripts/provision-worktree.sh"
 run --root "$D"
-if [ "$rc" -eq 0 ] && has 'scripts/provision-worktree.sh [read-by-engine] differs from the current template' && has 'never overwrite' && has 'diff scripts/provision-worktree.sh' && has 'order: 1.' && [ "$(last | cut -c1-26)" = "[template-drift] status=wa" ]; then ok "T2 differing engine-read copy says decide, never overwrite, with the diff command"; else bad "T2 rc=$rc $(cat "$TMP/out")"; fi
+if [ "$rc" -eq 0 ] && has 'info: scripts/provision-worktree.sh [fallback] differs from the current template' && has 'only on a run without a plugin root' && has 'diff scripts/provision-worktree.sh' && ! has 'order:' && ! has 'warn:' && [ "$(last)" = "[template-drift] status=ok read=1 optional=1 differs=1 absent=0" ]; then ok "T2 differing fallback copy is info with the diff command"; else bad "T2 rc=$rc $(cat "$TMP/out")"; fi
 
-# T3 provision-worktree.sh absent, no config
+# T3 provision-worktree.sh absent: quiet, the engine runs the plugin script
 D=$(fresh t3)
 rm "$D/scripts/provision-worktree.sh"
 run --root "$D"
-if [ "$rc" -eq 0 ] && has 'PROVISION-NO-SCRIPT' && has 'fix before the run' && has '/lgtmgate:init' && [ "$(last)" = "[template-drift] status=warn read=0 optional=1 differs=0 absent=1" ]; then ok "T3 absent engine-read copy names the effect and the install step"; else bad "T3 rc=$rc $(cat "$TMP/out")"; fi
+if [ "$rc" -eq 0 ] && ! has 'provision-worktree.sh' && ! has 'warn:' && ! has 'order:' && [ "$(last)" = "[template-drift] status=ok read=0 optional=1 differs=0 absent=1" ]; then ok "T3 absent fallback copy prints no line"; else bad "T3 rc=$rc $(cat "$TMP/out")"; fi
 
 # T4 legacy name alone
 D=$(fresh t4)
@@ -89,18 +89,18 @@ cp "$ROOT/templates/test-deliver-pipeline.js" "$D/.claude/workflows/test-deliver
 run --root "$D"
 if [ "$rc" -eq 0 ] && [ "$(grep -c '^obsolete:' "$TMP/out")" = 2 ] && has 'no effect on the run' && ! has 'order:' && has 'next:' && [ "$(last | cut -c1-26)" = "[template-drift] status=ok" ]; then ok "T10 unused copies are obsolete with no effect on the run"; else bad "T10 rc=$rc $(cat "$TMP/out")"; fi
 
-# T11 provision copy lacks a token the engine parses
+# T11 provision copy lacking a token the old engine parsed: still only info
 D=$(fresh t11)
 grep -v 'MISSING-SRC ' "$ROOT/templates/provision-worktree.sh" > "$D/scripts/provision-worktree.sh"
 run --root "$D"
-if [ "$rc" -eq 0 ] && has "lacks 'MISSING-SRC '" && has 'fix before the run: port the new rules' && has 'order: 1.' && [ "$(last | cut -c1-26)" = "[template-drift] status=wa" ]; then ok "T11 a copy lacking a parsed token must be ported"; else bad "T11 rc=$rc $(cat "$TMP/out")"; fi
+if [ "$rc" -eq 0 ] && has 'info: scripts/provision-worktree.sh [fallback] differs' && ! has 'warn:' && ! has 'order:' && [ "$(last | cut -c1-26)" = "[template-drift] status=ok" ]; then ok "T11 a copy lacking a former token is info only"; else bad "T11 rc=$rc $(cat "$TMP/out")"; fi
 
-# T12 provision script absent and no required link configured: skipped by the engine
+# T12 provision script absent with a required link configured: still quiet (the plugin script runs)
 D=$(fresh t12)
 rm "$D/scripts/provision-worktree.sh"
-printf '{"provision":{"extraLinks":[]}}' > "$D/.claude/pipeline.config.json"
+printf '{"provision":{"extraLinks":[{"src":".venv","dst":".venv"}]}}' > "$D/.claude/pipeline.config.json"
 run --root "$D"
-if [ "$rc" -eq 0 ] && has 'PROVISION-SKIPPED-NO-SCRIPT' && has 'no effect on the run' && ! has 'order:' && [ "$(last | cut -c1-26)" = "[template-drift] status=ok" ]; then ok "T12 absent script with no required link is skipped"; else bad "T12 rc=$rc $(cat "$TMP/out")"; fi
+if [ "$rc" -eq 0 ] && ! has 'provision-worktree.sh' && ! has 'warn:' && ! has 'order:' && [ "$(last | cut -c1-26)" = "[template-drift] status=ok" ]; then ok "T12 absent copy with a required link is quiet"; else bad "T12 rc=$rc $(cat "$TMP/out")"; fi
 
 IMPORT_WARN="warn: CLAUDE.md imports .claude/rules/pr-acceptance.md; remove at your convenience: the plugin's text prevails over this copy; remove it in your next pull request; replace the import by the new file name or delete the line, then commit and push"
 
