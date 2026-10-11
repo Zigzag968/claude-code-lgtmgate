@@ -115,6 +115,8 @@ jobs:
         run: bash tests/scripts/test-plugin-versions.sh
       - name: consumer-defects script regression test
         run: bash tests/scripts/test-consumer-defects.sh
+      - name: consumer first-run test (scratch consumers, config-check, template-drift, agent-context)
+        run: bash tests/scripts/test-consumer-first-run.sh
       - name: block-merge-unchecked hook regression test
         run: bash tests/hooks/test-block-merge-unchecked.sh
       - name: probe eval cases offline validation
