@@ -953,7 +953,7 @@ await testCase('T459c redChecks table: shapes, distinct checks, blank first line
     eq('one item naming no check', callback(['lint is red', 'fix the guard'], names), []),
     eq('200-char cut', callback(['lint ' + 'x'.repeat(300)], names)[0].reason.length, 200),
   ]
-  const failed = errors.find((e) => e)
+  const failed = errors.find(Boolean)
   return failed || { ok: true }
 })
 
