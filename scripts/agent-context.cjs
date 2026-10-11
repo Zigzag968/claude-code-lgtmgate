@@ -275,12 +275,13 @@ function buildRoleBlocks(context) {
   const { sha, sharedPaths, seqs, owned, done, info, cls, accepted, warnings } = context
   const roles = {}
   let maxRole = 0
+  const ownedAll = new Set(Object.values(owned).flat())
   for (const role of ROLES) {
     const seen = new Set(sharedPaths)
     const parts = []
     const laneParts = {}
     for (const p of seqs[role]) {
-      if (seen.has(p)) continue
+      if (seen.has(p) || (ownedAll.has(p) && !owned[role].includes(p))) continue // a `*` path owned by another role stays there
       seen.add(p)
       const d = done.get(p)
       const lane = owned[role].includes(p) ? cls.laneOf.get(p) : undefined

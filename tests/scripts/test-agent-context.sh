@@ -120,11 +120,80 @@ jtrue "no-switch-empty-payload: empty payload" 'j.shared===null&&Object.keys(j.r
 R="$TMP/star"; new_repo "$R"
 setcfg "$R" '{"baseBranch":"main","projectSpecifics":".claude/lgtmgate","agentContext":{"*":["docs/extra-all.md"],"Nick":["docs/extra-nick.md"]}}'; seal "$R"
 run "$R"
-jtrue "agentcontext-star-and-role: * reaches every role, the role list only its role" 'j.roles.Sam.text.includes("ALL-EXTRA-MARK")&&j.roles.Mia.text.includes("ALL-EXTRA-MARK")&&j.roles.Theo.text.includes("ALL-EXTRA-MARK")&&j.roles.Nick.text.includes("ALL-EXTRA-MARK")&&j.roles.Nick.text.includes("NICK-EXTRA-MARK")&&!j.roles.Sam.text.includes("NICK-EXTRA-MARK")'
+jtrue "agentcontext-star-and-role: * goes once in shared, the role list only its role" 'j.shared.text.split("ALL-EXTRA-MARK").length===2&&Object.values(j.roles).every(r=>!r.text.includes("ALL-EXTRA-MARK"))&&j.roles.Nick.text.includes("NICK-EXTRA-MARK")&&!j.roles.Sam.text.includes("NICK-EXTRA-MARK")&&!("Mia" in j.roles)&&!("Theo" in j.roles)'
 R="$TMP/dedup"; new_repo "$R"
 setcfg "$R" '{"baseBranch":"main","projectSpecifics":".claude/lgtmgate","agentContext":{"*":["docs/extra-nick.md"],"Nick":["docs/extra-nick.md",".claude/lgtmgate/shared.md",".claude/lgtmgate/nick.md"]}}'; seal "$R"
 run "$R"
-jtrue "dedup-first-wins: a path never repeats, shared.md stays in shared" '(()=>{const t=j.roles.Nick.text;return t.split("NICK-EXTRA-MARK").length===2&&t.split("NICK-MARK").length===2&&!t.includes("SHARED-MARK")})()'
+jtrue "dedup-first-wins: a path never repeats, shared.md then the star file in shared, nothing of them in Nick" '(()=>{const t=j.roles.Nick.text,sh=j.shared.text;return t.split("NICK-MARK").length===2&&!t.includes("NICK-EXTRA-MARK")&&!t.includes("SHARED-MARK")&&sh.split("SHARED-MARK").length===2&&sh.split("NICK-EXTRA-MARK").length===2&&sh.indexOf("SHARED-MARK")<sh.indexOf("NICK-EXTRA-MARK")})()'
+
+# ---- #447: agentContext["*"] files travel once, inside shared (after shared.md) ---------------------
+# star_repo <dir> <json config>: a repo whose docs/extra-all.md is the mark line padded to 5000 bytes
+star_repo() {
+  new_repo "$1"
+  node -e 'let s="ALL-EXTRA-MARK extra file for every role.\n";while(s.length<5000)s+="x".repeat(59)+"\n";process.stdout.write(s.slice(0,5000))' > "$1/docs/extra-all.md"
+  setcfg "$1" "$2"; seal "$1"
+}
+STARCFG='{"baseBranch":"main","projectSpecifics":".claude/lgtmgate","agentContext":{"*":["docs/extra-all.md"],"Nick":["docs/extra-nick.md"]}}'
+R="$TMP/star-pay"; star_repo "$R" "$STARCFG"
+run "$R"
+SB=$(wc -c < "$OUT" | tr -d ' ')
+if [ "$rc" = 0 ] && [ "$(wc -c < "$R/docs/extra-all.md" | tr -d ' ')" = 5000 ] && [ "$(grep -o 'ALL-EXTRA-MARK' "$OUT" | wc -l | tr -d ' ')" = 1 ] && [ "$SB" -lt 8000 ]; then ok "star-payload-once: stdout $SB bytes (27126 before), ALL-EXTRA-MARK once"; else bad "star-payload-once: exit $rc, stdout $SB bytes"; fi
+STAR_OUT="$TMP/star-payload.json"; cp "$OUT" "$STAR_OUT"
+jtrue "star-shared-after-shared-md: shared.md first, then the star file, no role text holds it" '(()=>{const t=j.shared.text;return t.indexOf("SHARED-MARK")>=0&&t.indexOf("SHARED-MARK")<t.indexOf("ALL-EXTRA-MARK")&&!("Mia" in j.roles)&&!("Theo" in j.roles)&&Object.values(j.roles).every(r=>!r.text.includes("ALL-EXTRA-MARK"))})()'
+# independent recomputation of every digest present
+DIGS=$(node -e '
+  const c=require("crypto"),j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"))
+  const cj=(v)=>Array.isArray(v)?"["+v.map(cj).join(",")+"]":v&&typeof v==="object"?"{"+Object.keys(v).filter(k=>v[k]!==undefined).sort().map(k=>JSON.stringify(k)+":"+cj(v[k])).join(",")+"}":JSON.stringify(v)
+  const h=(k,b)=>c.createHash("sha256").update(cj({lanes:b.lanes,refSha:j.refSha,role:k,text:b.text})).digest("hex")
+  const bad=[["shared",j.shared],...Object.entries(j.roles)].filter(([k,b])=>h(k,b)!==b.digest).map(([k])=>k)
+  process.stdout.write(bad.join(",")+"|"+Object.keys(j.roles).length)
+' "$STAR_OUT")
+if [ "${DIGS%%|*}" = "" ] && [ -n "$(jx 'j.shared.digest')" ]; then ok "star-digest-shared: sha256 of {lanes,refSha,role,text} matches for shared"; else bad "star-digest-shared: mismatch [$DIGS]"; fi
+if [ "${DIGS%%|*}" = "" ] && [ "${DIGS##*|}" -ge 1 ]; then ok "star-digest-roles: every role block present recomputes (${DIGS##*|} roles)"; else bad "star-digest-roles: mismatch [$DIGS]"; fi
+# engine check: one byte changed in shared.text is refused
+node -e '
+  const fs=require("fs")
+  const f=new Function(process.argv[1]+"\n"+process.argv[2]+"\nreturn { sha256Hex, specificsDigest, specificsProblem }")()
+  const ps=JSON.parse(fs.readFileSync(process.argv[3],"utf8"))
+  const untouched=f.specificsProblem(true,ps,f.sha256Hex)===null
+  const bad=JSON.parse(JSON.stringify(ps)); bad.shared.text=bad.shared.text.slice(0,-1)+"X"
+  const refused=String(f.specificsProblem(true,bad,f.sha256Hex)).startsWith("digest mismatch for shared")
+  bad.shared.digest=f.specificsDigest(f.sha256Hex,bad.refSha,"shared",bad.shared.text,[])
+  const rolesStill=f.specificsProblem(true,bad,f.sha256Hex)===null
+  process.exit(untouched&&refused&&rolesStill?0:1)
+' "$SHA_BLK" "$PS_BLK" "$STAR_OUT" 2>"$TMP/st.err" && ok "star-tamper: one byte in shared.text is refused (digest mismatch for shared), the untouched payload passes" || bad "star-tamper: $(head -c 300 "$TMP/st.err")"
+# content screen on the moved files
+SWA='@Environment(\.horizontalSizeClass) private var horizontalSizeClass'
+R="$TMP/star-at"; new_repo "$R"; printf 'intro\n%s\n' "$SWA" > "$R/docs/extra-all.md"
+setcfg "$R" "$STARCFG"; seal "$R"; run "$R"
+exit_is "star-screen-at-line: exit 3" 3
+err_has "star-screen-at-line: located" "at-line at line 2"
+STOK="gh""p_$(printf 'b%.0s' 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24)"
+R="$TMP/star-secret"; new_repo "$R"; printf 'a token: %s\n' "$STOK" > "$R/docs/extra-all.md"
+setcfg "$R" "$STARCFG"; seal "$R"; run "$R"
+exit_is "star-screen-secret: exit 3" 3
+if grep -qF -- "$STOK" "$ERR"; then bad "star-screen-secret-not-printed: the value is printed"; else ok "star-screen-secret-not-printed: the value is never printed"; fi
+R="$TMP/star-fm"; new_repo "$R"; printf -- '---\npaths: ["**/*.swift"]\n---\nSwift rules.\n' > "$R/docs/extra-all.md"
+setcfg "$R" "$STARCFG"; seal "$R"; run "$R"
+exit_is "star-screen-frontmatter: exit 2" 2
+err_has "star-screen-frontmatter: names the rule" "frontmatter-on-context-file"
+# size warning on the moved files
+R="$TMP/star-over"; star_repo "$R" "$STARCFG"; run "$R"
+exit_is "star-oversize-exit0" 0
+jtrue "star-oversize-warning: shared-oversize, recommended 2048, bytes equal shared.bytes" 'j.warnings.some(w=>w.kind==="shared-oversize"&&w.recommended===2048&&w.bytes===j.shared.bytes)&&j.shared.bytes>2048'
+# edges
+R="$TMP/star-only"; new_repo "$R"
+setcfg "$R" '{"baseBranch":"main","agentContext":{"*":["docs/extra-all.md"]}}'; seal "$R"; run "$R"
+jtrue "star-edge-only-star: no projectSpecifics, the star file is in shared, no role block" 'j.shared!==null&&j.shared.text.includes("ALL-EXTRA-MARK")&&Object.keys(j.roles).length===0'
+R="$TMP/star-dup"; new_repo "$R"
+setcfg "$R" '{"baseBranch":"main","projectSpecifics":".claude/lgtmgate","agentContext":{"*":["docs/extra-all.md"],"Nick":["docs/extra-all.md"]}}'; seal "$R"; run "$R"
+jtrue "star-edge-role-list-dup: a path in * and in a role list appears once, in shared" 'j.shared.text.split("ALL-EXTRA-MARK").length===2&&Object.values(j.roles).every(r=>!r.text.includes("ALL-EXTRA-MARK"))'
+R="$TMP/star-owned"; new_repo "$R"
+setcfg "$R" '{"baseBranch":"main","projectSpecifics":".claude/lgtmgate","agentContext":{"*":[".claude/lgtmgate/nick.md"]}}'; seal "$R"; run "$R"
+jtrue "star-edge-owned-file: a folder file listed in * stays with its role" 'j.roles.Nick.text.includes("NICK-MARK")&&!j.shared.text.includes("NICK-MARK")&&!j.roles.Sam.text.includes("NICK-MARK")'
+R="$TMP/star-comment"; new_repo "$R"; printf '<!-- nothing yet -->\n' > "$R/docs/extra-all.md"
+setcfg "$R" "$STARCFG"; seal "$R"; run "$R"
+jtrue "star-edge-comment-only: a comment-only star file leaves shared and warns once" 'j.shared!==null&&!j.shared.text.includes("ALL-EXTRA-MARK")&&j.warnings.filter(w=>w.kind==="empty-ignored"&&w.path==="docs/extra-all.md").length===1'
 
 # ---- file-level refusals (exit 3) --------------------------------------------------------------
 R="$TMP/missing"; new_repo "$R"
