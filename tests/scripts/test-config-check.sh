@@ -99,7 +99,7 @@ if [ "$hrc" -eq 0 ] && grep -qF 'Loaded plugin: lgtmgate 9.9.9 from marketplace 
 
 printf '{"enabledPlugins":{"lgtmgate@market-stable":true}}' > "$P/.claude/settings.json"
 hook "$P" "$CR"
-W1=0; grep -qF 'enable lgtmgate@market-stable but this session loaded lgtmgate from market-stable-beta' "$TMP/hook.json" && W1=1
+W1=0; grep -qF 'enable lgtmgate@market-stable but this session loaded lgtmgate 9.9.9 from market-stable-beta' "$TMP/hook.json" && W1=1
 rm -f "$P/.claude/settings.json"
 printf '{"enabledPlugins":{"lgtmgate@market-stable":true}}' > "$P/.claude/settings.local.json"
 hook "$P" "$CR"
@@ -117,6 +117,34 @@ R1=$hrc; M1=0; grep -q 'pipeline ready to use' "$TMP/hook.json" && grep -qF 'ver
 printf '{"enabledPlugins":["x"]}' > "$P/.claude/settings.json"
 hook "$P" "$CR"
 if [ "$R1" -eq 0 ] && [ "$M1" -eq 1 ] && [ "$hrc" -eq 0 ] && grep -q 'pipeline ready to use' "$TMP/hook.json" && ! grep -q 'WARNING' "$TMP/hook.json"; then ok "H6 hook stays fail-open on odd manifest and settings"; else bad "H6 R1=$R1 M1=$M1 hrc=$hrc"; fi
+
+# H7-H10: effective settings across a linked worktree (hand-built fixtures, no git needed)
+MAIN="$TMP/main"; WT="$TMP/wt"
+mkdir -p "$MAIN/.git/worktrees/wt" "$MAIN/.claude" "$WT/.claude"
+printf '../..' > "$MAIN/.git/worktrees/wt/commondir"
+printf 'gitdir: %s/.git/worktrees/wt\n' "$MAIN" > "$WT/.git"
+printf '{"minPluginVersion":"1.3.0","projectSpecifics":".claude/lgtmgate"}' > "$WT/.claude/pipeline.config.json"
+printf '{"enabledPlugins":{"lgtmgate@market-stable":true}}' > "$WT/.claude/settings.json"
+printf '{"enabledPlugins":{"lgtmgate@market-stable":false,"lgtmgate@market-stable-beta":true}}' > "$MAIN/.claude/settings.local.json"
+hook "$WT" "$CR"
+if [ "$hrc" -eq 0 ] && grep -q 'pipeline ready to use' "$TMP/hook.json" && ! grep -q 'WARNING' "$TMP/hook.json"; then ok "H7 main checkout local false silences the worktree warning"; else bad "H7 rc=$hrc $(cat "$TMP/hook.json")"; fi
+
+printf '{"enabledPlugins":{"lgtmgate@market-stable":true}}' > "$MAIN/.claude/settings.json"
+printf '{"minPluginVersion":"1.3.0","projectSpecifics":".claude/lgtmgate"}' > "$MAIN/.claude/pipeline.config.json"
+hook "$MAIN" "$CR"
+if [ "$hrc" -eq 0 ] && grep -q 'pipeline ready to use' "$TMP/hook.json" && ! grep -q 'WARNING' "$TMP/hook.json"; then ok "H8 local false over shared true in the main checkout gives no warning"; else bad "H8 rc=$hrc $(cat "$TMP/hook.json")"; fi
+
+rm -f "$MAIN/.claude/settings.local.json"
+hook "$WT" "$CR"
+if [ "$hrc" -eq 0 ] && grep -q 'WARNING' "$TMP/hook.json" && grep -qF "plugin root $CR" "$TMP/hook.json" && grep -qF '/plugin' "$TMP/hook.json" && ! grep -q 'plugin-versions.sh' "$TMP/hook.json" && ! grep -q 'claude plugin list' "$TMP/hook.json"; then ok "H9 worktree without override warns with the plugin root and /plugin"; else bad "H9 rc=$hrc $(cat "$TMP/hook.json")"; fi
+
+printf 'garbage' > "$WT/.git"
+hook "$WT" "$CR"
+G1=$hrc; G2=0; grep -q 'WARNING' "$TMP/hook.json" && grep -q 'pipeline ready to use' "$TMP/hook.json" && G2=1
+printf 'gitdir: %s/.git/worktrees/nocommon\n' "$MAIN" > "$WT/.git"
+mkdir -p "$MAIN/.git/worktrees/nocommon"
+hook "$WT" "$CR"
+if [ "$G1" -eq 0 ] && [ "$G2" -eq 1 ] && [ "$hrc" -eq 0 ] && grep -q 'WARNING' "$TMP/hook.json" && grep -q 'pipeline ready to use' "$TMP/hook.json"; then ok "H10 hook stays fail-open on a malformed .git file or missing commondir"; else bad "H10 G1=$G1 G2=$G2 hrc=$hrc"; fi
 
 RESULT=ok; [ "$FAIL" -eq 0 ] || RESULT=fail
 echo "[test-config-check] status=${RESULT} passed=${PASS} failed=${FAIL}"

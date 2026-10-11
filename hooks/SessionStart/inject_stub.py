@@ -111,14 +111,48 @@ def _read_json_object(path: Path) -> dict:
         return {}
 
 
+def _main_checkout_dir(project_dir: str) -> Optional[Path]:
+    """
+    The main checkout's directory when project_dir is a linked git worktree
+    (its .git is a FILE "gitdir: <path>", whose commondir names the main .git
+    directory), else None. Reads files only, no subprocess. MUST NEVER raise.
+    """
+    try:
+        base = Path(project_dir)
+        dot_git = base / ".git"
+        if not dot_git.is_file():
+            return None
+        content = dot_git.read_text(encoding="utf-8").strip()
+        if not content.startswith("gitdir:"):
+            return None
+        gitdir = Path(content[len("gitdir:"):].strip())
+        if not gitdir.is_absolute():
+            gitdir = base / gitdir
+        common = Path((gitdir / "commondir").read_text(encoding="utf-8").strip())
+        if not common.is_absolute():
+            common = gitdir / common
+        common = common.resolve()
+        if common.name != ".git":
+            return None
+        main = common.parent
+        if main == base.resolve():
+            return None
+        return main
+    except Exception:
+        return None
+
+
 def _loaded_plugin_lines(project_dir: str) -> list:
     """
     Up to two lines naming the loaded plugin version and marketplace, plus a
-    warning when the project's settings enable lgtmgate from another
-    marketplace than the loaded one. Reads only CLAUDE_PLUGIN_ROOT (manifest
-    and path layout .../cache/<marketplace>/lgtmgate/<version>) and the
-    project's .claude/settings{,.local}.json; no subprocess, no network, no
-    user-scope settings. MUST NEVER raise: any failure means "no lines".
+    warning when the project's effective settings enable lgtmgate from another
+    marketplace than the loaded one (local scope overrides shared scope).
+    Reads only CLAUDE_PLUGIN_ROOT (manifest and path layout
+    .../cache/<marketplace>/lgtmgate/<version>) and the project's
+    .claude/settings.json and .claude/settings.local.json (and, in a linked
+    worktree, the main checkout's .claude/settings.local.json); no subprocess,
+    no network, no user-scope settings. MUST NEVER raise: any failure means
+    "no lines".
     """
     try:
         root = Path(os.environ.get("CLAUDE_PLUGIN_ROOT") or str(Path(__file__).resolve().parents[2]))
@@ -129,26 +163,37 @@ def _loaded_plugin_lines(project_dir: str) -> list:
         marketplace = None
         if root.parent.name == "lgtmgate" and "cache" in root.parts:
             marketplace = root.parent.parent.name or None
+        shown_version = version or "version unknown"
         lines = ["- Loaded plugin: lgtmgate {} from marketplace {}.".format(
-            version or "version unknown",
+            shown_version,
             marketplace or "unknown (the plugin root is not under a plugin cache)")]
         if marketplace:
-            others = set()
-            for name in ("settings.json", "settings.local.json"):
-                enabled = _read_json_object(Path(project_dir) / ".claude" / name).get("enabledPlugins")
+            sources = [Path(project_dir) / ".claude" / "settings.json"]
+            main = _main_checkout_dir(project_dir)
+            if main is not None:
+                sources.append(main / ".claude" / "settings.local.json")
+            sources.append(Path(project_dir) / ".claude" / "settings.local.json")
+            effective = {}
+            for src in sources:
+                enabled = _read_json_object(src).get("enabledPlugins")
                 if not isinstance(enabled, dict):
                     continue
                 for key, val in enabled.items():
-                    if val is True and isinstance(key, str):
-                        plugin, _, mkt = key.rpartition("@")
-                        if plugin == "lgtmgate" and mkt and mkt != marketplace:
-                            others.add(mkt)
+                    if isinstance(key, str) and isinstance(val, bool):
+                        effective[key] = val
+            others = set()
+            for key, val in effective.items():
+                plugin, _, mkt = key.rpartition("@")
+                if val is True and plugin == "lgtmgate" and mkt and mkt != marketplace:
+                    others.add(mkt)
             if others:
                 other = sorted(others)[0]
                 lines.append(
-                    "- WARNING: this project's settings enable lgtmgate@{} but this session loaded "
-                    "lgtmgate from {}: the install may be of another version; compare with "
-                    "claude plugin list (scripts/plugin-versions.sh reports LOADED-CACHE).".format(other, marketplace))
+                    "- WARNING: this project's settings enable lgtmgate@{other} but this session loaded "
+                    "lgtmgate {version} from {marketplace} (plugin root {root}). Expected when you chose "
+                    "that channel on purpose (for example by disabling lgtmgate@{other} at local scope); "
+                    "otherwise open /plugin, enable the install you want, and restart the session.".format(
+                        other=other, version=shown_version, marketplace=marketplace, root=root))
         return lines
     except Exception:
         return []
