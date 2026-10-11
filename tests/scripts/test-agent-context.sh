@@ -39,13 +39,20 @@ seal() { git_add_all "$1"; commit_ref "$1"; }
 # setcfg <dir> <json>
 setcfg() { printf '%s\n' "$2" > "$1/.claude/pipeline.config.json"; }
 # run <dir> <args...>: stdout in $OUT, stderr in $ERR, exit code in $rc
-run() { local d=$1; shift; (cd "$d" && node "$AC" --root "$d" "$@") >"$OUT" 2>"$ERR"; rc=$?; }
+run() { local d=$1; shift; LASTD=$d; (cd "$d" && node "$AC" --root "$d" "$@") >"$OUT" 2>"$ERR"; rc=$?; }
 # jx <expr>: evaluates a JS expression over the parsed stdout (j)
 jx() {
   node -e 'const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(String(new Function("j","return ("+process.argv[2]+")")(j)))' "$OUT" "$1"
 }
 # jtrue <label> <expr>: ok when the expression is true
 jtrue() { if [ "$(jx "$2")" = "true" ]; then ok "$1"; else bad "$1: [$2] -> $(jx "$2" 2>&1 | head -c 200)"; fi; }
+# atrue <label> <expr>: ok when the expression is true over a, the in-process assemble() result of the last run repo
+# (the per-file list stays in the process, so it is read here and never on stdout); process.argv[4] is the stdout file
+atrue() {
+  local v
+  v=$(node -e 'const ac=require(process.argv[1]);const a=ac.assemble({root:process.argv[2],ref:"origin/main",local:require("path").join(process.argv[2],".claude","pipeline.config.local.json")});process.stdout.write(String(new Function("a",   "return ("+process.argv[3]+")")(a)))' "$AC" "$LASTD" "$2" "$OUT" 2>&1)
+  if [ "$v" = "true" ]; then ok "$1"; else bad "$1: [$2] -> $(printf '%s' "$v" | head -c 200)"; fi
+}
 # exit_is <label> <code>: the exit code, and nothing on stdout when it is not 0
 exit_is() {
   if [ "$rc" != "$2" ]; then bad "$1: exit $rc (wanted $2): $(head -c 300 "$ERR")"; return; fi
@@ -62,10 +69,10 @@ run "$R"
 exit_is "ok-base" 0
 jtrue "ok-base: roles Nick Sam Morgan, shared set" 'j.shared!==null&&Object.keys(j.roles).sort().join()==="Morgan,Nick,Sam"&&/^[0-9a-f]{40}$/.test(j.refSha)'
 jtrue "order-shared-role-subjects-extra" '(()=>{const t=j.roles.Nick.text;const a=["NICK-MARK","NICK-ALPHA-MARK","NICK-TESTING-MARK","NICK-EXTRA-MARK"].map(m=>t.indexOf(m));return a.every((x,i)=>x>=0&&(i===0||x>a[i-1]))&&!t.includes("SHARED-MARK")&&j.shared.text.includes("SHARED-MARK")})()'
-jtrue "US-C4: subject-not-lane: nick.testing.md (no frontmatter) is a subject, never a lane" 'j.roles.Nick.text.includes("NICK-TESTING-MARK")&&j.roles.Nick.lanes.length===0&&j.files.some(f=>f.path.endsWith("nick.testing.md")&&f.roles.includes("Nick"))'
+atrue "US-C4: subject-not-lane: nick.testing.md (no frontmatter) is a subject, never a lane" 'a.roles.Nick.text.includes("NICK-TESTING-MARK")&&a.roles.Nick.lanes.length===0&&a.files.some(f=>f.path.endsWith("nick.testing.md")&&f.roles.includes("Nick"))'
 jtrue "role-without-source-absent: Theo has no block" '!("Theo" in j.roles)'
 jtrue "frontmatter-strip: Morgan keeps its base body, the lane (frontmatter stripped) is kept apart" '(()=>{const m=j.roles.Morgan;const l=m.lanes[0];return m.text.includes("MORGAN-MARK")&&!m.text.includes("MORGAN-REVIEW-MARK")&&!m.text.includes("lane:")&&m.lanes.length===1&&l.name==="review"&&l.persona==="reviewer"&&l.hint==="review lane"&&l.text.includes("MORGAN-REVIEW-MARK")&&!l.text.includes("persona")&&l.files.length===1&&l.files[0].endsWith("morgan.review.md")})()'
-jtrue "empty-stub-ignored: comment-only mia.md warns, exit 0, no Mia block" '!("Mia" in j.roles)&&j.warnings.some(w=>w.kind==="empty-ignored"&&w.path.endsWith("mia.md"))&&j.files.some(f=>f.path.endsWith("mia.md")&&f.empty===true)'
+atrue "empty-stub-ignored: comment-only mia.md warns, exit 0, no Mia block" '!("Mia" in a.roles)&&a.warnings.some(w=>w.kind==="empty-ignored"&&w.path.endsWith("mia.md"))&&a.files.some(f=>f.path.endsWith("mia.md")&&f.empty===true)'
 
 # ---- digest, recomputed independently ---------------------------------------------------------
 SHA=$(jx 'j.refSha'); DIG=$(jx 'j.roles.Sam.digest'); TXT=$(jx 'JSON.stringify(j.roles.Sam.text)')
@@ -107,7 +114,7 @@ if [ "$rc" = 2 ] && [ ! -e "$R/pwned" ] && [ ! -e "$ROOT/pwned" ]; then ok "bad-
 R="$TMP/off"; new_repo "$R"; setcfg "$R" '{"baseBranch":"main"}'; seal "$R"
 run "$R"
 exit_is "no-switch-empty-payload: exit 0" 0
-jtrue "no-switch-empty-payload: empty payload" 'j.shared===null&&Object.keys(j.roles).length===0&&j.files.length===0&&j.warnings.length===0'
+jtrue "no-switch-empty-payload: empty payload" 'j.shared===null&&Object.keys(j.roles).length===0&&!("files" in j)&&j.warnings.length===0'
 
 # ---- agentContext lists, dedup ----------------------------------------------------------------
 R="$TMP/star"; new_repo "$R"
@@ -212,7 +219,8 @@ R="$TMP/lane1"; lane_repo "$R"; seal "$R"
 run "$R"
 exit_is "lane-valid-frontmatter: exit 0" 0
 jtrue "lane-output-shape: base text kept apart, lanes array sorted with metadata, files and a digest each" '(()=>{const s=j.roles.Sam;const [a,b]=s.lanes;return s.text.includes("SAM-MARK")&&!s.text.includes("IOS-SAM-MARK")&&!s.text.includes("WEB-SAM-MARK")&&s.lanes.length===2&&a.name==="ios"&&b.name==="web"&&a.persona==="Ivy"&&a.hint==="a senior iOS planner"&&a.paths.length===2&&b.persona===undefined&&a.files.length===1&&a.text==="IOS-SAM-MARK plans screens."&&/^[0-9a-f]{64}$/.test(a.digest)&&a.bytes===a.text.length&&s.bytes===s.text.length+Math.max(a.bytes,b.bytes)})()'
-jtrue "lane-display-list: top-level lanes lists each lane once with its roles" '(()=>{const a=j.lanes.find(l=>l.name==="ios");return j.lanes.length===3&&j.lanes.map(l=>l.name).join()==="ios,review,web"&&a.roles.join()==="Sam"&&a.persona==="Ivy"})()'
+jtrue "wire-shape: stdout holds ref, refSha, shared, roles and warnings only: no per-file list, no display list of lanes" 'Object.keys(j).sort().join()==="ref,refSha,roles,shared,warnings"'
+atrue "wire-equals-assembler: stdout is the in-process result minus the per-file list" '(()=>{const w=JSON.parse(require("fs").readFileSync(process.argv[4],"utf8"));const {files,...rest}=a;return JSON.stringify(w)===JSON.stringify(rest)})()'
 SHA=$(jx 'j.refSha'); LDIG=$(jx 'j.roles.Sam.lanes[0].digest'); RDIG=$(jx 'j.roles.Sam.digest')
 WANT=$(printf '{"lanes":[],"refSha":"%s","role":"Sam:ios","text":"IOS-SAM-MARK plans screens."}' "$SHA" | shasum -a 256 | cut -d' ' -f1)
 if [ -n "$LDIG" ] && [ "$LDIG" = "$WANT" ]; then ok "lane-digest-independent: sha256 of {lanes,refSha,role Sam:ios,text} matches"; else bad "lane-digest-independent: got [$LDIG] wanted [$WANT]"; fi
@@ -329,6 +337,8 @@ const bad = JSON.parse(JSON.stringify(ps)); bad.roles.Sam.lanes[0].text += ' tam
 const roleOnly = String(f.specificsProblem(true, bad, f.sha256Hex)).startsWith('digest mismatch for Sam')
 bad.roles.Sam.digest = f.specificsDigest(f.sha256Hex, bad.refSha, 'Sam', bad.roles.Sam.text, bad.roles.Sam.lanes)
 out.rejectsTamper = roleOnly && String(f.specificsProblem(true, bad, f.sha256Hex)).startsWith('digest mismatch for Sam:ios')
+const one = JSON.parse(JSON.stringify(ps)); one.roles.Nick.text = one.roles.Nick.text.slice(0, -1) + 'X'
+out.rejectsOneByte = String(f.specificsProblem(true, one, f.sha256Hex)).startsWith('digest mismatch for Nick')
 const found = f.specificsLanesFound(ps)
 out.found = found.map((l) => l.name).join() === 'ios,review,web' && found[0].persona === 'Ivy'
 const blk = f.specificsBlockFor(ps, 'sam', ['ios'])
@@ -346,7 +356,7 @@ process.stdout.write(JSON.stringify(out))
 JS
 node "$TMP/eng.cjs" "$SHA_BLK" "$PS_BLK" "$SAFE_BLK" "$OWD_BLK" "$TMP/lane1.json" "$AC" > "$TMP/eng.out" 2> "$TMP/eng.err"
 eng() { node -e 'const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(String(j[process.argv[2]]))' "$TMP/eng.out" "$1" 2>/dev/null; }
-for k in accepts rejectsTamper found blockIos blockNone blockSkipsMissing resolve roundTrip pathHits sentence theoSection; do
+for k in accepts rejectsTamper rejectsOneByte found blockIos blockNone blockSkipsMissing resolve roundTrip pathHits sentence theoSection; do
   if [ "$(eng $k)" = "true" ]; then ok "lane-engine-$k"; else bad "lane-engine-$k: $(head -c 300 "$TMP/eng.err") $(eng problem)"; fi
 done
 

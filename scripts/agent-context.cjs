@@ -28,10 +28,10 @@
 //        node scripts/agent-context.cjs --print [<role>|<persona>|shared]   (no role = table of bytes/caps/files/digests)
 //        node scripts/agent-context.cjs --print <Role> --lane <name>        (base + that lane, persona sentence first)
 //        node scripts/agent-context.cjs --accept-oversize <Role>
-// Stdout: one JSON line {ref, refSha, shared, roles, files, warnings[, lanes]} (a block = {text, digest, bytes,
+// Stdout: one JSON line {ref, refSha, shared, roles, warnings} (a block = {text, digest, bytes,
 //        lanes}; text = the BASE; lanes = [{name, persona?, paths?, hint?, files, text, digest, bytes}], digest of a
-//        lane = digestOf(refSha, "<Role>:<name>", text, []); role bytes = base + the largest lane; top-level `lanes`,
-//        present only when a lane exists, = [{name, roles, persona?, paths?, hint?}] for display, covered by no digest).
+//        lane = digestOf(refSha, "<Role>:<name>", text, []); role bytes = base + the largest lane). The per-file list
+//        `files` stays in the process (only --print reads it) and no top-level lane display list exists: nothing read them.
 // Warnings: stderr `agent-context: warning: <path>: <rule>. <remedy>` once per file, mirrored in warnings[]; exit code and digests unchanged.
 // Exit:  0 ok (empty payload when the switch is off) · 2 args, config schema, unknown role, bad ref,
 //        frontmatter schema, nothing to accept · 3 file-level refusal (missing, symlink, submodule,
@@ -47,7 +47,7 @@ const fs = require('fs')
 const nodePath = require('path')
 const { execFileSync } = require('child_process')
 const { normalise, trimBlank, stripComments, parseFrontmatter, checkContent, canonicalJson, digestOf } = require('./lib/agent-context-text.cjs')
-const { ownsName, warningLines, folderWarnings, classifyLanes, displayLanes, laneSentence } = require('./lib/agent-context-lanes.cjs')
+const { ownsName, warningLines, folderWarnings, classifyLanes, laneSentence } = require('./lib/agent-context-lanes.cjs')
 const { hintLines } = require('./lib/agent-context-hints.cjs')
 
 const ROLES = ['Mia', 'Sam', 'Nick', 'Morgan', 'Theo']
@@ -367,10 +367,7 @@ function assemble(options) {
   const totalBytes = (shared ? shared.bytes : 0) + maxRole
   if (totalBytes > CAP_TOTAL) warnings.push({ kind: 'total-oversize', bytes: totalBytes, recommended: CAP_TOTAL })
 
-  const out = { ref: options.ref, refSha: sha, shared, roles, files: [...info.values()], warnings }
-  const display = displayLanes(roles)
-  if (display.length > 0) out.lanes = display
-  return out
+  return { ref: options.ref, refSha: sha, shared, roles, files: [...info.values()], warnings }
 }
 
 
@@ -529,7 +526,8 @@ function main(argv) {
       if (laneName !== null && !ROLES.includes(which)) throw new Fail(2, ['--lane needs a role: --print <Role> --lane <name>'])
       process.stdout.write(renderPrint(payload, which, laneName))
     } else {
-      process.stdout.write(JSON.stringify(payload) + '\n')
+      const { files, ...wire } = payload
+      process.stdout.write(JSON.stringify(wire) + '\n')
     }
     return 0
   } catch (error) {
