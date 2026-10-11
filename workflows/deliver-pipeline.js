@@ -133,7 +133,7 @@ export const meta = {
 // `version`, checked against plugin.json by tests/templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '1.3.0-beta.18', cutFrom: '9fc84ec' }
+const BUILD = { plugin: 'lgtmgate', version: '1.3.0-beta.19', cutFrom: '3963d80' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -761,6 +761,24 @@ function checkedAcceptanceIds(body) {
   if (span === null) return []
   const { checkedById } = acceptanceBoxes(source.slice(span.from, span.to))
   return [...checkedById].filter(([, ticked]) => ticked).map(([id]) => id).sort((a, b) => a - b)
+}
+// The number of open `- [ ]` boxes of the acceptance block of `body` (the LAST unfenced marker pair), boxes without an id
+// included (#405); 0 when there is no block. A ticked box and a fenced example are not counted. Pure. String operations only.
+function openAcceptanceBoxCount(body) {
+  const source = String(body ?? '')
+  const span = acceptanceSpan(source)
+  if (span === null) return 0
+  let fence = ''
+  let count = 0
+  for (const raw of source.slice(span.from, span.to).split('\n')) {
+    const l = raw.endsWith('\r') ? raw.slice(0, -1) : raw
+    const next = fenceAfter(l, fence)
+    const fenced = fence !== '' || next !== ''
+    fence = next
+    const t = l.trimStart()
+    if (!fenced && t.slice(0, 5) === '- [ ]' && (t.length === 5 || t[5] === ' ' || t[5] === '\t')) count += 1
+  }
+  return count
 }
 // Ticks the acceptance block by id (#183). Pure. `rendered` is the canonical block (every box open, `<!-- ac:N -->` ids);
 // the id boxes of the block of `body` (the LAST unfenced marker pair) are replaced by it with each box set by its id: `[x]`
@@ -4878,9 +4896,14 @@ if (after('review', entryStage)) {
   // merged mid-flight), which would otherwise report a false-positive `ready`. Fail-open on any
   // ambiguity: only an exact `mergeable === 'CONFLICTING'` escalates — `MERGEABLE`, `UNKNOWN` (GitHub
   // still computing, not a conflict), and a `null` (tool-failure) result all fall through unchanged.
+  let openBoxesRead = null  // open acceptance boxes of the PR body, from the merge-state read (#405)
   const checkMergeState = async () => {
-    if (simulate) return simulate.probes?.mergeState
+    if (simulate) {
+      openBoxesRead = openAcceptanceBoxCount(simBody() ?? '')
+      return simulate.probes?.mergeState
+    }
     const st = await prState('merge', round)
+    openBoxesRead = Number.isInteger(st?.acceptanceOpen) ? st.acceptanceOpen : null
     return (st && typeof st.mergeable === 'string') ? { mergeable: st.mergeable, mergeStateStatus: st.mergeStateStatus } : null
   }
   if (v.verdict === 'LGTM') {
@@ -4894,6 +4917,13 @@ if (after('review', entryStage)) {
     await squashBeforeHandoff()
   }
 
+  // boxesOpen (#405): an LGTM on a run with no acceptance items while the body still holds open boxes; the status stays ready.
+  const noIdsOpen = v.verdict === 'LGTM' && !samAcceptanceItems && openBoxesRead > 0 ? openBoxesRead : 0
+  if (noIdsOpen > 0) {
+    trace.push('boxes-open:no-ids:' + noIdsOpen)
+    log('PR #' + pr + ' is ready with ' + noIdsOpen + ' open acceptance box(es) and no ids in this run (#405)')
+  }
+  const boxesOpen = noIdsOpen > 0 ? { count: noIdsOpen, reason: 'no-ids', hint: 'The run held no acceptance ids, so no box was ticked: relaunch the review with a planText that carries the <!-- ac:N --> lines, or tick the boxes by hand after the proofs.' } : null
   await updateStatus(v.verdict === 'LGTM' ? 'PR Ready' : 'Blocked')
   return finish(v.verdict === 'LGTM' ? STATUS['ready'] : STATUS['escalate'], {
     pr,
@@ -4912,5 +4942,6 @@ if (after('review', entryStage)) {
     acceptanceSpliceProbe,
     preflightPromptPreview,
     preflightFixPromptPreview,
+    ...(boxesOpen ? { boxesOpen } : {}),
   })
 }

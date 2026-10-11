@@ -165,6 +165,26 @@ GHEOF
   [ "$out6" = "[1,3]" ] && ok=1
   check "[183] pr-state parser keeps acceptanceChecked (a list of positive integers, else null)" "$ok"
 
+  # [405] acceptanceOpen: the open boxes of the real block (id-less ones included; ticked lines and the fenced example not)
+  ok=0
+  OUT10="$(GH_ACC="$(printf 'x\n<!-- acceptance:start -->\n- [ ] first\n- [ ] second\n- [x] done\n<!-- acceptance:end -->')" PATH="$PSD/bin:$PATH" bash "$PS" --pr 7 --wt "$PSD/wt" --repo o/r)"
+  [ "$(printf '%s' "$OUT6" | jq -c '.acceptanceOpen')" = '1' ] && [ "$(printf '%s' "$OUT10" | jq -c '.acceptanceOpen')" = '2' ] && ok=1
+  check "[405] pr-state.sh: acceptanceOpen counts the open boxes of the real block (id-less included, ticked and fenced not)" "$ok"
+  ok=0
+  [ "$(printf '%s' "$OUT4" | jq -c '.acceptanceOpen')" = 'null' ] && ok=1
+  check "[405] pr-state.sh: failing gh -> acceptanceOpen null" "$ok"
+  ok=0
+  out_open="$(node -e '
+    const { PARSERS } = require(process.argv[1])
+    const p = (o) => PARSERS["pr-state"](JSON.stringify(o), "", 0)
+    const has = (v) => Object.prototype.hasOwnProperty.call(v, "acceptanceOpen")
+    const kept = [p({ acceptanceOpen: 2 }), p({ acceptanceOpen: 0 })]
+    const dropped = [p({ acceptanceOpen: null }), p({ acceptanceOpen: "2" }), p({ acceptanceOpen: -1 }), p({ acceptanceOpen: 1.5 }), p({})]
+    process.stdout.write(kept[0].acceptanceOpen === 2 && kept[1].acceptanceOpen === 0 && dropped.every((v) => !v.error && !has(v)) ? "OK" : "BAD")
+  ' "$PR")"
+  [ "$out_open" = "OK" ] && ok=1
+  check "[405] pr-state parser keeps acceptanceOpen (an integer >= 0), drops the key otherwise" "$ok"
+
   # [184] ciState: the state of every check on the head, derived from the statusCheckRollup of the same gh call
   ci_of() { PATH="$PSD/bin:$PATH" GH_CI="$1" bash "$PS" --pr 7 --wt "$PSD/wt" --repo o/r | jq -r '.ciState'; }
   ok=0

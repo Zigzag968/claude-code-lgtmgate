@@ -9,7 +9,7 @@
 # Usage:
 #   bash pr-state.sh --pr N [--wt DIR] [--repo OWNER/REPO] [--since ISO]
 #
-# -> {"now":"<ISO>","headRefName":..,"headRefOid":..,"bodyDigest":"<12 hex>","acceptanceChecked":[N,..]|null,
+# -> {"now":"<ISO>","headRefName":..,"headRefOid":..,"bodyDigest":"<12 hex>","acceptanceChecked":[N,..]|null,"acceptanceOpen":N|null,
 #     "decisionLog":["- round N — ..",..]|null,"mergeable":..,"mergeStateStatus":..,"lastCommitDate":..,"commitCount":N,"ciState":"green|failing|pending|none"|null,"ciChecks":{"<check name>":"green|failing|pending"}|null,"reviewCommentIds":["<id>",..],"files":["<path>",..]|null,
 #     "openIssues":[{"number":N,"createdAt":..,"url":..}]|null,"openIssuesTruncated":false}
 # "now" comes from `date -u` HERE: the workflow script itself may not read the wall clock (harness ban on
@@ -17,6 +17,8 @@
 # acceptanceChecked (#183): the ids of the acceptance boxes ticked in the body (templates/pr-body-splice.cjs, op checked: the
 # same fence-aware block reader the tick uses); null when the body or node could not be read. The engine reads it for the
 # human-gate boxes only: a gate is settled iff its id is listed here (a person ticked it); any other box needs a proof of the round.
+# acceptanceOpen (#405): the number of open `- [ ]` boxes in the acceptance block of the same body (templates/pr-body-splice.cjs, op open:
+# boxes without an id included, ticked boxes and fenced examples not); null when the body or node could not be read.
 # ciState (#184): the state of EVERY check on the PR head, read from the statusCheckRollup of the same `gh pr view` call (no new
 # call, no new flag). Per entry: a StatusContext reads its `state`, a CheckRun its `conclusion` once `status` is COMPLETED, else
 # PENDING. Only the LATEST entry per check counts (the rollup keeps superseded runs, `gh pr checks` drops them): per (CheckRun name,
@@ -54,14 +56,26 @@ while [ $# -gt 0 ]; do
   [ $# -ge 2 ] && shift 2 || shift
 done
 
+# acceptanceOpen (#405): the count printed by pr-body-splice.cjs op open, digits only, else null.
+open_boxes_json() {
+  local opened
+  if opened="$(printf '%s' "$1" | node "$SD/pr-body-splice.cjs" open - 2>/dev/null)"; then
+    case "$opened" in
+      ''|*[!0-9]*) ;;
+      *) printf '%s' "$opened"; return ;;
+    esac
+  fi
+  printf null
+}
+
 main() {
-  local now view body digest pr_json issues n checked ac_json dl dl_json
+  local now view body digest pr_json issues n checked ac_json dl dl_json open_json
   local repo_args=""
   local issues_json="null" truncated="false"
 
   now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-  pr_json='{"headRefName":null,"headRefOid":null,"bodyDigest":null,"acceptanceChecked":null,"decisionLog":null,"mergeable":null,"mergeStateStatus":null,"lastCommitDate":null,"commitCount":null,"ciState":null,"ciChecks":null,"reviewCommentIds":null,"files":null}'
+  pr_json='{"headRefName":null,"headRefOid":null,"bodyDigest":null,"acceptanceChecked":null,"acceptanceOpen":null,"decisionLog":null,"mergeable":null,"mergeStateStatus":null,"lastCommitDate":null,"commitCount":null,"ciState":null,"ciChecks":null,"reviewCommentIds":null,"files":null}'
 
   if [ -n "$WORKTREE" ] && ! cd "$WORKTREE"; then
     jq -nc --arg now "$now" --argjson pr "$pr_json" '{now:$now} + $pr + {openIssues:null, openIssuesTruncated:false}'
@@ -82,12 +96,13 @@ main() {
         ac_json="$(printf '%s\n' "$checked" | jq -Rc 'split(",") | map(select(length > 0) | tonumber)' 2>/dev/null)" || ac_json=null
         [ -n "$ac_json" ] || ac_json=null
       fi
+      open_json="$(open_boxes_json "$body")"
       dl_json=null
       if dl="$(printf '%s' "$body" | node "$SD/pr-body-splice.cjs" entries - 2>/dev/null)"; then
         dl_json="$(printf '%s\n' "$dl" | jq -c 'if type == "array" and all(.[]; type == "string") then . else null end' 2>/dev/null)" || dl_json=null
         [ -n "$dl_json" ] || dl_json=null
       fi
-      pr_json="$(printf '%s' "$view" | jq -c --arg digest "$digest" --argjson ac "$ac_json" --argjson dl "$dl_json" 'def entry_state: if .__typename == "StatusContext" then (.state // "PENDING") elif .status == "COMPLETED" then (.conclusion // "PENDING") else "PENDING" end;
+      pr_json="$(printf '%s' "$view" | jq -c --arg digest "$digest" --argjson ac "$ac_json" --argjson ao "$open_json" --argjson dl "$dl_json" 'def entry_state: if .__typename == "StatusContext" then (.state // "PENDING") elif .status == "COMPLETED" then (.conclusion // "PENDING") else "PENDING" end;
       def entry_class: if IN("SUCCESS","NEUTRAL","SKIPPED") then "green" elif IN("PENDING","EXPECTED") then "pending" else "failing" end;
       def latest_entries: to_entries | map(.value + {i: .key}) | group_by([.__typename == "StatusContext", (if .__typename == "StatusContext" then .context else .name end), (.workflowName // "")]) | map(sort_by([((.startedAt // .createdAt // "") as $t | if $t == "" or ($t | startswith("0001")) then "9999" else $t end), .i]) | last);
       {
@@ -95,6 +110,7 @@ main() {
         headRefOid: (.headRefOid // null),
         bodyDigest: (if $digest == "" then null else $digest end),
         acceptanceChecked: $ac,
+        acceptanceOpen: $ao,
         decisionLog: $dl,
         mergeable: (.mergeable // null),
         mergeStateStatus: (.mergeStateStatus // null),
@@ -105,7 +121,7 @@ main() {
         reviewCommentIds: (if .comments == null then null else [.comments[] | select(.isMinimized == false) | select((.body // "") | startswith("<!-- pipeline-review-round")) | .id] end),
         files: (if .files == null then null elif (.files | length) >= 100 then null else [.files[] | .path] end)
       }' 2>/dev/null)"
-      [ -n "$pr_json" ] || pr_json='{"headRefName":null,"headRefOid":null,"bodyDigest":null,"acceptanceChecked":null,"decisionLog":null,"mergeable":null,"mergeStateStatus":null,"lastCommitDate":null,"commitCount":null,"ciState":null,"ciChecks":null,"reviewCommentIds":null,"files":null}'
+      [ -n "$pr_json" ] || pr_json='{"headRefName":null,"headRefOid":null,"bodyDigest":null,"acceptanceChecked":null,"acceptanceOpen":null,"decisionLog":null,"mergeable":null,"mergeStateStatus":null,"lastCommitDate":null,"commitCount":null,"ciState":null,"ciChecks":null,"reviewCommentIds":null,"files":null}'
     fi
   fi
 
