@@ -54,7 +54,7 @@ const os = require('os')
 const path = require('path')
 const crypto = require('crypto')
 const { spawnSync } = require('child_process')
-const { stripExports, buildPipelineRunner, replayFixture, tokenizeVersionProbes, ENGINE_VERSION_TOKEN } = require('./run-offline.cjs')
+const { stripExports, buildPipelineRunner, replayFixture, tokenizeVersionProbes, ENGINE_VERSION_TOKEN, commandOfPrompt, firstCommandHash, setCommandHash } = require('./run-offline.cjs')
 
 const REPO = path.resolve(__dirname, '..')
 const NAME_RE = /^[0-9]+-[a-z0-9][a-z0-9-]*(\.json)?$/
@@ -152,30 +152,8 @@ function shapeOf(v) {
   return ['?', typeof v]
 }
 
-// ---- probe prompts ------------------------------------------------------------------------------
-
-// The command a probe prompt asks the probe agent to run: the text between ` --cmd ` and `\n2. cd `, un-quoted
-// from `'...'` (`'\''` is one quote). Plain indexOf parsing of the prompt the engine builds (probeCommands).
-function commandOfPrompt(prompt) {
-  if (typeof prompt !== 'string') return null
-  const end = prompt.indexOf('\n2. cd ')
-  if (end < 0) return null
-  // #338: the base64 form carries the same command as one bare token
-  const b64 = prompt.indexOf(' --cmd-b64 ')
-  if (b64 >= 0 && b64 < end) return Buffer.from(prompt.slice(b64 + 11, end), 'base64').toString('utf8')
-  const start = prompt.indexOf(' --cmd ')
-  if (start < 0 || start > end) return null
-  const q = prompt.slice(start + 7, end)
-  if (q.length < 2 || q[0] !== "'" || q[q.length - 1] !== "'") return null
-  return q.slice(1, -1).split("'\\''").join("'")
-}
-
 // The fixed words of a PROBE / VERIFY answer line before its `json=` payload (see templates/probe-run.cjs).
 const PROBE_ENVELOPE_TOKEN = /^(PROBE|VERIFY|ok|fail|line=PROBE|name=[A-Za-z0-9._-]+|exit=-?\d+|sha=[0-9a-f]+|cmd=[0-9a-f]+|reason=[A-Za-z0-9._-]+)$/
-
-const CMD_RE = /cmd=([0-9a-f]{64})/
-const firstCommandHash = (s) => { const m = CMD_RE.exec(s); return m ? m[1] : null }
-const setCommandHash = (s, h) => s.replace(CMD_RE, `cmd=${h}`)
 
 // ---- leaves and neutral tokens -------------------------------------------------------------
 
