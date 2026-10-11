@@ -86,7 +86,7 @@ The assembler builds these names while it runs (from a variable, or in a message
 
 ## Assembler warnings
 
-The assembler prints these on stderr as `agent-context: warning: <path>: <rule>. <remedy>`, once per file and rule, and repeats each in the `warnings` array of its JSON. The exit code stays 0 and no digest changes. The guard does not extract these names (they carry no `at line`), so it does not check these rows.
+The assembler prints these on stderr as `agent-context: warning: <path>: <rule>. <remedy>`, once per file and rule, and repeats each in the `warnings` array of its JSON. The exit code stays 0 and no digest changes. The guard reads these names from `WARNING_REMEDY` in `scripts/lib/agent-context-lanes.cjs` and checks these rows against them.
 
 | name | raised at | what the user sees | remedy |
 |---|---|---|---|
