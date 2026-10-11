@@ -11,8 +11,8 @@
   },
   "calls": {
     "probe-195-lines-plugin-version-r0": {
-      "line": "PROBE name=lines exit=0 sha=035bec239aa0711df068ab7f9e9204762be43385c786faa85c6afb3b1ed0e14c cmd=c919c16381a3ffda928538ff5e0d9c18f15015b15875e9bdef2ac26c39aab9d1 json={\"lines\":[\"PLUGIN-VERSION:99.0.0\"]}",
-      "verify": "VERIFY ok line=PROBE name=lines exit=0 sha=035bec239aa0711df068ab7f9e9204762be43385c786faa85c6afb3b1ed0e14c cmd=c919c16381a3ffda928538ff5e0d9c18f15015b15875e9bdef2ac26c39aab9d1 json={\"lines\":[\"PLUGIN-VERSION:99.0.0\"]}"
+      "line": "PROBE name=lines exit=0 sha=035bec239aa0711df068ab7f9e9204762be43385c786faa85c6afb3b1ed0e14c cmd=4f5ab0bcd24645c80de1e88282146da7149d44db6d454525e45f73596a1e712f json={\"lines\":[\"PLUGIN-VERSION:99.0.0\"]}",
+      "verify": "VERIFY ok line=PROBE name=lines exit=0 sha=035bec239aa0711df068ab7f9e9204762be43385c786faa85c6afb3b1ed0e14c cmd=4f5ab0bcd24645c80de1e88282146da7149d44db6d454525e45f73596a1e712f json={\"lines\":[\"PLUGIN-VERSION:99.0.0\"]}"
     }
   },
   "expect": {

@@ -1,0 +1,39 @@
+{
+  "name": "490-probe-copy-corrupted-command-not-run",
+  "note": "#490: built from the issue text, not from a raw capture (the canary typed value is not in the issue). The session-root probe command is now a short script run by path (a b64 under 200 characters); the probe agent still typed a corrupted copy (here: the command followed by stray quotes), probe-run.cjs refused it against --expect-cmd (exit -1, empty-output digest, cmd= the digest of refused:<typed text>, stderr expect-cmd-mismatch). The run ends provision-failed with probeReason command-not-run and the result now carries probeStderr expect-cmd-mismatch. No engine retry (kept for #486).",
+  "args": {
+    "sessionRoot": "/repo/main-checkout",
+    "issue": 490,
+    "brief": "a corrupted probe copy must end as command-not-run with the refusal cause in the result",
+    "worktreePath": "/wt/root/issue-490",
+    "config": {
+      "probeRunPath": "/plugin/templates/probe-run.cjs"
+    },
+    "mode": "auto"
+  },
+  "calls": {
+    "probe-490-lines-session-root-r0": {
+      "line": "PROBE name=lines exit=-1 sha=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 cmd=a5c1119d8f946e6ee14149191964b554a59ba2a75c22c79c7e6aad26ce195a1a json={\"lines\":[]}",
+      "verify": "VERIFY ok line=PROBE name=lines exit=-1 sha=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 cmd=a5c1119d8f946e6ee14149191964b554a59ba2a75c22c79c7e6aad26ce195a1a json={\"lines\":[]}"
+    }
+  },
+  "expect": {
+    "status": "escalate",
+    "reason": "provision-failed",
+    "trace": [
+      "branch-prefix-fallback-default",
+      "probe:lines:haiku"
+    ],
+    "traceExact": true,
+    "callLabels": [
+      "probe-490-lines-session-root-r0"
+    ],
+    "logsInclude": [
+      "Session root probe failed (command-not-run) [expect-cmd-mismatch]"
+    ],
+    "resultIncludes": {
+      "probeReason": "command-not-run",
+      "probeStderr": "expect-cmd-mismatch"
+    }
+  }
+}

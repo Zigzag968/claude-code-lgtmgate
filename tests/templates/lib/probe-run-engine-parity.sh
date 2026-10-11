@@ -151,6 +151,9 @@ printf '{"name":"lgtmgate","version":"%s"}\n' "$PV_ENGINE" > "$PV_ROOTS/same/.cl
 printf '{"name":"lgtmgate","version":"0.0.1-old"}\n' > "$PV_ROOTS/old/.claude-plugin/plugin.json"
 printf '{not json\n' > "$PV_ROOTS/bad/.claude-plugin/plugin.json"
 printf '{"name":"lgtmgate"}\n' > "$PV_ROOTS/nov/.claude-plugin/plugin.json"
+# #490: the command runs templates/plugin-version.cjs of the root: every root (the manifest-less `none` included, so its
+# "missing" expectation stays true) carries the real script
+for PV_NAME in same old bad nov none; do mkdir -p "$PV_ROOTS/$PV_NAME/templates"; cp "$ROOT/templates/plugin-version.cjs" "$PV_ROOTS/$PV_NAME/templates/plugin-version.cjs"; done
 pv_verdict() {
   node -e '
     const { spawnSync } = require("child_process")
