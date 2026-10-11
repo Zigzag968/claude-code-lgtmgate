@@ -80,7 +80,7 @@
 //      each FAIL. The rule lives in scripts/lib/consumer-reference.cjs.
 //
 // Env (test seams, all optional)
-//   GUARDS_ONLY            comma list among r1,wired,guard-steps,version,parity,budgets,instructions,status,phases,init-stubs,audit,consumer-reference (default: all)
+//   GUARDS_ONLY            comma list among r1,wired,guard-steps,version,parity,budgets,instructions,status,phases,init-stubs,audit,consumer-reference,canary-step (default: all)
 //   GUARDS_CONSUMER_BASELINE_BASE  base consumer-reference baseline file (default: git show origin/main:scripts/consumer-reference-baseline.json)
 //   GUARDS_BASE_YML        guards.yml used as the base for guard-steps (default: git show origin/main:.github/workflows/guards.yml)
 //   GUARDS_BASE_FILE       workflow file used as the base for R1 (default: git show origin/main:<file>)
@@ -101,6 +101,7 @@ const fs = require('fs')
 const path = require('path')
 const { countAgentCalls, countSimulateSeams, countRegexApps, parserMarkerErrors, ymlRunText, jobRunText, parseSemver, cmp, proseLines, importReferences, STATUS_SECTION, statusRegistryKeys, statusTableRows, declaredPhaseTitles } = require('./lib/guards-scan.cjs')
 const consumerReference = require('./lib/consumer-reference.cjs')
+const canaryStep = require('./lib/canary-step.cjs')
 const { execFileSync } = require('child_process')
 
 const ROOT = process.env.GUARDS_ROOT || path.resolve(__dirname, '..')
@@ -108,7 +109,7 @@ const WORKFLOW = 'workflows/deliver-pipeline.js'
 const MANIFEST = '.claude-plugin/plugin.json'
 const GUARDS_YML = '.github/workflows/guards.yml'
 const DELIVER_MD = 'skills/deliver/SKILL.md'
-const ONLY = process.env.GUARDS_ONLY ? process.env.GUARDS_ONLY.split(',') : ['r1', 'wired', 'guard-steps', 'version', 'parity', 'budgets', 'instructions', 'status', 'phases', 'init-stubs', 'audit', 'consumer-reference']
+const ONLY = process.env.GUARDS_ONLY ? process.env.GUARDS_ONLY.split(',') : ['r1', 'wired', 'guard-steps', 'version', 'parity', 'budgets', 'instructions', 'status', 'phases', 'init-stubs', 'audit', 'consumer-reference', 'canary-step']
 
 // Suites that are NOT named in guards.yml, each with its reason. Add a suite here only if it is
 // red on main (report it, do not wire it) or is run through another runner.
@@ -574,6 +575,13 @@ function checkConsumerReference() {
   out(`PASS: consumer-reference: ${total} names, ${total - gaps} with a row, ${gaps} baseline gaps`)
 }
 
+// ---- canary-step (#432): MAINTAINING.md keeps the canary re-initialisation step; the rule lives in scripts/lib/canary-step.cjs
+function checkCanaryStep() {
+  const found = canaryStep.problems(readOr(path.join(ROOT, canaryStep.PATH)))
+  if (found.length) { for (const problem of found) bad(problem); return }
+  out(`PASS: canary-step: ${canaryStep.PATH} names the step "${canaryStep.HEADING}" and its ${canaryStep.SCRIPTS.length} scripts`)
+}
+
 if (ONLY.includes('r1')) checkR1()
 if (ONLY.includes('wired')) checkWired()
 if (ONLY.includes('guard-steps')) checkGuardSteps()
@@ -586,4 +594,5 @@ if (ONLY.includes('phases')) checkPhaseTitles()
 if (ONLY.includes('init-stubs')) checkInitStubs()
 if (ONLY.includes('audit')) checkAudit()
 if (ONLY.includes('consumer-reference')) checkConsumerReference()
+if (ONLY.includes('canary-step')) checkCanaryStep()
 process.exit(failed ? 1 : 0)
