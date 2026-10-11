@@ -8,7 +8,7 @@
 # other plugins ignored, target from origin/main, fail closed (exit 2) on every unexpected payload, no install,
 # --plugin, shadowed installs (a more specific scope of the same channel applies to --project), the loaded plugin root
 # (--loaded-root, LOADED-CACHE and its printed uninstall command), installs of another project (listed, not counted),
-# and read-only (the fake only ever sees `plugin list --json`).
+# a CLI-disabled install that the project's own settings enable (#480, exit 2), and read-only (the fake only ever sees `plugin list --json`).
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -232,6 +232,32 @@ pv "$BASE/l12b.json" --target "$T"
 pv "$BASE/l12b.json" --target "$T" --project /work/proj-b
 [ "$RC" -eq 1 ] && has 'MISMATCH: found 1.0.0-beta.3' && [ "$(printf '%s\n' "$OUT" | grep -c OTHER-PROJECT)" -eq 1 ] && [ "$(last_line)" = "plugin-versions: 2 install(s) of lgtmgate, target $T, 1 problem(s)" ] \
   && ok "the same install counts when its project is the current one (OTHER-PROJECT only for the others)" || bad "current project counts (rc=$RC): $OUT"
+
+# 13. #480: under the sandbox the CLI cannot read the project's settings files and reports its own install disabled
+# (observed payload: scope local, enabled false, projectEnabled false) while the file enables it: exit 2, never LOADED-CACHE
+P13="$BASE/proj13"; mkdir -p "$P13/.claude"
+RC13="1.3.0-rc.2"
+list "$BASE/l13.json" "$(entry "$BETA" "$RC13" local false "$P13")"
+printf '{"enabledPlugins":{"%s":true}}\n' "$BETA" > "$P13/.claude/settings.local.json"
+pv "$BASE/l13.json" --target "$RC13" --project "$P13" --loaded-root "/cache/$BETA/$RC13"
+[ "$RC" -eq 2 ] && ! has LOADED-CACHE && ! has 'claude plugin uninstall' && has "$BETA" && has 'outside the sandbox' \
+  && ok "CLI-disabled install enabled by the project settings: exit 2, no LOADED-CACHE, no uninstall command" || bad "cli-disabled, file enabled (rc=$RC): $OUT"
+rm -f "$P13/.claude/settings.local.json"
+printf '{"enabledPlugins":{"%s":true}}\n' "$BETA" > "$P13/.claude/settings.json"
+pv "$BASE/l13.json" --target "$RC13" --project "$P13" --loaded-root "/cache/$BETA/$RC13"
+[ "$RC" -eq 2 ] && ! has LOADED-CACHE && ok "the project's settings.json enabling it gives exit 2 as well" || bad "settings.json (rc=$RC): $OUT"
+for v in '{"enabledPlugins":{"'$BETA'":false}}' '{"other":1}' '{not json' '[]'; do
+  printf '%s\n' "$v" > "$P13/.claude/settings.json"
+  pv "$BASE/l13.json" --target "$RC13" --project "$P13" --loaded-root "/cache/$BETA/$RC13"
+  [ "$RC" -eq 1 ] && has LOADED-CACHE && ok "settings not enabling it ($v): the old result, LOADED-CACHE exit 1" || bad "settings $v (rc=$RC): $OUT"
+done
+rm -f "$P13/.claude/settings.json"
+pv "$BASE/l13.json" --target "$RC13" --project "$P13" --loaded-root "/cache/$BETA/$RC13"
+[ "$RC" -eq 1 ] && has LOADED-CACHE && ok "no settings file: the old result, LOADED-CACHE exit 1" || bad "no settings (rc=$RC): $OUT"
+printf '{"enabledPlugins":{"%s":true}}\n' "$BETA" > "$P13/.claude/settings.local.json"
+list "$BASE/l13b.json" "$(entry "$BETA" "$RC13" local true "$P13")"
+pv "$BASE/l13b.json" --target "$RC13" --project "$P13" --loaded-root "/cache/$BETA/$RC13"
+[ "$RC" -eq 0 ] && ok "CLI and file agree (enabled): exit 0" || bad "agree enabled (rc=$RC): $OUT"
 
 # 10. read-only: the fake saw `plugin list --json` and nothing else, across every case above
 if [ -s "$FAKE_LOG" ] && [ "$(sort -u "$FAKE_LOG")" = "plugin list --json" ]; then

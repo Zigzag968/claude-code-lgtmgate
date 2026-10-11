@@ -23,7 +23,8 @@
 # Last line: `plugin-versions: <n> install(s) of <plugin>, target <t>, <k> problem(s)`, or `plugin-versions: no install of
 # <plugin> found`. Read-only: the only external call is `claude plugin list --json`.
 # Exit: 0 clean (or no install), 1 any MISMATCH, CONFLICT or LOADED-CACHE, 2 cannot decide (no target, claude failed, the payload
-# is not the expected list, the loaded root matches no listed install): it never reports "all fine" on something it could not read.
+# is not the expected list, the loaded root matches no listed install, the CLI reports a local or project install of this project disabled while that project's
+# .claude/settings.local.json or settings.json enables it: the sandbox hides that file from the CLI, #480): it never reports "all fine" on something it could not read.
 # Updating an install is a user-level action: the command is printed by the runbook (skills/deliver/SKILL.md step 0), never run here.
 set -uo pipefail
 
@@ -90,6 +91,16 @@ for e in data:
     if ip is not None and not isinstance(ip, str):
         fail("unexpected installPath for %s" % eid)
     applies = scope == "user" or (proj is not None and (rp == os.path.realpath(proj) or rp.startswith(os.path.realpath(proj).rstrip(os.sep) + os.sep)))
+    if applies and scope in ("local", "project") and not enabled:
+        for fn in ("settings.local.json", "settings.json"):
+            try:
+                with open(os.path.join(proj, ".claude", fn)) as fh:
+                    ep = json.load(fh).get("enabledPlugins")
+            except (OSError, ValueError, AttributeError):
+                continue
+            if isinstance(ep, dict) and ep.get(eid) is True:
+                fail("cannot decide: the CLI reports %s disabled for the %s install of %s, but %s enables it (under the sandbox the CLI cannot read that file); run the same command outside the sandbox to confirm"
+                     % (eid, scope, proj, os.path.join(proj, ".claude", fn)))
     rows.append({"scope": scope, "proj": proj or "-", "market": eid[len(plugin) + 1:], "enabled": enabled, "version": version,
                  "path": ip, "applies": applies and scope in RANK})
 
