@@ -17,7 +17,10 @@ You are the **Lead**. You deliver a change end-to-end through the **Theo -> Sam 
 The Workflow that runs the delivery is the one of the plugin version INSTALLED for this project's scope, not the one just merged: a Lead who merges engine fixes keeps running the old engine until the plugin is updated and the session restarted (#233).
 
 A run is driven from a session opened in the target repository (agents get the launching session's .claude/CLAUDE.md/AGENTS.md as loaded at its start, anthropics/claude-code#88886), and a session is restarted after its own .claude/CLAUDE.md/AGENTS.md changes.
-- Fetch first (the script never does): `git fetch origin main`.
+- Fetch first (the script never does): `git fetch origin main`, the first choice when it works. Under the tooling sandbox an SSH remote (`git@github.com:...`) refuses it; then fetch over HTTPS through the GitHub CLI credential helper, with `<owner>/<repo>` from `config.repo` and `<base>` the branch (`main` here, `<baseBranch>` in §3); it works for both URL kinds and creates `refs/remotes/origin/<base>`:
+  ```bash
+  git -c credential.helper= -c credential.helper='!gh auth git-credential' fetch https://github.com/<owner>/<repo>.git +refs/heads/<base>:refs/remotes/origin/<base>
+  ```
 - Run `bash "${CLAUDE_PLUGIN_ROOT}/scripts/plugin-versions.sh" --loaded-root "${CLAUDE_PLUGIN_ROOT}"` (the root is substituted in the command text; the script reads its target from `origin/main` of the current directory, which only the plugin repository has, and there `scripts/plugin-versions.sh` runs as is; from any other repository pass `--target <version>`, and without a version in mind use the one in `.claude-plugin/plugin.json` of the loaded root, which is the reference, read with one command per call). It is read-only: one line per install of the plugin, and a non-zero exit when an ENABLED install differs from the version on `origin/main` (`MISMATCH`), when two channels are enabled for the same scope and project (`CONFLICT`) or when the session loaded another install than the project's (`LOADED-CACHE`); an install hidden by a more specific one is listed `SHADOWED` and not counted, and so is an enabled install scoped to another project (`OTHER-PROJECT`); exit 2 = it could not decide.
 - A non-zero exit names the install: update it with `claude plugin update <plugin>@<marketplace> --scope <scope>` and RESTART the session (a running session keeps the old engine), then run the script again. A `LOADED-CACHE` line prints the `claude plugin uninstall` command of the install the session loaded: run it yourself (user-level), restart the session, run the script again.
 - After the restart, compare the `buildStamp` of the first result with the target version and stop on a difference.
@@ -44,7 +47,7 @@ A run is driven from a session opened in the target repository (agents get the l
 - The RESOLVED worktreeRoot must be mounted/accessible. Check it (e.g. `test -d "<resolved worktreeRoot>"` or that the parent volume is mounted). Inaccessible → stop and report to the user (e.g. external SSD not mounted).
 
 ## 3. Create the shared worktree (frozen from the base branch)
-- `git fetch origin <baseBranch>` first: the worktree is created from the freshly fetched `origin/<baseBranch>`, never from a local branch taken for granted.
+- `git fetch origin <baseBranch>` (under the sandbox with an SSH remote, the HTTPS form of §0 with `<base>` = `<baseBranch>`) first: the worktree is created from the freshly fetched `origin/<baseBranch>`, never from a local branch taken for granted.
 - Slug: **`issue-<N>`** (fixed). Nick commits on the worktree's branch (he no longer recomputes it) — keep a predictable name aligned with GH tracking. (friction F2)
 - `WORKTREE="<worktreeRoot>/<slug>"`; branch `<config.branchPrefix><slug>`.
 - Create it (1 command):
@@ -176,7 +179,7 @@ resolved `ready`/`no-go`/`escalate`), do a check-in pass rather than silently ab
   - waits until the PR reports the pushed sha with at least one check (bounded poll, cli/cli#7401), then asks the API whether `main` requires status checks (classic branch protection, then rulesets; HTTP 403/404 = none, any other answer refuses): required (`mode: required-checks`) waits for them to register, then `gh pr checks --watch --fail-fast --required`; none (`mode: no-required-checks`, e.g. a private repo on GitHub Free) polls `gh pr checks --json` until the head's checks are green, restricted to `config.ciChecks` when set. A timeout names the mode
   - `gh pr merge --merge --delete-branch` (never the auto-merge flag)
   - reads the PR back over REST (`merged` true and `merged_at` set); only then closes each still-open `Closes/Fixes/Resolves #N` issue found in the PR body's header block only (lines before the first `## ` line, code fences and inline code stripped) with `Fixed by #<PR> (merged).` (`Refs #N` never closed; a failed or unverified merge exits non-zero and closes nothing)
-  - then sync the main checkout: `git fetch origin && git merge --ff-only origin/main`
+  - then sync the main checkout: `git fetch origin && git merge --ff-only origin/main` (the fetch in the HTTPS form of §0 when the sandbox refuses it)
 - **No resume across a pin move**: never `resumeFromRunId` a run after the plugin version or pin changed (`BUILD` differs from the one the run started on) — relaunch fresh.
 - **Only remove the worktree after an explicit order from the user** (uncommitted work could still live there). The SubagentStop hook only warns, never deletes.
 - On order:
