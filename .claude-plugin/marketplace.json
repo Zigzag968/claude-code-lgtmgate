@@ -13,7 +13,7 @@
         "source": "github",
         "repo": "Zigzag968/claude-code-lgtmgate",
         "ref": "main",
-        "sha": "67bdc2f678a93479c186e6136c7dac07644a65d7"
+        "sha": "4f0b8251d364d309b7ee43725d340f85a24e78e1"
       },
       "description": "Stack-agnostic delivery pipeline: Theo (diagnose) -> Mia (PM) -> Sam (plan) -> Nick (dev+PR) -> Morgan (review), orchestrated by a per-project workflow and configured via .claude/pipeline.config.json.",
       "author": {
@@ -36,7 +36,7 @@
         "url": "https://github.com/Zigzag968/claude-code-lgtmgate.git",
         "path": "plugins/backlog",
         "ref": "main",
-        "sha": "67bdc2f678a93479c186e6136c7dac07644a65d7"
+        "sha": "4f0b8251d364d309b7ee43725d340f85a24e78e1"
       },
       "description": "Config-driven backlog discipline for GitHub repos: /backlog:file, /backlog:triage (propose-only), /backlog:next. Inert unless the repo has .claude/backlog.yml.",
       "author": {
