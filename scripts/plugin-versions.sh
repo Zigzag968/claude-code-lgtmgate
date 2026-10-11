@@ -8,12 +8,15 @@
 # Rule (#421): `enabled` is the state of the plugin id for the directory the CLI runs from, the same on every entry of that id.
 # An entry applies to the project (--project, default the current directory) when it is user scope, or its projectPath is or
 # contains the project. Among the applicable entries of one channel the most specific scope loads (local, project, user): the
-# others are SHADOWED, listed with a note and never counted. --loaded-root is the plugin root the session loaded (the runbook
+# others are SHADOWED, listed with a note and never counted; an enabled local or project entry that does not apply is listed,
+# never counted (OTHER-PROJECT; an unknown scope is still counted). --loaded-root is the plugin root the session loaded (the runbook
 # substitutes it in the command text); when it is not an enabled, non-shadowed install of the project, LOADED-CACHE is a problem.
 # One line per install: <scope> project=<projectPath or -> channel=<marketplace> enabled=<true|false> version=<v>, followed by
 #   ` MISMATCH: found <v>, target <t>` when the install is enabled and its version is not the target (string equality: a
 #   disabled install never counts, like the stale channel left next to the beta one);
 #   ` SHADOWED by <scope> install version <v>` when a more specific install of the same channel applies to the project;
+#   ` OTHER-PROJECT: not loaded for this project, not counted` when the install is enabled, local or project scope, and its
+#   project does not contain the project;
 #   `CONFLICT: both channels enabled in scope=<scope> project=<p>: <m1>, <m2>` when two marketplaces are both enabled for the
 #   same scope and project (the same plugin enabled from two channels);
 #   `LOADED-CACHE: ... remove the loaded one: claude plugin uninstall <plugin>@<channel> --scope <scope>` (printed, never run).
@@ -117,6 +120,8 @@ for r in rows:
     line = "%s project=%s channel=%s enabled=%s version=%s" % (r["scope"], r["proj"], r["market"], "true" if r["enabled"] else "false", r["version"])
     if r["enabled"] and r["shadow"]:
         line += " SHADOWED by %s install version %s" % (r["shadow"]["scope"], r["shadow"]["version"])
+    elif r["enabled"] and r["scope"] in RANK and not r["applies"]:
+        line += " OTHER-PROJECT: not loaded for this project, not counted"
     elif r["enabled"]:
         groups.setdefault((r["scope"], r["proj"]), set()).add(r["market"])
         if r["version"] != target:
