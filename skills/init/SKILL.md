@@ -19,30 +19,29 @@ Work from the project root (`${CLAUDE_PROJECT_DIR}`). The plugin lives under `${
 - `claude --version` — confirm Claude Code is 2.1.294 or later, the version this repository's tests and devcontainer pin (every run is a `Workflow`, which needs a paid plan with dynamic workflows on). Older -> stop, say it is older than the minimum 2.1.294, ask to update Claude Code.
 - `git rev-parse --show-toplevel` — confirm we're in a git repo. If not, stop and ask.
 - If `.claude/pipeline.config.json` already exists → **AskUserQuestion 3-way**: (a) **complete** — only reinstall the missing machinery artifacts (workflows/rules/scripts), validate the existing config against the template schema, **without overwriting it** (recommended default if the existing config is valid); (b) **re-init** — regenerate everything, overwrites the config; (c) **abort**. (friction F1)
-  - Note (legacy#73): `complete` NEVER refreshes a file that's already present (e.g. `.claude/rules/pr-acceptance.md`) even if `templates/pr-acceptance.md` has been hardened since the initial provisioning. After every `claude plugin update lgtmgate`, run `node ${CLAUDE_PLUGIN_ROOT}/scripts/template-drift.cjs --root "${CLAUDE_PROJECT_DIR}"`: it lists each copy that differs from the current template with the `diff` command to run. Propagate by hand what you want to keep in sync; a deliberate customisation stays.
+  - Note (legacy#73): `complete` NEVER refreshes a file that's already present (e.g. `scripts/provision-worktree.sh`) even if its template has been hardened since the initial provisioning. After every `claude plugin update lgtmgate`, run `node ${CLAUDE_PLUGIN_ROOT}/scripts/template-drift.cjs --root "${CLAUDE_PROJECT_DIR}"`: it lists each copy that differs from the current template with the `diff` command to run. Propagate by hand what you want to keep in sync; a deliberate customisation stays.
 
 ## 1. Copy the templates
-Create the target folders if missing (`.claude/workflows`, `.claude/rules`, `.claude/scripts`, **`scripts`** — at the repo root, not under `.claude/`), then copy:
+Create the target folders if missing (`.claude/scripts`, **`scripts`** — at the repo root, not under `.claude/`), then copy:
 
-- `${CLAUDE_PLUGIN_ROOT}/templates/test-deliver-pipeline.js` → `.claude/workflows/test-deliver-pipeline.js`
-- `${CLAUDE_PLUGIN_ROOT}/templates/pr-acceptance.md`         → `.claude/rules/pr-acceptance.md`
-- `${CLAUDE_PLUGIN_ROOT}/templates/gh-pipeline-status.sh`    → `.claude/scripts/gh-pipeline-status.sh`
 - `${CLAUDE_PLUGIN_ROOT}/templates/blocked-by-check.sh`      → `.claude/scripts/blocked-by-check.sh`
 - `${CLAUDE_PLUGIN_ROOT}/templates/provision-worktree.sh`    → `scripts/provision-worktree.sh`
 
-Then: `chmod +x .claude/scripts/gh-pipeline-status.sh`, `chmod +x .claude/scripts/blocked-by-check.sh` and `chmod +x scripts/provision-worktree.sh`.
+Then: `chmod +x .claude/scripts/blocked-by-check.sh` and `chmod +x scripts/provision-worktree.sh`.
+
+Init no longer copies the acceptance rule, the flow suite or the status helper: the engine and the agents carry them. A project that still holds one of them removes it when `template-drift.cjs` prints an `obsolete:` line.
 
 `blocked-by-check.sh` is not fail-closed like `provision-worktree.sh` — a project with no cross-repo dependency works fine without it, this copy is just an optional install slot.
 
-Setup (provisioning) is **fail-closed** on `scripts/provision-worktree.sh` — this copy is not optional: without it, the first run `exit 127`s.
+Setup (provisioning) is **fail-closed** on `scripts/provision-worktree.sh` — this copy is not optional: without it, a run with a required `provision.extraLinks` entry stops at provisioning with `PROVISION-NO-SCRIPT` (exit 2), and a run with none is skipped with `PROVISION-SKIPPED-NO-SCRIPT` (exit 0).
 
 **Upgrading from the previous name.** A consumer initialised earlier has `scripts/provision_worktree.sh`. The engine keeps provisioning with that copy while `scripts/provision-worktree.sh` is absent. To switch, re-run init (`complete` mode installs the missing new name), then `git rm scripts/provision_worktree.sh`, commit and push (provisioning runs from the committed worktree). The fallback is removed under #364.
 
 (1 `cp` command per file — no compounding.)
 
-**Commit + push BEFORE the first run (mandatory — MANDATORY, claude-agent-pipeline#51).** The provisioning gate runs `bash "<worktree>/scripts/provision-worktree.sh"` **from the WORKTREE**, i.e. the content **COMMITTED** on `baseBranch` — not the working tree of the main checkout that `init` just wrote to. `git worktree add` always clones from a committed ref: until these files are committed + pushed to `baseBranch`, a freshly created worktree does NOT have `scripts/provision-worktree.sh`, the gate `exit 127`s, and the pipeline escalates `provision-failed` on the very first task — exactly the failure this gate is meant to prevent. Before the first `/lgtmgate:deliver`:
+**Commit + push BEFORE the first run (mandatory — MANDATORY, claude-agent-pipeline#51).** The provisioning gate runs `bash "<worktree>/scripts/provision-worktree.sh"` **from the WORKTREE**, i.e. the content **COMMITTED** on `baseBranch` — not the working tree of the main checkout that `init` just wrote to. `git worktree add` always clones from a committed ref: until these files are committed + pushed to `baseBranch`, a freshly created worktree does NOT have `scripts/provision-worktree.sh`, a run with a required `provision.extraLinks` entry stops with `PROVISION-NO-SCRIPT` (exit 2) and the pipeline escalates `provision-failed` on the very first task — exactly the failure this gate is meant to prevent. Before the first `/lgtmgate:deliver`:
 ```bash
-git add .claude/lgtmgate scripts/provision-worktree.sh .claude/workflows .claude/rules .claude/scripts .claude/pipeline.config.json
+git add .claude/lgtmgate scripts/provision-worktree.sh .claude/scripts .claude/pipeline.config.json
 ```
 ```bash
 git commit -m "chore(pipeline): bootstrap lgtmgate machinery"

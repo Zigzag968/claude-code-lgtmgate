@@ -173,6 +173,34 @@ Reasons the pattern does not reach. Probe failures reach the result as `probeRea
 | `block-merge-unchecked.sh: BLOCKED by pr-acceptance gate` | `hooks/block-merge-unchecked.sh` | A `gh pr merge` is refused: the PR acceptance checklist still has unchecked items | Prove and tick every box of the acceptance block, then merge again. |
 | `block-merge-unchecked.sh: BLOCKED by review-stale gate` | `hooks/block-merge-unchecked.sh` | A `gh pr merge` is refused: the PR has no review marker carrying a head sha, or the head moved since the last review | Relaunch the review on the current head (`Workflow` with `entryStage:"review"` and `prNumber`), then merge again. |
 
+## Template drift lines
+
+Printed by `scripts/template-drift.cjs` (run by `/lgtmgate:deliver` step 1 and after every plugin update). The script reads and never writes; a line that asks for an action says `fix before the run`, `remove before the run` or `decide`, and the status is `warn` only then. The guard does not check this section.
+
+| name | raised at | what the user sees | remedy |
+|---|---|---|---|
+| `obsolete` (acceptance rule) | `check` of `scripts/template-drift.cjs` | `.claude/rules/pr-acceptance.md` is still in the repository: init no longer copies it, the engine reads no such file, and an agent reads every rule file that exists, so a stale copy can contradict the plugin | `git rm .claude/rules/pr-acceptance.md`, commit and push on the base branch before the run. |
+| `obsolete` (status helper, flow suite) | `check` of `scripts/template-drift.cjs` | `.claude/scripts/gh-pipeline-status.sh` or `.claude/workflows/test-deliver-pipeline.js` is still in the repository: no code reads it; the line says `no effect on the run` | Remove it with `git rm` when convenient. |
+| `read-by-engine` absent | `check` of `scripts/template-drift.cjs` | `scripts/provision-worktree.sh` is missing. With a required `provision.extraLinks` entry (or an unreadable config) the run stops at provisioning with `PROVISION-NO-SCRIPT` (exit 2); with none, provisioning is skipped (`PROVISION-SKIPPED-NO-SCRIPT`) and the line is `info` | Run `/lgtmgate:init` (choose complete), then commit and push on the base branch. |
+| `read-by-engine` differs, token lacking | `check` of `scripts/template-drift.cjs` | Your provisioning script lacks a token the engine parses (`PROVISION-VERSION:2`, `LINKED `, `MISSING-SRC ` or `--soft`) | Compare with the `diff` command printed, port the new rules into your copy, keep your own, commit and push on the base branch. |
+| `read-by-engine` differs, other | `check` of `scripts/template-drift.cjs` | Your provisioning script differs from the template but carries every token the engine reads | Read the difference and keep a deliberate customisation; never overwrite it. |
+| `optional` | `check` of `scripts/template-drift.cjs` | `.claude/scripts/blocked-by-check.sh` is absent or differs; the engine does not read it; `no effect on the run` | Nothing to do before the run. |
+| `legacy-name` | `check` of `scripts/template-drift.cjs` | `scripts/provision_worktree.sh` is present; the engine falls back to it only while the new name is absent; `no effect on the run` | Alone: `git mv scripts/provision_worktree.sh scripts/provision-worktree.sh`. With the new name: `git rm scripts/provision_worktree.sh`. |
+| `order:` | `main` of `scripts/template-drift.cjs` | Three `order:` lines follow when at least one line asks for an action | Follow them: fix the config, act on the lines that ask, commit and push on the base branch. |
+| `next:` | `main` of `scripts/template-drift.cjs` | `next: nothing to do before the run, the next run can start` when no line asks for an action | Launch the run. |
+
+## Config check lines
+
+Printed by `scripts/config-check.cjs`; each `warn:` line states its effect and its gesture.
+
+| name | raised at | what the user sees | remedy |
+|---|---|---|---|
+| retired key | `check` of `scripts/config-check.cjs` | `conventionsRule` is ignored, so the rule file it names reaches no agent | Replace it with `agentContext["*"]` listing the rule file, commit and push on the base branch. |
+| conventions key missing | `check` of `scripts/config-check.cjs` | Neither `agentContext` nor `projectSpecifics` is set: the run starts but no project conventions reach the agents | Add one of them to `.claude/pipeline.config.json`, or run `/lgtmgate:init` and choose complete; commit and push. |
+| `minPluginVersion` missing | `check` of `scripts/config-check.cjs` | An older engine is not refused; `no effect on the run` | To refuse one, add the key with the plugin version, or run `/lgtmgate:init` and choose complete. |
+| config unreadable | `check` of `scripts/config-check.cjs` | The file is absent or not a JSON object: the run cannot read its settings | Run `/lgtmgate:init`. |
+| no path | `main` of `scripts/config-check.cjs` | No config path was given | Run `node scripts/config-check.cjs <path to .claude/pipeline.config.json>`. |
+
 ## Prerequisites
 
 | name | raised at | what the user sees | remedy |

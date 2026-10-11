@@ -54,6 +54,24 @@ printf '[]' > "$TMP/s7b.json"
 run "$TMP/s7b.json"
 if [ "$RA" -eq 0 ] && [ "$rc" -eq 0 ] && [ "$A" = "[config-check] status=warn retired=0 missing=2" ] && [ "$(last)" = "[config-check] status=warn retired=0 missing=0" ] && has 'not a readable JSON object'; then ok "S7 blank values are missing, [] is not an object"; else bad "S7 [$A] [$(cat "$TMP/out")]"; fi
 
+# S8 retired key states its effect and its gesture
+printf '{"conventionsRule":"x.md","minPluginVersion":"1.3.0","projectSpecifics":".claude/lgtmgate"}' > "$TMP/s8.json"
+run "$TMP/s8.json"
+if [ "$rc" -eq 0 ] && has 'reaches no agent' && has 'fix before the run: replace it with agentContext["*"]' && [ "$(last)" = "[config-check] status=warn retired=1 missing=0" ]; then ok "S8 retired key says effect and gesture"; else bad "S8 rc=$rc $(cat "$TMP/out")"; fi
+
+# S9 both recommended keys missing: the conventions line asks for a fix
+printf '{}' > "$TMP/s9.json"
+run "$TMP/s9.json"
+if [ "$rc" -eq 0 ] && grep -F 'agentContext or projectSpecifics' "$TMP/out" | grep -qF 'fix before the run' && has '/lgtmgate:init' && ! has 'warn: run /lgtmgate:init and choose'; then ok "S9 missing conventions key asks for a fix before the run"; else bad "S9 rc=$rc $(cat "$TMP/out")"; fi
+
+# S10 only minPluginVersion missing: no effect on the run
+run "$TMP/s4.json"
+if [ "$rc" -eq 0 ] && grep -F 'minPluginVersion' "$TMP/out" | grep -qF 'no effect on the run' && ! has 'fix before the run'; then ok "S10 missing minPluginVersion has no effect on the run"; else bad "S10 rc=$rc $(cat "$TMP/out")"; fi
+
+# S11 absent file: one warn line with the gesture
+run "$TMP/does-not-exist.json"
+if [ "$rc" -eq 0 ] && [ "$(grep -c '^warn:' "$TMP/out")" = 1 ] && has 'fix before the run: run /lgtmgate:init'; then ok "S11 absent file asks for init before the run"; else bad "S11 rc=$rc $(cat "$TMP/out")"; fi
+
 # hook cases
 hook() { CLAUDE_PLUGIN_ROOT="$2" CLAUDE_PROJECT_DIR="$1" python3 "$ROOT/hooks/SessionStart/inject_stub.py" > "$TMP/hook.json" 2>/dev/null; hrc=$?; }
 P="$TMP/proj"; mkdir -p "$P/.claude"
