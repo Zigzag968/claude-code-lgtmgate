@@ -10,7 +10,7 @@
 // Stdout: zero or more `obsolete:` / `warn:` / `info:` lines, then either an `order:` block (some line asks for an
 //         action) or the single `next:` line, then the last line
 //         [template-drift] status=ok|warn read=<n> optional=<n> differs=<n> absent=<n>
-//         status=warn exactly when one line asks for an action (fix before / remove before / decide).
+//         status=warn exactly when one line asks for an action (fix before / replace the import / decide).
 
 const fs = require('fs')
 const path = require('path')
@@ -20,8 +20,11 @@ const crypto = require('crypto')
 // role: obsolete (init no longer copies it and no code reads it: remove it), read-by-engine (the engine runs it;
 //       `tokens` are what the engine parses in its output), optional (an install slot the engine does not read),
 //       legacy-name (an old spelling compared with the new template, never counted as a copy).
+const ACCEPTANCE_RULE = '.claude/rules/pr-acceptance.md'
+const REMOVE_LATER = "remove at your convenience: the plugin's text prevails over this copy; remove it in your next pull request"
+const ACCEPTANCE_HOW = 'if it holds rules of your own: git mv .claude/rules/pr-acceptance.md .claude/rules/<name>-acceptance.md, delete the sections the plugin now carries (acceptance ids, the boxes returned by the reviewer and ticked by the workflow, verified-untickable, the human-gate tag, an empty acceptance block is a required change), keep the rules specific to the repository, list the file under agentContext["*"] when agents must read it for sure, then commit, push; otherwise git rm .claude/rules/pr-acceptance.md, commit, push'
 const TARGETS = [
-  { target: '.claude/rules/pr-acceptance.md', template: 'templates/pr-acceptance.md', role: 'obsolete', note: ' (an agent reads every rule file that exists, so a stale copy can contradict the plugin)', verdict: 'remove before the run' },
+  { target: ACCEPTANCE_RULE, template: 'templates/pr-acceptance.md', role: 'obsolete', note: '', verdict: REMOVE_LATER, how: ACCEPTANCE_HOW },
   { target: '.claude/scripts/gh-pipeline-status.sh', template: 'templates/gh-pipeline-status.sh', role: 'obsolete', note: '', verdict: 'no effect on the run' },
   { target: '.claude/workflows/test-deliver-pipeline.js', template: 'templates/test-deliver-pipeline.js', role: 'obsolete', note: '', verdict: 'no effect on the run' },
   { target: 'scripts/provision-worktree.sh', template: 'templates/provision-worktree.sh', role: 'read-by-engine', tokens: ['PROVISION-VERSION:2', 'LINKED ', 'MISSING-SRC ', '--soft'] },
@@ -33,7 +36,7 @@ const NONE = 'no effect on the run'
 const DECIDE = 'decide: read the difference, keep a deliberate customisation, never overwrite'
 const PORT = 'fix before the run: port the new rules from the template into your copy, keep the rules specific to your repository, commit and push on the base branch'
 const INSTALL = 'fix before the run: run /lgtmgate:init (choose "complete"), then commit and push on the base branch'
-const ASKS = ['fix before the run', 'remove before the run', 'decide:']
+const ASKS = ['fix before the run', 'replace the import', 'decide:']
 
 const ORDER = [
   'order: 1. fix the config first (the config-check output above)',
@@ -72,6 +75,39 @@ function requiredLinks(root) {
   }
 }
 
+// Consumer files (in this order) whose text imports the acceptance rule with an `@` import. Lines in a fenced code
+// block, HTML comments and inline code spans are not imports. An unreadable or absent file is not an import.
+function importsAcceptanceRule(root) {
+  const importRe = /(^|\s)@(\.\/)?\.claude\/rules\/pr-acceptance\.md(?=$|[\s,;:!?)]|\.(?=$|\s))/m
+  const found = []
+  for (const file of ['CLAUDE.md', '.claude/CLAUDE.md']) {
+    let text
+    try {
+      text = fs.readFileSync(path.join(root, file), 'utf8')
+    } catch (error) {
+      continue
+    }
+    const kept = []
+    let fence = null
+    for (const line of text.split(/\r?\n/)) {
+      const mark = /^ {0,3}(`{3,}|~{3,})/.exec(line)
+      if (fence) {
+        const close = /^ {0,3}(`+|~+)\s*$/.exec(line)
+        if (close && close[1][0] === fence[0] && close[1].length >= fence.length) fence = null
+        continue
+      }
+      if (mark) {
+        fence = mark[1]
+        continue
+      }
+      kept.push(line)
+    }
+    const clean = kept.join('\n').replace(/<!--[\s\S]*?(-->|$)/g, '').replace(/`+[^`]*`+/g, '')
+    if (importRe.test(clean)) found.push(file)
+  }
+  return found
+}
+
 const earlyFailure = (line) => ({ lines: [line], read: 0, optional: 0, differs: 0, absent: 0, early: true })
 
 function check(root, pluginRoot) {
@@ -89,7 +125,7 @@ function check(root, pluginRoot) {
     const present = exists(consumerFile)
     const compare = `diff ${row.target} \${CLAUDE_PLUGIN_ROOT}/${row.template}`
     if (row.role === 'obsolete') {
-      if (present) lines.push(`obsolete: ${row.target} is no longer copied by init and the engine does not read it; remove it: git rm ${row.target}, commit, push; ${row.verdict}${row.note}`)
+      if (present) lines.push(`obsolete: ${row.target} is no longer copied by init and the engine does not read it; ${row.how || `remove it: git rm ${row.target}, commit, push`}; ${row.verdict}${row.note}`)
       continue
     }
     if (row.role === 'legacy-name') {
@@ -128,6 +164,7 @@ function check(root, pluginRoot) {
     if (lacking) lines.push(`warn: ${row.target} [${row.role}] differs from the current template and lacks '${lacking}', which the engine reads; compare: ${compare}; ${PORT}`)
     else lines.push(`warn: ${row.target} [${row.role}] differs from the current template; compare: ${compare}; ${DECIDE}`)
   }
+  for (const file of importsAcceptanceRule(root)) lines.push(`warn: ${file} imports ${ACCEPTANCE_RULE}; ${REMOVE_LATER}; replace the import by the new file name or delete the line, then commit and push`)
   const asks = lines.some((line) => ASKS.some((ask) => line.includes(ask)))
   lines.push(...(asks ? ORDER : [NEXT]))
   return Object.assign({ lines, asks }, count)

@@ -74,12 +74,12 @@ if [ "$rc" -eq 0 ] && has 'obsolete:' && [ "$BEFORE_STATUS" = "$AFTER_STATUS" ] 
 run
 if [ "$rc" -eq 0 ] && [ "$(grep -c '^warn:' "$TMP/out")" = 1 ] && has 'fix before the run' && [ "$(last | cut -c1-26)" = "[template-drift] status=wa" ]; then ok "T8 missing --root is one warn line"; else bad "T8 rc=$rc $(cat "$TMP/out")"; fi
 
-# T9 the acceptance rule is still there: obsolete, remove it
+# T9 the acceptance rule is still there: obsolete, says where the repository's rules go, no longer blocks the run
 D=$(fresh t9)
 mkdir -p "$D/.claude/rules"
 cp "$ROOT/templates/pr-acceptance.md" "$D/.claude/rules/pr-acceptance.md"
 run --root "$D"
-if [ "$rc" -eq 0 ] && has 'obsolete: .claude/rules/pr-acceptance.md' && has 'remove before the run' && has 'git rm .claude/rules/pr-acceptance.md' && has 'order: 1.' && [ "$(last)" = "[template-drift] status=warn read=1 optional=1 differs=0 absent=0" ]; then ok "T9 obsolete acceptance rule is removed before the run"; else bad "T9 rc=$rc $(cat "$TMP/out")"; fi
+if [ "$rc" -eq 0 ] && has 'obsolete: .claude/rules/pr-acceptance.md' && has 'git mv .claude/rules/pr-acceptance.md .claude/rules/<name>-acceptance.md' && has 'agentContext["*"]' && has "remove at your convenience: the plugin's text prevails over this copy; remove it in your next pull request" && ! has 'remove before the run' && ! has 'order:' && has 'next:' && [ "$(last)" = "[template-drift] status=ok read=1 optional=1 differs=0 absent=0" ]; then ok "T9 obsolete acceptance rule says where the repository's rules go and no longer blocks the run"; else bad "T9 rc=$rc $(cat "$TMP/out")"; fi
 
 # T10 the status helper and the flow suite are still there: obsolete, no effect
 D=$(fresh t10)
@@ -101,6 +101,43 @@ rm "$D/scripts/provision-worktree.sh"
 printf '{"provision":{"extraLinks":[]}}' > "$D/.claude/pipeline.config.json"
 run --root "$D"
 if [ "$rc" -eq 0 ] && has 'PROVISION-SKIPPED-NO-SCRIPT' && has 'no effect on the run' && ! has 'order:' && [ "$(last | cut -c1-26)" = "[template-drift] status=ok" ]; then ok "T12 absent script with no required link is skipped"; else bad "T12 rc=$rc $(cat "$TMP/out")"; fi
+
+IMPORT_WARN="warn: CLAUDE.md imports .claude/rules/pr-acceptance.md; remove at your convenience: the plugin's text prevails over this copy; remove it in your next pull request; replace the import by the new file name or delete the line, then commit and push"
+
+# T13 CLAUDE.md imports the acceptance rule
+D=$(fresh t13)
+printf '# Project\n@.claude/rules/pr-acceptance.md\n' > "$D/CLAUDE.md"
+run --root "$D"
+if [ "$rc" -eq 0 ] && [ "$(grep -c 'imports .claude/rules/pr-acceptance.md' "$TMP/out")" = 1 ] && has "$IMPORT_WARN" && has 'order: 1.' && [ "$(last | cut -c1-26)" = "[template-drift] status=wa" ]; then ok "T13 an import of the acceptance rule is one warn line with the order block"; else bad "T13 rc=$rc $(cat "$TMP/out")"; fi
+
+# T14 .claude/CLAUDE.md imports it with a leading ./
+D=$(fresh t14)
+printf 'see @./.claude/rules/pr-acceptance.md for the rule\n' > "$D/.claude/CLAUDE.md"
+run --root "$D"
+if [ "$rc" -eq 0 ] && has 'warn: .claude/CLAUDE.md imports .claude/rules/pr-acceptance.md' && [ "$(last | cut -c1-26)" = "[template-drift] status=wa" ]; then ok "T14 an import with ./ in .claude/CLAUDE.md names that file"; else bad "T14 rc=$rc $(cat "$TMP/out")"; fi
+
+# T15 the same text in a fenced block, an HTML comment and a code span is not an import
+D=$(fresh t15)
+printf '```\n@.claude/rules/pr-acceptance.md\n```\n<!-- @.claude/rules/pr-acceptance.md -->\nuse `@.claude/rules/pr-acceptance.md` here\n~~~md\n@.claude/rules/pr-acceptance.md\n~~~\n' > "$D/CLAUDE.md"
+run --root "$D"
+if [ "$rc" -eq 0 ] && ! has 'imports' && has 'next:' && [ "$(last | cut -c1-26)" = "[template-drift] status=ok" ]; then ok "T15 fenced, commented and code-span mentions are not imports"; else bad "T15 rc=$rc $(cat "$TMP/out")"; fi
+
+# T16 other text, and an import of another file
+D=$(fresh t16)
+printf 'Plain text.\n@docs/other.md\n@.claude/rules/pr-acceptance.md.bak\n' > "$D/CLAUDE.md"
+run --root "$D"
+if [ "$rc" -eq 0 ] && ! has 'imports' && ! has 'warn:' && [ "$(last | cut -c1-26)" = "[template-drift] status=ok" ]; then ok "T16 other text and other imports raise no import line"; else bad "T16 rc=$rc $(cat "$TMP/out")"; fi
+
+# T17 stale copy of the previous release plus the import
+D=$(fresh t17)
+mkdir -p "$D/.claude/rules"
+printf '@.claude/rules/pr-acceptance.md\n' > "$D/CLAUDE.md"
+if git -C "$ROOT" show 67bdc2f:templates/pr-acceptance.md > "$D/.claude/rules/pr-acceptance.md" 2>/dev/null; then
+  run --root "$D"
+  if [ "$rc" -eq 0 ] && has 'obsolete: .claude/rules/pr-acceptance.md' && has 'git mv .claude/rules/pr-acceptance.md' && has "$IMPORT_WARN"; then ok "T17 stale copy plus import prints the obsolete line and the import line"; else bad "T17 rc=$rc $(cat "$TMP/out")"; fi
+else
+  bad "T17 commit 67bdc2f not available in this checkout"
+fi
 
 RESULT=ok; [ "$FAIL" -eq 0 ] || RESULT=fail
 echo "[test-template-drift] status=${RESULT} passed=${PASS} failed=${FAIL}"

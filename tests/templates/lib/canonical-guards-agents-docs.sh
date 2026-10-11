@@ -384,3 +384,19 @@ else
   pass "project-specifics-paragraph-parity: byte-identical in 5 agents"
 fi
 
+# =============================================================================
+# Invariant 35 — stale-rule-priority-parity
+# =============================================================================
+# #437: the sentence that makes the plugin's acceptance section win over a stale rule copy, once in sam and morgan.
+SR_SENTENCE="If a rule file of the repository describes the acceptance procedure differently from this section (typically a copy of an older version of the plugin's rule), this section prevails; say so in your plan or verdict in one line."
+SR_BAD=""
+for sr_a in sam morgan; do
+  sr_n=$(grep -cF -- "$SR_SENTENCE" "$AGENTS_DIR/$sr_a.md" 2>/dev/null || true)
+  [ "$sr_n" = "1" ] || SR_BAD="$SR_BAD $sr_a"
+done
+if [ -n "$SR_BAD" ]; then
+  fail "stale-rule-priority-parity" "sentence missing or repeated in:$SR_BAD"
+else
+  pass "stale-rule-priority-parity: sentence once in sam and morgan"
+fi
+
