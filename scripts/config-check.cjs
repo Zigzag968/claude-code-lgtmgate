@@ -11,6 +11,7 @@
 //         [config-check] status=ok|warn retired=<n> missing=<n>
 
 const fs = require('fs')
+const path = require('path')
 
 // Keys the engine ignores today, with what replaces them.
 const RETIRED = [{ key: 'conventionsRule', replacement: 'agentContext["*"]' }]
@@ -53,7 +54,37 @@ function check(file) {
       lines.push(`warn: recommended key missing: ${r.label}; ${r.gesture}`)
     }
   }
+  const environmentLine = environmentFileLine(file, config)
+  if (environmentLine) lines.push(environmentLine)
   return { lines, retired, missing }
+}
+
+// #467: preflight.envSymlink `required` (the engine default when the key is absent) with no .env in the repository
+// ends the first run at the preflight, after planning and development. Only stats the file, never reads it.
+// A config outside <root>/.claude/ has no known root: skipped. Any stat error but ENOENT counts as present.
+function environmentFileAbsent(p) {
+  try {
+    fs.lstatSync(p)
+    return false
+  } catch (error) {
+    return Boolean(error) && error.code === 'ENOENT'
+  }
+}
+
+function environmentFileLine(file, config) {
+  const effective = (config.preflight && config.preflight.envSymlink) || 'required'
+  if (effective !== 'required') return null
+  const directory = path.dirname(path.resolve(file))
+  if (path.basename(file) !== 'pipeline.config.json' || path.basename(directory) !== '.claude') return null
+  const root = path.dirname(directory)
+  if (!environmentFileAbsent(path.join(root, '.env'))) return null
+  try {
+    const git = fs.readFileSync(path.join(root, '.git'), 'utf8').match(/^gitdir:\s*(.+)$/m)
+    if (git && !environmentFileAbsent(path.join(path.resolve(root, git[1].trim()), '..', '..', '..', '.env'))) return null
+  } catch (error) {
+    // .git is a directory or unreadable: this is the main checkout
+  }
+  return 'warn: preflight.envSymlink is required but the repository has no .env file, so the first preflight stops the run after planning and development; fix before the run: set preflight.envSymlink to "ignore" in .claude/pipeline.config.json (or create the .env file at the repository root), then commit and push the config on the base branch with git'
 }
 
 function main() {
