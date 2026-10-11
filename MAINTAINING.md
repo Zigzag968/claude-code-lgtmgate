@@ -392,3 +392,10 @@ then `claude plugin install lgtmgate@zigzag-plugins`.
 - Not to be confused with sandbox write-scope failures (the audit log lives outside the repo): those name a denied path.
 - `apply_prompt: ask` with no human present is documented as undefined in `plugins/backlog/README.md`.
 - No code change: nothing to fix in the plugin; the refusal is reproduced or dismissed by retrying under approval.
+
+## 14. Release freeze and defects found by consumers
+
+- A release candidate is frozen: from the candidate tag to the release, only fixes enter; no feature, no refactor.
+- The label `found-by:consumer` marks an issue that reports a defect a consumer met (a consumer repository, its session or its canary run), whatever its `type:` label. It is put by hand, through REST: `gh api -X POST repos/{owner}/{repo}/issues/<n>/labels -f 'labels[]=found-by:consumer'`.
+- `bash scripts/consumer-defects.sh` counts them per release (read-only, REST only): one line per window between two tags with the issues created, still open and the date of the last one, then `[consumer-defects] total=<n> open=<k> last=<date>`; exit 2 when the listing cannot be read.
+- Release criterion: zero new `found-by:consumer` issue created during the freeze window, that is, once the candidate is tagged (`v<x.y.z>-rc.<n>`), the `unreleased` window of the script has `created=0` when the candidate is promoted. A new one reopens the freeze after its fix.
