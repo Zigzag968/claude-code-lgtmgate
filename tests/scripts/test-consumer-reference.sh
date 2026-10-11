@@ -42,7 +42,8 @@ drop_row() { grep -vF -- "| \`$2\` |" "$TMP/$1/docs/consumer-reference.md" > "$T
 
 # 1 clean run
 fresh c1; run c1
-if [ "$rc" -eq 0 ] && has 'PASS: consumer-reference: 100 names, 17 with a row, 83 baseline gaps'; then ok "1 clean run passes"; else bad "1 rc=$rc $(cat "$TMP/out")"; fi
+gaps=$(node -e 'const b=require(process.argv[1]);console.log(Object.values(b).flat().length)' "$ROOT/scripts/consumer-reference-baseline.json")
+if [ "$rc" -eq 0 ] && has 'PASS: consumer-reference: ' && has ", $gaps baseline gaps"; then ok "1 clean run passes"; else bad "1 rc=$rc $(cat "$TMP/out")"; fi
 
 # 2 a code name without a row and not in the baseline
 fresh c2; drop_row c2 folder-absent; run c2
@@ -50,7 +51,7 @@ if [ "$rc" -ne 0 ] && has "FAIL: consumer-reference: Assembler refusals 'folder-
 
 # 3 a row for a name the code does not emit
 fresh c3
-node -e 'const fs=require("fs");const p=process.argv[1];const t=fs.readFileSync(p,"utf8");fs.writeFileSync(p,t.replace("## Hook messages","| `ghost-reason` | nowhere | nothing | nothing to do |\n\n## Hook messages"))' "$TMP/c3/docs/consumer-reference.md"
+node -e 'const fs=require("fs");const p=process.argv[1];const t=fs.readFileSync(p,"utf8");fs.writeFileSync(p,t.replace("## Other reasons","| `ghost-reason` | nowhere | nothing | nothing to do |\n\n## Other reasons"))' "$TMP/c3/docs/consumer-reference.md"
 run c3
 if [ "$rc" -ne 0 ] && has "'ghost-reason' has a row but the code no longer emits it"; then ok "3 a stale row fails"; else bad "3 rc=$rc $(cat "$TMP/out")"; fi
 
