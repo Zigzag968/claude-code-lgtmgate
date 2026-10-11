@@ -998,6 +998,23 @@ function ciBlocker(ciState, morganCiGreen, absentNames) {
   const unproven = ciState === 'none' ? morganCiGreen === false : morganCiGreen !== true
   return unproven ? 'CI is not green on the PR head (reported by the review)' : null
 }
+// redChecks(items, names): the red configured checks behind a `nick-no-op` (#459). [] unless `items` and `names` are non-empty arrays
+// AND EVERY item contains at least one non-empty configured check name (first match in config order, a plain substring test, no
+// parser, no model); then one { check, reason } per distinct matched name, `reason` = the first non-blank line of the first item
+// that matched it, trimmed, cut to 200 characters. Any item naming no check (a code defect) makes the result [].
+function redChecks(items, names) {
+  if (!Array.isArray(items) || items.length === 0 || !Array.isArray(names) || names.length === 0) return []
+  const found = []
+  for (const item of items) {
+    const text = typeof item === 'string' ? item : ''
+    const check = names.find((name) => typeof name === 'string' && name !== '' && text.includes(name))
+    if (check === undefined) return []
+    if (found.some((entry) => entry.check === check)) continue
+    const line = text.split('\n').map((part) => part.trim()).find((part) => part !== '') || ''
+    found.push({ check, reason: line.slice(0, 200) })
+  }
+  return found
+}
 // verdictProblem(v, schema): null when the verdict has the shape `schema` declares, else the name of the offending field:
 // 'not-an-object' (not a plain object), 'verdict' (outside schema.properties.verdict.enum), or a property declared
 // `type: 'array'` that is present and not an array, declared `type: 'boolean'` that is present and not a boolean, or an
@@ -4772,9 +4789,10 @@ if (after('review', entryStage)) {
       }
       const afterBody = await prSignature('after', round)
       if (afterBody.sha === before.sha && afterBody.body === before.body) {
-        log(`Round ${round}: Nick no-op — SHA+body unchanged (${afterBody.sha}). Escalating without re-review.`)
+        const red = redChecks(nickItems, config.ciChecks)
+        log(`Round ${round}: Nick no-op — SHA+body unchanged (${afterBody.sha})${red.length > 0 ? `, red check(s): ${red.map((entry) => entry.check).join(', ')}` : ''}. Escalating without re-review.`)
         await updateStatus('Blocked')
-        return finish(STATUS['escalate'], { reason: 'nick-no-op', round, pr, issue, trace, sha: afterBody.sha })
+        return finish(STATUS['escalate'], { reason: 'nick-no-op', round, pr, issue, trace, sha: afterBody.sha, items: nickItems, ...(red.length > 0 ? { redChecks: red } : {}) })
       }
       if (afterBody.sha === before.sha) {
         trace.push(`nick-body-only-fix:${round}`)

@@ -736,7 +736,7 @@ const t182Block = () => {
   if (!source) return null
   const block = extractBetween(source, '// --- acceptanceItems:start ---', '// --- acceptanceItems:end ---')
   if (!block) throw new Error('acceptanceItems:start/:end markers not found in the pipeline source')
-  return new Function(block + '\nreturn { tickIdsArgv, numberItems, renderLine, renderChecklist, parseChecklist, itemsFromPlan, validateAcceptanceItems, planLacksItems, mapBoxes, nickBlockNote, morganBoxesNote, boxLineId, lineKey, humanGateLine, onlyHumanGateLines, parkUntickable, morganItemsRule, reviewProgress, ciScope, ciAbsent, ciBlocker, verdictProblem }')()
+  return new Function(block + '\nreturn { tickIdsArgv, numberItems, renderLine, renderChecklist, parseChecklist, itemsFromPlan, validateAcceptanceItems, planLacksItems, mapBoxes, nickBlockNote, morganBoxesNote, boxLineId, lineKey, humanGateLine, onlyHumanGateLines, parkUntickable, morganItemsRule, reviewProgress, ciScope, ciAbsent, ciBlocker, redChecks, verdictProblem }')()
 }
 const T182_ITEMS = [
   { text: '`node scripts/guards.cjs; echo $?` prints `0` as its last line', humanGate: false },
@@ -894,6 +894,67 @@ await testCase('T23b Nick body-only fix (SHA unchanged, body changed) → contin
   const error1 = eq('status', r.status, 'ready')
   const error2 = includes('trace', r.trace, 'nick-body-only-fix:1')
   return (error1 || error2) ? (error1 || error2) : { ok: true }
+})
+
+// T459 (issue #459) — a `nick-no-op` whose every blocker names a configured red check carries the check name and the first
+// line of the failure reason (Morgan's own item line); a code-defect blocker leaves `redChecks` absent.
+const T459_RED = "Check 'build-and-test' is red: Failed to upload artifact, storage quota exceeded\nsee the job log"
+await testCase('T459a nick-no-op with a red check as the only blocker → redChecks names the check and its reason', async () => {
+  const r = await run({
+    mode: 'auto',
+    simulate: {
+      sam: 'GO',
+      morgan: [{ verdict: 'REQUIRED_CHANGES', items: [T459_RED] }, { verdict: 'LGTM' }],
+      headSha: { 1: 'sha-abc123' },
+    },
+  })
+  const error1 = eq('status', r.status, 'escalate')
+  const error2 = eq('reason', r.reason, 'nick-no-op')
+  const error3 = eq('redChecks', r.redChecks, [{ check: 'build-and-test', reason: "Check 'build-and-test' is red: Failed to upload artifact, storage quota exceeded" }])
+  const error4 = eq('items', r.items, [T459_RED])
+  return (error1 || error2 || error3 || error4) ? (error1 || error2 || error3 || error4) : { ok: true }
+})
+
+await testCase('T459b nick-no-op with a code-defect blocker (alone or mixed with a red check) → no redChecks, items kept', async () => {
+  const alone = await run({
+    mode: 'auto',
+    simulate: { sam: 'GO', morgan: [{ verdict: 'REQUIRED_CHANGES', items: ['fix the null guard'] }, { verdict: 'LGTM' }], headSha: { 1: 'sha-abc123' } },
+  })
+  const error1 = eq('alone: reason', alone.reason, 'nick-no-op')
+  const error2 = eq('alone: redChecks', alone.redChecks, undefined)
+  const error3 = eq('alone: items', alone.items, ['fix the null guard'])
+  const mixed = await run({
+    mode: 'auto',
+    simulate: { sam: 'GO', morgan: [{ verdict: 'REQUIRED_CHANGES', items: [T459_RED, 'fix the null guard'] }, { verdict: 'LGTM' }], headSha: { 1: 'sha-abc123' } },
+  })
+  const error4 = eq('mixed: reason', mixed.reason, 'nick-no-op')
+  const error5 = eq('mixed: redChecks', mixed.redChecks, undefined)
+  const error6 = eq('mixed: items', mixed.items, [T459_RED, 'fix the null guard'])
+  return (error1 || error2 || error3 || error4 || error5 || error6) ? (error1 || error2 || error3 || error4 || error5 || error6) : { ok: true }
+})
+
+await testCase('T459c redChecks table: shapes, distinct checks, blank first line, 200-char cut', async () => {
+  const fns = t182Block()
+  if (!fns) return t182Skip('T459c')
+  const callback = fns.redChecks
+  const names = ['build-and-test', 'lint']
+  const errors = [
+    eq('empty items', callback([], names), []),
+    eq('non-array items', callback('build-and-test', names), []),
+    eq('empty names', callback(['build-and-test red'], []), []),
+    eq('non-array names', callback(['build-and-test red'], null), []),
+    eq('empty-string name never matches', callback(['anything'], ['']), []),
+    eq('two items, two checks', callback(['build-and-test is red', 'lint is red'], names), [
+      { check: 'build-and-test', reason: 'build-and-test is red' },
+      { check: 'lint', reason: 'lint is red' },
+    ]),
+    eq('two items, one check', callback(['build-and-test is red: a', 'build-and-test still red: b'], names), [{ check: 'build-and-test', reason: 'build-and-test is red: a' }]),
+    eq('blank first line skipped', callback(['\n  \n  lint failed: rule x\nmore'], names), [{ check: 'lint', reason: 'lint failed: rule x' }]),
+    eq('one item naming no check', callback(['lint is red', 'fix the guard'], names), []),
+    eq('200-char cut', callback(['lint ' + 'x'.repeat(300)], names)[0].reason.length, 200),
+  ]
+  const failed = errors.find((e) => e)
+  return failed || { ok: true }
 })
 
 // ── #228, #183 — verified-untickable terminal status ───────────────────────────────────────
