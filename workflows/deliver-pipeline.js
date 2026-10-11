@@ -2446,7 +2446,7 @@ const PROBE_REASON_HINTS = {
     'and the lgtmgate:probe agent type must be resolvable; fix the plugin install/session and relaunch',
   'cmd-mismatch': 'the copied PROBE line belongs to a different command than the engine composed (the copier altered the command); relaunch',
   'probe-run-not-found': 'no probe-run.cjs location: pass args.pluginRoot (absolute plugin root) or config.probeRunPath and relaunch',
-  'command-not-run': 'the probe command never ran (the shell rejected the typed command, or the plugin root probe-run.cjs predates --cmd-b64); check that pluginRoot is the current plugin and relaunch',
+  'command-not-run': 'the command did not run; relaunch once (if it repeats, check that pluginRoot is the current plugin: a probe-run.cjs older than --cmd-b64 never runs the command)',
   'unparseable-line': `the probe answered no PROBE line, or one that does not parse; ${PROBE_RELAUNCH}`,
   'name-mismatch': `the PROBE line names another probe than the one asked for; ${PROBE_RELAUNCH}`,
   'unparseable-verify': `the probe answered no VERIFY line, or one that does not parse; ${PROBE_RELAUNCH}`,
@@ -2544,6 +2544,14 @@ function sha256Hex(string_) {
   return H.map((x) => (x >>> 0).toString(16).padStart(8, '0')).join('')
 }
 // --- sha256Hex:end ---
+
+// --- probeNotRun:start --- (#478, pure)
+// probe-run's refusal record prints exit -1, the empty-output digest and a `refused:` cmd digest: nothing was executed.
+// A read probe names it command-not-run (relaunch once); a gated write keeps cmd-mismatch, which tickAcceptanceBoxes
+// retries once (#212).
+const EMPTY_OUTPUT_SHA256 = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
+function probeNotRun(parsed, want, gated) { return !gated && parsed.exit === -1 && parsed.sha === EMPTY_OUTPUT_SHA256 && parsed.cmd !== want }
+// --- probeNotRun:end ---
 
 // --- base64Utf8:start --- (pure & self-contained: standard padded base64 of the UTF-8 bytes, one line; the runtime has no Buffer)
 // #212: a long multi-line block travels on a command line as ONE token a copier cannot reflow; pr-write.sh decodes it
@@ -2736,6 +2744,7 @@ async function probe(name, command, { label, round = 0, onFail, noReuse = false,
     return fail(nv && !nv.ok && nv.reason === 'no-record' ? 'command-not-run' : 'unparseable-line')
   }
   if (parsed.name !== name) return fail('name-mismatch')
+  if (probeNotRun(parsed, want, gateCommand)) return fail('command-not-run')
   if (parsed.cmd !== want) return fail('cmd-mismatch')
   const verified = parseVerifyLine(result && result.verify)
   if (!verified) return fail('unparseable-verify')

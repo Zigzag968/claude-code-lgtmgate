@@ -2596,6 +2596,65 @@ await testCase('T420a PROBE_REASON_HINTS holds a one-line remedy for every probe
   return checks.find(c => c) || { ok: true }
 })
 
+// T478 (#478) — a probe line with exit -1 and the empty-output digest (probe-run's refusal record) ends command-not-run on a
+// read probe; a gated write keeps cmd-mismatch (tickAcceptanceBoxes retries it), a real different command stays cmd-mismatch.
+const t478Fns = (source) => {
+  const pStart = source.indexOf('const PROBE_LINE =')
+  const pEnd = source.indexOf('function parseVerifyLine')
+  const blk = extractBetween(source, '// --- probeNotRun:start ---', '// --- probeNotRun:end ---')
+  if (pStart < 0 || pEnd < 0 || !blk) return null
+  return new Function(source.slice(pStart, pEnd) + '\n' + blk + '\nreturn { parseProbeLine, probeNotRun, EMPTY_OUTPUT_SHA256 }')()
+}
+await testCase('T478a probeNotRun(): truth table over full PROBE lines (#478)', async () => {
+  const source = SUITE_ARGS.fpSource
+  if (!source) {
+    log('SKIP — T478a: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const f = t478Fns(source)
+  if (!f) return { ok: false, msg: 'probeNotRun block or PROBE_LINE parser not found in pipeline source' }
+  const empty = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
+  const want = 'a'.repeat(64)
+  const other = 'b'.repeat(64)
+  const line = (exit, sha, cmd) => `PROBE name=lines exit=${exit} sha=${sha} cmd=${cmd} json={"lines":[]}`
+  const run = (l, gated) => f.probeNotRun(f.parseProbeLine(l), want, gated)
+  const checks = [
+    eq('exit -1 + empty digest + other cmd, read probe', run(line(-1, empty, other), false), true),
+    eq('same line on a gated write keeps cmd-mismatch', run(line(-1, empty, other), true), false),
+    eq('exit 0 + other cmd (the 151 shape) stays cmd-mismatch', run(line(0, 'c'.repeat(64), other), false), false),
+    eq('exit -1 + non-empty digest', run(line(-1, 'c'.repeat(64), other), false), false),
+    eq('exit 1 + empty digest', run(line(1, empty, other), false), false),
+    eq('exit -1 + empty digest + cmd equal to want', run(line(-1, empty, want), false), false),
+  ]
+  return checks.find(c => c) || { ok: true }
+})
+await testCase('T478b probe(): command-not-run checked before cmd-mismatch, reads only, new hint, digest constant (#478)', async () => {
+  const source = SUITE_ARGS.fpSource
+  if (!source) {
+    log('SKIP — T478b: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const sha = extractBetween(source, '// --- sha256Hex:start ---', '// --- sha256Hex:end ---')
+  const f = t478Fns(source)
+  if (!sha || !f) return { ok: false, msg: 'sha256Hex or probeNotRun block not found in pipeline source' }
+  const call = source.indexOf("if (probeNotRun(parsed, want, gateCommand)) return fail('command-not-run')")
+  const mismatch = source.indexOf("if (parsed.cmd !== want) return fail('cmd-mismatch')")
+  const hints = (() => {
+    const s = source.indexOf('const PROBE_RELAUNCH =')
+    const e = source.indexOf('\nconst PROBE_SCHEMA')
+    return s < 0 || e < 0 ? null : new Function(source.slice(s, e) + '\nreturn PROBE_REASON_HINTS')()
+  })()
+  const hint = hints && hints['command-not-run']
+  const checks = [
+    eq('the remap call exists and passes gateCommand', call >= 0, true),
+    eq('it runs before the cmd-mismatch check', call >= 0 && call < mismatch, true),
+    eq('the constant is sha256 of the empty string', f.EMPTY_OUTPUT_SHA256, new Function(sha + "\nreturn sha256Hex('')")()),
+    eq('the command-not-run hint says relaunch once', typeof hint === 'string' && hint.includes('the command did not run; relaunch once'), true),
+    eq('the hint is one line', typeof hint === 'string' && !hint.includes('\n'), true),
+  ]
+  return checks.find(c => c) || { ok: true }
+})
+
 // T420b (#420) — Morgan's CI step names the configured checks, or, for an empty or absent ciChecks, the checks the PR head
 // reports (the ready gate's own scope) — never a fixed check name the repository may not have.
 await testCase('T420b Morgan CI step: empty or absent ciChecks names the reported checks, not build-and-test (#420)', async () => {

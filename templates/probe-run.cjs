@@ -23,7 +23,8 @@
 // model, so before it runs the script hashes the --cmd it was typed; a different digest means the copy is not the
 // composed command and NOTHING is executed: the record gets exit -1 and stderr `expect-cmd-mismatch`, and the PROBE
 // line is printed as usual. Its cmd= is the digest of `refused:` + the typed text, which can never equal the digest the
-// caller wanted, so the engine always names a refusal `cmd-mismatch` and can retry (the typed text stays in the record).
+// caller wanted, so the engine names a refused write `cmd-mismatch` and retries it, and a refused read (exit -1, empty-output digest)
+// `command-not-run` (#478); the typed text stays in the record.
 // The digest is compared in lowercase; a malformed one (not 64 hex characters) is a REFUSAL, not a usage error. A write
 // parser (WRITE_PARSERS) with no --expect-cmd at all is refused the same way: a dropped flag never gives an unchecked write.
 // Exec mode only (with --verify: usage).
