@@ -20,6 +20,7 @@
 
 const fs = require('fs')
 const nodePath = require('path')
+const { normalise, checkContent } = require('./lib/agent-context-text.cjs')
 
 const DIR = '.claude/lgtmgate'
 const ROLE_FILES = ['shared', 'sam', 'nick', 'morgan', 'theo', 'mia']
@@ -179,6 +180,25 @@ function detect(root) {
 
 // ---- propose -----------------------------------------------------------------------------------
 
+// The content screen of scripts/agent-context.cjs (the exported checkContent, no copy of its rules) run on the files the
+// proposal lists, as '<path>: <rule> at line N' (an unreadable or invalid UTF-8 file as the engine reports it).
+function screenRefusals(root, paths) {
+  const out = []
+  for (const p of paths) {
+    let text
+    try {
+      const file = nodePath.join(root, p)
+      if (!fs.lstatSync(file).isFile()) continue
+      text = normalise(fs.readFileSync(file))
+    } catch (error) {
+      if (error instanceof TypeError) out.push(`${p}: invalid-utf8 at line 0`)
+      continue
+    }
+    for (const r of checkContent(text)) out.push(`${p}: ${r}`)
+  }
+  return out
+}
+
 function propose(root, versionToWrite, lanes = []) {
   const d = detect(root)
   const list = (a) => (a.length ? a.join(', ') : 'none')
@@ -209,6 +229,9 @@ function propose(root, versionToWrite, lanes = []) {
       else lines.push(`  keep ${p} (edited by the owner, never touched)`)
     }
   }
+  const owned = [...d.rules.map((r) => r.path), ...d.existing.filter((entry) => entry.present && !entry.pristine).map((entry) => entry.path), ...d.laneFiles.filter((f) => !f.pristine).map((f) => f.path)]
+  const refused = screenRefusals(root, owned)
+  if (refused.length > 0) lines.push('refused by the content screen (/lgtmgate:deliver stops with exit 3 on these)', ...refused.map((r) => `  ${r}`))
   lines.push(
     'config (.claude/pipeline.config.json, a key is set only when absent or empty)',
     `  projectSpecifics: ${JSON.stringify(DIR)}`,

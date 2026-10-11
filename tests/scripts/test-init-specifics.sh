@@ -162,6 +162,20 @@ printf 'plain subject without frontmatter\n' > "$L/.claude/lgtmgate/nick.testing
 LH3=$(hint "$L")
 if ! printf '%s' "$LH3" | grep -q 'contradicts' && ! printf '%s' "$LH3" | grep -q 'declared but empty' && printf '%s' "$LH3" | grep -q 'config detected'; then ok "inject-stub-lane-silent: consistent and filled lanes, and files without frontmatter, add no line"; else bad "inject-stub-lane-silent: $LH3"; fi
 
+# ---- #408: --propose runs the content screen on the rule files and the owner-edited specifics ------------------------
+SWL='@Environment(\.horizontalSizeClass) private var horizontalSizeClass'
+D=$(tree -); mkdir -p "$D/.claude/rules"
+printf '# swift\n```swift\n%s\n```\n' "$SWL" > "$D/.claude/rules/fenced.md"
+node "$IS" --root "$D" --propose --plugin-version 9.9.9 > "$TMP/pf" 2>"$TMP/err"; rc=$?
+if [ "$rc" -eq 0 ] && ! grep -q 'content screen' "$TMP/pf" && ! grep -q 'at-line' "$TMP/pf"; then ok "propose-screen-fenced-at-line-silent"; else bad "propose-screen-fenced-at-line-silent (rc=$rc) $(cat "$TMP/pf")"; fi
+printf '# swift\n%s\n' "$SWL" > "$D/.claude/rules/bare.md"
+node "$IS" --root "$D" --propose --plugin-version 9.9.9 > "$TMP/pb" 2>"$TMP/err"; rc=$?
+if [ "$rc" -eq 0 ] && grep -qxF '  .claude/rules/bare.md: at-line at line 2' "$TMP/pb" && ! grep -qF 'fenced.md: ' "$TMP/pb" && [ ! -e "$D/.claude/lgtmgate" ]; then ok "propose-screen-unfenced-at-line-reported: named with its rule and line, nothing written"; else bad "propose-screen-unfenced-at-line-reported (rc=$rc) $(cat "$TMP/pb")"; fi
+node "$IS" --root "$D" > /dev/null 2>&1
+printf 'owner rules\n%s\n' "$SWL" > "$D/.claude/lgtmgate/nick.md"
+node "$IS" --root "$D" --propose --plugin-version 9.9.9 > "$TMP/po" 2>"$TMP/err"
+if grep -qxF '  .claude/lgtmgate/nick.md: at-line at line 2' "$TMP/po"; then ok "propose-screen-owner-edited-specifics: an edited role file is screened too"; else bad "propose-screen-owner-edited-specifics $(cat "$TMP/po")"; fi
+
 RESULT=ok; [ "$FAIL" -eq 0 ] || RESULT=fail
 echo "[test-init-specifics] status=${RESULT} passed=${PASS} failed=${FAIL}"
 [ "$FAIL" -eq 0 ]
