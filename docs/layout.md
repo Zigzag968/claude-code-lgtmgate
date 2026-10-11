@@ -28,3 +28,7 @@ The root folders are enforced by `.ls-lint.yml` and `node scripts/audit.cjs --ch
 - `skills/` ships with the plugin; `.claude/skills/` is repo-only (this repo's own maintainer skills, never shipped).
 - `fixtures/` and `plugins/*/tests/fixtures/` are the only fixture folders (`scripts/audit.cjs` `fixtures-location`).
 - A new root folder is added to `.ls-lint.yml` and to this page in the same change.
+
+## Checks
+
+- Checks: `node scripts/guards.cjs` and `bash tests/templates/test-canonical-guards.sh`; a failure names its rule.

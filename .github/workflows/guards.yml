@@ -101,6 +101,8 @@ jobs:
         run: bash tests/templates/test-gh-pipeline-status.sh
       - name: guards.cjs regression test
         run: bash tests/scripts/test-guards.sh
+      - name: consumer-reference guard test
+        run: bash tests/scripts/test-consumer-reference.sh
       - name: audit self-test
         run: bash tests/scripts/test-audit.sh
       - name: lead-merge script regression test

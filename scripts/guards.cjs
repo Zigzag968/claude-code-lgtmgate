@@ -74,9 +74,14 @@
 //      and refuses a NEW-RULE: a rule absent from the origin baseline, unless eslint.config.js, .ls-lint.yml or
 //      ruff.toml changes in the same branch (then the rule enters at its current level). Rule 1: `node scripts/audit.cjs --check` (size, naming, lint against that baseline); its lines are
 //      printed verbatim and a nonzero exit fails. A missing baseline FAILS. Needs `npm ci` and the pinned ruff.
+//   consumer-reference (#414): every configuration key, assembler refusal, run reason and hook message the code emits has a row with a
+//      remedy in docs/consumer-reference.md, or a name in scripts/consumer-reference-baseline.json; a row for a name the code no longer
+//      emits, an empty remedy, a baseline name that is gone or already has a row, and a baseline name absent from origin/main's baseline
+//      each FAIL. The rule lives in scripts/lib/consumer-reference.cjs.
 //
 // Env (test seams, all optional)
-//   GUARDS_ONLY            comma list among r1,wired,guard-steps,version,parity,budgets,instructions,status,phases,init-stubs,audit (default: all)
+//   GUARDS_ONLY            comma list among r1,wired,guard-steps,version,parity,budgets,instructions,status,phases,init-stubs,audit,consumer-reference (default: all)
+//   GUARDS_CONSUMER_BASELINE_BASE  base consumer-reference baseline file (default: git show origin/main:scripts/consumer-reference-baseline.json)
 //   GUARDS_BASE_YML        guards.yml used as the base for guard-steps (default: git show origin/main:.github/workflows/guards.yml)
 //   GUARDS_BASE_FILE       workflow file used as the base for R1 (default: git show origin/main:<file>)
 //   GUARDS_BRANCH_FILE     workflow file used as the branch for R1 (default: workflows/deliver-pipeline.js)
@@ -95,6 +100,7 @@
 const fs = require('fs')
 const path = require('path')
 const { countAgentCalls, countSimulateSeams, countRegexApps, parserMarkerErrors, ymlRunText, jobRunText, parseSemver, cmp, proseLines, importReferences, STATUS_SECTION, statusRegistryKeys, statusTableRows, declaredPhaseTitles } = require('./lib/guards-scan.cjs')
+const consumerReference = require('./lib/consumer-reference.cjs')
 const { execFileSync } = require('child_process')
 
 const ROOT = process.env.GUARDS_ROOT || path.resolve(__dirname, '..')
@@ -102,7 +108,7 @@ const WORKFLOW = 'workflows/deliver-pipeline.js'
 const MANIFEST = '.claude-plugin/plugin.json'
 const GUARDS_YML = '.github/workflows/guards.yml'
 const DELIVER_MD = 'skills/deliver/SKILL.md'
-const ONLY = process.env.GUARDS_ONLY ? process.env.GUARDS_ONLY.split(',') : ['r1', 'wired', 'guard-steps', 'version', 'parity', 'budgets', 'instructions', 'status', 'phases', 'init-stubs', 'audit']
+const ONLY = process.env.GUARDS_ONLY ? process.env.GUARDS_ONLY.split(',') : ['r1', 'wired', 'guard-steps', 'version', 'parity', 'budgets', 'instructions', 'status', 'phases', 'init-stubs', 'audit', 'consumer-reference']
 
 // Suites that are NOT named in guards.yml, each with its reason. Add a suite here only if it is
 // red on main (report it, do not wire it) or is run through another runner.
@@ -549,6 +555,25 @@ function checkAudit() {
   }
 }
 
+// ---- consumer-reference (#414) -----------------------------------------------------------------
+const CONSUMER_BASELINE = 'scripts/consumer-reference-baseline.json'
+function checkConsumerReference() {
+  const reference = readOr(path.join(ROOT, consumerReference.REFERENCE_PATH))
+  if (reference === null) { bad(`FAIL: consumer-reference: ${consumerReference.REFERENCE_PATH} missing`); return }
+  const baselineText = readOr(path.join(ROOT, CONSUMER_BASELINE))
+  const baseline = baselineText === null ? null : parseJsonOr(baselineText)
+  if (baseline === null || typeof baseline !== 'object') { bad(`FAIL: consumer-reference: ${CONSUMER_BASELINE} missing or invalid`); return }
+  const baseText = process.env.GUARDS_CONSUMER_BASELINE_BASE ? readOr(process.env.GUARDS_CONSUMER_BASELINE_BASE) : gitShow(CONSUMER_BASELINE)
+  if (baseText === null && !originResolves()) { bad(`FAIL: consumer-reference: cannot read base ${CONSUMER_BASELINE} (origin/main not resolvable) - run 'git fetch origin main' first`); return }
+  if (baseText === null) out('SKIP: consumer-reference baseline-vs-origin (no base baseline)')
+  const names = consumerReference.extractNames(ROOT)
+  const found = consumerReference.problems({ names, rows: consumerReference.parseReference(reference), baseline, baseBaseline: baseText === null ? null : parseJsonOr(baseText) || {} })
+  if (found.length) { for (const problem of found) bad(problem); return }
+  const total = Object.values(names).reduce((sum, list) => sum + list.length, 0)
+  const gaps = Object.values(baseline).reduce((sum, list) => sum + list.length, 0)
+  out(`PASS: consumer-reference: ${total} names, ${total - gaps} with a row, ${gaps} baseline gaps`)
+}
+
 if (ONLY.includes('r1')) checkR1()
 if (ONLY.includes('wired')) checkWired()
 if (ONLY.includes('guard-steps')) checkGuardSteps()
@@ -560,4 +585,5 @@ if (ONLY.includes('status')) checkStatusTable()
 if (ONLY.includes('phases')) checkPhaseTitles()
 if (ONLY.includes('init-stubs')) checkInitStubs()
 if (ONLY.includes('audit')) checkAudit()
+if (ONLY.includes('consumer-reference')) checkConsumerReference()
 process.exit(failed ? 1 : 0)
