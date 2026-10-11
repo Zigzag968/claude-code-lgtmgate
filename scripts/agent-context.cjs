@@ -53,6 +53,7 @@ const CAP_SHARED = 2048
 const CAP_TOTAL = 8192
 const CEILING = 65536
 const MAX_FILES = 8
+const PATHS_HINT = 'hint: paths takes paths: ["glob", "glob"] or a block list of strings (indented "- item" lines)'
 
 class Fail extends Error {
   constructor(code, errors) {
@@ -524,6 +525,7 @@ function main(argv) {
   } catch (error) {
     if (error instanceof Fail) {
       for (const m of error.errors) process.stderr.write(`agent-context: ${m}\n`)
+      if (error.errors.some((m) => /: frontmatter-(paths|syntax) at line \d+$/.test(m))) process.stderr.write(`agent-context: ${PATHS_HINT}\n`)
       return error.code
     }
     process.stderr.write(`agent-context: ${String(error && error.message ? error.message : error).split('\n')[0]}\n`)

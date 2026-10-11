@@ -33,6 +33,37 @@ const stripComments = (s) => {
 }
 const lineOf = (text, index) => text.slice(0, index).split('\n').length
 
+// One block-list item of `paths` -> its string, or null when it is not a plain, single- or double-quoted scalar.
+function pathsScalar(raw) {
+  const s = raw.trim()
+  if (s === '') return null
+  if (s.startsWith('"')) {
+    try { const v = JSON.parse(s); return typeof v === 'string' ? v : null } catch (error) { return null }
+  }
+  if (s.startsWith("'")) return s.length >= 2 && s.endsWith("'") && !s.slice(1, -1).includes("'") ? s.slice(1, -1) : null
+  if (/^[&*!|>]/.test(s) || s.includes(':') || /^-(\s|$)/.test(s)) return null
+  return s
+}
+
+// Reads the indented `- item` lines after an empty `paths:` -> {items (null when any item is refused), last (index of the last line consumed)}.
+function readPathsBlock(lines, from, close) {
+  const items = []
+  let bad = false
+  let indent = null
+  let last = from - 1
+  for (let index = from; index < close; index++) {
+    const m = /^( +)-(?:[ \t]+(.*))?$/.exec(lines[index])
+    if (!m) break
+    if (indent === null) indent = m[1].length
+    if (m[1].length < indent) break
+    last = index
+    const item = m[1].length === indent && m[2] !== undefined ? pathsScalar(m[2]) : null
+    if (item === null) bad = true
+    else items.push(item)
+  }
+  return { items: bad ? null : items, last }
+}
+
 // parseFrontmatter(text) -> {body, meta, errors}; meta = {lane?, persona?, hint?, paths?} or null (no key)
 const LANE_RE = /^[a-z0-9-]{1,24}$/
 function parseFrontmatter(text) {
@@ -59,11 +90,18 @@ function parseFrontmatter(text) {
     if (Object.prototype.hasOwnProperty.call(kv, key)) { errors.push(`frontmatter-duplicate-key at line ${index + 1}`); continue }
     if (/^[&*!|>]/.test(value)) { errors.push(`frontmatter-forbidden-value at line ${index + 1}`); continue }
     if (key === 'paths') {
+      const keyLine = index + 1
       let array
-      try { array = JSON.parse(value) } catch (error) { array = null }
-      if (!Array.isArray(array) || array.some((x) => typeof x !== 'string')) { errors.push(`frontmatter-paths at line ${index + 1}`); continue }
-      if (array.length > FM_PATHS_MAX) { errors.push(`frontmatter-paths-too-many at line ${index + 1}`); continue }
-      if (array.some((x) => x.length > FM_PATH_LEN)) { errors.push(`frontmatter-paths-entry-too-long at line ${index + 1}`); continue }
+      if (value === '') {
+        const listed = readPathsBlock(lines, index + 1, close)
+        index = listed.last
+        array = listed.items !== null && listed.items.length > 0 ? listed.items : null
+      } else {
+        try { array = JSON.parse(value) } catch (error) { array = null }
+      }
+      if (!Array.isArray(array) || array.some((x) => typeof x !== 'string')) { errors.push(`frontmatter-paths at line ${keyLine}`); continue }
+      if (array.length > FM_PATHS_MAX) { errors.push(`frontmatter-paths-too-many at line ${keyLine}`); continue }
+      if (array.some((x) => x.length > FM_PATH_LEN)) { errors.push(`frontmatter-paths-entry-too-long at line ${keyLine}`); continue }
       kv[key] = array
       continue
     }

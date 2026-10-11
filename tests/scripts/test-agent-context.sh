@@ -266,6 +266,53 @@ setcfg "$R" '{"baseBranch":"main","projectSpecifics":".claude/lgtmgate"}'; seal 
 run "$R"
 jtrue "lane-role-with-lanes-but-no-base: text is empty, the lane carries the content" 'j.roles.Nick.text===""&&j.roles.Nick.lanes.length===1&&j.roles.Nick.bytes===j.roles.Nick.lanes[0].bytes'
 
+# ---- paths block list (#407) --------------------------------------------------------------------------
+# paths_repo <dir> <frontmatter-body>: the base fixture plus sam.ios.md with `lane: ios` and the given extra frontmatter lines (printf %b), sealed
+paths_repo() {
+  new_repo "$1"
+  printf -- '---\nlane: ios\n%b---\nIOS-SAM-MARK plans screens.\n' "$2" > "$1/.claude/lgtmgate/sam.ios.md"
+  seal "$1"
+}
+R="$TMP/pb1"; paths_repo "$R" 'paths:\n  - "**/*.swift"\n  - "Sources/**"\n'
+run "$R"
+exit_is "paths-block-list-accepted: exit 0" 0
+jtrue "paths-block-list-same-array: the lane carries the inline form's array" 'JSON.stringify(j.roles.Sam.lanes[0].paths)===JSON.stringify(["**/*.swift","Sources/**"])'
+PB_DIGESTS=$(node -e 'const {parseFrontmatter,digestOf}=require(process.argv[1]);const d=(p)=>{const f=parseFrontmatter("---\nlane: ios\n"+p+"---\nbody\n");return digestOf("0".repeat(40),"Sam",f.body,[f.meta])};process.stdout.write(String(d("paths:\n  - \"**/*.swift\"\n  - \"Sources/**\"\n")===d("paths: [\"**/*.swift\", \"Sources/**\"]\n")))' "$AC")
+if [ "$PB_DIGESTS" = "true" ]; then ok "paths-block-list-same-digest: parseFrontmatter and digestOf give the inline form's value"; else bad "paths-block-list-same-digest: got [$PB_DIGESTS]"; fi
+R="$TMP/pb4"; paths_repo "$R" "paths:\n  - 'a/b'\n  - c/d\n  - \"e\"\n"
+run "$R"
+jtrue "paths-block-list-quote-styles: single-quoted and plain items give the same array" 'JSON.stringify(j.roles.Sam.lanes[0].paths)===JSON.stringify(["a/b","c/d","e"])'
+R="$TMP/pb5"; paths_repo "$R" 'paths:\n  - "e1"\n  - "e2"\n  - "e3"\n  - "e4"\n  - "e5"\n  - "e6"\n  - "e7"\n  - "e8"\n  - "e9"\n'
+run "$R"; exit_is "paths-block-list-nine-entries: exit 2" 2
+err_has "paths-block-list-nine-entries: names the rule" "frontmatter-paths-too-many at line 3"
+R="$TMP/pb7"; paths_repo "$R" "paths:\n  - \"$LONG80\"\n"
+run "$R"; exit_is "paths-block-list-long-entry: exit 2" 2
+err_has "paths-block-list-long-entry: names the rule" "frontmatter-paths-entry-too-long at line 3"
+R="$TMP/pb9"; paths_repo "$R" 'paths:\n  - - a\n'
+run "$R"; exit_is "paths-block-list-nested-list: exit 2" 2
+err_has "paths-block-list-nested-list: names the rule" "frontmatter-paths at line 3"
+R="$TMP/pb11"; paths_repo "$R" 'paths:\n  - &a x\n'
+run "$R"; exit_is "paths-block-list-anchor-item: exit 2" 2
+err_has "paths-block-list-anchor-item: names the rule" "frontmatter-paths at line 3"
+R="$TMP/pb13"; paths_repo "$R" 'paths: ["a"]\n  - b\n'
+run "$R"; exit_is "paths-block-list-after-inline-value: exit 2" 2
+err_has "paths-block-list-after-inline-value: names the rule" "frontmatter-syntax at line 4"
+R="$TMP/pb15"; paths_repo "$R" 'hint: x\n  - a\n'
+run "$R"; exit_is "paths-block-list-outside-paths: exit 2" 2
+err_has "paths-block-list-outside-paths: names the rule" "frontmatter-syntax at line 4"
+R="$TMP/pb17"; paths_repo "$R" 'paths:\n  - a:b\n'
+run "$R"; exit_is "paths-block-list-colon-item: exit 2" 2
+err_has "paths-block-list-colon-item: names the rule" "frontmatter-paths at line 3"
+R="$TMP/pb19"; paths_repo "$R" 'paths: src/**/*.swift\n'
+run "$R"
+if grep -F 'paths: [' "$ERR" | grep -qF 'block list'; then ok "paths-hint-names-both-forms: one line holds both"; else bad "paths-hint-names-both-forms: $(head -c 300 "$ERR")"; fi
+R="$TMP/pb20"; paths_repo "$R" 'paths: ["a"]\n  - b\n  - c\nbogus: x\n'
+run "$R"
+if [ "$(grep -cF 'block list' "$ERR")" = "1" ]; then ok "paths-hint-once: three refusals, one hint line"; else bad "paths-hint-once: $(head -c 400 "$ERR")"; fi
+R="$TMP/pb21"; paths_repo "$R" 'bogus: x\n'
+run "$R"
+if grep -qF 'frontmatter-unknown-key' "$ERR" && ! grep -qF 'block list' "$ERR"; then ok "paths-hint-absent-on-unrelated-refusal: no hint line"; else bad "paths-hint-absent-on-unrelated-refusal: $(head -c 300 "$ERR")"; fi
+
 # ---- engine helpers, extracted from the workflow like the digest parity block ------------------------------------
 SAFE_BLK="$(sed -n '/^\/\/ --- safePlanTargets:start ---/,/^\/\/ --- safePlanTargets:end ---/p' "$ROOT/workflows/deliver-pipeline.js")"
 OWD_BLK="$(sed -n '/^\/\/ --- oneWayDoor:start ---/,/^\/\/ --- oneWayDoor:end ---/p' "$ROOT/workflows/deliver-pipeline.js")"
