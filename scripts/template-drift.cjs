@@ -10,16 +10,17 @@
 // Stdout: zero or more `obsolete:` / `warn:` / `info:` lines, then either an `order:` block (some line asks for an
 //         action) or the single `next:` line, then the last line
 //         [template-drift] status=ok|warn read=<n> optional=<n> differs=<n> absent=<n>
-//         status=warn exactly when one line asks for an action (fix before / replace the import / decide).
+//         status=warn exactly when one line asks for an action (fix before / replace the import).
 
 const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')
 
 // One row per file a consumer may hold, relative to the consumer root and to the plugin root.
-// role: obsolete (init no longer copies it and no code reads it: remove it), read-by-engine (the engine runs it;
-//       `tokens` are what the engine parses in its output), optional (an install slot the engine does not read),
-//       legacy-name (an old spelling compared with the new template, never counted as a copy).
+// role: obsolete (init no longer copies it and no code reads it: remove it), fallback (the engine runs the plugin's
+//       own script when the Lead passes the plugin root, as /lgtmgate:deliver always does, and reads this copy only
+//       on a run without one), optional (an install slot the engine does not read), legacy-name (an old spelling
+//       compared with the new template, never counted as a copy).
 const ACCEPTANCE_RULE = '.claude/rules/pr-acceptance.md'
 const REMOVE_LATER = "remove at your convenience: the plugin's text prevails over this copy; remove it in your next pull request"
 const ACCEPTANCE_HOW = 'if it holds rules of your own: git mv .claude/rules/pr-acceptance.md .claude/rules/<name>-acceptance.md, delete the sections the plugin now carries (acceptance ids, the boxes returned by the reviewer and ticked by the workflow, verified-untickable, the human-gate tag, an empty acceptance block is a required change), keep the rules specific to the repository, list the file under agentContext["*"] when agents must read it for sure, then commit, push; otherwise git rm .claude/rules/pr-acceptance.md, commit, push'
@@ -27,16 +28,13 @@ const TARGETS = [
   { target: ACCEPTANCE_RULE, template: 'templates/pr-acceptance.md', role: 'obsolete', note: '', verdict: REMOVE_LATER, how: ACCEPTANCE_HOW },
   { target: '.claude/scripts/gh-pipeline-status.sh', template: 'templates/gh-pipeline-status.sh', role: 'obsolete', note: '', verdict: 'no effect on the run' },
   { target: '.claude/workflows/test-deliver-pipeline.js', template: 'templates/test-deliver-pipeline.js', role: 'obsolete', note: '', verdict: 'no effect on the run' },
-  { target: 'scripts/provision-worktree.sh', template: 'templates/provision-worktree.sh', role: 'read-by-engine', tokens: ['PROVISION-VERSION:2', 'LINKED ', 'MISSING-SRC ', '--soft'] },
+  { target: 'scripts/provision-worktree.sh', template: 'templates/provision-worktree.sh', role: 'fallback' },
   { target: '.claude/scripts/blocked-by-check.sh', template: 'templates/blocked-by-check.sh', role: 'optional' },
   { target: 'scripts/provision_worktree.sh', template: 'templates/provision-worktree.sh', role: 'legacy-name' }
 ]
 
 const NONE = 'no effect on the run'
-const DECIDE = 'decide: read the difference, keep a deliberate customisation, never overwrite'
-const PORT = 'fix before the run: port the new rules from the template into your copy, keep the rules specific to your repository, commit and push on the base branch'
-const INSTALL = 'fix before the run: run /lgtmgate:init (choose "complete"), then commit and push on the base branch'
-const ASKS = ['fix before the run', 'replace the import', 'decide:']
+const ASKS = ['fix before the run', 'replace the import']
 
 const ORDER = [
   'order: 1. fix the config first (the config-check output above)',
@@ -60,19 +58,6 @@ function exists(file) {
 function rootArgument(argv) {
   const index = argv.indexOf('--root')
   return index >= 0 ? argv[index + 1] : undefined
-}
-
-// Number of provision.extraLinks entries that are not optional (the engine passes them as hard links), null when unreadable.
-function requiredLinks(root) {
-  try {
-    const config = JSON.parse(fs.readFileSync(path.join(root, '.claude/pipeline.config.json'), 'utf8'))
-    const links = config && config.provision && config.provision.extraLinks
-    if (links === undefined) return 0
-    if (!Array.isArray(links)) return null
-    return links.filter((link) => !link || link.optional !== true).length
-  } catch (error) {
-    return null
-  }
 }
 
 // Consumer files (in this order) whose text imports the acceptance rule with an `@` import. Lines in a fenced code
@@ -133,36 +118,24 @@ function check(root, pluginRoot) {
       const fix = exists(path.join(root, 'scripts/provision-worktree.sh'))
         ? `clean up: git rm ${row.target}`
         : `rename it when convenient: git mv ${row.target} scripts/provision-worktree.sh`
-      const fallback = exists(path.join(root, 'scripts/provision-worktree.sh')) ? 'the new name wins' : 'the engine falls back to it while scripts/provision-worktree.sh is absent (the fallback goes under #364)'
+      const fallback = exists(path.join(root, 'scripts/provision-worktree.sh')) ? 'the new name wins' : 'when no plugin root is passed the engine falls back to it while scripts/provision-worktree.sh is absent (the fallback goes under #364)'
       lines.push(`info: ${row.target} [${row.role}] still present; ${fallback}; ${NONE}; ${fix}`)
       continue
     }
     if (!present) {
-      if (row.role === 'read-by-engine') {
-        count.absent++
-        if (exists(path.join(root, 'scripts/provision_worktree.sh'))) continue
-        const required = requiredLinks(root)
-        if (required === 0) lines.push(`info: ${row.target} [${row.role}] absent; no required provision.extraLinks entry is configured, so provisioning is skipped (PROVISION-SKIPPED-NO-SCRIPT); ${NONE}`)
-        else lines.push(`warn: ${row.target} [${row.role}] absent; a required provision.extraLinks entry stops the run at provisioning (PROVISION-NO-SCRIPT, exit 2); ${INSTALL}`)
-      } else {
-        count.absent++
-        lines.push(`info: ${row.target} [${row.role}] absent; the engine does not read it; ${NONE}`)
-      }
+      count.absent++
+      if (row.role === 'optional') lines.push(`info: ${row.target} [${row.role}] absent; the engine does not read it; ${NONE}`)
       continue
     }
-    if (row.role === 'read-by-engine') count.read++
+    if (row.role === 'fallback') count.read++
     else count.optional++
     if (digest(consumerFile) === digest(templateFile)) continue
     count.differs++
-    if (row.role === 'optional') {
-      lines.push(`info: ${row.target} [${row.role}] differs from the current template; the engine does not read it; ${NONE}; compare: ${compare}`)
+    if (row.role === 'fallback') {
+      lines.push(`info: ${row.target} [${row.role}] differs from the current template; the engine reads it only on a run without a plugin root; ${NONE} otherwise; compare: ${compare}`)
       continue
     }
-    const templateText = fs.readFileSync(templateFile, 'utf8')
-    const copyText = fs.readFileSync(consumerFile, 'utf8')
-    const lacking = row.tokens.find((token) => templateText.includes(token) && !copyText.includes(token))
-    if (lacking) lines.push(`warn: ${row.target} [${row.role}] differs from the current template and lacks '${lacking}', which the engine reads; compare: ${compare}; ${PORT}`)
-    else lines.push(`warn: ${row.target} [${row.role}] differs from the current template; compare: ${compare}; ${DECIDE}`)
+    lines.push(`info: ${row.target} [${row.role}] differs from the current template; the engine does not read it; ${NONE}; compare: ${compare}`)
   }
   for (const file of importsAcceptanceRule(root)) lines.push(`warn: ${file} imports ${ACCEPTANCE_RULE}; ${REMOVE_LATER}; replace the import by the new file name or delete the line, then commit and push`)
   const asks = lines.some((line) => ASKS.some((ask) => line.includes(ask)))

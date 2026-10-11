@@ -56,7 +56,13 @@ if (live) {
     if (root) e[k] = e[k].replace(/cmd=[0-9a-f]{64}/, 'cmd=' + sha(cmdFor(root)))
   }
   smoke.calls[VPROBE] = e
-  if (root) smoke.args.pluginRoot = root
+  if (root) {
+    smoke.args.pluginRoot = root
+    // #429: with a plugin root the provisioning probe runs the plugin's script, so its command (and cmd= digest) names that root
+    const PROV = 'probe-123-provision-provision-r0'
+    const provCmd = `(SCRIPT="${root}/templates/provision-worktree.sh"; if [ -f "$SCRIPT" ]; then PROVISION_ENV_SYMLINK="required" bash "$SCRIPT" "${smoke.args.wtPath}"; else echo "PROVISION-SKIPPED-NO-SCRIPT $SCRIPT (no provision.extraLinks configured - nothing to link)"; exit 0; fi) 2>&1`
+    for (const k of ['line', 'verify']) smoke.calls[PROV][k] = smoke.calls[PROV][k].replace(/cmd=[0-9a-f]{64}/, 'cmd=' + sha(provCmd))
+  }
 }
 const isSkew = mut === 'skewrun' || mut === 'stampskew'
 if (isSkew) for (const l of Object.keys(smoke.calls)) if (l !== VPROBE) delete smoke.calls[l]

@@ -74,8 +74,8 @@
       "verify": "VERIFY ok line=PROBE name=lines exit=0 sha=21249ccf86cf6dcb63777459ec1e7389f3b312cc5a786c5750469f76b8704ccf cmd=f1c91c83f9a578519acd89bd261f845f5f173eb26f2e60bc2fa5daf99ce1620f json={\"lines\":[\"SESSION-ROOT:same\"]}"
     },
     "probe-10-provision-provision-r0": {
-      "line": "PROBE name=provision exit=0 sha=4d92447c1231bc682cf29d4d5f85736a8470e7370052ea69f089d2969ad9da16 cmd=561012da722d8a2efc6b1badfc013d377e0358d0c6ff051a6b56bf141d797c85 json={\"version\":2,\"linked\":[\"node_modules\",\".venv\"],\"missing\":[],\"skipped\":false}",
-      "verify": "VERIFY ok line=PROBE name=provision exit=0 sha=4d92447c1231bc682cf29d4d5f85736a8470e7370052ea69f089d2969ad9da16 cmd=561012da722d8a2efc6b1badfc013d377e0358d0c6ff051a6b56bf141d797c85 json={\"version\":2,\"linked\":[\"node_modules\",\".venv\"],\"missing\":[],\"skipped\":false}"
+      "line": "PROBE name=provision exit=0 sha=4d92447c1231bc682cf29d4d5f85736a8470e7370052ea69f089d2969ad9da16 cmd=b682d374969f61b09bdf7f8b1763aeecbd0b0ef69e20c82a7ba0a3feda832f34 json={\"version\":2,\"linked\":[\"node_modules\",\".venv\"],\"missing\":[],\"skipped\":false}",
+      "verify": "VERIFY ok line=PROBE name=provision exit=0 sha=4d92447c1231bc682cf29d4d5f85736a8470e7370052ea69f089d2969ad9da16 cmd=b682d374969f61b09bdf7f8b1763aeecbd0b0ef69e20c82a7ba0a3feda832f34 json={\"version\":2,\"linked\":[\"node_modules\",\".venv\"],\"missing\":[],\"skipped\":false}"
     },
     "probe-10-provision-freshness-provision-freshness-r0": {
       "line": "PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b cmd=5430d2285cdf1982f619b08cf794226d4a3e082cac2ffdb9d7944e1ef1cbccc9 json={\"state\":\"fresh\",\"behind\":0,\"own\":0}",
