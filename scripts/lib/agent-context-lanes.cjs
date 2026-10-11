@@ -6,8 +6,45 @@
 // Remedy shown once per run next to a frontmatter-on-context-file refusal (agent-context.cjs and the init proposal).
 const CONTEXT_FILE_HINT = 'hint: a file listed in agentContext is plain text and takes no frontmatter; keep its rules as a lane file <role>.<lane>.md in the specifics folder with lane: (and paths:) in its frontmatter, or remove the frontmatter from the listed file'
 
+// The names the assembler reads in the folder, one definition for the listing and the warnings: <role>.md or <role>.<seg>[.<subject>].md.
+function ownsName(lower, name) {
+  return name === `${lower}.md` || new RegExp(`^${lower}\\.[A-Za-z0-9._-]+\\.md$`).test(name)
+}
+
+// Warnings that leave the payload and the exit code alone (`<rule>` = the kind). One sentence of remedy each, printed once per file and rule.
+const WARNING_REMEDY = {
+  'not-on-base-ref': 'The file is not on the base ref, so no role receives it; commit it and merge it into the base branch.',
+  'no-role-match': 'The name matches no <role>.md, <role>.<lane>.md or shared.md (lowercase role names), so the file is ignored; rename it, or list it in agentContext.',
+  'frontmatter-on-shared-file': 'shared.md takes no frontmatter and its keys are discarded; remove the frontmatter block.',
+  'lane-captured-from-other-role': 'The file joins a lane that only another role declares; give it its own lane: frontmatter, or rename it so its second segment is not that lane.',
+  'empty-ignored': 'The file holds only comments or blank lines and adds nothing; write the rules in it or delete it.',
+}
+function warningLines(warnings) {
+  const seen = new Set()
+  const lines = []
+  for (const w of warnings) {
+    const key = `${w.kind}\0${w.path}`
+    if (!WARNING_REMEDY[w.kind] || typeof w.path !== 'string' || seen.has(key)) continue
+    seen.add(key)
+    lines.push(`agent-context: warning: ${w.path}: ${w.kind}. ${WARNING_REMEDY[w.kind]}`)
+  }
+  return lines
+}
+
+// Files of the folder the assembler does not read, from the ref listing (`children`) and the working tree names:
+// -> [{kind, path}], names only, sorted. Dot files and sub-folders are not files of the rules.
+function folderWarnings(directory, roles, children, treeNames) {
+  const reads = (name) => name === 'shared.md' || roles.some((r) => ownsName(r.toLowerCase(), name))
+  const onRef = new Set(children.map((c) => c.name))
+  const out = []
+  for (const c of children) if (c.type !== 'tree' && !c.name.startsWith('.') && !reads(c.name)) out.push({ kind: 'no-role-match', path: `${directory}/${c.name}` })
+  for (const name of treeNames) if (!onRef.has(name) && reads(name)) out.push({ kind: 'not-on-base-ref', path: `${directory}/${name}` })
+  return out.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
+}
+
 // Which owned file belongs to which lane, and the metadata of each (role, lane) pair. Refusals are returned as `errors` (the caller exits 2 on any),
-// one `<path>: <rule> at line 1` each, never the value. Returns {laneOf: Map(path -> lane), meta: Map("Role:lane" -> md), errors}.
+// one `<path>: <rule> at line 1` each, never the value. Returns {laneOf: Map(path -> lane), meta: Map("Role:lane" -> md), captured, errors};
+// captured = the files that join a lane declared only by another role.
 function classifyLanes(roles, done, seqs, owned, directory) {
   const errs = []
   const ownedAll = new Set()
@@ -18,7 +55,7 @@ function classifyLanes(roles, done, seqs, owned, directory) {
     if (name === `${lower}.md`) return null
     return name.slice(lower.length + 1).split('.')[0]
   }
-  const declared = new Set()
+  const declared = new Map() // lane -> the roles that declare it
   for (const role of roles) for (const p of owned[role]) ownedAll.add(p)
   for (const role of roles) {
     for (const p of owned[role]) {
@@ -28,7 +65,7 @@ function classifyLanes(roles, done, seqs, owned, directory) {
       if (seg === null) { errs.push(`${p}: frontmatter-on-role-file at line 1`); continue }
       if (d.meta.lane !== undefined) {
         if (d.meta.lane !== seg) errs.push(`${p}: frontmatter-lane-mismatch at line 1`)
-        else declared.add(seg)
+        else declared.set(seg, (declared.get(seg) || new Set()).add(role))
       }
     }
     for (const p of seqs[role]) {
@@ -38,6 +75,7 @@ function classifyLanes(roles, done, seqs, owned, directory) {
     }
   }
   const laneOf = new Map()
+  const captured = []
   const pairs = new Map() // "Role:lane" -> [path]
   for (const role of roles) {
     for (const p of owned[role]) {
@@ -50,6 +88,7 @@ function classifyLanes(roles, done, seqs, owned, directory) {
         continue
       }
       laneOf.set(p, seg)
+      if (!declared.get(seg).has(role)) captured.push(p)
       const k = `${role}:${seg}`
       if (!pairs.has(k)) pairs.set(k, [])
       pairs.get(k).push(p)
@@ -77,7 +116,7 @@ function classifyLanes(roles, done, seqs, owned, directory) {
       else personas.set(low, k)
     }
   }
-  return { laneOf, meta, errors: errs }
+  return { laneOf, meta, captured, errors: errs }
 }
 
 // Display list, derived from the role blocks: one entry per lane name, the metadata of the first role
@@ -103,4 +142,4 @@ function laneSentence(persona, hint) {
   return typeof hint === 'string' && hint !== '' ? `In this lane you act as ${persona}, ${hint}.` : `In this lane you act as ${persona}.`
 }
 
-module.exports = { CONTEXT_FILE_HINT, classifyLanes, displayLanes, laneSentence }
+module.exports = { CONTEXT_FILE_HINT, ownsName, warningLines, folderWarnings, classifyLanes, displayLanes, laneSentence }

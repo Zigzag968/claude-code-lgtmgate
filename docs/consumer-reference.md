@@ -26,6 +26,18 @@ Every name a consumer can meet, with the remedy. A guard (`node scripts/guards.c
 | `folder-absent` | `resolveFiles` of `scripts/agent-context.cjs` | `<folder>: folder-absent at line 0`: the `projectSpecifics` folder is not in the commit tree | Create the folder and commit it, or fix the `projectSpecifics` path. |
 | `missing` | `byPath` of `scripts/agent-context.cjs` | `<path>: missing at line 0`: a file named in `agentContext` is not in the commit tree | Commit the file or fix its path in `agentContext`. |
 
+## Assembler warnings
+
+The assembler prints these on stderr as `agent-context: warning: <path>: <rule>. <remedy>`, once per file and rule, and repeats each in the `warnings` array of its JSON. The exit code stays 0 and no digest changes. The guard does not extract these names (they carry no `at line`), so it does not check these rows.
+
+| name | raised at | what the user sees | remedy |
+|---|---|---|---|
+| `not-on-base-ref` | `folderWarnings` of `scripts/lib/agent-context-lanes.cjs` | A file of the specifics folder is in the working tree but not on the base ref (untracked, or committed and not pushed): no role receives it | Commit the file and merge it into the base branch. |
+| `no-role-match` | `folderWarnings` of `scripts/lib/agent-context-lanes.cjs` | A file of the specifics folder on the base ref matches no `<role>.md`, `<role>.<lane>.md` or `shared.md` (a capital letter, another extension, a name that is not a role): it is ignored | Rename it after a role in lowercase, or list it in `agentContext`. |
+| `frontmatter-on-shared-file` | `assemble` of `scripts/agent-context.cjs` | `shared.md` opens with a frontmatter block: its keys are discarded | Remove the frontmatter from `shared.md`. |
+| `lane-captured-from-other-role` | `classifyLanes` of `scripts/lib/agent-context-lanes.cjs` | A file without frontmatter, such as `nick.ios.md`, joins the `ios` lane that only another role (`sam.ios.md`) declares | Give the file its own `lane:` frontmatter, or rename it so its second segment is not that lane. |
+| `empty-ignored` | `assemble` of `scripts/agent-context.cjs` | A file holds only comments or blank lines once its frontmatter is removed: it adds nothing | Write the rules in it or delete it. |
+
 ## Run reasons
 
 | name | raised at | what the user sees | remedy |

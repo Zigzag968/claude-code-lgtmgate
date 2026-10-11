@@ -32,6 +32,7 @@
 //        lanes}; text = the BASE; lanes = [{name, persona?, paths?, hint?, files, text, digest, bytes}], digest of a
 //        lane = digestOf(refSha, "<Role>:<name>", text, []); role bytes = base + the largest lane; top-level `lanes`,
 //        present only when a lane exists, = [{name, roles, persona?, paths?, hint?}] for display, covered by no digest).
+// Warnings: stderr `agent-context: warning: <path>: <rule>. <remedy>` once per file, mirrored in warnings[]; exit code and digests unchanged.
 // Exit:  0 ok (empty payload when the switch is off) · 2 args, config schema, unknown role, bad ref,
 //        frontmatter schema, nothing to accept · 3 file-level refusal (missing, symlink, submodule,
 //        tree, `..`, absolute, not .md, `@` line outside a closed fenced block, machine literal, invisible or control char, invalid
@@ -45,7 +46,7 @@ const fs = require('fs')
 const nodePath = require('path')
 const { execFileSync } = require('child_process')
 const { normalise, trimBlank, stripComments, parseFrontmatter, checkContent, canonicalJson, digestOf } = require('./lib/agent-context-text.cjs')
-const { CONTEXT_FILE_HINT, classifyLanes, displayLanes, laneSentence } = require('./lib/agent-context-lanes.cjs')
+const { CONTEXT_FILE_HINT, ownsName, warningLines, folderWarnings, classifyLanes, displayLanes, laneSentence } = require('./lib/agent-context-lanes.cjs')
 
 const ROLES = ['Mia', 'Sam', 'Nick', 'Morgan', 'Theo']
 const CAP_ROLE = 6144
@@ -225,8 +226,7 @@ function resolveFiles(root, sha, config, errs) {
   for (const role of ROLES) {
     const lower = role.toLowerCase()
     const own = []
-    const re = new RegExp(`^${lower}\\.[A-Za-z0-9._-]+\\.md$`)
-    const names = children.filter((c) => c.name === `${lower}.md` || re.test(c.name)).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+    const names = children.filter((c) => ownsName(lower, c.name)).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
     // role.md first, then role.*.md alphabetical
     names.sort((a, b) => (a.name === `${lower}.md` ? -1 : b.name === `${lower}.md` ? 1 : 0))
     if (names.length > MAX_FILES) errs.push(`${config.dir}/${lower}.*.md: too-many-files at line 0`)
@@ -240,7 +240,12 @@ function resolveFiles(root, sha, config, errs) {
     seqs[role] = [...own, ...starPaths, ...rolePaths]
     owned[role] = own
   }
-  return { files, sharedPath, seqs, owned }
+  return { files, sharedPath, seqs, owned, children }
+}
+
+// Names of the files in the working-tree folder (names only, nothing is read); [] when the folder is not there.
+function worktreeNames(root, directory) {
+  try { return fs.readdirSync(nodePath.join(root, directory), { withFileTypes: true }).filter((e) => !e.isDirectory()).map((e) => e.name) } catch (error) { return [] }
 }
 
 // Phase 4: bytes -> processed file {body, meta, empty}
@@ -323,7 +328,7 @@ function assemble(options) {
   if (!config.dir && !config.agentContext) return empty
 
   const errs = []
-  const { files, sharedPath, seqs, owned } = resolveFiles(root, sha, config, errs)
+  const { files, sharedPath, seqs, owned, children } = resolveFiles(root, sha, config, errs)
   if (errs.length) throw new Fail(3, errs)
   let total = 0
   for (const f of files.values()) total += f.bytes
@@ -342,6 +347,7 @@ function assemble(options) {
     if (d.empty) warnings.push({ kind: 'empty-ignored', path: f.path })
   }
 
+  if (sharedPath && done.get(sharedPath).meta) warnings.push({ kind: 'frontmatter-on-shared-file', path: sharedPath })
   let shared = null
   if (sharedPath && !done.get(sharedPath).empty) {
     const text = done.get(sharedPath).body
@@ -352,6 +358,8 @@ function assemble(options) {
 
   const cls = classifyLanes(ROLES, done, seqs, owned, config.dir)
   if (cls.errors.length) throw new Fail(2, cls.errors)
+  for (const p of cls.captured) warnings.push({ kind: 'lane-captured-from-other-role', path: p })
+  if (config.dir) warnings.push(...folderWarnings(config.dir, ROLES, children, worktreeNames(root, config.dir)))
 
   const accepted = { ...config.accepted, ...readLocalAccepts(options.local) }
   const { roles, maxRole } = buildRoleBlocks({ sha, sharedPath, seqs, owned, done, info, cls, accepted, warnings })
@@ -504,6 +512,7 @@ function main(argv) {
     const o = parseArguments(argv)
     if (o.lane !== null && !o.print) throw new Fail(2, ['--lane needs a role: --print <Role> --lane <name>'])
     const payload = assemble(o)
+    for (const line of warningLines(payload.warnings)) process.stderr.write(`${line}\n`)
     if (o.accept !== null) {
       process.stdout.write(JSON.stringify(acceptOversize(payload, o.accept, o.local)) + '\n')
     } else if (o.print !== null) {
