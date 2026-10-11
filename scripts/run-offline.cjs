@@ -389,6 +389,28 @@ async function replayFixture(fixture, run, { sites = false, prompts = false } = 
   return { result, error, logs, calls, missing, cursors, sites: siteList, phases }
 }
 
+// ---- probe prompts: shared with publish-fixture.cjs and lib/rehash-fixtures.cjs ----------------------
+
+// The command a probe prompt asks the probe agent to run: the text between ` --cmd ` and `\n2. cd `, un-quoted
+// from `'...'` (`'\''` is one quote). Plain indexOf parsing of the prompt the engine builds (probeCommands).
+function commandOfPrompt(prompt) {
+  if (typeof prompt !== 'string') return null
+  const end = prompt.indexOf('\n2. cd ')
+  if (end < 0) return null
+  // #338: the base64 form carries the same command as one bare token
+  const b64 = prompt.indexOf(' --cmd-b64 ')
+  if (b64 >= 0 && b64 < end) return Buffer.from(prompt.slice(b64 + 11, end), 'base64').toString('utf8')
+  const start = prompt.indexOf(' --cmd ')
+  if (start < 0 || start > end) return null
+  const q = prompt.slice(start + 7, end)
+  if (q.length < 2 || q[0] !== "'" || q[q.length - 1] !== "'") return null
+  return q.slice(1, -1).split("'\\''").join("'")
+}
+
+const CMD_RE = /cmd=([0-9a-f]{64})/
+const firstCommandHash = (s) => { const m = CMD_RE.exec(s); return m ? m[1] : null }
+const setCommandHash = (s, h) => s.replace(CMD_RE, `cmd=${h}`)
+
 async function runOne(fixturePath, fpSourceStripped) {
   const fixture = JSON.parse(fs.readFileSync(fixturePath, 'utf-8'))
   if (!fixture.name) fixture.name = path.basename(fixturePath, '.json')
@@ -511,7 +533,7 @@ async function main() {
 }
 
 // Required by scripts/publish-fixture.cjs; run as a CLI otherwise (spawned or direct use is unchanged).
-module.exports = { stripExports, buildPipelineRunner, replayFixture, engineVersionOf, engineVersionOfStamp, ENGINE_VERSION_RE, tokenizeVersionProbes, ENGINE_VERSION_TOKEN }
+module.exports = { commandOfPrompt, firstCommandHash, setCommandHash, stripExports, buildPipelineRunner, replayFixture, engineVersionOf, engineVersionOfStamp, ENGINE_VERSION_RE, tokenizeVersionProbes, ENGINE_VERSION_TOKEN }
 
 if (require.main === module) {
   main().catch((error) => {

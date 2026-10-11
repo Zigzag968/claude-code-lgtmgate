@@ -5,7 +5,7 @@
     "pluginRoot": "/cache/lgtmgate/current",
     "issue": 195,
     "brief": "a probe that printed no line must not be reported as an unreadable plugin version",
-    "wtPath": "/wt/root/issue-195",
+    "worktreePath": "/wt/root/issue-195",
     "config": {},
     "mode": "auto"
   },

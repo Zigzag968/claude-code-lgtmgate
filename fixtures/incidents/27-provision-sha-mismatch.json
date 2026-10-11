@@ -5,7 +5,7 @@
     "pluginRoot": "/plugin",
     "issue": 27,
     "brief": "provision must not trust a contaminated relay",
-    "wtPath": "/wt/root/issue-27",
+    "worktreePath": "/wt/root/issue-27",
     "config": {},
     "mode": "auto"
   },

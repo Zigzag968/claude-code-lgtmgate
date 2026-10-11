@@ -273,8 +273,8 @@ print(m.group(0) if m else '')
 " 2>/dev/null)"
   if [ -z "$WRR_WINDOW" ]; then
     fail "worktree-root-resolver" "sentinel window resolveWorktreeRoot:start/:end not found in $WORKFLOW_FILE"
-  elif ! grep -q 'const worktreeRoot = resolveWorktreeRoot({ env: runtimeEnvironment, configLocal, config, wtPath })' "$WORKFLOW_FILE"; then
-    fail "worktree-root-resolver" "call site 'const worktreeRoot = resolveWorktreeRoot({ env: runtimeEnvironment, configLocal, config, wtPath })' missing in $WORKFLOW_FILE"
+  elif ! grep -q 'const worktreeRoot = resolveWorktreeRoot({ env: runtimeEnvironment, configLocal, config, wtPath: worktreePath })' "$WORKFLOW_FILE"; then
+    fail "worktree-root-resolver" "call site 'const worktreeRoot = resolveWorktreeRoot({ env: runtimeEnvironment, configLocal, config, wtPath: worktreePath })' missing in $WORKFLOW_FILE"
   elif ! grep -q 'worktree root: ${worktreeRoot}' "$WORKFLOW_FILE"; then
     fail "worktree-root-resolver" "Dev-stage interpolation 'worktree root: \${worktreeRoot}' missing in $WORKFLOW_FILE"
   elif echo "$WRR_WINDOW" | grep -qE 'require\(|readFileSync|import fs|__dirname'; then

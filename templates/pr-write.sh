@@ -14,7 +14,8 @@
 # The PR body never transits a model reply: it moves through files under .pipeline/ only (#87).
 #
 # Usage:
-#   bash pr-write.sh <op> [--wt DIR] [--repo OWNER/REPO] <op args>
+#   bash pr-write.sh <op> [--worktree DIR] [--repo OWNER/REPO] <op args>
+# The abbreviated old spelling of the worktree flag is still accepted.
 #
 # Ops:
 #   issue-comment --number N --marker M --body B
@@ -53,7 +54,7 @@ OP="${1:-}"
 WORKTREE=""; REPO=""; PR=""; NUMBER=""; MARKER=""; BODY=""; ID=""; ISSUE=""; PROJECT_NUMBER=""; PID=""; FID=""; OID=""; MODE=""; TEXT=""; TEXT_B64=""; EXPECT=""; IDS=""; KEEP=""
 while [ $# -gt 0 ]; do
   case "$1" in
-    --wt) WORKTREE="${2:-}" ;;
+    --wt|--worktree) WORKTREE="${2:-}" ;;
     --repo) REPO="${2:-}" ;;
     --pr) PR="${2:-}" ;;
     --number) NUMBER="${2:-}" ;;

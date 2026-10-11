@@ -94,6 +94,9 @@ GHEOF
   ok=0
   [ "$(printf '%s' "$OUT2" | jq -c '[(.openIssues | map(.number)), .openIssuesTruncated]')" = '[[90,91],false]' ] && ok=1
   check "pr-state.sh: --since lists the open issues created in the window (number, createdAt, url only)" "$ok"
+  OUT_NEW="$(PATH="$PSD/bin:$PATH" bash "$PS" --pr 7 --worktree "$PSD/wt" --repo o/r)"
+  ok=0; [ -n "$OUT_NEW" ] && [ "$(printf '%s' "$OUT" | jq -cS 'del(.now)')" = "$(printf '%s' "$OUT_NEW" | jq -cS 'del(.now)')" ] && ok=1
+  check "[worktree-flag] pr-state.sh: old and new spelling give the same JSON (bar the clock)" "$ok"
   ok=0
   [ "$(printf '%s' "$OUT" | jq -r .bodyDigest)" = "$(printf '%s' "$OUT2" | jq -r .bodyDigest)" ] && ok=1
   check "pr-state.sh: bodyDigest is stable for an unchanged body" "$ok"

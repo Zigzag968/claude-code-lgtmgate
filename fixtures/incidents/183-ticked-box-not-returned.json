@@ -5,7 +5,7 @@
     "pluginRoot": "/plugin",
     "issue": 123,
     "brief": "fix slugify accents",
-    "wtPath": "/wt/root/issue-123",
+    "worktreePath": "/wt/root/issue-123",
     "config": {},
     "mode": "semi",
     "entryStage": "review",
@@ -22,8 +22,8 @@
       "verify": "VERIFY ok line=PROBE name=provision exit=0 sha=30ad404e7bf922808eeb13427c66400303e810a9392f80082fb0abe2fc6fc271 cmd=db6fbcd27fc949fce2354699dba657b6761291af184ae5890b1a9fbfaefc9360 json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}"
     },
     "probe-123-preflight-branch-r0": {
-      "line": "PROBE name=preflight exit=0 sha=5fbfdf840750936170ea0caa2986e56765751306cca75f230cff37f141b42cdc cmd=874136047142387c5b6bcbcfedfb7409c9281ae2d4ac8c60d8821a85d66f30be json={\"mode\":\"branch\",\"headRef\":\"features/issue-123\",\"branchPrefix\":\"\"}",
-      "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=5fbfdf840750936170ea0caa2986e56765751306cca75f230cff37f141b42cdc cmd=874136047142387c5b6bcbcfedfb7409c9281ae2d4ac8c60d8821a85d66f30be json={\"mode\":\"branch\",\"headRef\":\"features/issue-123\",\"branchPrefix\":\"\"}"
+      "line": "PROBE name=preflight exit=0 sha=5fbfdf840750936170ea0caa2986e56765751306cca75f230cff37f141b42cdc cmd=94f98655338c8a428d042285fd56044fc2fd64bd8ddf482a4f716edeea3c119a json={\"mode\":\"branch\",\"headRef\":\"features/issue-123\",\"branchPrefix\":\"\"}",
+      "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=5fbfdf840750936170ea0caa2986e56765751306cca75f230cff37f141b42cdc cmd=94f98655338c8a428d042285fd56044fc2fd64bd8ddf482a4f716edeea3c119a json={\"mode\":\"branch\",\"headRef\":\"features/issue-123\",\"branchPrefix\":\"\"}"
     },
     "probe-123-git-rev-list-count-worktree-behind-42-r0": {
       "line": "PROBE name=git-rev-list-count exit=0 sha=9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa cmd=d1ca345e79cacf118e64a5df40a87ec31be05bea90c48c93931f5e6436b558e0 json={\"count\":0}",
@@ -35,8 +35,8 @@
       "testCommandRun": "run the unit tests"
     },
     "probe-123-pr-state-window-start-r0": {
-      "line": "PROBE name=pr-state exit=0 sha=3db97813d3f35e5488d7bd0a4df525f2043fbb38bec5e1283d69931d12b70ced cmd=a6068f1217b0ad386dd338d47c4801b97bb7ca8a67ef63eb999ea9f1b34d5c8d json={\"now\":\"2026-01-01T00:00:00Z\",\"headRefName\":\"features/issue-123\",\"headRefOid\":\"abc123def456\",\"bodyDigest\":\"0123456789ab\",\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-01-01T00:30:00Z\",\"commitCount\":1,\"reviewCommentIds\":[],\"openIssues\":null,\"openIssuesTruncated\":false}",
-      "verify": "VERIFY ok line=PROBE name=pr-state exit=0 sha=3db97813d3f35e5488d7bd0a4df525f2043fbb38bec5e1283d69931d12b70ced cmd=a6068f1217b0ad386dd338d47c4801b97bb7ca8a67ef63eb999ea9f1b34d5c8d json={\"now\":\"2026-01-01T00:00:00Z\",\"headRefName\":\"features/issue-123\",\"headRefOid\":\"abc123def456\",\"bodyDigest\":\"0123456789ab\",\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-01-01T00:30:00Z\",\"commitCount\":1,\"reviewCommentIds\":[],\"openIssues\":null,\"openIssuesTruncated\":false}"
+      "line": "PROBE name=pr-state exit=0 sha=3db97813d3f35e5488d7bd0a4df525f2043fbb38bec5e1283d69931d12b70ced cmd=e64ba8e51b13dd5654fd9d6c653039638d65beab597449c63e586045b6399d9b json={\"now\":\"2026-01-01T00:00:00Z\",\"headRefName\":\"features/issue-123\",\"headRefOid\":\"abc123def456\",\"bodyDigest\":\"0123456789ab\",\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-01-01T00:30:00Z\",\"commitCount\":1,\"reviewCommentIds\":[],\"openIssues\":null,\"openIssuesTruncated\":false}",
+      "verify": "VERIFY ok line=PROBE name=pr-state exit=0 sha=3db97813d3f35e5488d7bd0a4df525f2043fbb38bec5e1283d69931d12b70ced cmd=e64ba8e51b13dd5654fd9d6c653039638d65beab597449c63e586045b6399d9b json={\"now\":\"2026-01-01T00:00:00Z\",\"headRefName\":\"features/issue-123\",\"headRefOid\":\"abc123def456\",\"bodyDigest\":\"0123456789ab\",\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-01-01T00:30:00Z\",\"commitCount\":1,\"reviewCommentIds\":[],\"openIssues\":null,\"openIssuesTruncated\":false}"
     },
     "morgan-pr-123-42-r0": {
       "verdict": "LGTM",
@@ -46,16 +46,16 @@
       "artifactProofs": []
     },
     "probe-123-pr-state-window-end-r0": {
-      "line": "PROBE name=pr-state exit=0 sha=a2ecf0cc9d123582b92813d2aaafa231fa1201ab8e083ba1ff8d690d08376805 cmd=731942dac290e94f31001933fe1e165779b8d4260dc3372bb918b7e1a6c65125 json={\"now\":\"2026-01-01T01:00:00Z\",\"headRefName\":\"features/issue-123\",\"headRefOid\":\"abc123def456\",\"bodyDigest\":\"0123456789ab\",\"acceptanceChecked\":[1],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-01-01T00:30:00Z\",\"commitCount\":1,\"reviewCommentIds\":[],\"openIssues\":[],\"openIssuesTruncated\":false}",
-      "verify": "VERIFY ok line=PROBE name=pr-state exit=0 sha=a2ecf0cc9d123582b92813d2aaafa231fa1201ab8e083ba1ff8d690d08376805 cmd=731942dac290e94f31001933fe1e165779b8d4260dc3372bb918b7e1a6c65125 json={\"now\":\"2026-01-01T01:00:00Z\",\"headRefName\":\"features/issue-123\",\"headRefOid\":\"abc123def456\",\"bodyDigest\":\"0123456789ab\",\"acceptanceChecked\":[1],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-01-01T00:30:00Z\",\"commitCount\":1,\"reviewCommentIds\":[],\"openIssues\":[],\"openIssuesTruncated\":false}"
+      "line": "PROBE name=pr-state exit=0 sha=a2ecf0cc9d123582b92813d2aaafa231fa1201ab8e083ba1ff8d690d08376805 cmd=6705dafcd64f6965d367d994f7c007d69b4dd94d78786776446dcbbb42045cde json={\"now\":\"2026-01-01T01:00:00Z\",\"headRefName\":\"features/issue-123\",\"headRefOid\":\"abc123def456\",\"bodyDigest\":\"0123456789ab\",\"acceptanceChecked\":[1],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-01-01T00:30:00Z\",\"commitCount\":1,\"reviewCommentIds\":[],\"openIssues\":[],\"openIssuesTruncated\":false}",
+      "verify": "VERIFY ok line=PROBE name=pr-state exit=0 sha=a2ecf0cc9d123582b92813d2aaafa231fa1201ab8e083ba1ff8d690d08376805 cmd=6705dafcd64f6965d367d994f7c007d69b4dd94d78786776446dcbbb42045cde json={\"now\":\"2026-01-01T01:00:00Z\",\"headRefName\":\"features/issue-123\",\"headRefOid\":\"abc123def456\",\"bodyDigest\":\"0123456789ab\",\"acceptanceChecked\":[1],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-01-01T00:30:00Z\",\"commitCount\":1,\"reviewCommentIds\":[],\"openIssues\":[],\"openIssuesTruncated\":false}"
     },
     "probe-123-pr-write-decision-log-r0": {
       "line": "PROBE name=pr-write exit=0 sha=0774fad4714f3978deed785c2de6fd25ce5cf3d7d8c46b32d362616459f0cde0 cmd=f376e3fdb86b7d91e48693d506c2c881a7bb80543454bc86e5ab42208bf8a06a json={\"op\":\"body-splice\",\"result\":\"written\",\"reason\":null,\"bytes\":1234}",
       "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=0774fad4714f3978deed785c2de6fd25ce5cf3d7d8c46b32d362616459f0cde0 cmd=f376e3fdb86b7d91e48693d506c2c881a7bb80543454bc86e5ab42208bf8a06a json={\"op\":\"body-splice\",\"result\":\"written\",\"reason\":null,\"bytes\":1234}"
     },
     "probe-123-pr-write-acceptance-tick-r0": {
-      "line": "PROBE name=pr-write exit=0 sha=d272e034505a9eea2bb36b11779eeb1fd77847a079c71cd583a11197d3a3eb42 cmd=ac41dcf8ab9d8d3d68ee9295978a366310f6a33b052c9f093a67cb5831579dcf json={\"op\":\"body-splice\",\"result\":\"skipped\",\"reason\":\"unchanged\",\"bytes\":null}",
-      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=d272e034505a9eea2bb36b11779eeb1fd77847a079c71cd583a11197d3a3eb42 cmd=ac41dcf8ab9d8d3d68ee9295978a366310f6a33b052c9f093a67cb5831579dcf json={\"op\":\"body-splice\",\"result\":\"skipped\",\"reason\":\"unchanged\",\"bytes\":null}"
+      "line": "PROBE name=pr-write exit=0 sha=d272e034505a9eea2bb36b11779eeb1fd77847a079c71cd583a11197d3a3eb42 cmd=f0a993a85313b078c397715449fbdd6c423d3ebefa24913cc1005764a3e82f4b json={\"op\":\"body-splice\",\"result\":\"skipped\",\"reason\":\"unchanged\",\"bytes\":null}",
+      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=d272e034505a9eea2bb36b11779eeb1fd77847a079c71cd583a11197d3a3eb42 cmd=f0a993a85313b078c397715449fbdd6c423d3ebefa24913cc1005764a3e82f4b json={\"op\":\"body-splice\",\"result\":\"skipped\",\"reason\":\"unchanged\",\"bytes\":null}"
     },
     "probe-123-lines-config-project-recheck-r0": {
       "line": "PROBE name=lines exit=1 sha=da14e2853923ece193a3486a739f1f8c976028ca04facc681b98671e83078760 cmd=c5c02b6f6ba24a10fca25807cc8074aaf1416abf9363a69e1e7c13f8f206e222 json={\"lines\":[]}",

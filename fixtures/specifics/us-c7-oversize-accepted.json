@@ -7,7 +7,7 @@
         "pluginRoot": "/plugin",
         "issue": 80,
         "brief": "probe foundation",
-        "wtPath": "/wt/root/issue-80",
+        "worktreePath": "/wt/root/issue-80",
         "config": {
           "branchPrefix": "features/",
           "projectSpecifics": ".claude/lgtmgate"
@@ -66,7 +66,7 @@
         "pluginRoot": "/plugin",
         "issue": 80,
         "brief": "probe foundation",
-        "wtPath": "/wt/root/issue-80",
+        "worktreePath": "/wt/root/issue-80",
         "config": {
           "branchPrefix": "features/",
           "projectSpecifics": ".claude/lgtmgate"

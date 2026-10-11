@@ -84,7 +84,7 @@ const CONFIG = {
 }
 
 // Base args shared across all cases
-const BASE = { issue: 1, brief: 'test feature', wtPath: '/tmp/lgtmgate-test', config: CONFIG }
+const BASE = { issue: 1, brief: 'test feature', worktreePath: '/tmp/lgtmgate-test', config: CONFIG }
 
 // Run a pipeline case and return its result.
 // `workflow('<name>')` resolves through the workflow REGISTRY — the copy in the checkout the
@@ -1809,7 +1809,7 @@ await testCase("T9005e a committedInPr proof must appear in the PR's changed fil
   const b1 = eq('path in files: status', b.status, 'ready')
   const c = await withFiles({ floor: ARTIFACT_FLOOR, files: [ARTIFACT_PROOF_PATH] }, { ...old, path: './' + ARTIFACT_PROOF_PATH })
   const c1 = eq('./ spelling: status', c.status, 'ready')
-  const d = await withFiles({ floor: ARTIFACT_FLOOR, files: [ARTIFACT_PROOF_PATH] }, { ...old, path: BASE.wtPath + '/' + ARTIFACT_PROOF_PATH })
+  const d = await withFiles({ floor: ARTIFACT_FLOOR, files: [ARTIFACT_PROOF_PATH] }, { ...old, path: BASE.worktreePath + '/' + ARTIFACT_PROOF_PATH })
   const d1 = eq('worktree-absolute spelling: status', d.status, 'ready')
   const noList = await withFiles(ARTIFACT_FLOOR)
   const noList1 = eq('no list (string seam): status', noList.status, 'ready')
@@ -1830,7 +1830,7 @@ await testCase('T9005d artifactProofStep qualifies both freshness sentences and 
   const index_ = index < 0 ? -1 : source.indexOf('// Worktree freshness probe', index)
   const step = index < 0 || index_ < 0 ? '' : source.slice(index, index_)
   const error1 = eq('qualifier count', step.split('(except a file committed in the PR, below)').length - 1, 2)
-  const error2 = includes('git -C form', step, 'git -C "${wtPath}" diff --name-only origin/${baseBranch}...HEAD')
+  const error2 = includes('git -C form', step, 'git -C "${worktreePath}" diff --name-only origin/${baseBranch}...HEAD')
   return error1 || error2 || { ok: true }
 })
 
@@ -2727,7 +2727,7 @@ await testCase('T195d the check runs first, only when the templates come from pl
   const checks = [
     eq('gate precedes the provision probe', indexGate < indexProvision, true),
     eq('gate reads the manifest through probe(lines) with noReuse', body.includes("probe('lines', pluginVersionCommand(pluginRoot), { label: 'plugin-version', noReuse: true, b64: true"), true),
-    eq('the session-root probe is delivered as --cmd-b64 too (#338)', source.includes("probe('lines', sessionRootCommand(sessionRoot, wtPath), { label: 'session-root', noReuse: true, b64: true"), true),
+    eq('the session-root probe is delivered as --cmd-b64 too (#338)', source.includes("probe('lines', sessionRootCommand(sessionRoot, worktreePath), { label: 'session-root', noReuse: true, b64: true"), true),
     eq('gate escalates on the existing status', body.includes("finish(STATUS['escalate'], { reason: skew.reason"), true),
     eq('the root path travels in its own result field, not in the reason', body.includes("{ reason: skew.reason, issue, pluginRoot, trace }"), true),
     eq('a failure of the probe itself keeps the provision-failed signature', body.includes("reason: 'provision-failed', issue, missing: [], exitCode: null, probeReason: pv.probeFailed, probeHint: PROBE_REASON_HINTS[pv.probeFailed]"), true),
@@ -2816,7 +2816,7 @@ await testCase('T177b the gate runs before provisioning and any agent call, only
     eq('gate follows the plugin-version gate', indexPlugin >= 0 && indexPlugin < indexGate, true),
     eq('gate precedes the provision probe', indexGate < indexProvision, true),
     eq('gate precedes the entryStage re-check', indexRecheck > indexGate, true),
-    eq('gate reads through probe(lines) with noReuse', body.includes("probe('lines', sessionRootCommand(sessionRoot, wtPath), { label: 'session-root', noReuse: true"), true),
+    eq('gate reads through probe(lines) with noReuse', body.includes("probe('lines', sessionRootCommand(sessionRoot, worktreePath), { label: 'session-root', noReuse: true"), true),
     eq('gate escalates on the existing status with the verdict reason', body.includes("finish(STATUS['escalate'], { reason: srv.reason"), true),
     eq('gate writes no label and makes no agent call', body.includes('updateStatus') || body.includes('prWrite') || body.includes('agent('), false),
     eq('the reason is named in the source', source.includes("code: 'session-root-mismatch'"), true),
@@ -3110,7 +3110,7 @@ await testCase('T269 explicit empty config object {} is still accepted (dry-run)
 await testCase('T71a resolveWorktreeRoot: relative logical default -> absolute in the Nick brief', async () => {
   const r = await run({
     mode: 'auto',
-    wtPath: '/tmp/lgtmgate-worktrees/issue-1',
+    worktreePath: '/tmp/lgtmgate-worktrees/issue-1',
     config: { ...CONFIG, worktreeRoot: 'worktrees/lgtmgate' },
     simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] },
   })
@@ -4401,7 +4401,7 @@ await testCase('T104e provisioning command executed: a present script runs, a le
         fileSystem.writeFileSync(pathModule.join(worktree, 'scripts', scriptName), `echo ${marker}\n`)
       }
       const r = await run({
-        wtPath: worktree,
+        worktreePath: worktree,
         mode: 'auto',
         config: { ...CONFIG, provision: { extraLinks } },
         simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] },
@@ -4449,7 +4449,7 @@ const t429Execute = async ({ withPluginRoot, pluginScript, copyScript, extraLink
     if (pluginScript) fileSystem.writeFileSync(pathModule.join(pluginRoot, 'templates', 'provision-worktree.sh'), 'echo STUB-PLUGIN\n')
     if (copyScript) fileSystem.writeFileSync(pathModule.join(worktree, 'scripts', 'provision-worktree.sh'), 'echo STUB-COPY\n')
     const r = await run({
-      wtPath: worktree,
+      worktreePath: worktree,
       ...(withPluginRoot ? { pluginRoot } : {}),
       mode: 'auto',
       config: { ...CONFIG, provision: { extraLinks } },
@@ -4525,8 +4525,8 @@ await testCase('T429e provision with a plugin root whose script is absent, a har
 })
 
 await testCase('T429f provision command with a plugin root names the plugin script, and the worktree copy without one (#429)', async () => {
-  const withRoot = await run({ wtPath: '/wt', pluginRoot: '/plug', mode: 'auto', config: { ...CONFIG, provision: { extraLinks: T429_LINK } }, simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] } })
-  const noRoot = await run({ wtPath: '/wt', mode: 'auto', config: { ...CONFIG, provision: { extraLinks: T429_LINK } }, simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] } })
+  const withRoot = await run({ worktreePath: '/wt', pluginRoot: '/plug', mode: 'auto', config: { ...CONFIG, provision: { extraLinks: T429_LINK } }, simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] } })
+  const noRoot = await run({ worktreePath: '/wt', mode: 'auto', config: { ...CONFIG, provision: { extraLinks: T429_LINK } }, simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] } })
   const failure = [
     includes('names the plugin script', withRoot.provisionCmdPreview, 'SCRIPT="/plug/templates/provision-worktree.sh"; if [ -f "$SCRIPT" ]'),
     includes('without a root the worktree copy is named', noRoot.provisionCmdPreview, 'SCRIPT="/wt/scripts/provision-worktree.sh"; if [ -f "$SCRIPT" ]'),
@@ -4534,6 +4534,28 @@ await testCase('T429f provision command with a plugin root names the plugin scri
   return failure ? failure : { ok: true }
 })
 
+
+await testCase('T337a the old args key alone still launches: same status and same provision command as the new key (#337)', async () => {
+  const options = { mode: 'auto', config: { ...CONFIG, provision: { extraLinks: T429_LINK } }, simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] } }
+  const viaNew = await run({ worktreePath: '/wt', ...options })
+  const viaOld = await run({ worktreePath: undefined, wtPath: '/wt', ...options })
+  const failure = [
+    eq('the new key reaches the provision command', viaNew.provisionCmdPreview.includes('/wt/scripts/provision-worktree.sh'), true),
+    eq('same status', viaOld.status, viaNew.status),
+    eq('same provision command', viaOld.provisionCmdPreview, viaNew.provisionCmdPreview),
+  ].find(Boolean)
+  return failure ? failure : { ok: true }
+})
+
+await testCase('T337b both args keys given: the new key wins (#337)', async () => {
+  const options = { mode: 'auto', config: { ...CONFIG, provision: { extraLinks: T429_LINK } }, simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] } }
+  const both = await run({ worktreePath: '/wt', wtPath: '/other', ...options })
+  const failure = [
+    eq('the new key is used', both.provisionCmdPreview.includes('/wt/scripts/provision-worktree.sh'), true),
+    eq('the old key is ignored', both.provisionCmdPreview.includes('/other/'), false),
+  ].find(Boolean)
+  return failure ? failure : { ok: true }
+})
 // ---------------------------------------------------------------------------
 // #97 — no-op gate widened to SHA+body; review-loop plan/code blocker routing
 // (T23b lives next to T23 above; T109-T115 below)

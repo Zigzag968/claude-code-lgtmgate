@@ -85,6 +85,7 @@ NO_PRIVATE_REFS_PATTERNS=(
                                                  # completely legitimate, pervasive variable name (verified this run:
                                                  # a bare-`wtPath` motif hits 60+ sites in workflows/deliver-pipeline.js
                                                  # alone, all of them the parameter/variable itself, zero leaks)
+  'worktreePath":"'                            # the current spelling of that key, same reasoning (the old spelling stays refused: #452 removes it)
   'nightly-issue-'                              # nightly-dispatch state-blob marker
 )
 NO_PRIVATE_REFS_ALLOW=(
@@ -99,6 +100,7 @@ NO_PRIVATE_REFS_ALLOW=(
   ''
   '/Users/(you|dev)([^A-Za-z0-9._-]|$)'         # documented generic placeholders, not real usernames
   '/home/user([^A-Za-z0-9._-]|$)'               # documented CI placeholder, not a real username
+  ''
   ''
   ''
   "branchCheckRaw: 'nightly-issue-1'"           # reviewed repo-local test fixture (this repo's own nightly-branch

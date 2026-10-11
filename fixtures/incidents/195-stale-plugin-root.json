@@ -5,7 +5,7 @@
     "pluginRoot": "/old/cache/lgtmgate/1.0.0-beta.4",
     "issue": 195,
     "brief": "a stale pluginRoot must be named, not reported as provision-failed",
-    "wtPath": "/wt/root/issue-195",
+    "worktreePath": "/wt/root/issue-195",
     "config": {},
     "mode": "auto"
   },

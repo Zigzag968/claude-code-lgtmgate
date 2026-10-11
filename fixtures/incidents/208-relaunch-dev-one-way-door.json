@@ -5,7 +5,7 @@
     "pluginRoot": "/plugin",
     "issue": 123,
     "brief": "add a status to the engine",
-    "wtPath": "/wt/root/issue-123",
+    "worktreePath": "/wt/root/issue-123",
     "config": {
       "oneWayDoorKinds": [
         "status",

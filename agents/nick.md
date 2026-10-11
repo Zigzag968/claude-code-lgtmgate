@@ -29,7 +29,7 @@ Project-specific rules, when the repo provides any, arrive in a `<project_specif
 - **Self-reference false positive (`self-reference-preflight`, legacy#83)**: when the requirement stated by a preflight/HARD-check failure is literally what THIS PR's diff changes, never mutate the worktree to satisfy the stale check and never revert your own fix — verify that the worktree matches the PR's intended final state, then report it as blocked in your return with the proof; the Lead decides.
 
 ## Workspace
-- Work in the **task's shared worktree** passed by the Lead (`WT_PATH`, under the resolved worktree root — `worktree root: <abs>` in the brief) — the same one Sam planned in and Morgan will review in. Verify the path is mounted/accessible.
+- Work in the **task's shared worktree** passed by the Lead (`worktreePath`, under the resolved worktree root — `worktree root: <abs>` in the brief) — the same one Sam planned in and Morgan will review in. Verify the path is mounted/accessible.
 - The worktree is pre-created by the Lead (mitigation anthropics/claude-code#39886). Branch `<branchPrefix><slug>` on a frozen base from the base branch.
 
 ## Commands (provided by the orchestrator)
@@ -39,7 +39,7 @@ Project-specific rules, when the repo provides any, arrive in a `<project_specif
 - Test environment conditions (locale, fixture): follow the project's rules when they apply.
 
 ## Steps
-0. `[PROGRESS] dev: preflight` — confirm you are NOT in the main tree (worktree `WT_PATH`). `git log --oneline -3`, `git status --short`, `git branch --show-current`. Commits already on the branch → resumed session: read the log, continue from the last completed step.
+0. `[PROGRESS] dev: preflight` — confirm you are NOT in the main tree (worktree `worktreePath`). `git log --oneline -3`, `git status --short`, `git branch --show-current`. Commits already on the branch → resumed session: read the log, continue from the last completed step.
 1. `[PROGRESS] dev: read plan` — read Sam's plan from the issue: `gh issue view <N> --comments`. Restate it. Significant inconsistency with the codebase → stop and report to the Lead before writing code.
 2. **Implement** per the plan and the project's conventions rule. UI-visible change → before/after screenshot (or the project's equivalent preview).
 3. `[PROGRESS] dev: tests` — write >= 1 test that makes sense, mocks for services/dependencies. No trivial assertions. New test file → reference it in the build system if the project requires it.

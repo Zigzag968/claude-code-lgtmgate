@@ -158,11 +158,11 @@ if [ "$PUBLISHED" = yes ]; then
 
   rawcmd=$(jsf "$RAW" 'f.calls["probe-123-provision-provision-r0"].line.match(/cmd=([0-9a-f]{64})/)[1]')
   pubcmd=$(jsf "$PUB" 'f.calls["probe-123-provision-provision-r0"].line.match(/cmd=([0-9a-f]{64})/)[1]')
-  wt=$(jsf "$PUB" 'f.args.wtPath')
+  wt=$(jsf "$PUB" 'f.args.worktreePath')
   if [ "$rawcmd" != "$pubcmd" ] && [ "$wt" = '"_"' ] && [ "$REPLAY_OK" = yes ]; then
     ok "coupled PROBE hashes are recomputed"
   else
-    bad "coupled hashes: raw=$rawcmd pub=$pubcmd wtPath=$wt replay=$REPLAY_OK"
+    bad "coupled hashes: raw=$rawcmd pub=$pubcmd worktreePath=$wt replay=$REPLAY_OK"
   fi
 
   printf '%s\n' "$OUT" > "$TMP/stdout.txt"

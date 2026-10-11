@@ -5,7 +5,7 @@
     "sessionRoot": "/other/repo/main-checkout",
     "issue": 177,
     "brief": "a run driven from a session opened in another repository must be refused, not run under the wrong instructions",
-    "wtPath": "/wt/root/issue-177",
+    "worktreePath": "/wt/root/issue-177",
     "config": {
       "probeRunPath": "/plugin/templates/probe-run.cjs"
     },

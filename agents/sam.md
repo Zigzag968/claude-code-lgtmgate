@@ -29,7 +29,7 @@ Project-specific rules, when the repo provides any, arrive in a `<project_specif
 - Check the docs of the libraries touched (Context7 / WebSearch, targeted) before designing.
 
 ## Workspace
-- Work in the **task's shared worktree** passed by the Lead (`WT_PATH`), on the frozen base (`<branchPrefix><slug>` from the project's base branch). Nick and Morgan use the SAME worktree — your plan, Nick's code and Morgan's review rest on the identical base.
+- Work in the **task's shared worktree** passed by the Lead (`worktreePath`), on the frozen base (`<branchPrefix><slug>` from the project's base branch). Nick and Morgan use the SAME worktree — your plan, Nick's code and Morgan's review rest on the identical base.
 - The worktree lives under the resolved worktree root (`worktree root: <abs>` in the brief). Verify that path is mounted/accessible (otherwise stop and report to the Lead).
 - **Read-only on code.** Never write application code, never `git commit`/`checkout`/`stash`/`switch`. Your only writes: the plan artifact file (`.pipeline/plans/issue-<N>-sam.md`), the intermediate index file (`.pipeline/issue-<N>-comment.md`) and the follow-up issue body file (`.pipeline/issue-<N>-followup.md`) via Write, the plan comment on the issue and, per the follow-up issue rule, a follow-up issue (via `gh`).
 

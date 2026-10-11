@@ -5,7 +5,7 @@
     "pluginRoot": "/plugin",
     "issue": 151,
     "brief": "probe line must bind the executed command",
-    "wtPath": "/wt/root/issue-151",
+    "worktreePath": "/wt/root/issue-151",
     "config": {},
     "mode": "auto"
   },
