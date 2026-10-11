@@ -92,13 +92,13 @@ fi
 # regardless of --force (issue #129: a read-only investigation agent ran `git worktree
 # remove --force` on a worktree a concurrent run was using).
 if printf '%s' "$normalized" | grep -qE '(^|[;&|[:space:]])git[[:space:]]+worktree[[:space:]]+remove([[:space:]]|$)'; then
-  deny "git worktree remove is denied for agent sessions, including inside compound commands. A shared worktree may be in use by a concurrent pipeline run — removing it is never an agent action. Use scripts/cleanup-worktree.sh <path> for a merged, clean worktree. See .claude/rules/pr-acceptance.md (Autonomy in unsupervised sessions)."
+  deny "git worktree remove is denied for agent sessions, including inside compound commands. A shared worktree may be in use by a concurrent pipeline run — removing it is never an agent action. Use \${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-worktree.sh <path> for a merged, clean worktree. See .claude/rules/pr-acceptance.md (Autonomy in unsupervised sessions)."
 fi
 
 # git worktree prune (any flags). Same rationale as worktree remove (#129) — pruning can
 # discard a worktree entry a concurrent run still depends on.
 if printf '%s' "$normalized" | grep -qE '(^|[;&|[:space:]])git[[:space:]]+worktree[[:space:]]+prune([[:space:]]|$)'; then
-  deny "git worktree prune is denied for agent sessions, including inside compound commands. A shared worktree entry may still be in use by a concurrent pipeline run. Use scripts/cleanup-worktree.sh <path> for a merged, clean worktree. See .claude/rules/pr-acceptance.md (Autonomy in unsupervised sessions)."
+  deny "git worktree prune is denied for agent sessions, including inside compound commands. A shared worktree entry may still be in use by a concurrent pipeline run. Use \${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-worktree.sh <path> for a merged, clean worktree. See .claude/rules/pr-acceptance.md (Autonomy in unsupervised sessions)."
 fi
 
 # git push --force / -f / --force-with-lease.
@@ -138,7 +138,7 @@ if declare -F resolve_worktree_root >/dev/null 2>&1; then
     if printf '%s' "$normalized" | grep -qE '(^|[;&|[:space:](])rm[[:space:]]' \
       && printf '%s' "$normalized" | grep -qE '[[:space:]](-[a-zA-Z]*[rR][a-zA-Z]*|--recursive)([[:space:]]|$)' \
       && printf '%s' "$normalized" | grep -qE "${wt_lead}${wt_root_re}(/[^/[:space:];&|)\"']+)?/?${wt_tail}"; then
-      deny "A bare recursive rm of a worktree (a direct child of the worktree root) is denied for agent sessions, including inside compound commands. A shared worktree may be in use by a concurrent pipeline run. Use scripts/cleanup-worktree.sh <path> for a merged, clean worktree. See .claude/rules/pr-acceptance.md (Autonomy in unsupervised sessions)."
+      deny "A bare recursive rm of a worktree (a direct child of the worktree root) is denied for agent sessions, including inside compound commands. A shared worktree may be in use by a concurrent pipeline run. Use \${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-worktree.sh <path> for a merged, clean worktree. See .claude/rules/pr-acceptance.md (Autonomy in unsupervised sessions)."
     fi
   fi
 fi

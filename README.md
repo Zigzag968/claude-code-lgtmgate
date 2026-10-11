@@ -117,8 +117,9 @@ Restart the session, then in your target project run `/lgtmgate:init`. It genera
 
 - **`gh` CLI, installed and authenticated** (`gh auth login`, scopes `repo` + `project`): required structurally by nearly every hook, script and agent in this pipeline.
 - **`jq`**: required by `hooks/block-merge-unchecked.sh` and `hooks/deny-destructive-git.sh` (PreToolUse gates on every Bash call); both hooks fail closed (exit 2) if `jq` is missing.
-- **Node.js**: runs `workflows/deliver-pipeline.js`, `scripts/run-flow-suite.cjs`, and the consumer's copied `.claude/workflows/test-deliver-pipeline.js`.
-- **Python 3**: runs `hooks/SessionStart/inject_stub.py`.
+- **Node.js 22.12 or newer** (`engines` in `package.json`): runs `workflows/deliver-pipeline.js`, `scripts/run-flow-suite.cjs`, and the consumer's copied `.claude/workflows/test-deliver-pipeline.js`.
+- **Python 3.7 or newer** (`subprocess.run(capture_output=True, text=True)` in `hooks/SessionStart/inject_stub.py`): runs that hook and the inline readers of `scripts/lead-merge.sh`.
+- **`agentContext` role names**: a key of `agentContext` is `*` or one of `Mia`, `Sam`, `Nick`, `Morgan`, `Theo` (exact case); any other key stops `scripts/agent-context.cjs` with `unknown role`.
 - **`git`** with a `github.com` remote.
 - **Claude Code 2.1.294 or later** (every run is a `Workflow`): 2.1.294 is the version this repository's tests and devcontainer pin (`.devcontainer/package.json`). Check: `claude --version`.
 - **A paid Claude plan with Workflows turned on**: dynamic workflows are available on paid plans; on Pro, turn them on from the Dynamic workflows row in `/config`. Check: `/config` shows the row switched on, and `/workflows` opens.
@@ -179,9 +180,9 @@ Nothing stack-specific lives in the plugin. Everything project-dependent is read
 | Config key | Used for |
 |------------|----------|
 | `commands.{build,test,format}` | exact commands Nick/Morgan run |
-| `baseBranch`, `branchPrefix` | branching for the shared worktree + PR target |
+| `baseBranch`, `branchPrefix` | branching for the shared worktree + PR target; `baseBranch` absent becomes `develop` in the engine, so `/lgtmgate:init` always writes it |
 | `worktreeRoot` | where the Lead creates the shared worktree (logical/versioned default); precedence `$LGTMGATE_WORKTREE_ROOT` > `.claude/pipeline.config.local.json` (gitignored) > this value > wtPath's parent dir for the Dev-phase prompt context. `/deliver` itself still needs this key set to CREATE the worktree |
-| `ciChecks` | check-run names (as `gh pr checks` prints them, matrix suffix included) Morgan must see green before LGTM; a name GitHub does not report keeps the run from `ready`; also what `scripts/lead-merge.sh` waits on at merge time when the base branch has no required status checks (unset or empty: every reported check) |
+| `ciChecks` | check-run names (as `gh pr checks` prints them, matrix suffix included) Morgan must see green before LGTM; a name GitHub does not report keeps the run from `ready`; unset or empty, the ready gate counts every check the PR head reports and, when it reports none, Morgan's own CI report decides (her prompt then names `build-and-test`); also what `scripts/lead-merge.sh` waits on at merge time when the base branch has no required status checks (unset or empty: every reported check) |
 | `regressionGuard.{testGlob,testFnPattern,baselineCmd}` | Morgan's regression guard: no-checkout test scoping plus the exact baseline-capture command run for the SET-DIFF |
 | `ghProject` | optional GH Project "Pipeline Status" updates |
 | `planAudit` | adversarial plan-soundness audit before Dev, default `false`; worst case is `maxAuditRounds × maxPlanAttempts` extra spawns |
@@ -198,6 +199,7 @@ Nothing stack-specific lives in the plugin. Everything project-dependent is read
 | `stack` | target stack string handed to the plan auditor; empty → inferred from the worktree |
 | `preflight.envNote` | free-form operator note injected verbatim ahead of every preflight check, notably the HARD test-command check (see the trust warning below) |
 | `preflight.envSymlink` | `required` (default, current behavior) / `forbidden` (envless-by-contract projects: preflight asserts `.env` is ABSENT) / `ignore` (check omitted); enum-validated, the value is never interpolated into agent text |
+| `provision.extraLinks` | `[{ "src": "<path>", "dst": "<path>" }]`: links from the main checkout into the worktree. `src` and `dst` are relative paths made of `[A-Za-z0-9._/-]` only, with no leading `-` or `/` and no empty, `.` or `..` segment; an entry that breaks this throws `Invalid provision.extraLinks entry` before anything runs |
 | `provision.extraLinks[].optional` | marks a configured link as soft: it reaches the script after a `--soft` marker; absent at provision time it is skipped with a warning (`WARN optional src missing:`) instead of a hard `provision-failed` escalate, present it is linked; a config with only optional links and no script skips loudly. Refresh `scripts/provision-worktree.sh` after a plugin update (an older copy fails with a usage error when an optional link is configured) |
 
 A dependency install blocked by sandbox TLS is reported as a blocker, never bypassed. The two

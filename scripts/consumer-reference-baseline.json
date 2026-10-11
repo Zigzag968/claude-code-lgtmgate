@@ -53,25 +53,7 @@
     "too-many-files",
     "unclosed-comment"
   ],
-  "reasons": [
-    "acceptance-sync-failed",
-    "artifact-proof-rejected",
-    "branch-mismatch",
-    "dev-stage-no-pr",
-    "mergeable-conflicting",
-    "nick-no-op",
-    "no-progress",
-    "plan-audit-malformed",
-    "plan-defect-persists",
-    "plan-not-conforming",
-    "plan-not-sound",
-    "plan-stale",
-    "probe-only",
-    "provision-failed",
-    "provision-stale",
-    "verdict-malformed",
-    "worktree-git-dir-not-writable"
-  ],
+  "reasons": [],
   "hooks": [
     "Stop-supervise-runs.sh: Contamination detected",
     "Stop-supervise-runs.sh: Pipeline run(s) in flight with no activity",
