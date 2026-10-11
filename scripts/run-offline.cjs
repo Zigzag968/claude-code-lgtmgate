@@ -399,7 +399,12 @@ function commandOfPrompt(prompt) {
   if (end < 0) return null
   // #338: the base64 form carries the same command as one bare token
   const b64 = prompt.indexOf(' --cmd-b64 ')
-  if (b64 >= 0 && b64 < end) return Buffer.from(prompt.slice(b64 + 11, end), 'base64').toString('utf8')
+  if (b64 >= 0 && b64 < end) {
+    // #485: flags may follow the token; it ends at the first space
+    const space = prompt.indexOf(' ', b64 + 11)
+    const tokenEnd = space >= 0 && space < end ? space : end
+    return Buffer.from(prompt.slice(b64 + 11, tokenEnd), 'base64').toString('utf8')
+  }
   const start = prompt.indexOf(' --cmd ')
   if (start < 0 || start > end) return null
   const q = prompt.slice(start + 7, end)

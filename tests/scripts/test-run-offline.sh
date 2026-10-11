@@ -164,6 +164,23 @@ if [ "$out" = '{"oneLine":true,"noBacktick":true,"ids":true,"noBlockText":true,"
 else bad "tick-command shape: $out"; fi
 case "$out" in *'"digest":true'*) ok "tick-command --expect-cmd equals the sha256 of the un-quoted command, placed before --cmd";; *) bad "tick-command digest: $out";; esac
 
+# #485: commandOfPrompt reads the b64 token up to the first space (flags follow it), and still reads the quoted --cmd form
+cat > "$TMP/cmdofprompt.cjs" <<'JS'
+const fs = require('fs'), path = require('path')
+const { commandOfPrompt } = require(path.resolve('scripts/run-offline.cjs'))
+const src = fs.readFileSync(path.resolve('workflows/deliver-pipeline.js'), 'utf8')
+const between = (a, b) => { const i = src.indexOf(a), j = src.indexOf(b); return src.slice(i, j) }
+const f = new Function(between('// --- probeCommands:start ---', '// --- probeCommands:end ---') + '\n' + between('// --- base64Utf8:start ---', '// --- base64Utf8:end ---') + '\nreturn { probeCommands, base64Utf8 }')()
+const cmd = "echo 'hi' && printf '%s' \"x y\""
+const base = { wtPath: '/wt/i', issue: 1, pluginRoot: '/p', name: 'lines', cmd, label: 'l', round: 0, expectCmd: 'a'.repeat(64) }
+const wrap = (run) => `1. ${run}\n2. cd verify`
+const viaB64 = commandOfPrompt(wrap(f.probeCommands({ ...base, cmdB64: f.base64Utf8(cmd) }).run))
+const viaQuoted = commandOfPrompt(wrap(f.probeCommands({ ...base }).run))
+process.stdout.write(JSON.stringify({ b64: viaB64 === cmd, quoted: viaQuoted === cmd }))
+JS
+out=$(node "$TMP/cmdofprompt.cjs" 2>&1)
+[ "$out" = '{"b64":true,"quoted":true}' ] && ok "commandOfPrompt returns the original command from the b64 line (token then flags) and from the quoted line ($out)" || bad "commandOfPrompt: $out"
+
 # #212: a bad --expect-cmd token (wrong, truncated, upper-cased wrong, flag dropped) next to an INTACT --cmd is refused by the REAL
 # probe-run.cjs (nothing runs), and the PROBE line it really printed (never a hand-written one) makes the engine retry the tick ONCE
 # and reach ready: the refusal always reads as cmd-mismatch. PROBE_RUN_UNDER_TEST overrides the script (to show the case red).

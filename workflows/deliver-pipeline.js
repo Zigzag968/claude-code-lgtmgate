@@ -2446,7 +2446,7 @@ const PROBE_REASON_HINTS = {
     'and the lgtmgate:probe agent type must be resolvable; fix the plugin install/session and relaunch',
   'cmd-mismatch': 'the copied PROBE line belongs to a different command than the engine composed (the copier altered the command); relaunch',
   'probe-run-not-found': 'no probe-run.cjs location: pass args.pluginRoot (absolute plugin root) or config.probeRunPath and relaunch',
-  'command-not-run': 'the command did not run; relaunch once (if it repeats, check that pluginRoot is the current plugin: a probe-run.cjs older than --cmd-b64 never runs the command)',
+  'command-not-run': 'the command did not run; relaunch once (if it repeats, check that pluginRoot is the current plugin: a probe-run.cjs older than --cmd-b64 never runs the command; if it is, capture the run and report the typed command as an incident)',
   'unparseable-line': `the probe answered no PROBE line, or one that does not parse; ${PROBE_RELAUNCH}`,
   'name-mismatch': `the PROBE line names another probe than the one asked for; ${PROBE_RELAUNCH}`,
   'unparseable-verify': `the probe answered no VERIFY line, or one that does not parse; ${PROBE_RELAUNCH}`,
@@ -2588,8 +2588,11 @@ function probeCommands({ wtPath: worktreeDirectory, issue: issueNumber, pluginRo
   const common = `--label ${label} --round ${round} --out ${q(outDirectory)} --parser ${name}`
   return {
     // #338: cmdB64 (the caller's base64 of `cmd`) replaces --cmd with one bare token: no nested quoting for a copier to drop
+    // #485: the b64 token is NOT last on purpose: the line ends with `--model haiku`, so a stray closing quote lands on a short flag value
     // #212: --expect-cmd (the sha256 of `cmd`) BEFORE --cmd: the script refuses to run a copy that does not hash to it
-    run: `${head}${common} --model haiku${noReuse ? ' --no-reuse' : ''}${expectCmd ? ` --expect-cmd ${expectCmd}` : ''}${cmdB64 ? ` --cmd-b64 ${cmdB64}` : ` --cmd ${q(cmd)}`}`,
+    run: cmdB64
+      ? `${head}${common}${noReuse ? ' --no-reuse' : ''} --cmd-b64 ${cmdB64}${expectCmd ? ` --expect-cmd ${expectCmd}` : ''} --model haiku`
+      : `${head}${common} --model haiku${noReuse ? ' --no-reuse' : ''}${expectCmd ? ` --expect-cmd ${expectCmd}` : ''} --cmd ${q(cmd)}`,
     verify: `${head}--verify ${common} --attest ${q(worktreeDirectory + '/.pipeline/probe-attest.jsonl')}`,
   }
 }
@@ -2728,7 +2731,7 @@ async function probe(name, command, { label, round = 0, onFail, noReuse = false,
   // b64 (#338): the command travels as one bare base64 token (digest-gated), never as nested quoting a model must re-type
   const cmds = probeCommands({ wtPath: worktreePath, issue, pluginRoot, probeRunPath: config.probeRunPath, name, cmd: command, label, round, noReuse, expectCmd: gateCommand || b64 ? want : undefined, cmdB64: b64 ? base64Utf8(command) : undefined })
   const prompt =
-    `Run EXACTLY these two commands once each, in this order, from the worktree "${worktreePath}", without editing or re-quoting them:\n\n` +
+    `Run EXACTLY these two commands once each, in this order, from the worktree "${worktreePath}", without editing or re-quoting them. Each command is one line and nothing follows its last character:\n\n` +
     `1. ${cmds.run}\n2. ${cmds.verify}\n\n` +
     `The first prints exactly one line starting with "PROBE ": answer it verbatim as "line". ` +
     `The second prints exactly one line starting with "VERIFY ": answer it verbatim as "verify". ` +

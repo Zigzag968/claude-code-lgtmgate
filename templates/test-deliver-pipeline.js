@@ -2500,8 +2500,9 @@ await testCase('T272 probeCommands() extracted from source markers (#82)', async
       const d = 'a'.repeat(64)
       const b = pc({ ...base, pluginRoot: '/plug', expectCmd: d, cmdB64: 'ZWNobyAnaGknCg==' }).run
       return [
-        eq('cmdB64 run ends with --expect-cmd <digest> --cmd-b64 <token> (#338)', b.endsWith(` --expect-cmd ${d} --cmd-b64 ZWNobyAnaGknCg==`), true),
-        eq('cmdB64 run has no --cmd flag and no nested quote after the digest (#338)', b.includes(' --cmd ') || b.slice(b.indexOf('--expect-cmd')).includes("'"), false),
+        eq('cmdB64 run ends with --model haiku, not with the token (#485)', b.endsWith(' --model haiku') && !b.endsWith('ZWNobyAnaGknCg=='), true),
+        eq('cmdB64 run carries --cmd-b64 <token> --expect-cmd <digest> (#338)', b.includes(` --cmd-b64 ZWNobyAnaGknCg== --expect-cmd ${d} `), true),
+        eq('cmdB64 run has no --cmd flag and no quote after the token (#338, #485)', b.includes(' --cmd ') || b.slice(b.indexOf('--cmd-b64')).includes("'"), false),
       ]
     })(),
     eq('noReuse never reaches the verify command', pc({ ...base, pluginRoot: '/plug', noReuse: true }).verify.includes('--no-reuse'), false),
@@ -2651,6 +2652,46 @@ await testCase('T478b probe(): command-not-run checked before cmd-mismatch, read
     eq('the constant is sha256 of the empty string', f.EMPTY_OUTPUT_SHA256, new Function(sha + "\nreturn sha256Hex('')")()),
     eq('the command-not-run hint says relaunch once', typeof hint === 'string' && hint.includes('the command did not run; relaunch once'), true),
     eq('the hint is one line', typeof hint === 'string' && !hint.includes('\n'), true),
+    eq('the hint says what to do when it repeats (#485)', typeof hint === 'string' && hint.includes('report the typed command'), true),
+  ]
+  return checks.find(c => c) || { ok: true }
+})
+
+// T485a (#485) — the composed plugin-version probe command does not end with the long base64 token: a stray closing
+// quote a small model appends then lands on a short flag value, never on the token.
+await testCase('T485a composed plugin-version probe command does not end with the --cmd-b64 token (#485)', async () => {
+  const source = SUITE_ARGS.fpSource
+  if (!source) {
+    log('SKIP — T485a: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const probeBlock = extractBetween(source, '// --- probeCommands:start ---', '// --- probeCommands:end ---')
+  const base64Block = extractBetween(source, '// --- base64Utf8:start ---', '// --- base64Utf8:end ---')
+  const versionBlock = extractBetween(source, '// --- pluginVersion:start ---', '// --- pluginVersion:end ---')
+  const digestBlock = extractBetween(source, '// --- sha256Hex:start ---', '// --- sha256Hex:end ---')
+  if (!probeBlock || !base64Block || !versionBlock || !digestBlock) return { ok: false, msg: 'probeCommands, base64Utf8, pluginVersion or sha256Hex block not found in pipeline source' }
+  const engine485 = new Function([probeBlock, base64Block, versionBlock, digestBlock].join('\n') + '\nreturn { probeCommands, base64Utf8, pluginVersionCommand, sha256Hex }')()
+  const command485 = engine485.pluginVersionCommand('/plug')
+  const token485 = engine485.base64Utf8(command485)
+  const line485 = engine485.probeCommands({ wtPath: '/wt/issue-7', issue: 7, pluginRoot: '/plug', name: 'plugin-version', cmd: command485, label: 'plugin-version', round: 0, expectCmd: engine485.sha256Hex(command485), cmdB64: token485 }).run
+  const checks = [
+    eq('the token is in the line', line485.includes(` --cmd-b64 ${token485} `), true),
+    eq('the line does not end with the token', line485.endsWith(token485), false),
+    eq('the line ends with a short flag value', line485.endsWith(' --model haiku'), true),
+    eq('a stray quote would follow no long token', line485.endsWith(`${token485}'`), false),
+  ]
+  return checks.find(c => c) || { ok: true }
+})
+
+// T485b (#485) — the probe prompt tells the copier nothing follows the last character of a command.
+await testCase('T485b probe prompt says nothing follows the last character of a command (#485)', async () => {
+  const source = SUITE_ARGS.fpSource
+  if (!source) {
+    log('SKIP — T485b: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const checks = [
+    eq('the sentence is in the engine source exactly once', source.split('nothing follows its last character').length - 1, 1),
   ]
   return checks.find(c => c) || { ok: true }
 })
