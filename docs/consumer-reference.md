@@ -25,6 +25,7 @@ Every name a consumer can meet, with the remedy. A guard (`node scripts/guards.c
 - The specifics folder is the `projectSpecifics` path of `.claude/pipeline.config.json`. Its files are `shared.md`, `<role>.md` and `<role>.<lane>.md` (a `<role>.<subject>.md` without a declared lane is plain text of the role), with a lowercase role name: `mia`, `sam`, `nick`, `morgan`, `theo`. Any other name is ignored with the `no-role-match` warning below.
 - Only files committed and pushed on the base ref count: the assembler reads `origin/<base>`, never the working tree. A file that is only local is ignored with the `not-on-base-ref` warning below.
 - A file listed in `agentContext` is a context file. It takes no frontmatter, no line starting with `@` outside a closed fenced code block, no comment opener (`<!--`) left unclosed or carrying an engine marker, and no zero-width or control character.
+- `agentContext["*"]` files follow `shared.md` and are sent once, inside the shared block, never copied into a role text. Over 2048 bytes together is a warning in `warnings[]` (`shared-oversize`), exit code unchanged. A `*` path that is a file of the specifics folder stays with its role. A role whose only source was a `*` file has no block of its own.
 - At most 8 files per source: the role's files in the folder, and each `agentContext` list.
 
 ## Assembler refusals
