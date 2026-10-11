@@ -304,7 +304,7 @@
       "acceptance-tick-retry:0",
       "probe:pr-write:haiku",
       "acceptance-open-lgtm:0",
-      "acceptance-ticked:0",
+      "acceptance-ticked:round=0,n=12",
       "probe:pr-write:haiku"
     ],
     "traceExact": true,
