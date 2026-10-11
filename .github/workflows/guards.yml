@@ -109,6 +109,8 @@ jobs:
         run: bash tests/scripts/test-lead-merge.sh
       - name: marker spelling parity test
         run: bash tests/scripts/test-marker-parity.sh
+      - name: deliver worktree step regression test
+        run: bash tests/scripts/test-deliver-worktree-step.sh
       - name: tick equivalence test
         run: bash tests/scripts/test-tick-equivalence.sh
       - name: plugin-versions script regression test
