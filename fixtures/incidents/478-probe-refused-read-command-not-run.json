@@ -1,0 +1,33 @@
+{
+  "name": "478-probe-refused-read-command-not-run",
+  "note": "#478: a consumer replay of release candidate 2: the plugin-version read probe copy was refused by probe-run (exit -1, empty-output digest, a refused: cmd digest), nothing ran. The run ends provision-failed with probeReason command-not-run, not cmd-mismatch.",
+  "args": {
+    "pluginRoot": "/plugin",
+    "issue": 478,
+    "brief": "a refused read copy must be named command-not-run, not cmd-mismatch",
+    "worktreePath": "/wt/root/issue-478",
+    "config": {},
+    "mode": "auto"
+  },
+  "calls": {
+    "probe-478-lines-plugin-version-r0": {
+      "line": "PROBE name=lines exit=-1 sha=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 cmd=66638a2aac8d22b74215e2d434b9bfd67410ede5b1bb4994669f556463f96b50 json={\"lines\":[]}",
+      "verify": "VERIFY ok line=PROBE name=lines exit=-1 sha=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 cmd=66638a2aac8d22b74215e2d434b9bfd67410ede5b1bb4994669f556463f96b50 json={\"lines\":[]}"
+    }
+  },
+  "expect": {
+    "status": "escalate",
+    "reason": "provision-failed",
+    "trace": [
+      "branch-prefix-fallback-default",
+      "probe:lines:haiku"
+    ],
+    "traceExact": true,
+    "callLabels": [
+      "probe-478-lines-plugin-version-r0"
+    ],
+    "logsInclude": [
+      "Plugin version probe failed (command-not-run)"
+    ]
+  }
+}
