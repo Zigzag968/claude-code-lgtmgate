@@ -27,10 +27,11 @@ def apply_gh(**kw):
 
 class TestAllowLists(unittest.TestCase):
     def test_the_apply_allow_list_and_flags_are_exact(self):
-        self.assertEqual(backlog_gh.APPLY_ALLOW, frozenset({("issue", "edit"), ("label", "create")}))
+        self.assertEqual(backlog_gh.APPLY_ALLOW, frozenset({("issue", "edit"), ("label", "create"), ("label", "edit")}))
         self.assertEqual(
             {k: sorted(v) for k, v in backlog_gh.APPLY_FLAGS.items()},
-            {("issue", "edit"): ["--add-label", "--remove-label"], ("label", "create"): ["--color", "--description"]},
+            {("issue", "edit"): ["--add-label", "--remove-label"], ("label", "create"): ["--color", "--description"],
+             ("label", "edit"): ["--color"]},
         )
         self.assertEqual(backlog_gh.MAX_APPLY_ISSUES, 50)
 
@@ -46,7 +47,7 @@ class TestAllowLists(unittest.TestCase):
     def test_gh_still_refuses_the_apply_verbs(self):
         runner = _support.FakeRunner()
         gh = Gh(cfg_for("free"), runner=runner, max_writes=5)
-        for verb in (("issue", "edit"), ("label", "create")):
+        for verb in (("issue", "edit"), ("label", "create"), ("label", "edit")):
             with self.subTest(verb=verb), self.assertRaises(ModeError):
                 gh.run(verb, ["--add-label=x"], write=True)
         self.assertEqual(runner.calls, [])
@@ -87,6 +88,7 @@ class TestPerVerbFlags(unittest.TestCase):
             (("issue", "edit"), ["--web", "--assignee=me", "-R", "--repo=x/y", "--title=t", "--force", "--color=ffffff",
                                  "--description=d", "--body=b", "-a", "-e"]),
             (("label", "create"), ["--add-label=x", "--remove-label=x", "--force", "--web", "-R", "--repo=x/y"]),
+            (("label", "edit"), ["--name=x", "--new-name=x", "--description=d", "--force", "--web", "-R", "--repo=x/y"]),
         ):
             for flag in flags:
                 with self.subTest(verb=verb, flag=flag), self.assertRaises(ModeError):
@@ -95,7 +97,7 @@ class TestPerVerbFlags(unittest.TestCase):
 
     def test_a_verb_outside_the_allow_list_is_refused(self):
         gh, runner = apply_gh()
-        for verb in (("issue", "create"), ("issue", "close"), ("issue", "comment"), ("issue", "delete"), ("label", "edit"),
+        for verb in (("issue", "create"), ("issue", "close"), ("issue", "comment"), ("issue", "delete"), ("label", "rename"),
                      ("label", "delete"), ("label", "list"), ("issue", "list"), ("api", "x"), ("pr", "merge")):
             with self.subTest(verb=verb), self.assertRaises(ModeError):
                 gh._run(verb, [])
@@ -105,10 +107,37 @@ class TestPerVerbFlags(unittest.TestCase):
         gh, runner = apply_gh()
         gh.edit_labels(1, ["type:bug"], ["status:inbox"])
         gh.create_label("type:bug", "d73a4a", "a bug")
+        gh.recolor_label("type:bug", "0e8a16")
         for call in runner.calls:
             self.assertEqual(call[-2:], ["-R", "acme/widgets"])
             self.assertEqual(call.count("-R"), 1)
             self.assertEqual(call[0], "gh")
+
+
+class TestRecolorLabel(unittest.TestCase):
+    def test_the_call_shape_is_label_edit_with_color_only_and_the_repo_last(self):
+        gh, runner = apply_gh()
+        gh.recolor_label("type:bug", "0E8A16")
+        self.assertEqual(runner.calls, [["gh", "label", "edit", "type:bug", "--color=0E8A16", "-R", "acme/widgets"]])
+
+    def test_an_ungranted_name_an_invalid_name_or_an_invalid_color_is_refused_with_zero_call(self):
+        gh, runner = apply_gh()
+        for name, color in (("type:chore", "0e8a16"), ("a b", "0e8a16"), ("", "0e8a16"), (None, "0e8a16"),
+                            ("type:bug", "#0e8a16"), ("type:bug", "0e8a1"), ("type:bug", "0e8a16\n"), ("type:bug", None),
+                            ("type:bug", "--name=x")):
+            with self.subTest(name=name, color=color), self.assertRaises(ModeError):
+                gh.recolor_label(name, color)
+        self.assertEqual(runner.calls, [])
+
+    def test_the_batch_is_capped_at_fifty_labels(self):
+        names = ["type:l%d" % n for n in range(51)]
+        gh, runner = apply_gh(labels=names)
+        for name in names[:50]:
+            gh.recolor_label(name, "0e8a16")
+        gh.recolor_label(names[0], "0e8a16")  # the same label again is not a new one
+        with self.assertRaises(ModeError):
+            gh.recolor_label(names[50], "0e8a16")
+        self.assertEqual(len(runner.calls), 51)
 
 
 class TestEditLabels(unittest.TestCase):

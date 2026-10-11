@@ -18,7 +18,7 @@ An apply run refuses (exit 1, ZERO write call, one code per missing condition) u
 After the gate, the run re-reads the live issues, diffs against their live labels, adds THEN removes, and
 journals after every issue (atomic write next to the snapshot). It stops at the first failure and works in
 batches of at most 50 issues: re-running the same command resumes. It never adds the `ready` status nor an
-agent executor label (promotion stays a human triage decision), never deletes, renames or edits a label.
+agent executor label (promotion stays a human triage decision), never deletes or renames a label (label-sync only creates and recolors).
 
 The one exception is the single-issue `set` (`mint_set_grant`): it may add them only for a repo that opted in with
 `promotion: checked`, for the one issue an ok `PromotionVerdict` (backlog_promote.py) covers. The bulk paths above
@@ -40,7 +40,7 @@ from backlog_catchup import OPEN_LIMIT, catchup_digest, validate_catchup
 from backlog_common import LabelEdit, label_names, load_json_list, printable
 from backlog_gate import Gate, RefusedError, check_gate, load_snapshot, stage_one, verify_snapshot
 from backlog_gh import MAX_APPLY_ISSUES, ApplyGh, ApplyGrant, DepGh, Gh, PartialApplyError
-from backlog_labelsync import labelsync_digest, plan, spec_from_config
+from backlog_labelsync import label_writes, labelsync_digest, plan, spec_from_config
 from backlog_promote import PromotionVerdict, effective_promotion, reserved_adds
 from backlog_snapshot import (
     project_dir_of,
@@ -432,10 +432,9 @@ def apply_labelsync(args, cfg, gh=None, apply_runner=None) -> int:
         gh = _ensure_gh(cfg, gh)
         live = gh.fetch_labels()
         spec = spec_from_config(cfg)
-        colors = {entry["name"]: entry["color"] for entry in spec}
         actions = plan(spec, live)
-        creates = [(a.name, colors[a.name]) for a in actions if a.kind == "create"]
-        digest = labelsync_digest(creates, cfg.repo, args.expect_sha) if args.expect_sha else None
+        creates, recolors = label_writes(spec, actions)
+        digest = labelsync_digest(creates, recolors, cfg.repo, args.expect_sha) if args.expect_sha else None
         journal = _journal(args, cfg, "label-sync", LABELSYNC_JOURNAL, digest)
     except RefusedError as exc:
         return _refuse(tag, exc)
@@ -455,7 +454,7 @@ def apply_labelsync(args, cfg, gh=None, apply_runner=None) -> int:
             verify=lambda: verify_snapshot(cfg, args.snapshot_dir, args.expect_sha, project_dir_of(cfg)),
             rejected=0,
         )
-        grant = mint_grant(cfg, gate, labels=[name for name, _ in creates])
+        grant = mint_grant(cfg, gate, labels=[name for name, _ in creates + recolors])
         journal = _fresh_journal(journal, args, cfg, "label-sync", LABELSYNC_JOURNAL, gate)
         apply_gh = ApplyGh(cfg, grant, runner=apply_runner)
     except RefusedError as exc:
@@ -465,19 +464,20 @@ def apply_labelsync(args, cfg, gh=None, apply_runner=None) -> int:
         return 1
 
     done = journal.done()
-    pending = [(name, color) for name, color in creates if name not in done]
+    pending = [(name, color, "created") for name, color in creates if name not in done]
+    pending += [(name, color, "recolored") for name, color in recolors if name not in done]
     outcome = Outcome(remaining=len(pending))
-    for name, color in pending[:MAX_APPLY_ISSUES]:
+    for name, color, did in pending[:MAX_APPLY_ISSUES]:
         try:
-            apply_gh.create_label(name, color)
+            (apply_gh.create_label if did == "created" else apply_gh.recolor_label)(name, color)
             journal.record(name, "applied", (name,), ())
         except (RuntimeError, OSError) as exc:
             outcome.error = "%s: %s" % (printable(name), printable(exc))
             break
         outcome.applied += 1
         outcome.remaining -= 1
-        print("[%s] created %s" % (tag, printable(name)))
-    return _finish(tag, "apply: ", "created", outcome, None, journal, " (drift left untouched: no label edit)")
+        print("[%s] %s %s" % (tag, did, printable(name)))
+    return _finish(tag, "apply: ", "applied", outcome, None, journal)
 
 
 # --- set (one issue) -----------------------------------------------------------------------------------

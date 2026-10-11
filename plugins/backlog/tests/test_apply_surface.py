@@ -57,10 +57,13 @@ class TestOneWriteSurface(unittest.TestCase):
         self.assertEqual(construction_sites("ApplyGrant"), ["backlog_apply.py"])
         self.assertEqual(files_matching(r"\bApplyGh\b|\bApplyGrant\b"), ["backlog_apply.py", "backlog_gh.py"])
 
-    def test_the_applier_names_no_label_edit_delete_or_rename_verb(self):
+    def test_the_applier_names_no_delete_or_rename_verb_and_label_edit_carries_color_only(self):
         source = (_support.SCRIPTS / "backlog_gh.py").read_text(encoding="utf-8")
-        for forbidden in ('"delete"', '("label", "edit")', '"rename"', "--force", "--web"):
+        for forbidden in ('"delete"', '"rename"', "--new-name", "--force", "--web"):
             self.assertNotIn(forbidden, source)
+        import backlog_gh
+
+        self.assertEqual(backlog_gh.APPLY_FLAGS[("label", "edit")], frozenset({"--color"}))
 
 
 class TestNoSkillNamesTheApplier(unittest.TestCase):
