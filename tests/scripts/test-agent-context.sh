@@ -276,6 +276,27 @@ run "$R3"
 jtrue "accept-oversize-asks-again: above +25 % it asks again" 'j.warnings.some(w=>w.kind==="oversize"&&w.role==="Nick"&&w.ask===true&&w.accepted===+"'"$NB"'")'
 R4="$TMP/acc4"; new_repo "$R4"; seal "$R4"
 run "$R4" --accept-oversize Nick; exit_is "accept-oversize-nothing-exit2: a role within the cap has nothing to accept" 2
+# the accept leaves no untracked file (the local file is kept out of git through info/exclude)
+UNTRACKED=$(git -C "$R" status --porcelain | wc -l | tr -d ' ')
+if [ "$UNTRACKED" = 0 ]; then ok "accept-oversize-untracked: the consumer worktree is clean after an accept"; else bad "accept-oversize-untracked: $(git -C "$R" status --porcelain | head -c 200)"; fi
+R5="$TMP/acc5"; new_repo "$R5"; padfile "$R5/docs/extra-nick.md" 7000; seal "$R5"
+git -C "$R5" worktree add -q "$TMP/acc5-wt" -b side
+run "$TMP/acc5-wt" --accept-oversize Nick
+WTS=$(git -C "$TMP/acc5-wt" status --porcelain | wc -l | tr -d ' ')
+if [ "$rc" = 0 ] && [ "$WTS" = 0 ]; then ok "accept-oversize-untracked-worktree: a linked worktree is clean after an accept"; else bad "accept-oversize-untracked-worktree: exit $rc $(git -C "$TMP/acc5-wt" status --porcelain | head -c 200)"; fi
+# a second accept does not duplicate the exclude line
+run "$R" --accept-oversize Nick
+EXCL="$(git -C "$R" rev-parse --path-format=absolute --git-path info/exclude)"
+if [ "$rc" = 0 ] && [ "$(grep -cxF '/.claude/pipeline.config.local.json' "$EXCL")" = 1 ]; then ok "accept-oversize-exclude-once: no duplicate exclude line"; else bad "accept-oversize-exclude-once: rc=$rc count=$(grep -cxF '/.claude/pipeline.config.local.json' "$EXCL")"; fi
+# a repo that already ignores the file gets no exclude line
+R6="$TMP/acc6"; new_repo "$R6"; padfile "$R6/docs/extra-nick.md" 7000; printf '.claude/pipeline.config.local.json\n' > "$R6/.gitignore"; seal "$R6"
+run "$R6" --accept-oversize Nick
+EXCL6="$(git -C "$R6" rev-parse --path-format=absolute --git-path info/exclude)"
+if [ "$rc" = 0 ] && ! grep -qF 'pipeline.config.local.json' "$EXCL6" && [ "$(git -C "$R6" status --porcelain | wc -l | tr -d ' ')" = 0 ]; then ok "accept-oversize-already-ignored: no exclude line added"; else bad "accept-oversize-already-ignored: rc=$rc excl=$(tr '\n' '~' < "$EXCL6") status=$(git -C "$R6" status --porcelain | tr '\n' '~')"; fi
+# the total warning is informational and never asks
+R7="$TMP/tot"; new_repo "$R7"; padfile "$R7/docs/extra-nick.md" 8300; seal "$R7"
+run "$R7"
+jtrue "total-oversize-informational: informational true, ask false" 'j.warnings.some(w=>w.kind==="total-oversize"&&w.informational===true&&w.ask===false)'
 
 # ---- lanes (#271) -------------------------------------------------------------------------------------
 # lane_repo <dir>: the base fixture plus sam.ios.md (lane ios, persona Ivy, paths) and sam.web.md; nothing sealed yet
