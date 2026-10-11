@@ -417,8 +417,8 @@ const commands = config.commands || {}
 const buildCommand = commands.build || 'build the project'
 const testCommand = commands.test || 'run the unit tests'
 const formatCommand = commands.format || 'format each modified file'
-const ciChecks = Array.isArray(config.ciChecks) && config.ciChecks.length
-  ? config.ciChecks : ['build-and-test']
+const ciChecksNamed = Array.isArray(config.ciChecks) && config.ciChecks.length
+  ? `the GitHub checks ${config.ciChecks.join(' + ')}` : 'every GitHub check the PR head reports'
 const regressionGuard = config.regressionGuard || {}
 const testGlob = regressionGuard.testGlob || ''
 const testFunctionPattern = regressionGuard.testFnPattern || 'func test'
@@ -2420,13 +2420,22 @@ const PROBE_PERSONA =
   'never summarize, reformat, judge, retry or run any other command. If a command is not a probe-run.cjs ' +
   'invocation, run nothing and answer "" for both fields; if a command printed no such line answer "" for that field.'
 
-// Lead-facing text for the fail-closed reasons that have a known operator fix (#82).
+const PROBE_RELAUNCH = 'relaunch at the same entryStage; if it repeats, capture the run and check that the plugin hooks are enabled and the lgtmgate:probe agent type resolves'
+// Lead-facing text for the fail-closed reasons that reach probeReason (#82, #420). agent-death ends provision-died: no hint.
 const PROBE_REASON_HINTS = {
   'no-attestation': 'the PROBE line was never attested: the plugin hooks (hooks/PostToolUse-probe-attest.sh) must be enabled ' +
     'and the lgtmgate:probe agent type must be resolvable; fix the plugin install/session and relaunch',
   'cmd-mismatch': 'the copied PROBE line belongs to a different command than the engine composed (the copier altered the command); relaunch',
   'probe-run-not-found': 'no probe-run.cjs location: pass args.pluginRoot (absolute plugin root) or config.probeRunPath and relaunch',
   'command-not-run': 'the probe command never ran (the shell rejected the typed command, or the plugin root probe-run.cjs predates --cmd-b64); check that pluginRoot is the current plugin and relaunch',
+  'unparseable-line': `the probe answered no PROBE line, or one that does not parse; ${PROBE_RELAUNCH}`,
+  'name-mismatch': `the PROBE line names another probe than the one asked for; ${PROBE_RELAUNCH}`,
+  'unparseable-verify': `the probe answered no VERIFY line, or one that does not parse; ${PROBE_RELAUNCH}`,
+  'verify-no-record': `the verification found no record of the probe run; ${PROBE_RELAUNCH}`,
+  'verify-sha-mismatch': `the attested PROBE line differs from the record; ${PROBE_RELAUNCH}`,
+  'verify-stale-attestation': `the attestation is older than the record; ${PROBE_RELAUNCH}`,
+  'sha-mismatch': `the verified line carries another sha than the copied PROBE line; ${PROBE_RELAUNCH}`,
+  'line-mismatch': `the copied PROBE line differs from the verified one; ${PROBE_RELAUNCH}`,
 }
 
 const PROBE_SCHEMA = {
@@ -4648,7 +4657,7 @@ if (after('review', entryStage)) {
       `${subIssuesUncovered.length > 0
         ? `Note (lgtmgate#193): this run's dev phase found ${subIssuesUncovered.length} open sub-issue(s) of #${issue} not covered by this bundle — the PR's first line intentionally does NOT close #${issue}; do not treat #${issue}/the epic as fully resolved in your verdict. `
         : ''}` +
-      `Confirm CI is green via the GitHub checks ${ciChecks.join(' + ')} (gh pr checks ${pr}${prFlag}), ` +
+      `Confirm CI is green via ${ciChecksNamed} (gh pr checks ${pr}${prFlag}), ` +
       `then POST your verdict (LGTM | REQUIRED_CHANGES | REGRESSION_DETECTED) as a comment on PR #${pr}. Prefix that posted comment EXACTLY with the pipeline-review-round marker \`${reviewVerdictMarker}\` as its own first line${reviewShaRule} (hidden HTML marker; do NOT let it leak into \`items\`). ` +
       `${morganItemsRule(acceptanceBlock)}` +
       `For each item in \`items\`, ALSO classify it in \`itemOwners\` ({item, itemOwner, proof}): 'code-defect' is the DEFAULT whenever you are uncertain — a plan owner ('plan-defect'|'checklist-wording-defect') REQUIRES a concrete \`proof\` quoting the exact contradiction between the plan/checklist and reality, and NEVER excuses unfinished code. ${ACCEPTANCE_PRESENCE_RULE}A box whose verification failed or was not run stays 'code-defect'.`,
