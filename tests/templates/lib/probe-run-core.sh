@@ -210,6 +210,11 @@ GHEOF
   OUT="$(PATH="$PFD/bin:$PATH" bash "$PF" branch --wt "$PFD/wt" --pr '')"
   ok=0; [ "$OUT" = '{"mode":"branch","headRef":null,"branchPrefix":""}' ] && ok=1
   check "preflight.sh branch: no PR number, key absent -> headRef null, branchPrefix empty string" "$ok"
+  OUT="$(PATH="$PFD/bin:$PATH" bash "$PF" branch --wt "$PFD/wt" --pr 7 --repo o/r --stamp 1)"
+  OUT_NEW="$(PATH="$PFD/bin:$PATH" bash "$PF" branch --worktree "$PFD/wt" --pr 7 --repo o/r --stamp 1)"
+  ok=0; [ -n "$OUT_NEW" ] && [ "$OUT" = "$OUT_NEW" ] && ok=1
+  check "[worktree-flag] preflight.sh: old and new spelling give the same output" "$ok"
+
 
   # dev: temp repo, local bare origin with one target changed upstream
   git init -q --bare "$PFD/origin.git" 2>/dev/null

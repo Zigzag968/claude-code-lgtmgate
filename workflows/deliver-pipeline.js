@@ -21,8 +21,9 @@ export const meta = {
 // |---|---|
 // | `issue` | GitHub issue number (required) |
 // | `brief` | one-line description of the change (required) |
-// | `wtPath` | shared worktree absolute path (required) |
-// | `config` | REQUIRED object: the parsed `.claude/pipeline.config.json`, supplied by the Lead. Absent or not an object (e.g. a JSON string) -> throws before any agent call (#13, #12). Project-specific configuration (stack-agnostic; see pipeline.config.template.json): `{ ghProject, baseBranch, branchPrefix, worktreeRoot, commands:{build,test,format}, ciChecks:[], regressionGuard:{testGlob,testFnPattern,baselineCmd}, provision:{extraLinks:[{src,dst}]}, preflight:{canonicalStringBan:[]}, commitHygiene:{squashBeforeHandoff,maxCommits}, commentHygiene:bool, oneWayDoorPaths:[] (optional; R3 path globs/prefixes, default none; see oneWayDoorSignals), oneWayDoorKinds:[] (optional; R3 kinds among status\|agent\|hook\|seam, default none), engineRepo:true (optional; marks the repo that IS this plugin: engine-only rules, default absent = consumer; see engineRules), minPluginVersion:'x.y.z[-pre.N]' (optional, off by default; the oldest engine version this repo accepts: an engine below it escalates `plugin-version-too-old` before anything runs, #233; an unusable value throws), repo:'owner/repo' }` — repo: code repo for cross-repo runs; absent -> cwd-resolved. worktreeRoot resolution order: LGTMGATE_WORKTREE_ROOT env var -> configLocal.worktreeRoot -> config.worktreeRoot -> wtPath's parent dir (see resolveWorktreeRoot below). |
+// | `worktreePath` | shared worktree absolute path (required) |
+// | `wtPath` | old spelling of `worktreePath`, still accepted; `worktreePath` wins when both are given; removed in #452 |
+// | `config` | REQUIRED object: the parsed `.claude/pipeline.config.json`, supplied by the Lead. Absent or not an object (e.g. a JSON string) -> throws before any agent call (#13, #12). Project-specific configuration (stack-agnostic; see pipeline.config.template.json): `{ ghProject, baseBranch, branchPrefix, worktreeRoot, commands:{build,test,format}, ciChecks:[], regressionGuard:{testGlob,testFnPattern,baselineCmd}, provision:{extraLinks:[{src,dst}]}, preflight:{canonicalStringBan:[]}, commitHygiene:{squashBeforeHandoff,maxCommits}, commentHygiene:bool, oneWayDoorPaths:[] (optional; R3 path globs/prefixes, default none; see oneWayDoorSignals), oneWayDoorKinds:[] (optional; R3 kinds among status\|agent\|hook\|seam, default none), engineRepo:true (optional; marks the repo that IS this plugin: engine-only rules, default absent = consumer; see engineRules), minPluginVersion:'x.y.z[-pre.N]' (optional, off by default; the oldest engine version this repo accepts: an engine below it escalates `plugin-version-too-old` before anything runs, #233; an unusable value throws), repo:'owner/repo' }` — repo: code repo for cross-repo runs; absent -> cwd-resolved. worktreeRoot resolution order: LGTMGATE_WORKTREE_ROOT env var -> configLocal.worktreeRoot -> config.worktreeRoot -> worktreePath's parent dir (see resolveWorktreeRoot below). |
 // | `configLocal` | parsed `.claude/pipeline.config.local.json`, supplied by the Lead (the workflow sandbox has no filesystem — see resolveWorktreeRoot below); only `worktreeRoot` is read today (#61). Gitignored, machine-local, never versioned. Absent/garbage -> {}. |
 // | `pmReview` | run Mia before Sam (default false) |
 // | `issueType` | the issue's type, from its `type:*` label (e.g. 'bug', 'feature', 'chore'); optional, absent = not a bug. With 'bug' AND a Sam target under `workflows/` AND config.engineRepo is true, the R2 fixture acceptance item is injected into Nick's prompt (#76, #163). A launch arg, not a simulate key. |
@@ -36,8 +37,8 @@ export const meta = {
 // | `resumeReason` | optional, null by default. Set by the Lead on an entryStage:'dev' relaunch that follows a status:'escalate', reason:'mergeable-conflicting' result (#170), to thread WHY the resume happens into Nick's prompt (#183) — otherwise Nick reasons only from branch/plan content. Allow-list deliberately narrow (one value today): a branch-mismatch or plan-stale escalate doesn't resolve by relaunching Nick with this same message. |
 // | `dryRun` | if true, validate args and return immediately (no agents spawned) |
 // | `probeOnly` | optional { name, cmd, label, round }: run ONE probe() (probe-run gate, #80) and return status 'dry-run-ok' reason 'probe-only'. Lets a run-offline fixture reach probe() while no engine call site is migrated yet. Not a simulate key. |
-// | `pluginRoot` | optional absolute path of the plugin root (#82). The Lead passes ${CLAUDE_PLUGIN_ROOT} for the plugin component and omits it for a local copy; the probe layer resolves templates/probe-run.cjs from it (the workflow has no filesystem or env), and the provisioning script is read from the same root (templates/provision-worktree.sh, #429). config.probeRunPath wins; fallback <wtPath>/templates/probe-run.cjs. When the templates come from pluginRoot (no config.probeRunPath), the manifest version of the root must equal this engine's BUILD.version, else the run escalates before provisioning (`plugin-version-skew` / `plugin-version-unreadable`, #195). |
-// | `sessionRoot` | optional absolute path of the Lead session's project root (the workflow has no env). When given and not simulate, its git common dir must equal wtPath's, else the run escalates `session-root-mismatch` before provisioning (#177): agents get the launching session's instruction files. Omitted: the check is skipped with a log line. |
+// | `pluginRoot` | optional absolute path of the plugin root (#82). The Lead passes ${CLAUDE_PLUGIN_ROOT} for the plugin component and omits it for a local copy; the probe layer resolves templates/probe-run.cjs from it (the workflow has no filesystem or env), and the provisioning script is read from the same root (templates/provision-worktree.sh, #429). config.probeRunPath wins; fallback <worktreePath>/templates/probe-run.cjs. When the templates come from pluginRoot (no config.probeRunPath), the manifest version of the root must equal this engine's BUILD.version, else the run escalates before provisioning (`plugin-version-skew` / `plugin-version-unreadable`, #195). |
+// | `sessionRoot` | optional absolute path of the Lead session's project root (the workflow has no env). When given and not simulate, its git common dir must equal worktreePath's, else the run escalates `session-root-mismatch` before provisioning (#177): agents get the launching session's instruction files. Omitted: the check is skipped with a log line. |
 // | `projectSpecifics` | optional object: the verbatim stdout of `scripts/agent-context.cjs` (skills/deliver/SKILL.md §3bis). Required when `config.projectSpecifics` or `config.agentContext` is set. Absent, malformed or a digest mismatch throws before any agent call; nothing is injected on a refusal. The per-role text is inserted in every prompt of that role; the fingerprint is returned as `specifics` and traced (#265). Lanes (#271): a role block may carry `lanes:[{name, persona?, paths?, hint?, files, text, digest, bytes}]`; each lane digest is verified too; only the lanes chosen for the run are injected (see `lanes`). |
 // | `lanes` | optional array of lane names: the `lanes` of the previous result, carried by the Lead on every `entryStage` dev\|review relaunch (else the `lanes:` line of `planText` is read). A name that is no lane of `projectSpecifics` throws. A plan run asks Theo for the lanes (only when lane files exist), validates them, adds the lanes whose `paths` hit Sam's `targetFiles` for Nick and Morgan, appends `lanes: a,b` to the plan it returns, and reports `lanes` (and `lanesUnresolved:true` when Theo gave none) on `finish()`. |
 // | `models` | optional per-role model override: { scout?, planAudit?, morgan? }. Resolution order per role is `models.<role> ?? config.models?.<role> ?? 'sonnet'` (same `??` idiom as planAudit above — arg wins per-run over the project default). Default is 'sonnet' for all three roles (lgtmgate#161: the plan-phase loop could spawn up to 4 opus scout attempts per issue with planAudit on, the dominant cost driver); pass e.g. `models: { scout: 'opus' }` per-run when an issue is dense/dangerous enough to warrant it — opus stays fully reachable, just no longer the default. Not a general cost-control knob: Theo and Nick are NOT overridable by this key, always 'sonnet' (out of scope per the issue — their calls are unconditional literals). |
@@ -78,7 +79,7 @@ export const meta = {
 //       IDENTICAL args (e.g. a died-Morgan retry — see the two `resumable: true` sites below).
 //   (b) to CHANGE control-flow — a real case (`mode='semi'` + `proceedThrough='plan'`),
 //       or advancing `entryStage` — launch a FRESH Workflow run with explicit args (`issue`,
-//       `brief`, `wtPath`, `entryStage`, `prNumber`, `planText`, `mode`, `proceedThrough`)
+//       `brief`, `worktreePath`, `entryStage`, `prNumber`, `planText`, `mode`, `proceedThrough`)
 //       rebuilt from persisted state. NEVER bare `resumeFromRunId` for that case: it silently
 //       replays the original args and bypasses the subsequent gate() (a real incident path).
 //
@@ -219,7 +220,7 @@ const argumentsIn = (typeof args === 'string' ? JSON.parse(args) : args) || {}
 // The removed scout arg: refuse it before anything else (zero agent call), with the remedy in the message.
 if (argumentsIn.scoutAgent !== undefined) throw new Error('removed: declare lanes with a `lane:` frontmatter in `.claude/lgtmgate/<role>.<lane>.md`; start a fresh run at the wanted entryStage')
 const {
-  issue, brief, pmReview = false, issueType = null, wtPath,
+  issue, brief, pmReview = false, issueType = null, worktreePath: worktreeArgument, wtPath: legacyWorktreePath,
   config,
   configLocal = {},
   prNumber = null,
@@ -248,7 +249,8 @@ const {
   stamp = null,
 } = argumentsIn
 
-if (!issue || !brief || !wtPath) throw new Error('Missing required args: issue, brief, wtPath')
+const worktreePath = worktreeArgument || legacyWorktreePath
+if (!issue || !brief || !worktreePath) throw new Error('Missing required args: issue, brief, worktreePath')
 // #13/#12 — `config` is REQUIRED and must be an object: the workflow sandbox has no filesystem, so
 // an absent config silently ran every default (branchPrefix 'features/', envSymlink 'required',
 // placeholder commands) and surfaced runs later as preflight-stuck / branch-mismatch. Same throw
@@ -398,7 +400,7 @@ if (branchPrefixArgumentIgnored) {
 const runtimeEnvironment = simulate
   ? (simulate.probes?.env || {})
   : ((typeof process !== 'undefined' && process && process.env) ? process.env : {})
-const worktreeRoot = resolveWorktreeRoot({ env: runtimeEnvironment, configLocal, config, wtPath })
+const worktreeRoot = resolveWorktreeRoot({ env: runtimeEnvironment, configLocal, config, wtPath: worktreePath })
 log(`worktreeRoot: ${worktreeRoot ?? '(unresolved)'} (env=${runtimeEnvironment.LGTMGATE_WORKTREE_ROOT ? 'set' : 'unset'}, local=${configLocal.worktreeRoot ? 'set' : 'unset'}, config=${config.worktreeRoot ? 'set' : 'unset'})`)
 // Code repo "owner/repo" for cross-repo runs: scopes the gh calls (guard, PR-create,
 // checks, no-op gate) to the code repo instead of relying on the invoking cwd. Absent ->
@@ -1672,7 +1674,7 @@ function reconcileStaleProjectConfig(rawJson) {
 // FIRST-matching-reason order below. Pure: no I/O, no closure over simulate/config/trace.
 // Exception: a proof with committedInPr === true (file is content of the PR head) skips the mtime checks, provided the PR's
 // changed-file list (prFiles, #229) contains its path; without a list (older script, truncated, unreadable) the flag is trusted.
-function staleArtifactBlockers(proofs, floorIso, prFiles, worktreePath) {
+function staleArtifactBlockers(proofs, floorIso, prFiles, worktreeDirectory) {
   if (!Array.isArray(proofs) || proofs.length === 0) return []
   // Accepts an explicit UTC 'Z' or a numeric offset: Morgan stats artifacts on the local
   // machine, so a valid ISO-8601 like 2026-08-11T18:02:02+02:00 must not be rejected
@@ -1704,7 +1706,7 @@ function staleArtifactBlockers(proofs, floorIso, prFiles, worktreePath) {
     if (p.committedInPr === true) {
       if (!Array.isArray(prFiles)) continue
       let relativePath = p.path.trim()
-      if (typeof worktreePath === 'string' && worktreePath !== '' && relativePath.startsWith(worktreePath + '/')) relativePath = relativePath.slice(worktreePath.length + 1)
+      if (typeof worktreeDirectory === 'string' && worktreeDirectory !== '' && relativePath.startsWith(worktreeDirectory + '/')) relativePath = relativePath.slice(worktreeDirectory.length + 1)
       while (relativePath.startsWith('./')) relativePath = relativePath.slice(2)
       if (prFiles.includes(relativePath)) continue
     }
@@ -1724,16 +1726,16 @@ function staleArtifactBlockers(proofs, floorIso, prFiles, worktreePath) {
 // resolveWorktreeRoot (#61) — layered, machine-free worktree-root resolution.
 // Precedence: $LGTMGATE_WORKTREE_ROOT > configLocal.worktreeRoot > config.worktreeRoot
 // (the versioned LOGICAL default). A winner is accepted only when ABSOLUTE; a relative
-// or blank value falls back to this run's own worktree parent — wtPath is
+// or blank value falls back to this run's own worktree parent — worktreePath is
 // `<worktreeRoot>/<slug>` by construction (skills/deliver/SKILL.md:35) — so the brief
-// never carries a relative root. No candidate and no absolute wtPath -> null, which is
+// never carries a relative root. No candidate and no absolute worktreePath -> null, which is
 // exactly the pre-#61 `config.worktreeRoot || null` behaviour (clause omitted).
-function resolveWorktreeRoot({ env: environment = {}, configLocal: localConfig = {}, config: primaryConfig = {}, wtPath: worktreePath = '' }) {
+function resolveWorktreeRoot({ env: environment = {}, configLocal: localConfig = {}, config: primaryConfig = {}, wtPath: worktreeDirectory = '' }) {
   const pick = (v) => (typeof v === 'string' && v.trim() ? v.trim() : null)
   const strip = (p) => (p.length > 1 ? p.replace(/\/+$/, '') : p)
   const abs = (v) => (v && v.startsWith('/') ? strip(v) : null)
   const parentOfWorktree = (() => {
-    const p = abs(pick(worktreePath))
+    const p = abs(pick(worktreeDirectory))
     if (!p) return null
     const index = p.lastIndexOf('/')
     return index >= 0 ? (p.slice(0, index) || '/') : null
@@ -2550,20 +2552,20 @@ function base64Utf8(string_) {
 // --- base64Utf8:end ---
 
 // --- probeCommands:start --- (pure & self-contained — keep extractable by the consuming project's tests)
-// The two commands the probe agent runs, in order (#82). Both start with `cd '<wtPath>' && node '<script>'`
+// The two commands the probe agent runs, in order (#82). Both start with `cd '<worktreePath>' && node '<script>'`
 // (the attest hook accepts that prefix). The script is config.probeRunPath, else the plugin root's
 // templates/probe-run.cjs (arg pluginRoot), else the worktree's own copy.
-function probeCommands({ wtPath: worktreePath, issue: issueNumber, pluginRoot: pluginRootPath, probeRunPath, name, cmd, label, round, noReuse, expectCmd, cmdB64 }) {
+function probeCommands({ wtPath: worktreeDirectory, issue: issueNumber, pluginRoot: pluginRootPath, probeRunPath, name, cmd, label, round, noReuse, expectCmd, cmdB64 }) {
   const q = (x) => `'${String(x).split("'").join("'\\''")}'`
-  const script = probeRunPath ?? (pluginRootPath ? pluginRootPath + '/templates/probe-run.cjs' : worktreePath + '/templates/probe-run.cjs')
-  const outDirectory = `${worktreePath}/.pipeline/probes/issue-${issueNumber}`
-  const head = `cd ${q(worktreePath)} && node ${q(script)} `
+  const script = probeRunPath ?? (pluginRootPath ? pluginRootPath + '/templates/probe-run.cjs' : worktreeDirectory + '/templates/probe-run.cjs')
+  const outDirectory = `${worktreeDirectory}/.pipeline/probes/issue-${issueNumber}`
+  const head = `cd ${q(worktreeDirectory)} && node ${q(script)} `
   const common = `--label ${label} --round ${round} --out ${q(outDirectory)} --parser ${name}`
   return {
     // #338: cmdB64 (the caller's base64 of `cmd`) replaces --cmd with one bare token: no nested quoting for a copier to drop
     // #212: --expect-cmd (the sha256 of `cmd`) BEFORE --cmd: the script refuses to run a copy that does not hash to it
     run: `${head}${common} --model haiku${noReuse ? ' --no-reuse' : ''}${expectCmd ? ` --expect-cmd ${expectCmd}` : ''}${cmdB64 ? ` --cmd-b64 ${cmdB64}` : ` --cmd ${q(cmd)}`}`,
-    verify: `${head}--verify ${common} --attest ${q(worktreePath + '/.pipeline/probe-attest.jsonl')}`,
+    verify: `${head}--verify ${common} --attest ${q(worktreeDirectory + '/.pipeline/probe-attest.jsonl')}`,
   }
 }
 // --- probeCommands:end ---
@@ -2661,13 +2663,13 @@ function minPluginVersionVerdict({ engineVersion, minVersion, plugin }) {
 // on another repository than the Lead session's would run under the wrong rules. A script compares the git common dir
 // of the Lead's session root with the run's worktree; the command prints exactly one line, read by the `lines` probe.
 // No model judges. The reason never holds a path (the scrub hook refuses local paths in GitHub text).
-function sessionRootCommand(sessionRootPath, worktreePath) {
+function sessionRootCommand(sessionRootPath, worktreeDirectory) {
   const q = (x) => `'${String(x).split("'").join("'\\''")}'`
   const js = 'try{const cp=require("child_process"),fs=require("fs");' +
     'const d=(p)=>fs.realpathSync(cp.execFileSync("git",["-C",p,"rev-parse","--path-format=absolute","--git-common-dir"],{encoding:"utf8",stdio:["ignore","pipe","ignore"]}).trim());' +
     'console.log(d(process.argv[1])===d(process.argv[2])?"SESSION-ROOT:same":"SESSION-ROOT:differs")}' +
     'catch(e){console.log("SESSION-ROOT-ERROR:unreadable")}'
-  return `node -e ${q(js)} ${q(sessionRootPath)} ${q(worktreePath)}`
+  return `node -e ${q(js)} ${q(sessionRootPath)} ${q(worktreeDirectory)}`
 }
 // -> null when the session root is the repository of the worktree, else { code, reason }; fails closed on anything else.
 function sessionRootVerdict({ probeFailed, exit, lines }) {
@@ -2699,9 +2701,9 @@ async function probe(name, command, { label, round = 0, onFail, noReuse = false,
   const want = sha256Hex(command)
   // gateCmd (#212, writes): the script refuses to run a copy of the command that does not hash to `want`
   // b64 (#338): the command travels as one bare base64 token (digest-gated), never as nested quoting a model must re-type
-  const cmds = probeCommands({ wtPath, issue, pluginRoot, probeRunPath: config.probeRunPath, name, cmd: command, label, round, noReuse, expectCmd: gateCommand || b64 ? want : undefined, cmdB64: b64 ? base64Utf8(command) : undefined })
+  const cmds = probeCommands({ wtPath: worktreePath, issue, pluginRoot, probeRunPath: config.probeRunPath, name, cmd: command, label, round, noReuse, expectCmd: gateCommand || b64 ? want : undefined, cmdB64: b64 ? base64Utf8(command) : undefined })
   const prompt =
-    `Run EXACTLY these two commands once each, in this order, from the worktree "${wtPath}", without editing or re-quoting them:\n\n` +
+    `Run EXACTLY these two commands once each, in this order, from the worktree "${worktreePath}", without editing or re-quoting them:\n\n` +
     `1. ${cmds.run}\n2. ${cmds.verify}\n\n` +
     `The first prints exactly one line starting with "PROBE ": answer it verbatim as "line". ` +
     `The second prints exactly one line starting with "VERIFY ": answer it verbatim as "verify". ` +
@@ -2732,7 +2734,7 @@ async function probe(name, command, { label, round = 0, onFail, noReuse = false,
 // `preflight`). mode 'dev' | 'branch'; returns the parsed object, or null on any failure (fail-open,
 // like the reads it replaces). The script sits next to probe-run.cjs.
 const probeScriptPath = (file) => {
-  const runPath = config.probeRunPath ?? (pluginRoot ? pluginRoot + '/templates/probe-run.cjs' : wtPath + '/templates/probe-run.cjs')
+  const runPath = config.probeRunPath ?? (pluginRoot ? pluginRoot + '/templates/probe-run.cjs' : worktreePath + '/templates/probe-run.cjs')
   return runPath.slice(0, runPath.lastIndexOf('/') + 1) + file
 }
 
@@ -2762,7 +2764,7 @@ async function prWrite(op, label, round, argv) {
   prWriteFailure = null
   try {
     const script = probeScriptPath('pr-write.sh')
-    const arguments_ = [...argv, '--wt', wtPath, ...(repository ? ['--repo', repository] : [])]
+    const arguments_ = [...argv, '--worktree', worktreePath, ...(repository ? ['--repo', repository] : [])]
     const command = 'bash ' + shellSingleQuote(script) + ' ' + op + ' ' + arguments_.map((a) => shellSingleQuote(String(a))).join(' ')
     const r = await probe('pr-write', command, {
       label,
@@ -2811,7 +2813,7 @@ if (!simulate && pluginRoot && !config.probeRunPath) {
 // instructions). The Lead passes its session root; same git common dir as the worktree, else escalate before
 // provisioning. A reason on the existing escalate: no new status, agent or seam, no label written.
 if (!simulate && sessionRoot) {
-  const sr = await probe('lines', sessionRootCommand(sessionRoot, wtPath), { label: 'session-root', noReuse: true, b64: true, onFail: (reason) => ({ probeFailed: reason }) })
+  const sr = await probe('lines', sessionRootCommand(sessionRoot, worktreePath), { label: 'session-root', noReuse: true, b64: true, onFail: (reason) => ({ probeFailed: reason }) })
   if (sr.probeFailed === 'agent-death') return finish(STATUS['provision-died'], { issue, trace })
   const srv = sessionRootVerdict({ probeFailed: sr.probeFailed, exit: sr.exit, lines: sr.json && sr.json.lines })
   if (srv && sr.probeFailed) {
@@ -2820,7 +2822,7 @@ if (!simulate && sessionRoot) {
   }
   if (srv) {
     log(`Session root check failed — ${srv.reason}`)
-    return finish(STATUS['escalate'], { reason: srv.reason, issue, sessionRoot, wtPath, trace })
+    return finish(STATUS['escalate'], { reason: srv.reason, issue, sessionRoot, wtPath: worktreePath, trace })
   }
   log("Session root: same repository as the run's worktree")
 } else if (!simulate) {
@@ -2838,7 +2840,7 @@ if (entryStage !== 'plan') {
   if (simulate) {
     if (simulate.probes?.configProjectRecheckRaw !== undefined) configProjectRecheckRaw = simulate.probes?.configProjectRecheckRaw
   } else {
-    const r = await probe('lines', `jq -c '{baseBranch}' ${shellSingleQuote(wtPath + '/.claude/pipeline.config.json')} 2>/dev/null`, {
+    const r = await probe('lines', `jq -c '{baseBranch}' ${shellSingleQuote(worktreePath + '/.claude/pipeline.config.json')} 2>/dev/null`, {
       label: 'config-project-recheck', noReuse: true, onFail: (reason) => { log(`Project config guard: pipeline.config.json re-check failed (${reason}) — keeping caller-supplied values`); return null },
     })
     configProjectRecheckRaw = r && r.exit === 0 && Array.isArray(r.json && r.json.lines) ? r.json.lines[0] : null
@@ -2864,7 +2866,7 @@ if (entryStage !== 'plan') {
 // Trust boundary: with args.pluginRoot the script is the plugin's own `templates/provision-worktree.sh`
 // (trusted as the plugin and the probe-run.cjs that runs it are; the manifest version of the root is
 // checked against the engine by #195 when the templates come from pluginRoot), not the branch's. Without
-// a plugin root it is the WORKTREE copy (`${wtPath}/scripts/...`), so on any resume entryStage
+// a plugin root it is the WORKTREE copy (`${worktreePath}/scripts/...`), so on any resume entryStage
 // ('dev'/'review') it is branch-controlled — trusted to exactly the degree the branch under review is.
 // ---------------------------------------------------------------------------
 
@@ -2894,12 +2896,12 @@ if (entryStage !== 'plan') {
   const provisionArguments = hardLinks.map(pair).join('') + (softLinks.length ? ' --soft' + softLinks.map(pair).join('') : '')
   // #429: with a plugin root the engine runs the plugin's own script (no per-consumer copy to keep in
   // step); without one (copied workflow, headless runner) it reads the worktree copy as before.
-  const provisionScript = pluginRoot ? `${pluginRoot}/templates/provision-worktree.sh` : `${wtPath}/scripts/provision-worktree.sh`
+  const provisionScript = pluginRoot ? `${pluginRoot}/templates/provision-worktree.sh` : `${worktreePath}/scripts/provision-worktree.sh`
   const noScriptBranch = hardLinks.length === 0
     ? `echo "PROVISION-SKIPPED-NO-SCRIPT $SCRIPT (no provision.extraLinks configured - nothing to link)"; exit 0`
     : `echo "PROVISION-NO-SCRIPT $SCRIPT (${hardLinks.length} hard link(s) configured - cannot provision)" >&2; exit 2`
   const provisionCommand =
-    `SCRIPT="${provisionScript}"; if [ -f "$SCRIPT" ]; then PROVISION_ENV_SYMLINK="${environmentSymlink}" bash "$SCRIPT" "${wtPath}"${provisionArguments}; else ${noScriptBranch}; fi`
+    `SCRIPT="${provisionScript}"; if [ -f "$SCRIPT" ]; then PROVISION_ENV_SYMLINK="${environmentSymlink}" bash "$SCRIPT" "${worktreePath}"${provisionArguments}; else ${noScriptBranch}; fi`
   if (simulate) provisionCommandPreview = provisionCommand
   // #82: the call goes through probe() (probe-run gate): probe-run.cjs executes the command and keeps
   // the raw output, PARSERS.provision derives linked/missing/skipped in the script, the exit code
@@ -2965,7 +2967,7 @@ if (entryStage === 'plan') {
     ? { state: 'legacy', behind: simulate.probes?.provisionBehindCount, own: null }
     : await (async () => {
         const result = await probe('provision-freshness',
-          `cd "${wtPath}" && git fetch origin ${baseBranch} -q 2>/dev/null; B=$(git rev-list --count HEAD..origin/${baseBranch}); O=$(git rev-list --count origin/${baseBranch}..HEAD); if [ "$B" -gt 0 ] && [ "$O" -eq 0 ] && git merge --ff-only origin/${baseBranch} -q >/dev/null 2>&1; then echo "PROVISION-FRESHNESS:ffwd:$B"; elif [ "$B" -eq 0 ]; then echo "PROVISION-FRESHNESS:fresh:0:$O"; else echo "PROVISION-FRESHNESS:stale:$B:$O"; fi`,
+          `cd "${worktreePath}" && git fetch origin ${baseBranch} -q 2>/dev/null; B=$(git rev-list --count HEAD..origin/${baseBranch}); O=$(git rev-list --count origin/${baseBranch}..HEAD); if [ "$B" -gt 0 ] && [ "$O" -eq 0 ] && git merge --ff-only origin/${baseBranch} -q >/dev/null 2>&1; then echo "PROVISION-FRESHNESS:ffwd:$B"; elif [ "$B" -eq 0 ]; then echo "PROVISION-FRESHNESS:fresh:0:$O"; else echo "PROVISION-FRESHNESS:stale:$B:$O"; fi`,
           // live state: a stored record from an earlier launch must never answer (#83)
           { label: 'provision-freshness', noReuse: true, onFail: (reason) => { log(`provisionBehindCount: probe failed (${reason}), skipping staleness preflight`); return null } })
         return result && result.json && !result.json.error ? result.json : null
@@ -2976,11 +2978,11 @@ if (entryStage === 'plan') {
   } else if (provisionFresh && provisionFresh.behind > 0) {
     const provisionBehind = provisionFresh.behind
     const ownCommits = provisionFresh.own
-    const mergeCommand = `git -C "${wtPath}" merge origin/${baseBranch}`
+    const mergeCommand = `git -C "${worktreePath}" merge origin/${baseBranch}`
     log(`Provision-freshness: worktree is ${provisionBehind} commit(s) behind origin/${baseBranch} at dispatch (own commits: ${ownCommits ?? 'unknown'}) — escalating before any planning spend; run: ${mergeCommand}`)
     trace.push(`provision-stale:${provisionBehind}`)
     await updateStatus('Blocked')
-    return finish(STATUS['escalate'], { reason: 'provision-stale', issue, behind: provisionBehind, ownCommits, mergeCommand, baseBranch, wtPath, trace })
+    return finish(STATUS['escalate'], { reason: 'provision-stale', issue, behind: provisionBehind, ownCommits, mergeCommand, baseBranch, wtPath: worktreePath, trace })
   }
 }
 
@@ -3003,7 +3005,7 @@ if (after('plan', entryStage)) {
   diag = await callAgentSafe(
     'theo',
     `Qualify issue #${issue} before Sam plans anything — this gate runs for EVERY nightly-dispatched issue, no exceptions. Brief: ${brief}\n\n` +
-      `If this issue claims a root cause or a specific bug behavior: reproduce it for real in worktree "${wtPath}" (frozen base; never checkout/commit) — ` +
+      `If this issue claims a root cause or a specific bug behavior: reproduce it for real in worktree "${worktreePath}" (frozen base; never checkout/commit) — ` +
       `a real run/test, never a code-reading guess — and confirm or refute the stated cause.\n` +
       `If this issue is a feature/chore ask with no claimed bug: sanity-check it's justified — not already done/shipped, not solving a problem that doesn't ` +
       `exist, coherent and buildable as scoped. Check the codebase/git history for evidence either way.\n` +
@@ -3016,7 +3018,7 @@ if (after('plan', entryStage)) {
       `\`gh api -X PATCH repos/{owner}/{repo}/issues/comments/<id> -F body=@.pipeline/issue-${issue}-design-step.md\`; otherwise create it with \`gh issue comment ${issue} --body-file .pipeline/issue-${issue}-design-step.md\`. The comment body is exactly: ${designStepMarker} on its first line, then the four signals with your evidence, one line each. Never stack a second one.\n` +
       `BLAST-RADIUS: no destructive git (git clean, reset --hard, checkout -- <path>, forced -f/-D deletes) — you diagnose, you never reset the shared worktree's state. ` +
       `Never read/probe a real credential path (~/.ssh/*, ~/.aws/*, .env*, **/*secret*, keychains) — to verify a sandbox deny-rule empirically, create a SYNTHETIC file in $TMPDIR named after the pattern, never the real one. ` +
-      `Stay inside the worktree "${wtPath}" plus $TMPDIR — no traversal to another worktree/repo/home.\n\n` +
+      `Stay inside the worktree "${worktreePath}" plus $TMPDIR — no traversal to another worktree/repo/home.\n\n` +
       `Return { confirmed: bool, evidence: string, actualCause: string|null, persistentStateSignal: bool, authSecurityBoundarySignal: bool, deployConfigSignal: bool, immatureVendorApiSignal: bool, designStepSignalEvidence: string, issueClassificationMismatch: bool${lanesFound.length > 0 ? ', lanes: string[], laneEvidence: string' : ''} }. confirmed=true means "proceed to Sam". evidence is what you checked and ` +
       `found (command run + observed output, or the codebase check performed). actualCause is set only when a claimed cause was refuted and you found the real one.`,
     {
@@ -3132,7 +3134,7 @@ const samScoutPrompt = ({ fixBlock = '', auditFixBlock = '', reviewFixBlock = ''
       `Your plan MUST explicitly answer: does this ship as ONE PR, or as N independently-shippable slices — if N, name them, their acceptance criteria, and their order; if one, justify why despite the risk classification. ` +
       `This is a mandatory section, not optional prose — the human decides the split-or-not call from your answer.`
     : ''
-  return `cd into the shared worktree "${wtPath}" (frozen base; never checkout/commit). Scout and plan issue #${issue}. Brief: ${brief}.${pm ? `\n\nPM framing:\n${JSON.stringify(pm)}` : ''}${diag ? `\n\nConfirmed diagnosis (Theo):\n${diag.evidence}` : ''}\n\n` +
+  return `cd into the shared worktree "${worktreePath}" (frozen base; never checkout/commit). Scout and plan issue #${issue}. Brief: ${brief}.${pm ? `\n\nPM framing:\n${JSON.stringify(pm)}` : ''}${diag ? `\n\nConfirmed diagnosis (Theo):\n${diag.evidence}` : ''}\n\n` +
     `Write the full plan (including the acceptance checklist) as a Markdown ARTIFACT at "${planPath}" inside the worktree (create the .pipeline/plans/ directory if needed). ` +
     `This artifact is the canonical hand-off Nick and Morgan will consume — make it self-contained. ` +
     `REWRITE IN PLACE — accretion is the defect. On an amendment / re-plan round, OVERWRITE "${planPath}" with the CURRENT plan only: NO before/after or delta tables, NO "AMENDMENT N" headers, NO superseded sections kept "for traceability", NO revision archaeology. ` +
@@ -3298,7 +3300,7 @@ if (after('plan', entryStage)) {
     const auditPrompt =
       `You are an INDEPENDENT plan auditor for issue #${issue}. You did NOT write this plan and have no stake in it. ` +
       `Find what is WRONG with it before a single line of code exists — a friendly review is a failed review.\n\n` +
-      `Target stack: ${auditStack || 'not declared — infer it from the worktree'}. Worktree "${wtPath}" is READ-ONLY for you — never checkout, commit, or modify anything in it.\n` +
+      `Target stack: ${auditStack || 'not declared — infer it from the worktree'}. Worktree "${worktreePath}" is READ-ONLY for you — never checkout, commit, or modify anything in it.\n` +
       `Issue #${issue}. Brief: ${brief}. The plan text below is authoritative — do NOT re-read the issue or the plan from GitHub.\n\n` +
       `PLAN:\n${samPlan}\n\n` +
       `AXIS 1 — SECURITY, a lightweight structured pass (design-stage practice: OWASP Threat Modeling / Secure-by-Design):\n` +
@@ -3480,7 +3482,7 @@ if (entryStage === 'dev' || entryStage === 'review') {
     `repo from an unrelated cwd, causing a false already-done:\n` +
     (repository
       ? `0. REPO="${repository}" (from config.repo).\n`
-      : `0. cd into "${wtPath}"; REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner) — if this fails, run steps 1-2 from within "${wtPath}" (cwd-scoped, still correct).\n`) +
+      : `0. cd into "${worktreePath}"; REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner) — if this fails, run steps 1-2 from within "${worktreePath}" (cwd-scoped, still correct).\n`) +
     `1. gh issue view ${issue} -R "$REPO" --json state,createdAt — report issueState and issueCreatedAt ` +
     `VERBATIM from that output's .state and .createdAt (CLOSED → issue is done).\n` +
     `2. gh pr list -R "$REPO" --search "is:merged head:${expectedBranchName}" --json number,mergedAt,headRefName,body -q '.[0]' — ` +
@@ -3592,7 +3594,7 @@ const assertBranchConformance = async (pullRequestNumber, nickBranchFallback) =>
   const branchProbe = async () => {
     if (!branchPfDone) {
       branchPfDone = true
-      branchPf = await preflightProbe('branch', 'branch', ['--wt', wtPath, '--pr', pullRequestNumber ? String(pullRequestNumber) : '', '--repo', repository || '', '--stamp', String(stamp ?? '')])
+      branchPf = await preflightProbe('branch', 'branch', ['--worktree', worktreePath, '--pr', pullRequestNumber ? String(pullRequestNumber) : '', '--repo', repository || '', '--stamp', String(stamp ?? '')])
     }
     return branchPf
   }
@@ -3669,7 +3671,7 @@ if (after('dev', entryStage)) {
   // #83: the three pre-Dev reads (plan freshness, open sub-issues, git-dir writable) are ONE probe.
   // null = probe unavailable -> each read below takes its existing fail-open skip.
   const preflightDevelopment = simulate ? null : await preflightProbe('dev', 'dev', [
-    '--wt', wtPath, '--issue', String(issue), '--base', baseBranch, '--repo', repository || '',
+    '--worktree', worktreePath, '--issue', String(issue), '--base', baseBranch, '--repo', repository || '',
     '--targets', planTargets.join(' '), '--stamp', String(stamp ?? ''),
     ...(isEngineRepository(config) ? ['--engine', 'true'] : []),
   ])
@@ -3724,7 +3726,7 @@ if (after('dev', entryStage)) {
   // Worktree write-access preflight (#263, companion real incident #262: 5 agents, ~546k
   // tokens, ~3 min burned when Nick discovered a sandbox permission gap mid-stage). Cheap,
   // fail-open probe against the REAL git-dir (`.git/worktrees/<branch>`, distinct from the
-  // worktree checkout path itself) — touches/unlinks a marker file there (unlink, never rm: a repo denying Bash(rm *) refuses the whole probe, #99), never wtPath or any
+  // worktree checkout path itself) — touches/unlinks a marker file there (unlink, never rm: a repo denying Bash(rm *) refuses the whole probe, #99), never worktreePath or any
   // tracked file. Ungated by entryStage (unlike the fresh-dispatch provision-stale preflight
   // above): a resumed run can hit the same external sandbox-grant gap as a fresh one.
   const gitDirectoryWritableProbe = async () => {
@@ -3740,7 +3742,7 @@ if (after('dev', entryStage)) {
     trace.push(`worktree-git-dir-not-writable:${gitDirectoryProbe.gitDir || 'unknown'}`)
     log(`Worktree write-access preflight: git-dir "${gitDirectoryProbe.gitDir}" is not writable — escalating before Nick spawn`)
     await updateStatus('Blocked')
-    return finish(STATUS['escalate'], { reason: 'worktree-git-dir-not-writable', gitDir: gitDirectoryProbe.gitDir, issue, wtPath, trace })
+    return finish(STATUS['escalate'], { reason: 'worktree-git-dir-not-writable', gitDir: gitDirectoryProbe.gitDir, issue, wtPath: worktreePath, trace })
   }
 
   const epicReference = subGate.blocked ? `(see #${issue})` : 'Closes #' + issue
@@ -3752,12 +3754,12 @@ if (after('dev', entryStage)) {
     ? `R2 fixture rule (issue #${issue}): add this acceptance item to the checklist verbatim — "fixture \`fixtures/incidents/${issue}-*.json\` present, replayed red on base and green on the branch by \`scripts/run-offline.cjs\`". If no such fixture exists in the branch, run \`gh issue edit ${issue} -R ${repository || '<repo>'} --add-label no-fixture\` and use \`Refs #${issue}\` instead of \`Closes #${issue}\` on the first line of the PR body (the issue then stays open). `
     : ''
   const nickPrompt = (
-    `Work in the shared worktree "${wtPath}" (cd into it; it already exists${worktreeRoot ? `; worktree root: ${worktreeRoot}` : ''}). ` +
+    `Work in the shared worktree "${worktreePath}" (cd into it; it already exists${worktreeRoot ? `; worktree root: ${worktreeRoot}` : ''}). ` +
       `Issue #${issue}. Brief: ${brief}. The plan text below is authoritative — do NOT re-read the issue or the plan from GitHub.\n\n` +
       `${planBlock}\n\n${planFreshnessNote(planStaleFiles, baseBranch)}${resumeReasonNote(resumeReason, prNumber, baseBranch)}` +
       `FIRST, before ANY commit: the worktree may have been dispatched on a foreign branch. ` +
-        `Run \`git -C "${wtPath}" rev-parse --abbrev-ref HEAD\`; if it is not exactly \`${expectedBranchName}\`, ` +
-        `if the branch already exists locally (\`git -C "${wtPath}" rev-parse --verify --quiet refs/heads/${expectedBranchName}\` succeeds) run \`git -C "${wtPath}" switch ${expectedBranchName}\`, otherwise run \`git -C "${wtPath}" switch -c ${expectedBranchName}\`; never reset or force the branch (no \`-B\`/\`-C\`, no \`reset --hard\`), and if the switch is refused because of a dirty tree, stop and report instead of forcing. Then re-run \`git -C "${wtPath}" rev-parse --abbrev-ref HEAD\` to confirm. ` +
+        `Run \`git -C "${worktreePath}" rev-parse --abbrev-ref HEAD\`; if it is not exactly \`${expectedBranchName}\`, ` +
+        `if the branch already exists locally (\`git -C "${worktreePath}" rev-parse --verify --quiet refs/heads/${expectedBranchName}\` succeeds) run \`git -C "${worktreePath}" switch ${expectedBranchName}\`, otherwise run \`git -C "${worktreePath}" switch -c ${expectedBranchName}\`; never reset or force the branch (no \`-B\`/\`-C\`, no \`reset --hard\`), and if the switch is refused because of a dirty tree, stop and report instead of forcing. Then re-run \`git -C "${worktreePath}" rev-parse --abbrev-ref HEAD\` to confirm. ` +
         `Every commit, the push and the PR head MUST be \`${expectedBranchName}\`. ` +
         `Implement the plan on that branch. Write meaningful tests and get the green bar: build via \`${buildCommand}\`, run unit tests via \`${testCommand}\`, and format each modified file via \`${formatCommand}\`. ` +
       `When deleting repo-tracked files, use \`git rm <file>\` instead of bare \`rm\` — bare rm is sandbox-denied and burns permission rounds. ` +
@@ -3867,7 +3869,7 @@ if (after('review', entryStage)) {
   // Returns the parsed object, or null on any failure (fail-open: every caller keeps its own fallback).
   const prState = async (label, round, { since } = {}) => {
     try {
-      const argv = ['--pr', String(pr), '--wt', wtPath]
+      const argv = ['--pr', String(pr), '--worktree', worktreePath]
       if (repository) argv.push('--repo', repository)
       if (since) argv.push('--since', since)
       const command = 'bash ' + shellSingleQuote(probeScriptPath('pr-state.sh')) + ' ' + argv.map(shellSingleQuote).join(' ')
@@ -4093,7 +4095,7 @@ if (after('review', entryStage)) {
     const proofs = Array.isArray(v.artifactProofs) ? v.artifactProofs : []
     if (proofs.length === 0) return await settle(v)
     const floorIso = await artifactFloorIso(round, endState)
-    const blockers = staleArtifactBlockers(proofs, floorIso, artifactPrFiles(endState), wtPath)
+    const blockers = staleArtifactBlockers(proofs, floorIso, artifactPrFiles(endState), worktreePath)
     if (blockers.length === 0) return await settle(v)
     // #7: an item-less LGTM whose every blocker is a defect of Morgan's OWN proof entry (empty artifact, no reported size, malformed
     // entry, no path, no parsable mtime) is not repairable by a dev round: the Review call sites escalate on the mark.
@@ -4250,8 +4252,8 @@ if (after('review', entryStage)) {
   // Regression guard — baseline SET-DIFF, not a grep/function-count check.
   const regressionGuardStep = baselineCommand
     ? `run the REGRESSION GUARD as a baseline SET-DIFF (no checkout/stash beyond what the command does):\n` +
-      `  1) capture the ${baseBranch} baseline by running this exact command (it writes the baseline test log) — export WORKTREE="${wtPath}" and BASE_BRANCH="${baseBranch}" first:\n     ${baselineCommand}\n` +
-      `  2) list the files the PR adds, which survive the baseline overlay: \`git -C "${wtPath}" diff --name-only --diff-filter=ACR origin/${baseBranch}...HEAD\`\n` +
+      `  1) capture the ${baseBranch} baseline by running this exact command (it writes the baseline test log) — export WORKTREE="${worktreePath}" and BASE_BRANCH="${baseBranch}" first:\n     ${baselineCommand}\n` +
+      `  2) list the files the PR adds, which survive the baseline overlay: \`git -C "${worktreePath}" diff --name-only --diff-filter=ACR origin/${baseBranch}...HEAD\`\n` +
       `  3) run the suite on HEAD via \`${testCommand}\` and collect its {failures, errors} by fully-qualified test NAME;\n` +
       `  4) DIFF the {failures, errors} SETS (HEAD minus baseline) by test name. ANY test name that fails or errors on HEAD but is NOT in the baseline log is a NEW regression => verdict REQUIRED_CHANGES (REGRESSION_DETECTED if a previously-passing test now fails).\n` +
       `  BRANCH-ONLY-FILES RULE (mandatory): \`git checkout origin/${baseBranch} -- .\` overlays baseline content but does NOT delete files the PR adds, so a brand-new test file ALSO executes during baseline capture and its failures land in the baseline log. A failing/erroring test whose SOURCE FILE appears in the step-2 added-files list is NEW, regardless of whether its name appears in the baseline log.\n` +
@@ -4277,7 +4279,7 @@ if (after('review', entryStage)) {
     `empty or predating the latest commit (except a file committed in the PR, below) ⇒ the box stays UNTICKED and its verbatim line goes into ` +
     `\`items\` ⇒ REQUIRED_CHANGES, never a tick. ` +
     `COMMITTED-IN-PR EXCEPTION: when the artifact is itself content of the PR head (its path appears in ` +
-    `\`git -C "${wtPath}" diff --name-only origin/${baseBranch}...HEAD\` — run it and cite the line), set \`committedInPr: true\` ` +
+    `\`git -C "${worktreePath}" diff --name-only origin/${baseBranch}...HEAD\` — run it and cite the line), set \`committedInPr: true\` ` +
     `on its \`artifactProofs\` entry: such a file exists before the latest commit, so its mtime legitimately ` +
     `predates it and is not judged (path, existence and non-empty size still are). Leave the field out for any ` +
     `artifact a run produced that the PR does not commit: those keep the mtime rule above. ` +
@@ -4292,7 +4294,7 @@ if (after('review', entryStage)) {
     if (simulate) return simulate.probes?.behindCount
     try {
       const result = await probe('git-rev-list-count',
-        `cd "${wtPath}" && git fetch origin ${baseBranch} -q 2>/dev/null; git rev-list --count HEAD..origin/${baseBranch}`,
+        `cd "${worktreePath}" && git fetch origin ${baseBranch} -q 2>/dev/null; git rev-list --count HEAD..origin/${baseBranch}`,
         // live state: a stored record from an earlier launch must never answer (#83)
         { label: `worktree-behind-${pr}`, noReuse: true, onFail: () => null })
       return result && result.json && Number.isFinite(result.json.count) ? result.json.count : null
@@ -4336,22 +4338,22 @@ if (after('review', entryStage)) {
       (environmentNote
         ? `ENVIRONMENT NOTE (from the Lead, authoritative — apply to every command below): ${environmentNote}\n`
         : '') +
-      `Run pre-Morgan preflight checks on worktree "${wtPath}" and PR #${pr} ` +
+      `Run pre-Morgan preflight checks on worktree "${worktreePath}" and PR #${pr} ` +
       `(best-effort; aggregate results into pass/issues):\n` +
       `HARD checks (local, always enforced):\n` +
       (environmentSymlink === 'ignore'
         ? ''
         : environmentSymlink === 'forbidden'
-          ? `1. test ! -e "${wtPath}/.env" — env file/symlink MUST be ABSENT (this project runs envless by contract)\n`
-          : `1. test -L "${wtPath}/.env" — env symlink present\n`) +
-      `2. git -C "${wtPath}" diff --cached --name-only | head -5 — no stray staged files\n` +
+          ? `1. test ! -e "${worktreePath}/.env" — env file/symlink MUST be ABSENT (this project runs envless by contract)\n`
+          : `1. test -L "${worktreePath}/.env" — env symlink present\n`) +
+      `2. git -C "${worktreePath}" diff --cached --name-only | head -5 — no stray staged files\n` +
       `3. Unit suite still green. Run EXACTLY the configured test command below, ONCE, in ONE shell ` +
-      `whose cwd is "${wtPath}". The command is OPAQUE to you: do NOT substitute, simplify, split, ` +
+      `whose cwd is "${worktreePath}". The command is OPAQUE to you: do NOT substitute, simplify, split, ` +
       `re-quote or improvise another runner — a bare \`pytest\` is NOT this command. Judge check 3 on ` +
       `its exit status only. Report in \`testCommandRun\` the command you actually ran, verbatim; ` +
       `if it is not the block below, check 3 FAILS.\n` +
       `--- BEGIN TEST COMMAND (run verbatim) ---\n` +
-      `cd "${wtPath}"\n` +
+      `cd "${worktreePath}"\n` +
       `${testCommand}\n` +
       `--- END TEST COMMAND ---\n` +
       `ADVISORY checks (require live GitHub/gh access):\n` +
@@ -4416,7 +4418,7 @@ if (after('review', entryStage)) {
     const foldedIssues = foldFailedChecks(pf)
     log(`Preflight failed (attempt ${preflightCallCount - 1}): ${foldedIssues.join(', ')}`)
     const nickFixPrompt = (
-      `Pre-Morgan preflight failed on worktree "${wtPath}" (PR #${pr}). Fix these mechanical issues and push:\n` +
+      `Pre-Morgan preflight failed on worktree "${worktreePath}" (PR #${pr}). Fix these mechanical issues and push:\n` +
       `${foldedIssues.map(index => `- ${index}`).join('\n')}\n` +
       `${SANDBOX_INSTALL_HINT} ` +
       `Do NOT change any product code — fix only the listed mechanical issues; reinstalling deps is NOT ` +
@@ -4640,7 +4642,7 @@ if (after('review', entryStage)) {
   }
 
   let v = await callMorganGuarded(
-    `Work in the shared worktree "${wtPath}". Review PR #${pr}.\n\n` +
+    `Work in the shared worktree "${worktreePath}". Review PR #${pr}.\n\n` +
       `${planBlock}\n\n` +
       `${MORGAN_PRODUCT_DIRECTION}` +
       `Gate on the acceptance checklist FROM THAT PLAN, review against the project specifics (if any), ` +
@@ -4761,7 +4763,7 @@ if (after('review', entryStage)) {
       const before = await prSignature('before', round)
       const nickFixRound = await callAgentSafe(
         'nick',
-        `Work in the shared worktree "${wtPath}". Read Morgan's review on PR #${pr} (gh pr view ${pr}${prFlag} --comments), address every REQUIRED_CHANGES item${planRouted ? ' listed below (the other blockers on this PR are handled by a plan amendment — do NOT touch them)' : ''} while staying faithful to the plan below, re-run the green bar (\`${buildCommand}\` + \`${testCommand}\`, format modified files via \`${formatCommand}\`), and push. When deleting repo-tracked files, use \`git rm <file>\` instead of bare \`rm\` — bare rm is sandbox-denied and burns permission rounds. ${SANDBOX_INSTALL_HINT} After pushing, post a ONE-LINE push-note comment on PR #${pr} (only there, not on the issue) prefixed EXACTLY with the pipeline-review-round marker \`${reviewMarker}\` as its own first line, summarizing the change you just made.${planRouted ? `\n\nItems to address:\n${nickItems.map(index => `- ${index}`).join('\n')}` : ''}\n\n${planBlock}`,
+        `Work in the shared worktree "${worktreePath}". Read Morgan's review on PR #${pr} (gh pr view ${pr}${prFlag} --comments), address every REQUIRED_CHANGES item${planRouted ? ' listed below (the other blockers on this PR are handled by a plan amendment — do NOT touch them)' : ''} while staying faithful to the plan below, re-run the green bar (\`${buildCommand}\` + \`${testCommand}\`, format modified files via \`${formatCommand}\`), and push. When deleting repo-tracked files, use \`git rm <file>\` instead of bare \`rm\` — bare rm is sandbox-denied and burns permission rounds. ${SANDBOX_INSTALL_HINT} After pushing, post a ONE-LINE push-note comment on PR #${pr} (only there, not on the issue) prefixed EXACTLY with the pipeline-review-round marker \`${reviewMarker}\` as its own first line, summarizing the change you just made.${planRouted ? `\n\nItems to address:\n${nickItems.map(index => `- ${index}`).join('\n')}` : ''}\n\n${planBlock}`,
         { agentType: 'Nick', phase: roundPhase, label: `nick-pr-${issue}-${pr}`, model: 'sonnet' },
         round,
       )
@@ -4790,7 +4792,7 @@ if (after('review', entryStage)) {
     await minimizeSupersededReviewComments(round)
 
     v = await callMorganGuarded(
-      `Work in the shared worktree "${wtPath}". Re-review PR #${pr} after Nick's fixes, against the SAME plan and acceptance checklist below. ` +
+      `Work in the shared worktree "${worktreePath}". Re-review PR #${pr} after Nick's fixes, against the SAME plan and acceptance checklist below. ` +
         `${MORGAN_PRODUCT_DIRECTION}` +
         `Re-run the regression guard the same way: ${regressionGuardStep}` +
         `For asset/render/human-facing lanes, BEFORE any verdict, execute the real-case live run yourself (the exact command the plan names, deps included) and machine-verify the output contract from the plan (e.g. the exact pixel/asset dimensions and named visual elements the plan calls for, screenshot non-empty, named fields written). Units mock the other side, so seam errors pass with the mock; only a taste judgment then remains for the human-gate. ` +
@@ -4888,7 +4890,7 @@ if (after('review', entryStage)) {
     await callAgentSafe(
       'nick',
       `Pre-handoff commit-hygiene squash for PR #${pr} (issue #${issue}) — this repo merges with merge commits, so a branch with more than ${squashMaxCommits} commits lands ALL of them verbatim on ${baseBranch}. Squash it to 2-3 LOGICAL commits before handoff:\n` +
-      `1. cd "${wtPath}"; git fetch origin ${baseBranch}.\n` +
+      `1. cd "${worktreePath}"; git fetch origin ${baseBranch}.\n` +
       `2. ABORT (do nothing, report skipped) if ANY of: \`git rev-parse --abbrev-ref HEAD\` != \`${headReferenceName}\`; \`git status --porcelain\` is non-empty; \`git rev-list --merges --count $(git merge-base HEAD origin/${baseBranch})..HEAD\` != 0.\n` +
       `3. OLD=$(git rev-parse HEAD); MB=$(git merge-base HEAD origin/${baseBranch}).\n` +
       `4. git reset --soft "$MB", then create 2-3 Conventional-Commits commits (per the project specifics, if any) splitting the work LOGICALLY — never one commit per review round.\n` +
