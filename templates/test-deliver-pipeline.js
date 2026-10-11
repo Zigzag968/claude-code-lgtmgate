@@ -2513,6 +2513,50 @@ await testCase('T273 probe(): persona fallback wired, no-attestation and probe-r
   return checks.find(c => c) || { ok: true }
 })
 
+// T420a (#420) — every fail-closed probe reason the engine can raise has a one-line Lead remedy in PROBE_REASON_HINTS
+// (agent-death is not one of them: it ends provision-died and carries no probeReason). Static: no seam exists for probe().
+await testCase('T420a PROBE_REASON_HINTS holds a one-line remedy for every probe reason that reaches probeReason (#420)', async () => {
+  const source = SUITE_ARGS.fpSource
+  if (!source) {
+    log('SKIP — T420a: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const start = source.indexOf('const PROBE_RELAUNCH =')
+  const end = source.indexOf('\nconst PROBE_SCHEMA')
+  if (start < 0 || end < 0) return { ok: false, msg: 'PROBE_RELAUNCH / PROBE_REASON_HINTS block not found in pipeline source' }
+  const hints = new Function(source.slice(start, end) + '\nreturn PROBE_REASON_HINTS')()
+  const reasons = ['no-attestation', 'cmd-mismatch', 'probe-run-not-found', 'command-not-run', 'unparseable-line', 'name-mismatch',
+    'unparseable-verify', 'verify-no-record', 'verify-sha-mismatch', 'verify-stale-attestation', 'sha-mismatch', 'line-mismatch']
+  const checks = [
+    eq('the table keys are exactly the reasons that reach probeReason', Object.keys(hints).sort().join(','), reasons.slice().sort().join(',')),
+    ...reasons.map(r => eq(r + ': a non-empty one-line hint', typeof hints[r] === 'string' && hints[r].length > 0 && !hints[r].includes('\n'), true)),
+    eq('agent-death has no hint (it ends provision-died, no probeReason)', 'agent-death' in hints, false),
+  ]
+  return checks.find(c => c) || { ok: true }
+})
+
+// T420b (#420) — Morgan's CI step names the configured checks, or, for an empty or absent ciChecks, the checks the PR head
+// reports (the ready gate's own scope) — never a fixed check name the repository may not have.
+await testCase('T420b Morgan CI step: empty or absent ciChecks names the reported checks, not build-and-test (#420)', async () => {
+  const source = SUITE_ARGS.fpSource
+  if (!source) {
+    log('SKIP — T420b: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const start = source.indexOf('const ciChecksNamed =')
+  const end = source.indexOf('\nconst regressionGuard =')
+  if (start < 0 || end < 0) return { ok: false, msg: 'ciChecksNamed definition not found in pipeline source' }
+  const named = (config) => new Function('config', source.slice(start, end) + '\nreturn ciChecksNamed')(config)
+  const checks = [
+    eq('configured names are listed', named({ ciChecks: ['a', 'lint (x)'] }), 'the GitHub checks a + lint (x)'),
+    eq('empty list names the reported checks', named({ ciChecks: [] }), 'every GitHub check the PR head reports'),
+    eq('absent list names the reported checks', named({}), 'every GitHub check the PR head reports'),
+    eq('Morgan prompt interpolates it once', source.split('Confirm CI is green via ${ciChecksNamed} (gh pr checks').length - 1, 1),
+    eq('no fixed check name is left in the engine', source.includes("'build-and-test'"), false),
+  ]
+  return checks.find(c => c) || { ok: true }
+})
+
 // T195 (#195) — a pluginRoot of another plugin version than the engine's build fails fast. The decision is
 // pluginVersionVerdict(), a pure function extracted from its source markers (no simulate seam: the probe that
 // reads the manifest has none, T273); the real command, the real probe-run.cjs and real manifests run in
