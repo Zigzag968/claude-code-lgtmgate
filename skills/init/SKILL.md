@@ -14,7 +14,7 @@ Work from the project root (`${CLAUDE_PROJECT_DIR}`). The plugin lives under `${
 
 ## 0. Pre-check
 - `command -v gh` — confirm the `gh` CLI is installed. Missing -> stop, ask to install it from https://cli.github.com/.
-- `gh auth status` — confirm authentication and scopes. Not authenticated / insufficient scopes -> stop, ask for `gh auth login --scopes "repo,project"`.
+- `gh api user --jq .login` — the check that decides authentication: exit 0 = authenticated, the active account works; non-zero -> stop, ask for `gh auth login --scopes "repo,project"`. The exit code of `gh auth status` is not the decider: it exits 1 when ANY listed account is invalid (a stale keyring account next to a working token account). Read the scopes from the `Active account: true` entry only.
 - `command -v jq` — confirm the `jq` CLI is installed (required by hooks/block-merge-unchecked.sh and hooks/deny-destructive-git.sh, which fail closed without it). Missing -> stop, ask to install it from https://jqlang.github.io/jq/.
 - `claude --version` — confirm Claude Code is 2.1.294 or later, the version this repository's tests and devcontainer pin (every run is a `Workflow`, which needs a paid plan with dynamic workflows on). Older -> stop, say it is older than the minimum 2.1.294, ask to update Claude Code.
 - `git rev-parse --show-toplevel` — confirm we're in a git repo. If not, stop and ask.
@@ -25,6 +25,8 @@ Work from the project root (`${CLAUDE_PROJECT_DIR}`). The plugin lives under `${
 Create the target folder if missing (`.claude/scripts`), then copy:
 
 - `${CLAUDE_PLUGIN_ROOT}/templates/blocked-by-check.sh`      → `.claude/scripts/blocked-by-check.sh`
+
+The copy replaces an existing `.claude/scripts/blocked-by-check.sh` that differs from the template, in every mode except `complete` (which keeps present files). A deliberate local customisation is saved aside first (`diff` against the template).
 
 Then: `chmod +x .claude/scripts/blocked-by-check.sh`.
 
@@ -93,7 +95,7 @@ The agents read the owner's rules from `.claude/lgtmgate/` (config key `projectS
 4. **Write.** `node ${CLAUDE_PLUGIN_ROOT}/scripts/init-specifics.cjs --root "${CLAUDE_PROJECT_DIR}"` creates only the missing stubs and never touches an existing path. Add the owner's answers, in the owner's words, with Edit ONLY into a stub that `--detect` reports `pristine: true`. For any other existing file, print the proposed diff and write nothing: the file is project-owned, never overwrite (P-04).
 5. **Config keys (Edit, only when absent or empty).** `projectSpecifics: ".claude/lgtmgate"`; `minPluginVersion` = the plugin version (never lower an existing one, written together with `projectSpecifics` because an older engine ignores the key); `agentContext` entries are added, never removed. Validate the JSON afterwards.
 6. **Never copy** a file of `${CLAUDE_PLUGIN_ROOT}/templates/` under `.claude/lgtmgate/` (a copy drifts from the plugin).
-7. **Security.** The pipeline needs branch protection on `<baseBranch>` plus required CI (threats: a reviewer ticking everything, an agent pushing to the base or disabling a hook, one shared `gh` identity so a forged review marker is indistinguishable). Ask the branch protection question, then verify with `gh api repos/{o}/{r}/branches/<base>/protection` (REST): 200 with required status checks = ok; 404 = warn and document the need; 403 plan limit = report "cannot verify", never block.
+7. **Security.** The pipeline needs branch protection on `<baseBranch>` plus required CI (threats: a reviewer ticking everything, an agent pushing to the base or disabling a hook, one shared `gh` identity so a forged review marker is indistinguishable). Ask the branch protection question, then verify with `gh api repos/{o}/{r}/branches/<base>/protection` (REST): 200 with required status checks = ok; 404 = warn and record the need in `.claude/lgtmgate/morgan.md` (the reviewer stub that carries the `branch protection` question), written with Edit only when that stub is `pristine: true`, otherwise print the proposed text and write nothing; 403 plan limit = report "cannot verify", never block.
 8. **Lanes (optional).** A lane gives a role extra rules and a persona for one part of the repo: files named `<role>.<lane>.md` (`sam.ios.md`, `nick.web.md`), a lane being declared by `lane: <lane>` in the file's frontmatter.
    - Offer it only when `--detect` reports `laneCandidates` with at least 2 entries (distinct stacks), never from the count of project agents. If the owner names an agent they already have (for example an iOS persona), say what it means: without lanes, every file is injected at every run; with lanes, an iOS-only issue receives only the iOS files.
    - AskUserQuestion with a recommendation each: the lane names (`[a-z0-9-]`, 24 characters at most, one per stack), the `paths` globs of each lane (written as `paths: ["glob", "glob"]` or as a block list of strings, at most 8 entries of 80 characters), a `hint` (120 characters at most), an optional `persona` (a single name, unique in the folder, never a role name).
@@ -110,8 +112,9 @@ If the target files exist: insert the block at the right spot (Edit). Otherwise:
 
 ## 4. Settings (reminder)
 Remind the user to enable the plugin in `.claude/settings.json` (or global settings):
-- `extraKnownMarketplaces` → add the `zigzag-plugins` marketplace (`github` / `Zigzag968/claude-code-lgtmgate`).
-- `enabledPlugins` → add `"lgtmgate@zigzag-plugins"`.
+Ask which channel the project runs on (the installed plugin's marketplace name: `claude plugin list`). Never enable both in one scope. Source for both marketplaces: `github` / `Zigzag968/claude-code-lgtmgate`.
+- Stable (default, released versions; pinned by sha in `.claude-plugin/marketplace.json`): `extraKnownMarketplaces` → add `zigzag-plugins`; `enabledPlugins` → add `"lgtmgate@zigzag-plugins"`.
+- Beta (follows every merge on main, for testing ahead of a release; marketplace file `.claude-plugin/marketplace-beta.json`): `extraKnownMarketplaces` → add `zigzag-plugins-beta`; `enabledPlugins` → add `"lgtmgate@zigzag-plugins-beta"`.
 
 Offer to do it for them (Edit the settings) after confirmation; otherwise show the diff to paste.
 
