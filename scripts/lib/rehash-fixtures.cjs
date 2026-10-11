@@ -95,18 +95,18 @@ function rewritePass(calls, store, coupled) {
 }
 
 function argumentsWithCarry(unit, previous) {
-  const args = clone(unit.args || {})
-  if (!isObject(unit.carry) || !previous) return args
+  const arguments_ = clone(unit.args || {})
+  if (!isObject(unit.carry) || !previous) return arguments_
   for (const [name, field] of Object.entries(unit.carry)) {
-    if (previous[field] !== undefined) args[name] = clone(previous[field])
+    if (previous[field] !== undefined) arguments_[name] = clone(previous[field])
   }
-  return args
+  return arguments_
 }
 
 // Replays the working copy with the AFTER engine, rewriting coupled digests until none changes.
-async function settle(label, args, work, coupled, after) {
+async function settle(label, arguments_, work, coupled, after) {
   for (let pass = 0; pass < MAX_PASSES; pass++) {
-    const replay = await replayFixture({ name: label, args, calls: work }, after, { prompts: true })
+    const replay = await replayFixture({ name: label, args: arguments_, calls: work }, after, { prompts: true })
     if (!rewritePass(replay.calls, work, coupled)) return replay
   }
   throw new Error(`${label}: the digests do not settle in ${MAX_PASSES} passes`)

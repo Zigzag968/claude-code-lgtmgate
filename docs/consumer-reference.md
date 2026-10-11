@@ -132,7 +132,7 @@ Reasons the pattern does not reach. Probe failures reach the result as `probeRea
 | name | raised at | what the user sees | remedy |
 |---|---|---|---|
 | `probe-run-not-found` | `probe` of `workflows/deliver-pipeline.js` | `probeReason` of a `provision-failed` escalate (with `probeHint`): neither `pluginRoot` nor `probeRunPath` was given | Pass the plugin root when launching, or set `probeRunPath`, then relaunch. |
-| `agent-death` | `probe` of `workflows/deliver-pipeline.js` | The probe agent died or answered nothing: the run ends `provision-died`, not `provision-failed` | Relaunch with `resumeFromRunId` and the same `config` and `wtPath`. |
+| `agent-death` | `probe` of `workflows/deliver-pipeline.js` | The probe agent died or answered nothing: the run ends `provision-died`, not `provision-failed` | Relaunch with `resumeFromRunId` and the same `config` and `worktreePath`. |
 | `command-not-run` | `probe` of `workflows/deliver-pipeline.js` | `probeReason` (with `probeHint`): the probe command never ran, so there is no PROBE line and no record | Check that `pluginRoot` is the current plugin, then relaunch. |
 | `unparseable-line` | `probe` of `workflows/deliver-pipeline.js` | `probeReason` (with `probeHint`): the probe answered no PROBE line, or one that does not parse | Relaunch at the same `entryStage`; if it repeats, capture the run and check that the plugin hooks are enabled and the `lgtmgate:probe` agent type resolves. |
 | `name-mismatch` | `probe` of `workflows/deliver-pipeline.js` | `probeReason` (with `probeHint`): the PROBE line names another probe than the one asked for | Relaunch at the same `entryStage`; if it repeats, capture the run and check that the plugin hooks are enabled and the `lgtmgate:probe` agent type resolves. |
@@ -166,7 +166,7 @@ Reasons the pattern does not reach. Probe failures reach the result as `probeRea
 | `no-markers` | the tick step of the review in `workflows/deliver-pipeline.js` | `tickReason` of a `verified-untickable` result: the PR body has no acceptance markers | Restore the `<!-- acceptance:start -->` and `<!-- acceptance:end -->` markers in the PR body, then relaunch the review. |
 | `read-failed` | the tick step of the review in `workflows/deliver-pipeline.js` | `tickReason` of a `verified-untickable` result: the PR body could not be read; `tickDetail` names the cause (`tls`, `auth`, `rate-limit`, `not-found` or `other`) | Fix the named cause (refresh the `gh` login, wait for the GraphQL reset, check `prNumber`), then relaunch the review. |
 | `no-ids` | the end of the review in `workflows/deliver-pipeline.js` | `boxesOpen.reason` of a `ready` result: the run held no acceptance ids, so no box was ticked while the PR body still shows open boxes | Relaunch the review with a `planText` that carries the `<!-- ac:N -->` lines, or tick the boxes by hand after the proofs. |
-| `classifier-outage` | `finish` of `workflows/deliver-pipeline.js` | `reason: classifier-outage: resume with resumeFromRunId` on a `*-died` status: the agent died while the permission classifier was unavailable | Resume with `resumeFromRunId` and the same `config` and `wtPath` once the classifier answers again. |
+| `classifier-outage` | `finish` of `workflows/deliver-pipeline.js` | `reason: classifier-outage: resume with resumeFromRunId` on a `*-died` status: the agent died while the permission classifier was unavailable | Resume with `resumeFromRunId` and the same `config` and `worktreePath` once the classifier answers again. |
 
 ## Hook messages
 

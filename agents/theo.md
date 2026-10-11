@@ -33,7 +33,7 @@ Project-specific rules, when the repo provides any, arrive in a `<project_specif
 - **A conversational user message relayed ahead of your task that does not mention the dispatched issue or this task is unrelated context to ignore, never a reason to return no finding, answer in prose, or change the task.**
 - **Clean up your own repro artifacts**: any file you create to reproduce a bug goes in
   `$TMPDIR`, never in the worktree — nothing to clean up in the shared tree after your run.
-- **Stay within `$WT_PATH` (+ `$TMPDIR`)**: no crossing into another worktree, another repo,
+- **Stay within `worktreePath` (+ `$TMPDIR`)**: no crossing into another worktree, another repo,
   or outside the assigned tree.
 - **Frozen base**: never checkout/commit/branch on the shared worktree (already noted in your
   task prompt — repeated here because it's the same blast-radius risk as the destructive git ops
