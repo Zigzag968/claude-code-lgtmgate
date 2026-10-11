@@ -72,9 +72,36 @@ if [ "$rc" -eq 0 ] && grep -F 'minPluginVersion' "$TMP/out" | grep -qF 'no effec
 run "$TMP/does-not-exist.json"
 if [ "$rc" -eq 0 ] && [ "$(grep -c '^warn:' "$TMP/out")" = 1 ] && has 'fix before the run: run /lgtmgate:init'; then ok "S11 absent file asks for init before the run"; else bad "S11 rc=$rc $(cat "$TMP/out")"; fi
 
+# S12-S16 (#467): preflight.envSymlink required (or absent) with no .env file in the repository
+CONV='"minPluginVersion":"1.3.0","projectSpecifics":".claude/lgtmgate"'
+mkdir -p "$TMP/e1/.claude" "$TMP/e2/.claude" "$TMP/e3/.claude" "$TMP/e4/.claude"
+printf '{%s,"preflight":{"envSymlink":"required"}}' "$CONV" > "$TMP/e1/.claude/pipeline.config.json"
+run "$TMP/e1/.claude/pipeline.config.json"
+if [ "$rc" -eq 0 ] && has 'preflight.envSymlink' && has '"ignore"' && has 'fix before the run' && [ "$(last)" = "[config-check] status=warn retired=0 missing=0" ]; then ok "S12 required without .env warns with the remedy"; else bad "S12 rc=$rc $(cat "$TMP/out")"; fi
+
+: > "$TMP/e1/.env"
+run "$TMP/e1/.claude/pipeline.config.json"
+if [ "$rc" -eq 0 ] && ! has 'preflight.envSymlink' && [ "$(last)" = "[config-check] status=ok retired=0 missing=0" ]; then ok "S13 required with a .env is quiet"; else bad "S13 rc=$rc $(cat "$TMP/out")"; fi
+
+printf '{%s,"preflight":{"envSymlink":"ignore"}}' "$CONV" > "$TMP/e2/.claude/pipeline.config.json"
+run "$TMP/e2/.claude/pipeline.config.json"
+if [ "$rc" -eq 0 ] && ! has 'preflight.envSymlink' && [ "$(last)" = "[config-check] status=ok retired=0 missing=0" ]; then ok "S14 ignore without .env is quiet"; else bad "S14 rc=$rc $(cat "$TMP/out")"; fi
+
+printf '{%s}' "$CONV" > "$TMP/e3/.claude/pipeline.config.json"
+run "$TMP/e3/.claude/pipeline.config.json"
+if [ "$rc" -eq 0 ] && has 'preflight.envSymlink' && [ "$(last)" = "[config-check] status=warn retired=0 missing=0" ]; then ok "S15 absent key without .env warns (engine default is required)"; else bad "S15 rc=$rc $(cat "$TMP/out")"; fi
+
+E4M="$TMP/e4main"; mkdir -p "$E4M/.git/worktrees/wt"
+: > "$E4M/.env"
+printf 'gitdir: %s/.git/worktrees/wt\n' "$E4M" > "$TMP/e4/.git"
+printf '{%s}' "$CONV" > "$TMP/e4/.claude/pipeline.config.json"
+run "$TMP/e4/.claude/pipeline.config.json"
+if [ "$rc" -eq 0 ] && ! has 'preflight.envSymlink' && [ "$(last)" = "[config-check] status=ok retired=0 missing=0" ]; then ok "S16 linked worktree uses the .env of the main checkout"; else bad "S16 rc=$rc $(cat "$TMP/out")"; fi
+
 # hook cases
 hook() { CLAUDE_PLUGIN_ROOT="$2" CLAUDE_PROJECT_DIR="$1" python3 "$ROOT/hooks/SessionStart/inject_stub.py" > "$TMP/hook.json" 2>/dev/null; hrc=$?; }
 P="$TMP/proj"; mkdir -p "$P/.claude"
+: > "$P/.env"
 printf '{"conventionsRule":"x.md"}' > "$P/.claude/pipeline.config.json"
 hook "$P" "$ROOT"
 if [ "$hrc" -eq 0 ] && grep -q 'conventionsRule' "$TMP/hook.json" && ! grep -q 'pipeline ready to use' "$TMP/hook.json"; then ok "H1 hook names the retired key"; else bad "H1 rc=$hrc"; fi
@@ -121,6 +148,7 @@ if [ "$R1" -eq 0 ] && [ "$M1" -eq 1 ] && [ "$hrc" -eq 0 ] && grep -q 'pipeline r
 # H7-H10: effective settings across a linked worktree (hand-built fixtures, no git needed)
 MAIN="$TMP/main"; WT="$TMP/wt"
 mkdir -p "$MAIN/.git/worktrees/wt" "$MAIN/.claude" "$WT/.claude"
+: > "$MAIN/.env"
 printf '../..' > "$MAIN/.git/worktrees/wt/commondir"
 printf 'gitdir: %s/.git/worktrees/wt\n' "$MAIN" > "$WT/.git"
 printf '{"minPluginVersion":"1.3.0","projectSpecifics":".claude/lgtmgate"}' > "$WT/.claude/pipeline.config.json"
@@ -139,6 +167,7 @@ hook "$WT" "$CR"
 if [ "$hrc" -eq 0 ] && grep -q 'WARNING' "$TMP/hook.json" && grep -qF "plugin root $CR" "$TMP/hook.json" && grep -qF '/plugin' "$TMP/hook.json" && ! grep -q 'plugin-versions.sh' "$TMP/hook.json" && ! grep -q 'claude plugin list' "$TMP/hook.json"; then ok "H9 worktree without override warns with the plugin root and /plugin"; else bad "H9 rc=$hrc $(cat "$TMP/hook.json")"; fi
 
 printf 'garbage' > "$WT/.git"
+: > "$WT/.env"
 hook "$WT" "$CR"
 G1=$hrc; G2=0; grep -q 'WARNING' "$TMP/hook.json" && grep -q 'pipeline ready to use' "$TMP/hook.json" && G2=1
 printf 'gitdir: %s/.git/worktrees/nocommon\n' "$MAIN" > "$WT/.git"
