@@ -87,10 +87,10 @@ if [ "$kind" = gh ]; then
     state="$(printf '%s' "$comments" | review_fresh_state "$prnum" "$head" 2>/dev/null || true)"
     case "$state" in
       none)
-        echo "BLOCKED by review-stale gate: PR #$prnum has no review marker carrying a head sha ('<!-- pipeline-review-round pr=$prnum sha=<40hex> -->'). Re-run the review before merging." >&2
+        echo "BLOCKED by review-stale gate: PR #$prnum has no review marker carrying a head sha ('<!-- pipeline-review-round pr=$prnum sha=<40hex> -->'). Relaunch the review (Workflow with entryStage:\"review\" and prNumber:$prnum), then merge again." >&2
         exit 2 ;;
       stale*)
-        echo "BLOCKED by review-stale gate: PR #$prnum was last reviewed on ${state#stale } but its head is $head. Re-review before merging." >&2
+        echo "BLOCKED by review-stale gate: PR #$prnum was last reviewed on ${state#stale } but its head is $head. Relaunch the review (Workflow with entryStage:\"review\" and prNumber:$prnum), then merge again." >&2
         exit 2 ;;
     esac
   fi

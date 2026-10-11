@@ -20,18 +20,23 @@ total=0
 
 # --- helpers -----------------------------------------------------------
 
-# run_hook <command-string> -> prints exit code, stdout/stderr discarded
+# run_hook <command-string> -> prints exit code; stdout discarded, stderr kept in $MSG_FILE for message checks
+MSG_FILE="$(mktemp "${TMPDIR:-/tmp}/deny-destructive-git-msg.XXXXXX")"
+trap 'rm -f "$MSG_FILE"' EXIT
 run_hook() {
   local command="$1"
   printf '%s' "{\"tool_input\":{\"command\":$(printf '%s' "$command" | jq -Rs .)}}" \
-    | bash "$HOOK" >/dev/null 2>/dev/null
+    | bash "$HOOK" >/dev/null 2>"$MSG_FILE"
   echo "$?"
 }
 
 assert_exit() {
-  local case_name="$1" expected="$2" actual="$3"
+  local case_name="$1" expected="$2" actual="$3" needle="${4:-}"
   total=$((total + 1))
-  if [ "$actual" -eq "$expected" ]; then
+  if [ -n "$needle" ] && ! grep -qF -- "$needle" "$MSG_FILE"; then
+    echo "FAIL - $case_name (message lacks: $needle)"
+    fail_count=$((fail_count + 1))
+  elif [ "$actual" -eq "$expected" ]; then
     echo "PASS - $case_name (exit $actual)"
     pass_count=$((pass_count + 1))
   else
@@ -111,11 +116,11 @@ assert_exit "git worktree remove --force" 2 "$(run_hook "git worktree remove --f
 # --- case 14: git worktree remove (no --force) -> 2 (issue #129) --------
 # The risk exists even without --force on a "clean" worktree.
 
-assert_exit "git worktree remove (no --force)" 2 "$(run_hook "git worktree remove /tmp/x")"
+assert_exit "git worktree remove (no --force)" 2 "$(run_hook "git worktree remove /tmp/x")" "\${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-worktree.sh"
 
 # --- case 15: git worktree prune -> 2 (issue #129) -----------------------
 
-assert_exit "git worktree prune" 2 "$(run_hook "git worktree prune")"
+assert_exit "git worktree prune" 2 "$(run_hook "git worktree prune")" "\${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-worktree.sh"
 
 # --- case 16: git worktree prune --expire now -> 2 (issue #129) ---------
 
@@ -169,7 +174,7 @@ assert_exit "cleanup-worktree.sh; git worktree remove compound still denied" 2 \
   "$(run_hook "bash scripts/cleanup-worktree.sh /tmp/lgtmgate-wt-root/issue-9; git worktree remove --force /tmp/x")"
 
 assert_exit "bare rm -rf of a worktree denied" 2 \
-  "$(run_hook "rm -rf /tmp/lgtmgate-wt-root/issue-9")"
+  "$(run_hook "rm -rf /tmp/lgtmgate-wt-root/issue-9")" "\${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-worktree.sh"
 assert_exit "bare rm -rf -- of a worktree (trailing slash) denied" 2 \
   "$(run_hook "rm -rf -- /tmp/lgtmgate-wt-root/issue-9/")"
 assert_exit "cd && rm -R of a worktree denied" 2 \
@@ -212,5 +217,7 @@ assert_exit "#111 command after heredoc terminator denied" 2 "$(run_hook "cat <<
 # --- summary -------------------------------------------------------------
 
 echo "${pass_count}/${total} PASS"
+status=ok; [ "$fail_count" -eq 0 ] || status=fail
+echo "[test-deny-destructive-git] status=${status} passed=${pass_count} failed=${fail_count}"
 [ "$fail_count" -eq 0 ] || exit 1
 exit 0
