@@ -2616,15 +2616,15 @@ await testCase('T478a probeNotRun(): truth table over full PROBE lines (#478)', 
   const empty = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
   const want = 'a'.repeat(64)
   const other = 'b'.repeat(64)
-  const line = (exit, sha, cmd) => `PROBE name=lines exit=${exit} sha=${sha} cmd=${cmd} json={"lines":[]}`
-  const run = (l, gated) => f.probeNotRun(f.parseProbeLine(l), want, gated)
+  const line = (exit, sha, command) => `PROBE name=lines exit=${exit} sha=${sha} cmd=${command} json={"lines":[]}`
+  const verdict = (l, gated) => f.probeNotRun(f.parseProbeLine(l), want, gated)
   const checks = [
-    eq('exit -1 + empty digest + other cmd, read probe', run(line(-1, empty, other), false), true),
-    eq('same line on a gated write keeps cmd-mismatch', run(line(-1, empty, other), true), false),
-    eq('exit 0 + other cmd (the 151 shape) stays cmd-mismatch', run(line(0, 'c'.repeat(64), other), false), false),
-    eq('exit -1 + non-empty digest', run(line(-1, 'c'.repeat(64), other), false), false),
-    eq('exit 1 + empty digest', run(line(1, empty, other), false), false),
-    eq('exit -1 + empty digest + cmd equal to want', run(line(-1, empty, want), false), false),
+    eq('exit -1 + empty digest + other cmd, read probe', verdict(line(-1, empty, other), false), true),
+    eq('same line on a gated write keeps cmd-mismatch', verdict(line(-1, empty, other), true), false),
+    eq('exit 0 + other cmd (the 151 shape) stays cmd-mismatch', verdict(line(0, 'c'.repeat(64), other), false), false),
+    eq('exit -1 + non-empty digest', verdict(line(-1, 'c'.repeat(64), other), false), false),
+    eq('exit 1 + empty digest', verdict(line(1, empty, other), false), false),
+    eq('exit -1 + empty digest + cmd equal to want', verdict(line(-1, empty, want), false), false),
   ]
   return checks.find(c => c) || { ok: true }
 })
@@ -2640,9 +2640,9 @@ await testCase('T478b probe(): command-not-run checked before cmd-mismatch, read
   const call = source.indexOf("if (probeNotRun(parsed, want, gateCommand)) return fail('command-not-run')")
   const mismatch = source.indexOf("if (parsed.cmd !== want) return fail('cmd-mismatch')")
   const hints = (() => {
-    const s = source.indexOf('const PROBE_RELAUNCH =')
-    const e = source.indexOf('\nconst PROBE_SCHEMA')
-    return s < 0 || e < 0 ? null : new Function(source.slice(s, e) + '\nreturn PROBE_REASON_HINTS')()
+    const from = source.indexOf('const PROBE_RELAUNCH =')
+    const upTo = source.indexOf('\nconst PROBE_SCHEMA')
+    return from < 0 || upTo < 0 ? null : new Function(source.slice(from, upTo) + '\nreturn PROBE_REASON_HINTS')()
   })()
   const hint = hints && hints['command-not-run']
   const checks = [
