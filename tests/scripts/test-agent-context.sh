@@ -377,6 +377,19 @@ FA_ENG="$(sed -n '/^function fenceAfter/,/^}/p' "$ROOT/templates/pr-body-splice.
 FA_TXT="$(sed -n '/^function fenceAfter/,/^}/p' "$ROOT/scripts/lib/agent-context-text.cjs")"
 if [ -n "$FA_ENG" ] && [ "$FA_ENG" = "$FA_TXT" ]; then ok "fence-rule-parity: fenceAfter of the screen is the engine's, byte for byte"; else bad "fence-rule-parity: the two fenceAfter differ"; fi
 
+# ---- #412: frontmatter on a listed file is refused once, with a hint; a lane file stays accepted ----------
+R="$TMP/ctxfm"; new_repo "$R"; mkdir -p "$R/docs"
+printf -- '---\npaths: ["**/*.swift"]\n---\nSwift rules.\n' > "$R/docs/swift.md"
+setcfg "$R" '{"baseBranch":"main","projectSpecifics":".claude/lgtmgate","agentContext":{"*":["docs/swift.md"]}}'; seal "$R"
+run "$R"; exit_is "ctx-frontmatter-exit2" 2
+if [ "$(grep -c 'frontmatter-on-context-file' "$ERR")" = 1 ]; then ok "ctx-frontmatter-once"; else bad "ctx-frontmatter-once: $(head -c 400 "$ERR")"; fi
+if grep -F 'lane' "$ERR" | grep -qF 'remove the frontmatter'; then ok "ctx-frontmatter-hint"; else bad "ctx-frontmatter-hint: $(head -c 400 "$ERR")"; fi
+R="$TMP/ctxlane"; new_repo "$R"
+printf -- '---\nlane: ios\npaths: ["**/*.swift"]\n---\nSwift rules.\n' > "$R/.claude/lgtmgate/sam.ios.md"
+setcfg "$R" '{"baseBranch":"main","projectSpecifics":".claude/lgtmgate"}'; seal "$R"
+run "$R"; exit_is "ctx-lane-file-still-accepted" 0
+jtrue "ctx-lane-file-in-payload" 'j.roles.Sam.lanes[0].name==="ios"'
+
 rm -rf "$TMP"
 RESULT=ok; [ "$FAIL" -gt 0 ] && RESULT=fail
 echo "[test-agent-context] status=$RESULT passed=$PASS failed=$FAIL"
