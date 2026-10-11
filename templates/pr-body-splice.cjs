@@ -21,6 +21,8 @@
 //   node pr-body-splice.cjs checked <bodyFile|->
 //       prints the ids of the boxes ticked in the acceptance block (comma-separated, ascending; empty when none or no
 //       block); `-` reads the body from stdin. Exit 0.
+//   node pr-body-splice.cjs open <bodyFile|->
+//       (#405) prints the number of open `- [ ]` boxes of the acceptance block (ids or not; 0 with no block); `-` reads stdin.
 //   node pr-body-splice.cjs entries <bodyFile|->
 //       prints the round lines (`- round ...`, trimmed) of the real decision-log block as ONE JSON array line; [] with no
 //       block; `-` reads the body from stdin. Exit 0.
@@ -228,6 +230,24 @@ function checkedAcceptanceIds(body) {
   const { checkedById } = acceptanceBoxes(source.slice(span.from, span.to))
   return [...checkedById].filter(([, ticked]) => ticked).map(([id]) => id).sort((a, b) => a - b)
 }
+// The number of open `- [ ]` boxes of the acceptance block of `body` (the LAST unfenced marker pair), boxes without an id
+// included (#405); 0 when there is no block. A ticked box and a fenced example are not counted. Pure. String operations only.
+function openAcceptanceBoxCount(body) {
+  const source = String(body ?? '')
+  const span = acceptanceSpan(source)
+  if (span === null) return 0
+  let fence = ''
+  let count = 0
+  for (const raw of source.slice(span.from, span.to).split('\n')) {
+    const l = raw.endsWith('\r') ? raw.slice(0, -1) : raw
+    const next = fenceAfter(l, fence)
+    const fenced = fence !== '' || next !== ''
+    fence = next
+    const t = l.trimStart()
+    if (!fenced && t.slice(0, 5) === '- [ ]' && (t.length === 5 || t[5] === ' ' || t[5] === '\t')) count += 1
+  }
+  return count
+}
 // Ticks the acceptance block by id (#183). Pure. `rendered` is the canonical block (every box open, `<!-- ac:N -->` ids);
 // the id boxes of the block of `body` (the LAST unfenced marker pair) are replaced by it with each box set by its id: `[x]`
 // for an id of `tickIds`; an id of `keepIds` (a human gate, or a box nobody returned that a person ticked) keeps the state
@@ -361,6 +381,11 @@ function cli(argv) {
     process.stdout.write(checkedAcceptanceIds(body).join(',') + '\n')
     return 0
   }
+  if (mode === 'open') {
+    const body = fs.readFileSync(argv[1] === '-' ? 0 : argv[1], 'utf8')
+    process.stdout.write(String(openAcceptanceBoxCount(body)) + '\n')
+    return 0
+  }
   if (mode === 'entries') {
     const body = fs.readFileSync(argv[1] === '-' ? 0 : argv[1], 'utf8')
     process.stdout.write(JSON.stringify(decisionLogEntries(body)) + '\n')
@@ -380,4 +405,4 @@ if (require.main === module) {
   process.exit(rc)
 }
 
-module.exports = { tickIdsInBody, decisionLogEntries, spliceDecisionLogBlock, spliceAcceptanceBlock, tickAcceptanceBlock, checkedAcceptanceIds, bodyWriteGuardOk, composeDecisionLogBlock, upsertDecisionLog }
+module.exports = { tickIdsInBody, decisionLogEntries, spliceDecisionLogBlock, spliceAcceptanceBlock, tickAcceptanceBlock, checkedAcceptanceIds, openAcceptanceBoxCount, bodyWriteGuardOk, composeDecisionLogBlock, upsertDecisionLog }

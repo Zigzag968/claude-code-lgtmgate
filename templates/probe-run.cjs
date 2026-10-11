@@ -192,6 +192,8 @@ const PARSERS = {
       openIssuesTruncated: typeof v.openIssuesTruncated === 'boolean' ? v.openIssuesTruncated : false,
       // #229: the PR's changed paths, kept only as a list of strings; the key is absent otherwise (fixtures stay byte-identical).
       ...(stringArray(v.files) ? { files: v.files } : {}),
+      // #405: the count of open acceptance boxes in the body; the key is absent unless it is an integer >= 0 (fixtures stay byte-identical).
+      ...(Number.isInteger(v.acceptanceOpen) && v.acceptanceOpen >= 0 ? { acceptanceOpen: v.acceptanceOpen } : {}),
     }
   },
   // pr-write.sh output (E2.6a, #85): ONE JSON object {op, result, reason, bytes}. result must be one of
