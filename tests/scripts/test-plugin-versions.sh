@@ -6,7 +6,8 @@
 # Cases: install equal to the target, stale install, disabled stale install, both channels enabled in one scope and
 # project, the real user-scope shape (stable disabled, beta enabled), channels in different scopes or projects,
 # other plugins ignored, target from origin/main, fail closed (exit 2) on every unexpected payload, no install,
-# --plugin, and read-only (the fake only ever sees `plugin list --json`).
+# --plugin, shadowed installs (a more specific scope of the same channel applies to --project), the loaded plugin root
+# (--loaded-root, LOADED-CACHE and its printed uninstall command), and read-only (the fake only ever sees `plugin list --json`).
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -181,13 +182,50 @@ list "$BASE/l9b.json" "$(entry 'other@market' 0.0.1 user true)"
 pv "$BASE/l9b.json" --target "$T"
 [ "$RC" -eq 0 ] && [ "$(last_line)" = 'plugin-versions: no install of lgtmgate found' ] && ok "installs of other plugins only: exit 0 with a no-install note" || bad "other only (rc=$RC): $OUT"
 
+# 11. shadowed installs (#421: `enabled` is per plugin id, so a user entry next to an applicable local one is shadowed) and the loaded cache
+P=/work/proj-a
+LOC="$(entry "$BETA" 1.3.0 local true $P)"; USR="$(entry "$BETA" 1.1.0 user true)"
+list "$BASE/l11a.json" "$USR" "$LOC"
+pv "$BASE/l11a.json" --target 1.3.0 --project $P
+[ "$RC" -eq 0 ] && ! has MISMATCH && ! has CONFLICT && has 'SHADOWED by local install version 1.3.0' && [ "$(last_line)" = "plugin-versions: 2 install(s) of lgtmgate, target 1.3.0, 0 problem(s)" ] \
+  && ok "a user install shadowed by an applicable local one: exit 0, SHADOWED note, no MISMATCH, no CONFLICT" || bad "shadowed user (rc=$RC): $OUT"
+list "$BASE/l11b.json" "$(entry "$STABLE" 1.3.0 user true)" "$USR" "$LOC"
+pv "$BASE/l11b.json" --target 1.3.0 --project $P
+[ "$RC" -eq 0 ] && ! has MISMATCH && ! has CONFLICT && has 'version=1.1.0 SHADOWED' && ok "a stable user next to a shadowed beta user: no CONFLICT, no MISMATCH on the shadowed one" || bad "two channels (rc=$RC): $OUT"
+list "$BASE/l11c.json" "$USR" "$(entry "$BETA" 1.3.0 local true /work/proj-b)"
+pv "$BASE/l11c.json" --target 1.3.0 --project $P
+[ "$RC" -eq 1 ] && has 'MISMATCH: found 1.1.0' && ! has SHADOWED && ok "a local entry of ANOTHER project does not shadow: the user mismatch still counts" || bad "other project (rc=$RC): $OUT"
+list "$BASE/l11d.json" "$USR" "$(entry "$BETA" 1.3.0 project true $P)"
+pv "$BASE/l11d.json" --target 1.3.0 --project $P
+[ "$RC" -eq 0 ] && has 'SHADOWED by project install version 1.3.0' && ok "a project-scope entry shadows a user one" || bad "project shadows user (rc=$RC): $OUT"
+list "$BASE/l11e.json" "$USR" "$(entry "$BETA" 1.2.0 local true $P)"
+pv "$BASE/l11e.json" --target 1.3.0 --project $P
+[ "$RC" -eq 1 ] && has 'MISMATCH: found 1.2.0' && ! has 'MISMATCH: found 1.1.0' && [ "$(last_line)" = "plugin-versions: 2 install(s) of lgtmgate, target 1.3.0, 1 problem(s)" ] \
+  && ok "a stale local install next to a shadowed user one: exit 1 with exactly one problem" || bad "stale local (rc=$RC): $OUT"
+mkdir -p "$BASE/proj-cwd"
+list "$BASE/l11f.json" "$USR" "$(entry "$BETA" 1.3.0 local true "$BASE/proj-cwd")"
+OUT="$(cd "$BASE/proj-cwd" && PATH="$BASE/bin:$PATH" FAKE_LIST="$BASE/l11f.json" bash "$SCRIPT" --target 1.3.0 2>&1)"; RC=$?
+[ "$RC" -eq 0 ] && has SHADOWED && ok "without --project the current directory is the project" || bad "default project (rc=$RC): $OUT"
+list "$BASE/l11g.json" "$USR" "$LOC"
+pv "$BASE/l11g.json" --target 1.3.0 --project $P --loaded-root /cache/$BETA/1.1.0
+[ "$RC" -eq 1 ] && has 'LOADED-CACHE: the loaded plugin root is the user install lgtmgate@zigzag-plugins-beta version 1.1.0' && has 'the install for this project is local version 1.3.0' \
+  && has 'claude plugin uninstall lgtmgate@zigzag-plugins-beta --scope user' && [ "$(last_line)" = "plugin-versions: 2 install(s) of lgtmgate, target 1.3.0, 1 problem(s)" ] \
+  && ok "loaded root is the shadowed user install: exit 1, LOADED-CACHE names it and prints the uninstall command" || bad "loaded cache (rc=$RC): $OUT"
+pv "$BASE/l11g.json" --target 1.3.0 --project $P --loaded-root /cache/$BETA/1.3.0
+[ "$RC" -eq 0 ] && ! has LOADED-CACHE && ok "loaded root equal to the project install: exit 0, nothing about it" || bad "loaded ok (rc=$RC): $OUT"
+pv "$BASE/l11g.json" --target 1.3.0 --project $P --loaded-root /cache/elsewhere/9.9.9
+[ "$RC" -eq 2 ] && has 'matches no listed install' && ok "a loaded root matching no listed install: exit 2" || bad "loaded unknown (rc=$RC): $OUT"
+pv "$BASE/l11g.json" --target 1.3.0 --project
+r1=$RC; pv "$BASE/l11g.json" --target 1.3.0 --loaded-root
+[ "$r1" -eq 2 ] && [ "$RC" -eq 2 ] && ok "--project or --loaded-root without a value: exit 2" || bad "missing values (rc=$r1/$RC): $OUT"
+
 # 10. read-only: the fake saw `plugin list --json` and nothing else, across every case above
 if [ -s "$FAKE_LOG" ] && [ "$(sort -u "$FAKE_LOG")" = "plugin list --json" ]; then
   ok "read-only: every claude call of every case was exactly 'plugin list --json'"
 else
   bad "read-only: the fake claude saw other calls: $(sort -u "$FAKE_LOG" | tr '\n' ';')"
 fi
-if ! grep -vE '^[[:space:]]*#' "$SCRIPT" | grep -qE 'plugin (update|install|enable|disable|uninstall)|git (fetch|pull|push)|jq'; then
+if ! grep -vE '^[[:space:]]*#|LOADED-CACHE:' "$SCRIPT" | grep -qE 'plugin (update|install|enable|disable|uninstall)|git (fetch|pull|push)|jq'; then
   ok "read-only: the script holds no update/install/enable/disable, no fetch and no jq"
 else
   bad "read-only: the script mentions a write command, a fetch or jq"
