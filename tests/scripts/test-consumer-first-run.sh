@@ -86,7 +86,7 @@ cp "$PLUGIN/templates/blocked-by-check.sh" "$A/.claude/scripts/blocked-by-check.
 cp "$PLUGIN/templates/provision-worktree.sh" "$A/scripts/provision-worktree.sh"
 node "$PLUGIN/scripts/init-specifics.cjs" --root "$A" > /dev/null
 VERSION=$(node -p 'require(process.argv[1]).version' "$PLUGIN/.claude-plugin/plugin.json")
-printf '{"baseBranch":"main","projectSpecifics":".claude/lgtmgate","minPluginVersion":"%s","agentContext":{"*":[]}}\n' "$VERSION" > "$A/.claude/pipeline.config.json"
+printf '{"baseBranch":"main","projectSpecifics":".claude/lgtmgate","minPluginVersion":"%s","agentContext":{"*":[]},"preflight":{"envSymlink":"ignore"}}\n' "$VERSION" > "$A/.claude/pipeline.config.json"
 seal "$A"
 
 # state (b): what the previous release left
@@ -153,6 +153,30 @@ if [ -z "$NOT_ALLOWED" ]; then ok "b-verdicts: every line is no effect on the ru
 node "$PLUGIN/scripts/agent-context.cjs" --root "$B" > "$TMP/b.ac" 2> "$TMP/b.acerr" < /dev/null; RC=$?
 if [ "$RC" = 0 ]; then ok "b-assembler: exit 0 (projectSpecifics off)"; else bad "b-assembler: exit $RC: $(head -c 300 "$TMP/b.acerr")"; fi
 no_question b "$TMP/b.report" "$TMP/b.acerr"
+
+# ---- #467: the environment symlink policy on three repository states
+# envconsumer <name> <envSymlink or ->: a consumer whose config is the current template reduced to the recommended keys
+envconsumer() {
+  local dir; dir=$(consumer "$1")
+  node -e 'const fs=require("fs");const c=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));c.baseBranch="main";c.minPluginVersion=process.argv[3];c.projectSpecifics=".claude/lgtmgate";if(process.argv[4]!=="-")c.preflight={envSymlink:process.argv[4]};fs.writeFileSync(process.argv[2],JSON.stringify(c,null,2)+"\n")' "$PLUGIN/templates/pipeline.config.template.json" "$dir/.claude/pipeline.config.json" "$VERSION" "$2"
+  echo "$dir"
+}
+TEMPLATE_ENV=$(node -p 'require(process.argv[1]).preflight.envSymlink' "$PLUGIN/templates/pipeline.config.template.json")
+F=$(envconsumer fresh-no-env -)
+seal "$F"
+report fresh-no-env "$F"
+if [ "$TEMPLATE_ENV" = ignore ] && ! grep -qF 'preflight.envSymlink' "$TMP/fresh-no-env.report"; then ok "fresh-no-env: the template ships ignore and a repository without .env gets no environment line"; else bad "fresh-no-env: template value [$TEMPLATE_ENV]: $(grep -F 'preflight.envSymlink' "$TMP/fresh-no-env.report")"; fi
+EP=$(envconsumer env-present required)
+: > "$EP/.env"
+seal "$EP"
+report env-present "$EP"
+if ! grep -qF 'preflight.envSymlink' "$TMP/env-present.report"; then ok "env-present: required with a .env file prints no environment line"; else bad "env-present: $(grep -F 'preflight.envSymlink' "$TMP/env-present.report")"; fi
+ER=$(envconsumer env-required-no-env required)
+seal "$ER"
+report env-required-no-env "$ER"
+if [ "$(grep -cF 'preflight.envSymlink' "$TMP/env-required-no-env.report")" = 1 ]; then ok "env-required-no-env: required without .env prints one environment line"; else bad "env-required-no-env: $(cat "$TMP/env-required-no-env.report")"; fi
+verdicts_and_gestures env-required-no-env
+if grep -qF 'preflight.envSymlink' "$PLUGIN/skills/init/SKILL.md" && grep -qF '.env.example' "$PLUGIN/skills/init/SKILL.md" && grep -qF '`required`' "$PLUGIN/skills/init/SKILL.md"; then ok "init-rule: skills/init/SKILL.md names preflight.envSymlink, .env.example and required"; else bad "init-rule: skills/init/SKILL.md lacks the environment symlink rule"; fi
 
 # ---- assembler refusals: one fixture per family, each ends with its pointer
 # refusal <family> <rule> <exit> <config json> <file to plant> <content>
