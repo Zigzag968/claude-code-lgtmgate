@@ -390,6 +390,43 @@ setcfg "$R" '{"baseBranch":"main","projectSpecifics":".claude/lgtmgate"}'; seal 
 run "$R"; exit_is "ctx-lane-file-still-accepted" 0
 jtrue "ctx-lane-file-in-payload" 'j.roles.Sam.lanes[0].name==="ios"'
 
+# ---- #415: a file the roles never receive warns on stderr, once, with its remedy; exit code and payload stay ------
+LG=.claude/lgtmgate
+# has_warn <path> <rule>: exit 0, exactly one stderr line `agent-context: warning: <path>: <rule>. <remedy>`, and the same entry in the JSON warnings
+has_warn() {
+  [ "$rc" = 0 ] && [ "$(grep -c "^agent-context: warning: $1: $2\. " "$ERR")" = 1 ] && [ "$(jx "j.warnings.filter(w=>w.kind===\"$2\"&&w.path===\"$1\").length")" = 1 ]
+}
+R="$TMP/w1"; new_repo "$R"; seal "$R"; printf 'THEO-LOCAL-MARK\n' > "$R/$LG/theo.md"
+run "$R"
+if has_warn "$LG/theo.md" not-on-base-ref; then ok "warn-not-on-base-ref-untracked: an untracked theo.md warns"; else bad "warn-not-on-base-ref-untracked: exit $rc $(head -c 300 "$ERR")"; fi
+R="$TMP/w2"; new_repo "$R"; seal "$R"; printf 'THEO-LOCAL-MARK\n' > "$R/$LG/theo.md"; git_add_all "$R"; git -C "$R" commit -q -m local
+run "$R"
+if has_warn "$LG/theo.md" not-on-base-ref; then ok "warn-not-on-base-ref-unpushed: a theo.md committed but not on the base ref warns"; else bad "warn-not-on-base-ref-unpushed: exit $rc $(head -c 300 "$ERR")"; fi
+R="$TMP/w3"; new_repo "$R"; for f in reviewer.md Theo.md sam.txt README.md; do printf 'IGNORED\n' > "$R/$LG/$f"; done; seal "$R"
+run "$R"
+if has_warn "$LG/reviewer.md" no-role-match && has_warn "$LG/Theo.md" no-role-match && has_warn "$LG/sam.txt" no-role-match && has_warn "$LG/README.md" no-role-match; then ok "warn-no-role-match: reviewer.md, Theo.md, sam.txt and README.md warn"; else bad "warn-no-role-match: exit $rc $(head -c 400 "$ERR")"; fi
+R="$TMP/w4"; new_repo "$R"; printf -- '---\npaths: ["a/**"]\n---\nSHARED-MARK with frontmatter.\n' > "$R/$LG/shared.md"; seal "$R"
+run "$R"
+if has_warn "$LG/shared.md" frontmatter-on-shared-file; then ok "warn-frontmatter-on-shared-file: the keys are discarded and the file warns"; else bad "warn-frontmatter-on-shared-file: exit $rc $(head -c 300 "$ERR")"; fi
+R="$TMP/w5"; lane_repo "$R"; printf 'NICK-IOS-MARK without frontmatter.\n' > "$R/$LG/nick.ios.md"; seal "$R"
+run "$R"
+if has_warn "$LG/nick.ios.md" lane-captured-from-other-role && ! grep -qF "sam.ios.md" "$ERR"; then ok "warn-lane-captured-from-other-role: nick.ios.md warns, the file that declares the lane does not"; else bad "warn-lane-captured-from-other-role: exit $rc $(head -c 300 "$ERR")"; fi
+R="$TMP/w6"; new_repo "$R"; seal "$R"
+run "$R"
+if has_warn "$LG/mia.md" empty-ignored; then ok "warn-empty-ignored: the comment-only mia.md warns on stderr, not only in the JSON"; else bad "warn-empty-ignored: exit $rc $(head -c 300 "$ERR")"; fi
+R="$TMP/w7"; new_repo "$R"; printf '<!-- to be completed -->\n' > "$R/docs/extra-all.md"
+setcfg "$R" '{"baseBranch":"main","projectSpecifics":".claude/lgtmgate","agentContext":{"*":["docs/extra-all.md"]}}'; seal "$R"
+run "$R"
+if has_warn "docs/extra-all.md" empty-ignored; then ok "warn-once-per-file: a comment-only file read by five roles warns once"; else bad "warn-once-per-file: exit $rc $(head -c 300 "$ERR")"; fi
+R="$TMP/w8"; new_repo "$R"; rm "$R/$LG/mia.md"; seal "$R"
+run "$R"
+if [ "$rc" = 0 ] && [ ! -s "$ERR" ]; then ok "warn-clean-folder-silent: a folder of committed, named, non-empty files prints nothing on stderr"; else bad "warn-clean-folder-silent: exit $rc $(head -c 300 "$ERR")"; fi
+jx 'JSON.stringify([j.shared,j.roles])' > "$TMP/w8.before"
+printf 'LOCAL\n' > "$R/$LG/theo.md"; printf 'IGNORED\n' > "$R/$LG/reviewer.md"
+run "$R"
+jx 'JSON.stringify([j.shared,j.roles])' > "$TMP/w8.after"
+if [ "$rc" = 0 ] && [ -s "$ERR" ] && [ -s "$TMP/w8.before" ] && cmp -s "$TMP/w8.before" "$TMP/w8.after"; then ok "warn-payload-unchanged: warnings leave the exit code and every role digest as they were"; else bad "warn-payload-unchanged: exit $rc"; fi
+
 rm -rf "$TMP"
 RESULT=ok; [ "$FAIL" -gt 0 ] && RESULT=fail
 echo "[test-agent-context] status=$RESULT passed=$PASS failed=$FAIL"
