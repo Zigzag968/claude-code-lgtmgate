@@ -176,6 +176,16 @@ printf 'owner rules\n%s\n' "$SWL" > "$D/.claude/lgtmgate/nick.md"
 node "$IS" --root "$D" --propose --plugin-version 9.9.9 > "$TMP/po" 2>"$TMP/err"
 if grep -qxF '  .claude/lgtmgate/nick.md: at-line at line 2' "$TMP/po"; then ok "propose-screen-owner-edited-specifics: an edited role file is screened too"; else bad "propose-screen-owner-edited-specifics $(cat "$TMP/po")"; fi
 
+# ---- #412: --propose reports a listed-file frontmatter ----------------------------------------------
+D=$(tree -); mkdir -p "$D/.claude/rules"
+printf -- '---\npaths: ["**/*.swift"]\n---\nSwift rules.\n' > "$D/.claude/rules/swift.md"
+node "$IS" --root "$D" --propose --plugin-version 9.9.9 > "$TMP/pfm" 2>"$TMP/err"; rc=$?
+if [ "$rc" -eq 0 ] && grep -qxF '  .claude/rules/swift.md: frontmatter-on-context-file at line 1' "$TMP/pfm" && grep -E '^  hint:' "$TMP/pfm" | grep -F 'lane file' | grep -qF 'remove the frontmatter' && [ ! -e "$D/.claude/lgtmgate" ]; then ok "propose-listed-frontmatter-reported: rule, hint, nothing written"; else bad "propose-listed-frontmatter-reported (rc=$rc) $(cat "$TMP/pfm")"; fi
+D=$(tree -); mkdir -p "$D/.claude/rules"
+printf 'Plain rules.\n' > "$D/.claude/rules/plain.md"
+node "$IS" --root "$D" --propose --plugin-version 9.9.9 > "$TMP/ppl" 2>"$TMP/err"; rc=$?
+if [ "$rc" -eq 0 ] && ! grep -q 'frontmatter-on-context-file' "$TMP/ppl" && ! grep -q '^  hint:' "$TMP/ppl"; then ok "propose-listed-plain-silent"; else bad "propose-listed-plain-silent (rc=$rc) $(cat "$TMP/ppl")"; fi
+
 RESULT=ok; [ "$FAIL" -eq 0 ] || RESULT=fail
 echo "[test-init-specifics] status=${RESULT} passed=${PASS} failed=${FAIL}"
 [ "$FAIL" -eq 0 ]

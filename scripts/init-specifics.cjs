@@ -20,7 +20,8 @@
 
 const fs = require('fs')
 const nodePath = require('path')
-const { normalise, checkContent } = require('./lib/agent-context-text.cjs')
+const { normalise, checkContent, parseFrontmatter } = require('./lib/agent-context-text.cjs')
+const { classifyLanes, CONTEXT_FILE_HINT } = require('./lib/agent-context-lanes.cjs')
 
 const DIR = '.claude/lgtmgate'
 const ROLE_FILES = ['shared', 'sam', 'nick', 'morgan', 'theo', 'mia']
@@ -199,6 +200,21 @@ function screenRefusals(root, paths) {
   return out
 }
 
+// The assembler's own check (classifyLanes, no copy of the rule) for files that would be listed under agentContext: a file
+// with a frontmatter is refused there. Unreadable, invalid UTF-8 or unparsable files are left to the content screen.
+function contextFileRefusals(root, paths) {
+  const done = new Map()
+  for (const p of paths) {
+    try {
+      const file = nodePath.join(root, p)
+      if (!fs.lstatSync(file).isFile()) continue
+      const parsed = parseFrontmatter(normalise(fs.readFileSync(file)))
+      if (parsed.errors.length === 0 && parsed.meta) done.set(p, { meta: parsed.meta })
+    } catch (error) { continue }
+  }
+  return classifyLanes(['Sam'], done, { Sam: paths }, { Sam: [] }, DIR).errors
+}
+
 function propose(root, versionToWrite, lanes = []) {
   const d = detect(root)
   const list = (a) => (a.length ? a.join(', ') : 'none')
@@ -232,6 +248,8 @@ function propose(root, versionToWrite, lanes = []) {
   const owned = [...d.rules.map((r) => r.path), ...d.existing.filter((entry) => entry.present && !entry.pristine).map((entry) => entry.path), ...d.laneFiles.filter((f) => !f.pristine).map((f) => f.path)]
   const refused = screenRefusals(root, owned)
   if (refused.length > 0) lines.push('refused by the content screen (/lgtmgate:deliver stops with exit 3 on these)', ...refused.map((r) => `  ${r}`))
+  const listed = contextFileRefusals(root, d.rules.map((r) => r.path))
+  if (listed.length > 0) lines.push('refused if listed under agentContext (/lgtmgate:deliver stops with exit 2 on these)', ...listed.map((r) => `  ${r}`), `  ${CONTEXT_FILE_HINT}`)
   lines.push(
     'config (.claude/pipeline.config.json, a key is set only when absent or empty)',
     `  projectSpecifics: ${JSON.stringify(DIR)}`,

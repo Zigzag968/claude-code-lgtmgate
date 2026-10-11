@@ -3,11 +3,15 @@
 // Lane rules of scripts/agent-context.cjs, moved out to keep that file under the line limit: which owned file belongs to
 // which lane, the display list of the lanes and the persona sentence. Pure functions, no git, no file system.
 
+// Remedy shown once per run next to a frontmatter-on-context-file refusal (agent-context.cjs and the init proposal).
+const CONTEXT_FILE_HINT = 'hint: a file listed in agentContext is plain text and takes no frontmatter; keep its rules as a lane file <role>.<lane>.md in the specifics folder with lane: (and paths:) in its frontmatter, or remove the frontmatter from the listed file'
+
 // Which owned file belongs to which lane, and the metadata of each (role, lane) pair. Refusals are returned as `errors` (the caller exits 2 on any),
 // one `<path>: <rule> at line 1` each, never the value. Returns {laneOf: Map(path -> lane), meta: Map("Role:lane" -> md), errors}.
 function classifyLanes(roles, done, seqs, owned, directory) {
   const errs = []
   const ownedAll = new Set()
+  const reported = new Set()
   const segOf = (role, p) => {
     const name = p.slice(directory.length + 1)
     const lower = role.toLowerCase()
@@ -30,7 +34,7 @@ function classifyLanes(roles, done, seqs, owned, directory) {
     for (const p of seqs[role]) {
       if (ownedAll.has(p)) continue
       const d = done.get(p)
-      if (d && d.meta) errs.push(`${p}: frontmatter-on-context-file at line 1`)
+      if (d && d.meta && !reported.has(p)) { reported.add(p); errs.push(`${p}: frontmatter-on-context-file at line 1`) }
     }
   }
   const laneOf = new Map()
@@ -99,4 +103,4 @@ function laneSentence(persona, hint) {
   return typeof hint === 'string' && hint !== '' ? `In this lane you act as ${persona}, ${hint}.` : `In this lane you act as ${persona}.`
 }
 
-module.exports = { classifyLanes, displayLanes, laneSentence }
+module.exports = { CONTEXT_FILE_HINT, classifyLanes, displayLanes, laneSentence }

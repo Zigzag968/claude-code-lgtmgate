@@ -45,7 +45,7 @@ const fs = require('fs')
 const nodePath = require('path')
 const { execFileSync } = require('child_process')
 const { normalise, trimBlank, stripComments, parseFrontmatter, checkContent, canonicalJson, digestOf } = require('./lib/agent-context-text.cjs')
-const { classifyLanes, displayLanes, laneSentence } = require('./lib/agent-context-lanes.cjs')
+const { CONTEXT_FILE_HINT, classifyLanes, displayLanes, laneSentence } = require('./lib/agent-context-lanes.cjs')
 
 const ROLES = ['Mia', 'Sam', 'Nick', 'Morgan', 'Theo']
 const CAP_ROLE = 6144
@@ -526,6 +526,7 @@ function main(argv) {
     if (error instanceof Fail) {
       for (const m of error.errors) process.stderr.write(`agent-context: ${m}\n`)
       if (error.errors.some((m) => /: frontmatter-(paths|syntax) at line \d+$/.test(m))) process.stderr.write(`agent-context: ${PATHS_HINT}\n`)
+      if (error.errors.some((m) => m.endsWith(': frontmatter-on-context-file at line 1'))) process.stderr.write(`agent-context: ${CONTEXT_FILE_HINT}\n`)
       return error.code
     }
     process.stderr.write(`agent-context: ${String(error && error.message ? error.message : error).split('\n')[0]}\n`)
