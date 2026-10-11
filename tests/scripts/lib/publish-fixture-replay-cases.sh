@@ -62,7 +62,7 @@ for (const k of ["line", "verify"]) smoke.calls[VP][k] = smoke.calls[VP][k].spli
 smoke.args.pluginRoot = root
 // #429: with a plugin root the provisioning probe runs the plugin script, so its command (and cmd= digest) names that root
 const PROV = "probe-123-provision-provision-r0"
-const provCmd = `(SCRIPT="${root}/templates/provision-worktree.sh"; if [ -f "$SCRIPT" ]; then PROVISION_ENV_SYMLINK="required" bash "$SCRIPT" "${smoke.args.wtPath}"; else echo "PROVISION-SKIPPED-NO-SCRIPT $SCRIPT (no provision.extraLinks configured - nothing to link)"; exit 0; fi) 2>&1`
+const provCmd = `(SCRIPT="${root}/templates/provision-worktree.sh"; if [ -f "$SCRIPT" ]; then PROVISION_ENV_SYMLINK="required" bash "$SCRIPT" "${smoke.args.worktreePath}"; else echo "PROVISION-SKIPPED-NO-SCRIPT $SCRIPT (no provision.extraLinks configured - nothing to link)"; exit 0; fi) 2>&1`
 for (const k of ["line", "verify"]) smoke.calls[PROV][k] = smoke.calls[PROV][k].replace(/cmd=[0-9a-f]{64}/, "cmd=" + crypto.createHash("sha256").update(provCmd).digest("hex"))
 const runDir = path.join(proj, "-proj", "sess1", "subagents", "workflows", runId)
 const recFile = path.join(proj, "-proj", "sess1", "workflows", runId + ".json")
@@ -163,6 +163,24 @@ if [ "$RRC" -eq 0 ] && [ "$RRET" = yes ] && [ -f "$RCAP" ]; then
 else
   bad "folded retry capture: rc=$RRC retries-suffix=$RRET out=$ROUT"
 fi
+
+# ---- #337: rehash-fixtures re-records the probe digests after an engine change ---------------------------
+# The variant engine composes the old abbreviated worktree flag, so every probe command that carries it hashes differently.
+REH_ENG="$TMP/engine-short-flag.js"
+sed "s/'--worktree'/'--wt'/g" "$ROOT/workflows/deliver-pipeline.js" > "$REH_ENG"
+REH_DIR="$(newdir rehash)"
+cp "$ROOT/fixtures/smoke/ci-required-failing.json" "$REH_DIR/a.json"
+cp "$ROOT/fixtures/smoke/ci-required-failing.json" "$TMP/rehash-orig.json"
+out=$(node scripts/lib/rehash-fixtures.cjs --from workflows/deliver-pipeline.js --fp "$REH_ENG" "$REH_DIR" 2>&1 | tail -n 1)
+rep=$(OFFLINE_STRICT=1 node scripts/run-offline.cjs "$REH_DIR/a.json" --fp "$REH_ENG" 2>&1 | tail -n 1)
+case "$out" in "[rehash] status=ok files=1 hashes=0") R1=no;; "[rehash] status=ok files=1 hashes="*) R1=yes;; *) R1=no;; esac
+case "$rep" in *"status=ok passed=1 failed=0"*) R2=yes;; *) R2=no;; esac
+if [ "$R1" = yes ] && [ "$R2" = yes ] && ! cmp -s "$REH_DIR/a.json" "$TMP/rehash-orig.json"; then ok "rehash: digests rewritten to the variant engine and the copy replays green against it"; else bad "rehash forward: out='$out' replay='$rep' changed=$(cmp -s "$REH_DIR/a.json" "$TMP/rehash-orig.json" && echo no || echo yes)"; fi
+out=$(node scripts/lib/rehash-fixtures.cjs --from "$REH_ENG" --fp workflows/deliver-pipeline.js "$REH_DIR" 2>&1 | tail -n 1)
+if cmp -s "$REH_DIR/a.json" "$TMP/rehash-orig.json"; then ok "rehash: running it back restores the file byte for byte"; else bad "rehash back: out='$out' file differs from the original"; fi
+cp "$ROOT/fixtures/incidents/151-probe-cmd-mismatch.json" "$REH_DIR/b.json"
+out=$(node scripts/lib/rehash-fixtures.cjs --from workflows/deliver-pipeline.js --fp "$REH_ENG" "$REH_DIR/b.json" 2>&1 | tail -n 1)
+if cmp -s "$REH_DIR/b.json" "$ROOT/fixtures/incidents/151-probe-cmd-mismatch.json"; then ok "rehash: a digest that never hashed a composed command is left untouched"; else bad "rehash uncoupled: out='$out' file changed"; fi
 
 # ---- usage errors (exit 2, before any filesystem access) ----------------------------------------------
 
