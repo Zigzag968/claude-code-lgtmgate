@@ -6040,7 +6040,7 @@ await testCase('T183d Morgan proving 2 of 3 boxes leaves exactly ids 1 and 3 tic
   const error3 = includes('the gate stays open, tag and text intact', p, lines[1])
   const error4 = includes('box 3 ticked', p, '- [x] <!-- ac:3 --> ' + T182_ITEMS[2].text)
   const error5 = eq('ticked boxes in the body', p.split('- [x] ').length - 1, 2)
-  const error6 = includes('trace', r.trace || [], 'acceptance-ticked:0')
+  const error6 = includes('trace', r.trace || [], 'acceptance-ticked:round=0,n=2')
   return error1 || error2 || error3 || error4 || error5 || error6 || { ok: true }
 })
 
@@ -6586,7 +6586,7 @@ await testCase('T183s a refused tick carries the probe reason (tickReason) and a
   const h = await run({ mode: 'auto', simulate: sims(['stale-read', true]) })
   const error11 = eq('stale then written: status', h.status, 'ready')
   const error12 = eq('stale then written: no tickReason', h.tickReason, undefined)
-  const error13 = includes('stale then written: ticked', h.trace || [], 'acceptance-ticked:0')
+  const error13 = includes('stale then written: ticked', h.trace || [], 'acceptance-ticked:round=0,n=3')
   // A probe that gave no usable answer at all.
   const u = await run({ mode: 'auto', simulate: sims('probe-unavailable') })
   const error14 = eq('probe unavailable: tickReason', u.tickReason, 'probe-unavailable')
@@ -6602,7 +6602,7 @@ await testCase('T212a a tick retried after a digest mismatch lands: ready, one r
   const error1 = eq('status', r.status, 'ready')
   const error2 = eq('no tickReason', r.tickReason, undefined)
   const error3 = eq('exactly one retry', (r.trace || []).filter((t) => String(t).startsWith('acceptance-tick-retry')), ['acceptance-tick-retry:0'])
-  const error4 = includes('ticked', r.trace || [], 'acceptance-ticked:0')
+  const error4 = includes('ticked', r.trace || [], 'acceptance-ticked:round=0,n=3')
   return error1 || error2 || error3 || error4 || { ok: true }
 })
 
@@ -6613,6 +6613,21 @@ await testCase('T212b a tick retried after a digest mismatch that repeats parks:
   const error3 = eq('exactly one retry', (r.trace || []).filter((t) => String(t).startsWith('acceptance-tick-retry')), ['acceptance-tick-retry:0'])
   const error4 = includes('refused trace', r.trace || [], 'acceptance-tick-reason:cmd-mismatch')
   return error1 || error2 || error3 || error4 || { ok: true }
+})
+
+await testCase('T444 the tick entry of the trace names the round and the number of boxes ticked: two boxes ticked in round 1 record acceptance-ticked:round=1,n=2', async () => {
+  const r = await t183Review({
+    prBody: t183Body(T183_L3),
+    morgan: [
+      { verdict: 'REQUIRED_CHANGES', items: [T183_L3[0]], boxes: t183Boxes(false, false, false) },
+      { verdict: 'REQUIRED_CHANGES', items: [T183_L3[2]], boxes: t183Boxes(true, true, false) },
+      { verdict: 'LGTM', boxes: t183Boxes(true, true, true) },
+    ],
+  }, { mode: 'auto' })
+  const error1 = includes('round 1 ticked two boxes', r.trace || [], 'acceptance-ticked:round=1,n=2')
+  const error2 = eq('no entry for round 0 (nothing proven)', (r.trace || []).filter((t) => String(t).startsWith('acceptance-ticked:round=0')), [])
+  const error3 = eq('no entry of the old shape', (r.trace || []).filter((t) => /^acceptance-ticked:\d/.test(String(t))), [])
+  return error1 || error2 || error3 || { ok: true }
 })
 
 // #239: a PR read that failed for a NAMED cause (the preflight branch probe's `readFailed`) stops the run at the start of the
@@ -6800,7 +6815,7 @@ await testCase('T183y a box settled at an earlier round is not settled again wit
       { verdict: 'LGTM', boxes: t183Boxes(true, true, true) },
     ],
   }, { mode: 'auto' })
-  const error1 = includes('R1: only the third round ticked the last boxes', r.trace || [], 'acceptance-ticked:2')
+  const error1 = includes('R1: only the third round ticked the last boxes', r.trace || [], 'acceptance-ticked:round=2,n=3')
   const error2 = eq('R1: status', r.status, 'ready')
   const error3 = includes('R1: boxes 1 missing at round 1', r.trace || [], 'boxes-missing:1')
   const error4 = includes('R1: boxes 2 missing at round 1', r.trace || [], 'boxes-missing:2')
