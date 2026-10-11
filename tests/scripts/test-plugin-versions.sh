@@ -7,7 +7,8 @@
 # project, the real user-scope shape (stable disabled, beta enabled), channels in different scopes or projects,
 # other plugins ignored, target from origin/main, fail closed (exit 2) on every unexpected payload, no install,
 # --plugin, shadowed installs (a more specific scope of the same channel applies to --project), the loaded plugin root
-# (--loaded-root, LOADED-CACHE and its printed uninstall command), and read-only (the fake only ever sees `plugin list --json`).
+# (--loaded-root, LOADED-CACHE and its printed uninstall command), installs of another project (listed, not counted),
+# and read-only (the fake only ever sees `plugin list --json`).
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -93,7 +94,7 @@ pv "$BASE/l4.json" --target "$T"
 [ "$RC" -eq 1 ] && has 'CONFLICT: both channels enabled in scope=user project=-: zigzag-plugins, zigzag-plugins-beta' && ! has MISMATCH \
   && ok "both channels enabled in one scope: exit 1, CONFLICT names the scope and both channels" || bad "channel conflict (rc=$RC): $OUT"
 list "$BASE/l4b.json" "$(entry "$STABLE" "$T" local true /work/proj-a)" "$(entry "$BETA" "$T" local true /work/proj-a)"
-pv "$BASE/l4b.json" --target "$T"
+pv "$BASE/l4b.json" --target "$T" --project /work/proj-a
 [ "$RC" -eq 1 ] && has 'CONFLICT: both channels enabled in scope=local project=/work/proj-a' \
   && ok "both channels enabled in the same project of a local scope: CONFLICT" || bad "local conflict (rc=$RC): $OUT"
 
@@ -103,10 +104,10 @@ pv "$BASE/l5.json" --target "$T"
 [ "$RC" -eq 0 ] && ! has CONFLICT && ! has MISMATCH && [ "$(last_line)" = "plugin-versions: 2 install(s) of lgtmgate, target $T, 0 problem(s)" ] \
   && ok "stable disabled next to beta enabled in one scope: exit 0, no conflict" || bad "real shape (rc=$RC): $OUT"
 list "$BASE/l5b.json" "$(entry "$BETA" "$T" user true)" "$(entry "$STABLE" "$T" local true /work/proj-a)"
-pv "$BASE/l5b.json" --target "$T"
+pv "$BASE/l5b.json" --target "$T" --project /work/proj-a
 [ "$RC" -eq 0 ] && ! has CONFLICT && ok "two channels enabled in DIFFERENT scopes: exit 0" || bad "different scopes (rc=$RC): $OUT"
 list "$BASE/l5c.json" "$(entry "$BETA" "$T" local true /work/proj-a)" "$(entry "$STABLE" "$T" local true /work/proj-b)"
-pv "$BASE/l5c.json" --target "$T"
+pv "$BASE/l5c.json" --target "$T" --project /work/proj-a
 [ "$RC" -eq 0 ] && ! has CONFLICT && ok "two channels enabled in two projects of the local scope: exit 0" || bad "different projects (rc=$RC): $OUT"
 
 # 6. entries of other plugins (stale, even enabled) and a plugin whose name only starts like ours are ignored
@@ -194,7 +195,7 @@ pv "$BASE/l11b.json" --target 1.3.0 --project $P
 [ "$RC" -eq 0 ] && ! has MISMATCH && ! has CONFLICT && has 'version=1.1.0 SHADOWED' && ok "a stable user next to a shadowed beta user: no CONFLICT, no MISMATCH on the shadowed one" || bad "two channels (rc=$RC): $OUT"
 list "$BASE/l11c.json" "$USR" "$(entry "$BETA" 1.3.0 local true /work/proj-b)"
 pv "$BASE/l11c.json" --target 1.3.0 --project $P
-[ "$RC" -eq 1 ] && has 'MISMATCH: found 1.1.0' && ! has SHADOWED && ok "a local entry of ANOTHER project does not shadow: the user mismatch still counts" || bad "other project (rc=$RC): $OUT"
+[ "$RC" -eq 1 ] && has 'MISMATCH: found 1.1.0' && ! has SHADOWED && has 'OTHER-PROJECT' && ok "a local entry of ANOTHER project does not shadow: the user mismatch still counts" || bad "other project (rc=$RC): $OUT"
 list "$BASE/l11d.json" "$USR" "$(entry "$BETA" 1.3.0 project true $P)"
 pv "$BASE/l11d.json" --target 1.3.0 --project $P
 [ "$RC" -eq 0 ] && has 'SHADOWED by project install version 1.3.0' && ok "a project-scope entry shadows a user one" || bad "project shadows user (rc=$RC): $OUT"
@@ -218,6 +219,19 @@ pv "$BASE/l11g.json" --target 1.3.0 --project $P --loaded-root /cache/elsewhere/
 pv "$BASE/l11g.json" --target 1.3.0 --project
 r1=$RC; pv "$BASE/l11g.json" --target 1.3.0 --loaded-root
 [ "$r1" -eq 2 ] && [ "$RC" -eq 2 ] && ok "--project or --loaded-root without a value: exit 2" || bad "missing values (rc=$r1/$RC): $OUT"
+
+# 12. an enabled install scoped to ANOTHER project is listed, never counted (the CLI's `enabled` is per plugin id for the cwd)
+list "$BASE/l12a.json" "$(entry "$STABLE" "$T" local true /work/proj-a)" "$(entry "$BETA" "$T" local true /work/proj-a)"
+pv "$BASE/l12a.json" --target "$T"
+[ "$RC" -eq 0 ] && has OTHER-PROJECT && ! has CONFLICT && [ "$(last_line)" = "plugin-versions: 2 install(s) of lgtmgate, target $T, 0 problem(s)" ] \
+  && ok "two channels enabled in ANOTHER project: OTHER-PROJECT, no CONFLICT, exit 0" || bad "other project conflict (rc=$RC): $OUT"
+list "$BASE/l12b.json" "$(entry "$BETA" 1.0.0-beta.3 local true /work/proj-b)" "$(entry "$BETA" 1.0.0-beta.4 project true /work/proj-c)"
+pv "$BASE/l12b.json" --target "$T"
+[ "$RC" -eq 0 ] && ! has MISMATCH && [ "$(printf '%s\n' "$OUT" | grep -c OTHER-PROJECT)" -eq 2 ] && [ "$(last_line)" = "plugin-versions: 2 install(s) of lgtmgate, target $T, 0 problem(s)" ] \
+  && ok "an enabled stale install of ANOTHER project is OTHER-PROJECT, not counted: exit 0" || bad "other project stale (rc=$RC): $OUT"
+pv "$BASE/l12b.json" --target "$T" --project /work/proj-b
+[ "$RC" -eq 1 ] && has 'MISMATCH: found 1.0.0-beta.3' && [ "$(printf '%s\n' "$OUT" | grep -c OTHER-PROJECT)" -eq 1 ] && [ "$(last_line)" = "plugin-versions: 2 install(s) of lgtmgate, target $T, 1 problem(s)" ] \
+  && ok "the same install counts when its project is the current one (OTHER-PROJECT only for the others)" || bad "current project counts (rc=$RC): $OUT"
 
 # 10. read-only: the fake saw `plugin list --json` and nothing else, across every case above
 if [ -s "$FAKE_LOG" ] && [ "$(sort -u "$FAKE_LOG")" = "plugin list --json" ]; then
