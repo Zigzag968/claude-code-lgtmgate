@@ -4,7 +4,7 @@
   "args": {
     "issue": 106,
     "brief": "Teach Sam the version-bump rule",
-    "wtPath": "/wt/root/issue-106",
+    "worktreePath": "/wt/root/issue-106",
     "mode": "semi"
   },
   "calls": {},

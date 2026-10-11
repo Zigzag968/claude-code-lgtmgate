@@ -4,7 +4,7 @@
   "args": {
     "issue": 82,
     "brief": "provision fails closed without attestation",
-    "wtPath": "/wt/root/issue-82",
+    "worktreePath": "/wt/root/issue-82",
     "config": {},
     "mode": "auto"
   },

@@ -5,7 +5,7 @@
     "pluginRoot": "/plugin",
     "issue": 187,
     "brief": "design-options one-pager only: how to store the session token",
-    "wtPath": "/wt/root/issue-187",
+    "worktreePath": "/wt/root/issue-187",
     "config": {},
     "mode": "auto",
     "proceedThrough": "plan"

@@ -5,7 +5,7 @@
     "pluginRoot": "/cache/lgtmgate/current",
     "issue": 338,
     "brief": "a probe command that never ran must be named command-not-run, not unparseable-line",
-    "wtPath": "/wt/root/issue-338",
+    "worktreePath": "/wt/root/issue-338",
     "config": {},
     "mode": "auto"
   },

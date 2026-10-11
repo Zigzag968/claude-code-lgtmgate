@@ -5,7 +5,7 @@
     "pluginRoot": "/plugin",
     "issue": 123,
     "brief": "fix slugify accents",
-    "wtPath": "/wt/root/issue-123",
+    "worktreePath": "/wt/root/issue-123",
     "config": {
       "classifierOutage": {
         "retries": 1,
@@ -51,8 +51,8 @@
       "issues": []
     },
     "probe-123-preflight-dev-r0": {
-      "line": "PROBE name=preflight exit=0 sha=0acd6243a89b98b4bb2d70cb70c8f020921b3ba8feae419783c1e32c54be75dd cmd=61f2760483151fb3cb232c269b86e8edf8e5d96659e23745f2384bd22c46be69 json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/wt/root/.git/worktrees/issue-123\",\"writable\":true}",
-      "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=0acd6243a89b98b4bb2d70cb70c8f020921b3ba8feae419783c1e32c54be75dd cmd=61f2760483151fb3cb232c269b86e8edf8e5d96659e23745f2384bd22c46be69 json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/wt/root/.git/worktrees/issue-123\",\"writable\":true}"
+      "line": "PROBE name=preflight exit=0 sha=0acd6243a89b98b4bb2d70cb70c8f020921b3ba8feae419783c1e32c54be75dd cmd=bab153ec08c43a81aad6ca5c38feaecaa394a72ec8b8a497a0467981279f563a json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/wt/root/.git/worktrees/issue-123\",\"writable\":true}",
+      "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=0acd6243a89b98b4bb2d70cb70c8f020921b3ba8feae419783c1e32c54be75dd cmd=bab153ec08c43a81aad6ca5c38feaecaa394a72ec8b8a497a0467981279f563a json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/wt/root/.git/worktrees/issue-123\",\"writable\":true}"
     },
     "nick-issue-123": [
       "Auto mode classifier returned no safety verdict (10 consecutive); ending the turn. Classifier temporarily unavailable.",
