@@ -49,8 +49,10 @@ A run is driven from a session opened in the target repository (agents get the l
 - `WORKTREE="<worktreeRoot>/<slug>"`; branch `<config.branchPrefix><slug>`.
 - Create it (1 command):
   ```bash
-  git worktree add "<WORKTREE>" -b <branchPrefix><slug> origin/<baseBranch>
+  git worktree add --no-track -b <branchPrefix><slug> "<WORKTREE>" origin/<baseBranch>
   ```
+  The default form writes the branch upstream configuration into the shared `.git/config`, which the tooling sandbox refuses; `--no-track` writes nothing.
+- **Half-done state** (branch exists without a worktree): `git worktree add "<WORKTREE>" <branchPrefix><slug>` (no `-b`); never run the creation command again.
 - **Behind the base** (the dispatch preflight reports it): a worktree with no commit of its own is fast-forwarded with `git merge --ff-only origin/<baseBranch>`; with own commits it is refused and the exact command is `git -C "<WORKTREE>" merge origin/<baseBranch>`. Never a rebase.
 - Check `git worktree list` < 60s afterward (mitigation for anthropics/claude-code#39886). Failure → fix before launching the workflow.
 - **Alternate base** (feature stacked on a not-yet-merged branch, or dogfood): override `config.baseBranch` to that branch FOR THIS RUN (in the config object passed to the workflow) AND create the worktree from it. Worktree + PR target + regression guard then all point to the right base. Check that it triggers CI (`on.pull_request.branches`); otherwise `ciChecks: []` (Morgan validates on the local green bar). (friction F3)
