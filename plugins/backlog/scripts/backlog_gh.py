@@ -9,12 +9,12 @@ Three classes, and this is the only module of the plugin that spawns a process:
     repo override, a browser/editor flag or an assignment flag; the configured `repo` is injected as `-R`;
   - a write needs the mode to permit it (`propose` never writes, `write-supervised` needs `confirmed=True`,
     `free` writes) and is counted against a per-instance write cap; total calls are capped too.
-* `ApplyGh`, the label-write half used by the catch-up tooling. It is a SIBLING of `Gh`, never a subclass, and
-  `Gh.WRITE_ALLOW` stays exactly `{("issue", "create")}`. It runs two verbs only (`issue edit` with
-  `--add-label` / `--remove-label`, `label create` with `--color` / `--description`), needs an `ApplyGrant`
-  that only `backlog_apply.py` mints after every apply condition has passed, injects `-R <repo>` itself,
-  validates every issue number and label name, and is capped per instance. It has no delete, rename or
-  label-edit verb and no read method.
+* `ApplyGh`, the label-write half used by the catch-up and label-sync tooling. It is a SIBLING of `Gh`, never a
+  subclass, and `Gh.WRITE_ALLOW` stays exactly `{("issue", "create")}`. It runs three verbs only (`issue edit`
+  with `--add-label` / `--remove-label`, `label create` with `--color` / `--description`, `label edit` with
+  `--color` only), needs an `ApplyGrant` that only `backlog_apply.py` mints after every apply condition has
+  passed, injects `-R <repo>` itself, validates every issue number and label name, and is capped per instance.
+  It has no delete or rename verb (`label edit` carries no name flag) and no read method.
 * `DepGh`, the dependency-write half ("Blocked by", REST only, never GraphQL). A third SIBLING, never a subclass
   of `Gh` or `ApplyGh`: `Gh.WRITE_ALLOW` and `APPLY_ALLOW` stay unchanged. It refuses to build unless the mode is
   `write-supervised` or `free` and `repo` is set, builds three `gh api` shapes only (resolve an issue id, POST a
@@ -43,10 +43,11 @@ ALLOWED_FLAGS: Dict[Tuple[str, str], FrozenSet[str]] = {
     ("issue", "create"): frozenset({"--title", "--body", "--label"}),
 }
 
-APPLY_ALLOW: FrozenSet[Tuple[str, str]] = frozenset({("issue", "edit"), ("label", "create")})
+APPLY_ALLOW: FrozenSet[Tuple[str, str]] = frozenset({("issue", "edit"), ("label", "create"), ("label", "edit")})
 APPLY_FLAGS: Dict[Tuple[str, str], FrozenSet[str]] = {
     ("issue", "edit"): frozenset({"--add-label", "--remove-label"}),
     ("label", "create"): frozenset({"--color", "--description"}),
+    ("label", "edit"): frozenset({"--color"}),
 }
 MAX_APPLY_ISSUES = 50
 MAX_APPLY_LABELS = 50
@@ -199,7 +200,7 @@ class ApplyGrant:
 
 
 class ApplyGh:
-    """The label-write chokepoint: `issue edit` (add/remove labels) and `label create`, nothing else."""
+    """The label-write chokepoint: `issue edit` (add/remove labels), `label create` and `label edit --color`, nothing else."""
 
     def __init__(self, cfg, grant: ApplyGrant, runner: Optional[Callable[..., Any]] = None):
         if not isinstance(grant, ApplyGrant):
@@ -215,6 +216,7 @@ class ApplyGh:
         self.calls = 0
         self._issues_touched: set = set()
         self._labels_created: set = set()
+        self._labels_recolored: set = set()
 
     @staticmethod
     def _check_name(name: Any) -> str:
@@ -288,6 +290,18 @@ class ApplyGh:
         if description:
             args.append("--description=" + description)
         self._run(("label", "create"), args)
+
+    def recolor_label(self, name: str, color: str) -> None:
+        """Change the color of one granted label (`label edit --color`): no rename, no description."""
+        self._check_name(name)
+        if name not in self.grant.labels:
+            raise ModeError("label %r is not covered by the grant" % name)
+        if not isinstance(color, str) or not _COLOR_RE.fullmatch(color):
+            raise ModeError("invalid label color %r" % (color,))
+        if name not in self._labels_recolored and len(self._labels_recolored) >= MAX_APPLY_LABELS:
+            raise ModeError("batch cap reached (%d labels)" % MAX_APPLY_LABELS)
+        self._labels_recolored.add(name)
+        self._run(("label", "edit"), [name, "--color=" + color])
 
 
 class DepGh:

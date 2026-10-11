@@ -99,7 +99,7 @@ def run_cli(args, cwd, env):
 class FakeRunner:
     """Stands in for the process runner of `Gh`: records argv, answers per verb pair."""
 
-    WRITE_VERBS = (("issue", "edit"), ("label", "create"))
+    WRITE_VERBS = (("issue", "edit"), ("label", "create"), ("label", "edit"))
 
     def __init__(self, issues=None, prs=None, labels=None, create_url="https://github.com/o/r/issues/1\n", fail=None,
                  fail_write_at=None, before_write=None, fail_dep_at=None):
@@ -161,13 +161,21 @@ class FakeRunner:
         return json.dumps({k: v for k, v in target.items() if k != "body" or "body" in wanted})
 
     def _write(self, verb, argv):
-        """`issue edit` mutates the matching issue's labels, `label create` adds the label: a round trip is real."""
+        """`issue edit` mutates the matching issue's labels, `label create` adds the label, `label edit` recolors it: a round trip is real."""
         if self.before_write is not None:
             self.before_write(list(argv))
         if self.fail_write_at is not None and len(self.writes()) == self.fail_write_at:
             raise subprocess.CalledProcessError(1, argv)
         if verb == ("label", "create"):
-            self.labels.append(argv[3])
+            color = next((a.split("=", 1)[1] for a in argv[4:] if a.startswith("--color=")), "")
+            self.labels.append({"name": argv[3], "color": color, "description": ""})
+            return ""
+        if verb == ("label", "edit"):
+            color = next(a.split("=", 1)[1] for a in argv[4:] if a.startswith("--color="))
+            for pos, entry in enumerate(self.labels):
+                name = entry if isinstance(entry, str) else entry.get("name", "")
+                if name.lower() == argv[3].lower():
+                    self.labels[pos] = {**({} if isinstance(entry, str) else entry), "name": name, "color": color}
             return ""
         number = int(argv[3])
         target = next((i for i in self.issues if int(i["number"]) == number), None)
