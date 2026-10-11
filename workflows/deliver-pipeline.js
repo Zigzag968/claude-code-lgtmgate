@@ -4236,7 +4236,7 @@ if (after('review', entryStage)) {
     let untickable
     let tickReason
     if (reason === null) {
-      if (tickIds.length > 0) trace.push(`acceptance-ticked:${round}`)
+      if (tickIds.length > 0) trace.push(`acceptance-ticked:round=${round},n=${tickIds.length}`)
     } else if (tickBoxes.length > 0) {
       trace.push(`acceptance-tick-refused:${round}`)
       trace.push(`acceptance-tick-reason:${reason}`)

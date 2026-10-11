@@ -235,7 +235,7 @@
       "probe:pr-write:haiku",
       "acceptance-tick-retry:0",
       "probe:pr-write:haiku",
-      "acceptance-ticked:0",
+      "acceptance-ticked:round=0,n=6",
       "probe:pr-write:haiku",
       "probe:pr-state:haiku"
     ],
