@@ -34,7 +34,7 @@
 //        present only when a lane exists, = [{name, roles, persona?, paths?, hint?}] for display, covered by no digest).
 // Exit:  0 ok (empty payload when the switch is off) · 2 args, config schema, unknown role, bad ref,
 //        frontmatter schema, nothing to accept · 3 file-level refusal (missing, symlink, submodule,
-//        tree, `..`, absolute, not .md, `@` line, machine literal, invisible or control char, invalid
+//        tree, `..`, absolute, not .md, `@` line outside a closed fenced block, machine literal, invisible or control char, invalid
 //        UTF-8, secret form, > 8 files per source, folder absent) · 4 hard ceiling.
 //        Errors go to stderr, one per line, as `<path>: <rule> at line N` (never the value); stdout stays empty.
 // Lead allow rule: Bash(node */scripts/agent-context.cjs:*)

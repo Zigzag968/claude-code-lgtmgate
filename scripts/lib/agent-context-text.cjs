@@ -121,6 +121,34 @@ const MARKER_RE = /<!--\s*(acceptance:|ac:|pipeline-|decision-log)/i
 const INVISIBLE_RE = /[\u00AD\u180E\u200B-\u200F\u2028-\u202E\u2060-\u206F\uFEFF]|[\u{E0000}-\u{E007F}]/u
 const CONTROL_RE = /[\u0000-\u0008\u000B-\u001F\u007F-\u009F]/
 
+// The fence a line leaves open after `fence` ('' for none): same rule as fenceAfter in templates/pr-body-splice.cjs
+// (3+ backticks or tildes, up to 3 spaces of indent, closed by the same character at least as long, alone on its line).
+function fenceAfter(line, fence) {
+  const t = line.trimStart()
+  const c = t[0]
+  let run = 0
+  if ((c === '`' || c === '~') && line.length - t.length <= 3) while (t[run] === c) run += 1
+  if (fence !== '') return run >= fence.length && c === fence[0] && t.slice(run).trim() === '' ? '' : fence
+  return run >= 3 && !(c === '`' && t.slice(run).includes('`')) ? c.repeat(run) : ''
+}
+// The first line (1-based) starting with `@` outside a closed fenced block, 0 for none. A fence never closed protects nothing:
+// the first `@` line after its opener counts.
+function firstAtLine(text) {
+  const lines = text.split('\n')
+  let fence = ''
+  let held = 0
+  for (let index = 0; index < lines.length; index++) {
+    const next = fenceAfter(lines[index], fence)
+    if (/^[ \t]*@/.test(lines[index])) {
+      if (fence === '') return index + 1
+      if (held === 0) held = index + 1
+    }
+    if (fence !== '' && next === '') held = 0
+    fence = next
+  }
+  return held
+}
+
 // checkContent(text) -> ['<rule> at line N', ...]   (never the matched value)
 function checkContent(text) {
   const out = []
@@ -133,7 +161,8 @@ function checkContent(text) {
   hit('machine-literal', /<\/?project_specifics/i)
   hit('machine-marker', MARKER_RE)
   hit('one-way-door-line', /^\s*one-way-door:/im)
-  hit('at-line', /^[ \t]*@/m)
+  const atLine = firstAtLine(text)
+  if (atLine > 0) out.push(`at-line at line ${atLine}`)
   const stripped = stripComments(text)
   if (stripped.includes('<!--')) {
     const index = text.lastIndexOf('<!--')
