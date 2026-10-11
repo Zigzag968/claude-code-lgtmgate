@@ -92,6 +92,16 @@ if [ "$rc" -ne 0 ] && has 'FAIL: consumer-reference: docs/consumer-reference.md 
 GUARDS_ONLY=consumer-reference GUARDS_CONSUMER_BASELINE_BASE="$ROOT/scripts/consumer-reference-baseline.json" node "$GUARDS" > "$TMP/out" 2>&1; rc=$?
 if [ "$rc" -eq 0 ] && has 'PASS: consumer-reference:'; then ok "10 the real tree passes"; else bad "10 rc=$rc $(cat "$TMP/out")"; fi
 
+# 11 an assembler warning row deleted
+fresh c11; drop_row c11 not-on-base-ref; run c11
+if [ "$rc" -ne 0 ] && has "FAIL: consumer-reference: Assembler warnings 'not-on-base-ref' has no row and is not in the baseline"; then ok "11 a deleted warning row fails and is named"; else bad "11 rc=$rc $(cat "$TMP/out")"; fi
+
+# 12 a warning row for a warning the code does not emit
+fresh c12
+node -e 'const fs=require("fs");const p=process.argv[1];const t=fs.readFileSync(p,"utf8");fs.writeFileSync(p,t.replace("## Run reasons","| `ghost-warning` | nowhere | nothing | nothing to do |\n\n## Run reasons"))' "$TMP/c12/docs/consumer-reference.md"
+run c12
+if [ "$rc" -ne 0 ] && has "Assembler warnings 'ghost-warning' has a row but the code no longer emits it"; then ok "12 a stale warning row fails"; else bad "12 rc=$rc $(cat "$TMP/out")"; fi
+
 if [ "$FAIL" -eq 0 ]; then status=ok; else status=fail; fi
 echo "[test-consumer-reference] status=$status passed=$PASS failed=$FAIL"
 [ "$FAIL" -eq 0 ]

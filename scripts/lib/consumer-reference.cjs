@@ -17,6 +17,7 @@ const REFERENCE_PATH = 'docs/consumer-reference.md'
 const FAMILIES = [
   ['config', 'Configuration keys'],
   ['assembler', 'Assembler refusals'],
+  ['warnings', 'Assembler warnings'],
   ['reasons', 'Run reasons'],
   ['hooks', 'Hook messages'],
 ]
@@ -43,6 +44,16 @@ function extractAssembler(root) {
     for (const match of source.matchAll(/\bhit\('([a-z][a-z0-9-]*)'/g)) names.add(match[1])
   }
   return sorted(names)
+}
+
+// Warnings: the keys of WARNING_REMEDY are the only kinds `warningLines` prints. `oversize`, `shared-oversize` and
+// `total-oversize` have no remedy entry and print no warning line, so they are not names. A text pattern over one object literal.
+function extractWarnings(root) {
+  const source = stripComments(readText(root, 'scripts/lib/agent-context-lanes.cjs'))
+  const start = source.indexOf('const WARNING_REMEDY = {')
+  if (start < 0) return []
+  const body = source.slice(start, source.indexOf('\n}\n', start))
+  return sorted(new Set([...body.matchAll(/^\s*'([a-z][a-z0-9-]*)':/gm)].map((match) => match[1])))
 }
 
 // Engine: `config.<key>` / `config?.<key>` outside comments. Assembler: inside `readConfig` only, elsewhere its
@@ -78,7 +89,7 @@ function extractHooks(root) {
 }
 
 function extractNames(root) {
-  return { config: extractConfig(root), assembler: extractAssembler(root), reasons: extractReasons(root), hooks: extractHooks(root) }
+  return { config: extractConfig(root), assembler: extractAssembler(root), warnings: extractWarnings(root), reasons: extractReasons(root), hooks: extractHooks(root) }
 }
 
 // Rows of one table: the first code span of the first cell is the name, the fourth cell is the remedy.
