@@ -215,12 +215,13 @@ pb_line() {
 pb_cmd() { node -e 'const f = new Function(process.argv[1] + "\nreturn pluginVersionCommand")(); process.stdout.write(f(process.argv[2]))' "$PV_BLK" "$1" 2>/dev/null; }
 PB_LINE="$(pb_line "$PV_ROOTS/same" b64)"
 PB_CMD="$(pb_cmd "$PV_ROOTS/same")"
-PB_TOK="${PB_LINE##* --cmd-b64 }"
+PB_REST="${PB_LINE##* --cmd-b64 }"
+PB_TOK="${PB_REST%% *}"
 ok=0
 case "$PB_LINE" in
-  *" --cmd-b64 "*) case "$PB_TOK" in *"'"*|*" "*) ok=0 ;; *) [ -n "$PB_TOK" ] && ok=1 ;; esac ;;
+  *" --cmd-b64 "*) case "$PB_TOK" in *"'"*) ok=0 ;; *) [ -n "$PB_TOK" ] && [ "${PB_REST#"$PB_TOK"}" = " --expect-cmd $(td_sha "$PB_CMD") --model haiku" ] && case "$PB_LINE" in *"$PB_TOK") ok=0 ;; *) ok=1 ;; esac ;; esac ;;
 esac
-check "[338] the engine's run line for the plugin-version command ends in one bare --cmd-b64 token (no quote)" "$ok"
+check "[338] the engine's run line carries one bare --cmd-b64 token followed only by --expect-cmd <digest> and --model haiku, and does not end with the token (#485)" "$ok"
 ok=1
 case "$PB_LINE" in *" --cmd '"*) ok=0 ;; esac
 [ -n "$PB_LINE" ] || ok=0
@@ -230,8 +231,8 @@ ok=0
 [ "$(td_field "$PB_OUT" exit)" = "0" ] && [ "$(td_field "$PB_OUT" cmd)" = "$(td_sha "$PB_CMD")" ] && [ -n "$PB_CMD" ] && ok=1
 check "[338] the command delivered as built by the engine runs (exit=0, cmd= is the sha256 of the composed command)" "$ok"
 # one character of the token altered: the decoded text misses the digest, nothing runs
-PB_BAD="${PB_LINE%$PB_TOK}A${PB_TOK#?}"
-[ "$PB_BAD" = "$PB_LINE" ] && PB_BAD="${PB_LINE%$PB_TOK}B${PB_TOK#?}"
+PB_BAD="${PB_LINE/ $PB_TOK/ A${PB_TOK#?}}"
+[ "$PB_BAD" = "$PB_LINE" ] && PB_BAD="${PB_LINE/ $PB_TOK/ B${PB_TOK#?}}"
 PB_OUT="$(sh -c "$PB_BAD" 2>&1)"
 ok=0
 [ "$(td_field "$PB_OUT" exit)" = "-1" ] && [ "$(td_field "$PB_OUT" cmd)" != "$(td_sha "$PB_CMD")" ] && ok=1
@@ -254,6 +255,15 @@ if [ -n "$PB_OLD" ] && [ "$PB_DROP" != "$PB_OLD" ]; then
   [ "$PB_E4" != "0" ] && [ -z "$PB_REC" ] && ok=1
 fi
 check "[338] the old --cmd form with the final quote dropped fails in the shell and leaves no record" "$ok"
+# #485: a stray closing quote typed after the composed b64 line (what a small model did) runs nothing and leaves no record
+rm -f "$PB_WT/.pipeline/probes/issue-338/pb-r0.json"
+ok=0
+if [ -n "$PB_LINE" ]; then
+  sh -c "${PB_LINE}'" >/dev/null 2>&1; PB_E5=$?
+  PB_REC="$(cd "$PB_WT" && ls .pipeline/probes/issue-338/pb-r0.json 2>/dev/null)"
+  [ "$PB_E5" != "0" ] && [ -z "$PB_REC" ] && ok=1
+fi
+check "[485] a stray closing quote after the composed line runs nothing and leaves no record" "$ok"
 
 # (g) agents/probe.md tools: lists exactly Bash
 TOOLS="$(awk '/^---$/{f++; next} f==1 && /^tools:/{t=1; next} f==1 && t && /^  - /{sub(/^  - /,""); print; next} f==1 && t{t=0}' "$ROOT/agents/probe.md" | tr '\n' ',')"
