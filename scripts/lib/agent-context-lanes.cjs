@@ -35,10 +35,10 @@ function warningLines(warnings) {
 // -> [{kind, path}], names only, sorted. Dot files and sub-folders are not files of the rules.
 function folderWarnings(directory, roles, children, treeNames) {
   const reads = (name) => name === 'shared.md' || roles.some((r) => ownsName(r.toLowerCase(), name))
-  const onRef = new Set(children.map((c) => c.name))
+  const onReference = new Set(children.map((c) => c.name))
   const out = []
   for (const c of children) if (c.type !== 'tree' && !c.name.startsWith('.') && !reads(c.name)) out.push({ kind: 'no-role-match', path: `${directory}/${c.name}` })
-  for (const name of treeNames) if (!onRef.has(name) && reads(name)) out.push({ kind: 'not-on-base-ref', path: `${directory}/${name}` })
+  for (const name of treeNames) if (!onReference.has(name) && reads(name)) out.push({ kind: 'not-on-base-ref', path: `${directory}/${name}` })
   return out.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
 }
 

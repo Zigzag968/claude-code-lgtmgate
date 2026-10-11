@@ -245,7 +245,7 @@ function resolveFiles(root, sha, config, errs) {
 
 // Names of the files in the working-tree folder (names only, nothing is read); [] when the folder is not there.
 function worktreeNames(root, directory) {
-  try { return fs.readdirSync(nodePath.join(root, directory), { withFileTypes: true }).filter((e) => !e.isDirectory()).map((e) => e.name) } catch (error) { return [] }
+  try { return fs.readdirSync(nodePath.join(root, directory), { withFileTypes: true }).filter((entry) => !entry.isDirectory()).map((entry) => entry.name) } catch (error) { return [] }
 }
 
 // Phase 4: bytes -> processed file {body, meta, empty}
