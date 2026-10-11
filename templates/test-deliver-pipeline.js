@@ -6244,6 +6244,39 @@ await testCase('T183l a line Nick added to the acceptance block (no id) survives
   return error1 || error2 || error3 || error4 || error5 || error6 || { ok: true }
 })
 
+// #405: an LGTM review with no acceptance ids and open boxes in the body reports them; the status stays ready.
+const t405Open = (lines, extra = '') => 'Closes #405\n\n' + extra + '<!-- acceptance:start -->\n' + lines.join('\n') + '\n<!-- acceptance:end -->\n'
+await testCase('T405a a review with no ids and open boxes: ready carries boxesOpen { count, reason no-ids, hint }', async () => {
+  const r = await run({ mode: 'semi', entryStage: 'review', prNumber: 190, simulate: { prBody: t405Open(['- [ ] first', '- [ ] second']), morgan: [{ verdict: 'LGTM' }] } })
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = eq('count', r.boxesOpen?.count, 2)
+  const error3 = eq('reason', r.boxesOpen?.reason, 'no-ids')
+  const error4 = eq('hint is a sentence', typeof r.boxesOpen?.hint === 'string' && r.boxesOpen.hint.length > 0, true)
+  const error5 = includes('trace', r.trace.join(','), 'boxes-open:no-ids:2')
+  // Control: a fenced example holding an open box is not counted, a ticked box neither.
+  const fenced = '```\n- [ ] an example box\n```\n'
+  const c = await run({ mode: 'semi', entryStage: 'review', prNumber: 190, simulate: { prBody: t405Open(['- [ ] real', '- [x] done', '- [ ]'], ''), morgan: [{ verdict: 'LGTM' }] } })
+  const error6 = eq('control: open boxes only, an empty box counts', c.boxesOpen?.count, 2)
+  const f2 = await run({ mode: 'semi', entryStage: 'review', prNumber: 190, simulate: { prBody: t405Open([fenced + '- [ ] real']), morgan: [{ verdict: 'LGTM' }] } })
+  const error7 = eq('control: a fenced example is not counted', f2.boxesOpen?.count, 1)
+  return error1 || error2 || error3 || error4 || error5 || error6 || error7 || { ok: true }
+})
+
+await testCase('T405b a review with ids: ready carries no boxesOpen even with an id-less open line', async () => {
+  const r = await t183Review({ prBody: t183Body([...T183_L3, '- [ ] a line without an id']), morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, true, true) }] })
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = eq('field absent', 'boxesOpen' in r, false)
+  return error1 || error2 || { ok: true }
+})
+
+await testCase('T405c a review with no ids and no open box: ready, boxesOpen absent, trace unchanged', async () => {
+  const r = await run({ mode: 'semi', entryStage: 'review', prNumber: 190, simulate: { prBody: t405Open(['- [x] first', '- [x] second']), morgan: [{ verdict: 'LGTM' }] } })
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = eq('field absent', 'boxesOpen' in r, false)
+  const error3 = eq('no boxes-open trace entry', r.trace.some((entry) => entry.startsWith('boxes-open')), false)
+  return error1 || error2 || error3 || { ok: true }
+})
+
 await testCase('T183m marker pairs inside a fenced code block are ignored, before or after the real block: the real block is the one ticked', async () => {
   const fence = '```\n<!-- acceptance:start -->\n- [ ] an example box\n<!-- acceptance:end -->\n```\n'
   const real = '<!-- acceptance:start -->\n' + T183_L3.join('\n') + '\n<!-- acceptance:end -->\n'
