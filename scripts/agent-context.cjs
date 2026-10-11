@@ -21,8 +21,8 @@
 // and never a role name; the metadata of a (role, lane) pair is read from its first file.
 //
 // Caps: role text recommended 6144 B (warning, exit 0; `--accept-oversize <Role>` records the accepted
-// size in the git-ignored .claude/pipeline.config.local.json, asked again above +25 %), shared 2048 B,
-// per-agent total 8192 B (informational), hard ceiling 65536 B on the raw blobs (exit 4), <= 8 files
+// size in .claude/pipeline.config.local.json, kept out of git by the clone's local exclude file; asked
+// again above +25 %), shared 2048 B, per-agent total 8192 B (informational:true, never asks), hard ceiling 65536 B on the raw blobs (exit 4), <= 8 files
 // per source. Digest = sha256(canonical JSON {refSha, role, text, lanes}) (same sha256 as the workflow).
 //
 // Usage: node scripts/agent-context.cjs [--root <repo>] [--ref origin/<base>] [--local <file>]
@@ -371,7 +371,7 @@ function assemble(options) {
   const accepted = { ...config.accepted, ...readLocalAccepts(options.local) }
   const { roles, maxRole } = buildRoleBlocks({ sha, sharedPaths, seqs, owned, done, info, cls, accepted, warnings })
   const totalBytes = (shared ? shared.bytes : 0) + maxRole
-  if (totalBytes > CAP_TOTAL) warnings.push({ kind: 'total-oversize', bytes: totalBytes, recommended: CAP_TOTAL })
+  if (totalBytes > CAP_TOTAL) warnings.push({ kind: 'total-oversize', bytes: totalBytes, recommended: CAP_TOTAL, informational: true, ask: false })
 
   return { ref: options.ref, refSha: sha, shared, roles, files: [...info.values()], warnings }
 }
@@ -470,7 +470,26 @@ function renderPrint(payload, which, laneName) {
   return out.join('\n') + '\n'
 }
 
-function acceptOversize(payload, role, localFile) {
+// Keep the local file out of git through the clone's local exclude file (untracked, shared by every
+// linked worktree): no tracked file changes and the consumer worktree stays clean.
+function keepOutOfGit(root, localFile) {
+  const inside = nodePath.relative(nodePath.resolve(root), nodePath.resolve(localFile))
+  if (!inside || inside.startsWith('..') || nodePath.isAbsolute(inside)) return null
+  // check-ignore refuses literal pathspecs, so it runs without that variable; exit 1 = not ignored
+  try {
+    execFileSync('git', ['-C', root, 'check-ignore', '-q', '--', inside], { stdio: 'ignore' })
+    return null
+  } catch (error) { if (error.status !== 1) throw error }
+  const entry = '/' + inside.split(nodePath.sep).join('/')
+  const exclude = nodePath.resolve(root, git(root, ['rev-parse', '--git-path', 'info/exclude']).toString('utf8').trim())
+  const held = fs.existsSync(exclude) ? fs.readFileSync(exclude, 'utf8') : ''
+  if (held.split('\n').includes(entry)) return entry
+  fs.mkdirSync(nodePath.dirname(exclude), { recursive: true })
+  fs.appendFileSync(exclude, (held === '' || held.endsWith('\n') ? '' : '\n') + entry + '\n')
+  return entry
+}
+
+function acceptOversize(payload, role, localFile, root) {
   if (!ROLES.includes(role)) throw new Fail(2, [`unknown role: ${role}`])
   const b = payload.roles[role]
   if (!b || b.bytes <= CAP_ROLE) throw new Fail(2, [`nothing to accept: ${role} is within ${CAP_ROLE} bytes`])
@@ -488,7 +507,9 @@ function acceptOversize(payload, role, localFile) {
   fs.mkdirSync(nodePath.dirname(localFile), { recursive: true })
   fs.writeFileSync(temporary, JSON.stringify(object, null, 2) + '\n')
   fs.renameSync(temporary, localFile)
-  return { accepted: { [role]: b.bytes }, file: localFile }
+  let ignored = null
+  try { ignored = keepOutOfGit(root, localFile) } catch (error) { process.stderr.write(`agent-context: note: ${localFile} could not be kept out of git (${error.message})\n`) }
+  return { accepted: { [role]: b.bytes }, file: localFile, ignored }
 }
 
 function parseArguments(argv) {
@@ -518,7 +539,7 @@ function main(argv) {
     const payload = assemble(o)
     for (const line of warningLines(payload.warnings)) process.stderr.write(`${line}\n`)
     if (o.accept !== null) {
-      process.stdout.write(JSON.stringify(acceptOversize(payload, o.accept, o.local)) + '\n')
+      process.stdout.write(JSON.stringify(acceptOversize(payload, o.accept, o.local, o.root)) + '\n')
     } else if (o.print !== null) {
       let which = o.print
       let laneName = o.lane
