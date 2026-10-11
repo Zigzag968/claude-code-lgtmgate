@@ -8,9 +8,9 @@
 // Source of truth: `.claude/pipeline.config.json` as committed at `origin/<base>` (read by sha):
 //   projectSpecifics  folder holding shared.md, <role>.md, <role>.*.md (empty or absent = off)
 //   agentContext      {"*": [paths], "<Role>": [paths]} extra files per role (Mia|Sam|Nick|Morgan|Theo)
-// First wins, a path never repeats: shared.md then agentContext["*"] (both in `shared`, sent once, inside
-// the shared block, never copied into a role text; a `*` path that is a file of the folder stays with its
-// role) -> <role>.md -> <role>.*.md (alphabetical, discovered with git ls-tree, never readdir) ->
+// First wins, a path never repeats: shared.md then agentContext["*"] (both in `shared`,
+// sent once, inside the shared block, never copied into a role text; a `*` path that is a file of the
+// folder stays with its role) -> <role>.md -> <role>.*.md (alphabetical, discovered with git ls-tree, never readdir) ->
 // agentContext[Role]. A <role>.<seg>[.<subject>].md file is a SUBJECT (always part of the role text)
 // unless <seg> is a declared LANE: a lane name exists only through a `lane: <seg>` frontmatter in some
 // <role>.<seg>*.md of the folder; a sibling without frontmatter then belongs to that lane. The lane
