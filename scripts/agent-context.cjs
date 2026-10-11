@@ -38,6 +38,7 @@
 //        tree, `..`, absolute, not .md, `@` line outside a closed fenced block, machine literal, invisible or control char, invalid
 //        UTF-8, secret form, > 8 files per source, folder absent) · 4 hard ceiling.
 //        Errors go to stderr, one per line, as `<path>: <rule> at line N` (never the value); stdout stays empty.
+//        Hints: stderr `agent-context: hint: <rule>: <remedy>; see docs/consumer-reference.md#<rule>`, once per rule, after the errors; exit codes unchanged.
 // Lead allow rule: Bash(node */scripts/agent-context.cjs:*)
 // Scope: copy fidelity (the text the agents get is the text at the ref, screened for machine structure
 // and secrets), not adversarial integrity: a maintainer who can write the base ref writes the rules.
@@ -46,7 +47,8 @@ const fs = require('fs')
 const nodePath = require('path')
 const { execFileSync } = require('child_process')
 const { normalise, trimBlank, stripComments, parseFrontmatter, checkContent, canonicalJson, digestOf } = require('./lib/agent-context-text.cjs')
-const { CONTEXT_FILE_HINT, ownsName, warningLines, folderWarnings, classifyLanes, displayLanes, laneSentence } = require('./lib/agent-context-lanes.cjs')
+const { ownsName, warningLines, folderWarnings, classifyLanes, displayLanes, laneSentence } = require('./lib/agent-context-lanes.cjs')
+const { hintLines } = require('./lib/agent-context-hints.cjs')
 
 const ROLES = ['Mia', 'Sam', 'Nick', 'Morgan', 'Theo']
 const CAP_ROLE = 6144
@@ -54,7 +56,6 @@ const CAP_SHARED = 2048
 const CAP_TOTAL = 8192
 const CEILING = 65536
 const MAX_FILES = 8
-const PATHS_HINT = 'hint: paths takes paths: ["glob", "glob"] or a block list of strings (indented "- item" lines)'
 
 class Fail extends Error {
   constructor(code, errors) {
@@ -534,8 +535,7 @@ function main(argv) {
   } catch (error) {
     if (error instanceof Fail) {
       for (const m of error.errors) process.stderr.write(`agent-context: ${m}\n`)
-      if (error.errors.some((m) => /: frontmatter-(paths|syntax) at line \d+$/.test(m))) process.stderr.write(`agent-context: ${PATHS_HINT}\n`)
-      if (error.errors.some((m) => m.endsWith(': frontmatter-on-context-file at line 1'))) process.stderr.write(`agent-context: ${CONTEXT_FILE_HINT}\n`)
+      for (const line of hintLines(error.errors)) process.stderr.write(`${line}\n`)
       return error.code
     }
     process.stderr.write(`agent-context: ${String(error && error.message ? error.message : error).split('\n')[0]}\n`)

@@ -117,7 +117,7 @@ Restart the session, then in your target project run `/lgtmgate:init`. It genera
 
 - **`gh` CLI, installed and authenticated** (`gh auth login`, scopes `repo` + `project`): required structurally by nearly every hook, script and agent in this pipeline.
 - **`jq`**: required by `hooks/block-merge-unchecked.sh` and `hooks/deny-destructive-git.sh` (PreToolUse gates on every Bash call); both hooks fail closed (exit 2) if `jq` is missing.
-- **Node.js 22.12 or newer** (`engines` in `package.json`): runs `workflows/deliver-pipeline.js`, `scripts/run-flow-suite.cjs`, and the consumer's copied `.claude/workflows/test-deliver-pipeline.js`.
+- **Node.js 22.12 or newer** (`engines` in `package.json`): runs `workflows/deliver-pipeline.js`, `scripts/run-flow-suite.cjs`, and the flow suite template it loads (`templates/test-deliver-pipeline.js`, no consumer copy).
 - **Python 3.7 or newer** (`subprocess.run(capture_output=True, text=True)` in `hooks/SessionStart/inject_stub.py`): runs that hook and the inline readers of `scripts/lead-merge.sh`.
 - **`agentContext` role names**: a key of `agentContext` is `*` or one of `Mia`, `Sam`, `Nick`, `Morgan`, `Theo` (exact case); any other key stops `scripts/agent-context.cjs` with `unknown role`.
 - **`git`** with a `github.com` remote.

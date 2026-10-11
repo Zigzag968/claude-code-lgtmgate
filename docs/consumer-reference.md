@@ -20,12 +20,69 @@ Every name a consumer can meet, with the remedy. A guard (`node scripts/guards.c
 | `ciChecks` | `ciChecks` and `ciBlocker` of `workflows/deliver-pipeline.js` | Empty or absent: the ready gate counts every check the PR head reports, and when the head reports none Morgan's own CI report decides; Morgan's prompt then names `build-and-test`. A name the PR head does not report stops the review with `config.ciChecks names check(s) not reported on the PR head: <names>` | Set `ciChecks` to the exact names of your CI checks, as the PR shows them. |
 | `probeRunPath` | `probeCommands` of `workflows/deliver-pipeline.js` | With no `probeRunPath` and no plugin root, the probe fails with `no probe-run.cjs location: pass args.pluginRoot (absolute plugin root) or config.probeRunPath and relaunch` | Pass the plugin root when launching, or set `probeRunPath` to the path of `templates/probe-run.cjs`, then relaunch. |
 
+## Specifics files
+
+- The specifics folder is the `projectSpecifics` path of `.claude/pipeline.config.json`. Its files are `shared.md`, `<role>.md` and `<role>.<lane>.md` (a `<role>.<subject>.md` without a declared lane is plain text of the role), with a lowercase role name: `mia`, `sam`, `nick`, `morgan`, `theo`. Any other name is ignored with the `no-role-match` warning below.
+- Only files committed and pushed on the base ref count: the assembler reads `origin/<base>`, never the working tree. A file that is only local is ignored with the `not-on-base-ref` warning below.
+- A file listed in `agentContext` is a context file. It takes no frontmatter, no line starting with `@` outside a closed fenced code block, no comment opener (`<!--`) left unclosed or carrying an engine marker, and no zero-width or control character.
+- At most 8 files per source: the role's files in the folder, and each `agentContext` list.
+
 ## Assembler refusals
 
 | name | raised at | what the user sees | remedy |
 |---|---|---|---|
+| `at-line` | `checkContent` of `scripts/lib/agent-context-text.cjs` | `<path>: at-line at line N`: a line starts with `@` outside a closed fenced code block (the name `at-line` is the rule, not a place) | Put the line inside a closed fenced block (three backticks or tildes, closed by the same character), or reword it so it does not start with `@`. |
+| `control-char` | `checkContent` of `scripts/lib/agent-context-text.cjs` | `<path>: control-char at line N`: the file holds a control character other than tab and newline | Delete the character; paste the text as plain text. |
 | `folder-absent` | `resolveFiles` of `scripts/agent-context.cjs` | `<folder>: folder-absent at line 0`: the `projectSpecifics` folder is not in the commit tree | Create the folder and commit it, or fix the `projectSpecifics` path. |
+| `frontmatter-duplicate-key` | `parseFrontmatter` of `scripts/lib/agent-context-text.cjs` | `<path>: frontmatter-duplicate-key at line N`: a key appears twice in the frontmatter | Write each key (`lane`, `persona`, `hint`, `paths`) once. |
+| `frontmatter-empty-value` | `parseFrontmatter` of `scripts/lib/agent-context-text.cjs` | `<path>: frontmatter-empty-value at line N`: `lane`, `persona` or `hint` has no value | Give the key a value or delete the line. |
+| `frontmatter-forbidden-value` | `parseFrontmatter` of `scripts/lib/agent-context-text.cjs` | `<path>: frontmatter-forbidden-value at line N`: a value starts with `&`, `*`, `!`, `\|` or `>` (YAML anchors, tags and block scalars are not read) | Write a plain value, or a quoted one. |
+| `frontmatter-hint-too-long` | `parseFrontmatter` of `scripts/lib/agent-context-text.cjs` | `<path>: frontmatter-hint-too-long at line N`: `hint` is longer than 120 characters | Shorten `hint` to 120 characters at most. |
+| `frontmatter-lane-metadata-conflict` | `classifyLanes` of `scripts/lib/agent-context-lanes.cjs` | `<path>: frontmatter-lane-metadata-conflict at line 1`: two files of one role and lane give a different `persona`, `paths` or `hint` | Set the key in one file of the pair only, or give the same value in both. |
+| `frontmatter-lane-mismatch` | `classifyLanes` of `scripts/lib/agent-context-lanes.cjs` | `<path>: frontmatter-lane-mismatch at line 1`: `lane:` differs from the second segment of the file name | Rename the file or change `lane:` so they agree (`sam.ios.md` carries `lane: ios`). |
+| `frontmatter-lane-name` | `parseFrontmatter` of `scripts/lib/agent-context-text.cjs` | `<path>: frontmatter-lane-name at line N`: the lane name is not 1 to 24 characters among `a-z`, `0-9` and `-` | Use a lowercase name of 1 to 24 characters, digits and hyphens allowed. |
+| `frontmatter-needs-lane` | `classifyLanes` of `scripts/lib/agent-context-lanes.cjs` | `<path>: frontmatter-needs-lane at line 1`: a `<role>.<segment>.md` file has frontmatter but no file declares `lane: <segment>` | Add `lane: <segment>` to the frontmatter, or remove the frontmatter and the file is a plain subject file of the role. |
+| `frontmatter-on-context-file` | `classifyLanes` of `scripts/lib/agent-context-lanes.cjs` | `<path>: frontmatter-on-context-file at line 1`: a file listed in `agentContext` starts with frontmatter; it is refused once per file, with a hint line | Keep the rules as a lane file `<role>.<lane>.md` in the specifics folder with `lane:` (and `paths:`) in its frontmatter, or remove the frontmatter from the listed file. |
+| `frontmatter-on-role-file` | `classifyLanes` of `scripts/lib/agent-context-lanes.cjs` | `<path>: frontmatter-on-role-file at line 1`: `<role>.md` starts with frontmatter | Remove the frontmatter, or move the rules to a lane file `<role>.<lane>.md`. |
+| `frontmatter-paths` | `parseFrontmatter` of `scripts/lib/agent-context-text.cjs` | `<path>: frontmatter-paths at line N`: `paths` is neither a JSON array of strings nor a block list of plain or quoted strings; a hint line shows both forms | Write `paths: ["glob", "glob"]` or an indented `- item` list. |
+| `frontmatter-paths-entry-too-long` | `parseFrontmatter` of `scripts/lib/agent-context-text.cjs` | `<path>: frontmatter-paths-entry-too-long at line N`: a `paths` entry is longer than 80 characters | Shorten the glob to 80 characters at most. |
+| `frontmatter-paths-too-many` | `parseFrontmatter` of `scripts/lib/agent-context-text.cjs` | `<path>: frontmatter-paths-too-many at line N`: `paths` holds more than 8 entries | Keep 8 entries at most; widen a glob instead. |
+| `frontmatter-persona-duplicate` | `classifyLanes` of `scripts/lib/agent-context-lanes.cjs` | `<path>: frontmatter-persona-duplicate at line 1`: another lane of the folder uses the same persona (case-insensitive) | Give each lane its own persona. |
+| `frontmatter-persona-not-one-token` | `parseFrontmatter` of `scripts/lib/agent-context-text.cjs` | `<path>: frontmatter-persona-not-one-token at line N`: `persona` holds a space | Use one word, such as `Ivy`. |
+| `frontmatter-persona-role-name` | `classifyLanes` of `scripts/lib/agent-context-lanes.cjs` | `<path>: frontmatter-persona-role-name at line 1`: `persona` is a role name (Mia, Sam, Nick, Morgan, Theo, any case) | Pick another word. |
+| `frontmatter-persona-too-long` | `parseFrontmatter` of `scripts/lib/agent-context-text.cjs` | `<path>: frontmatter-persona-too-long at line N`: `persona` is longer than 80 characters | Shorten `persona` to 80 characters at most. |
+| `frontmatter-second-delimiter` | `parseFrontmatter` of `scripts/lib/agent-context-text.cjs` | `<path>: frontmatter-second-delimiter at line N`: a second `---` line follows the closing one | Remove the extra `---` line. |
+| `frontmatter-syntax` | `parseFrontmatter` of `scripts/lib/agent-context-text.cjs` | `<path>: frontmatter-syntax at line N`: a frontmatter line is not `key: value` (a list item outside `paths` is one) | Write `key: value` lines only; the keys are `lane`, `persona`, `hint`, `paths`. |
+| `frontmatter-too-large` | `parseFrontmatter` of `scripts/lib/agent-context-text.cjs` | `<path>: frontmatter-too-large at line 1`: the frontmatter is over 1024 bytes | Cut the frontmatter below 1024 bytes. |
+| `frontmatter-unclosed` | `parseFrontmatter` of `scripts/lib/agent-context-text.cjs` | `<path>: frontmatter-unclosed at line 1`: the file starts with `---` and no closing `---` line follows | Close the frontmatter with a line holding only `---`, or remove the opening line. |
+| `frontmatter-unknown-key` | `parseFrontmatter` of `scripts/lib/agent-context-text.cjs` | `<path>: frontmatter-unknown-key at line N`: a key other than `lane`, `persona`, `hint`, `paths` | Use only `lane`, `persona`, `hint` and `paths`. |
+| `invalid-utf8` | `processFile` of `scripts/agent-context.cjs` | `<path>: invalid-utf8 at line 0`: the file is not valid UTF-8 | Save the file as UTF-8. |
+| `invisible-char` | `checkContent` of `scripts/lib/agent-context-text.cjs` | `<path>: invisible-char at line N`: a zero-width, bidirectional or soft-hyphen character | Delete it; retype the line if it came from a paste. |
+| `machine-literal` | `checkContent` of `scripts/lib/agent-context-text.cjs` | `<path>: machine-literal at line N`: the text holds the `project_specifics` tag the engine wraps the rules in | Remove or reword the tag. |
+| `machine-marker` | `checkContent` of `scripts/lib/agent-context-text.cjs` | `<path>: machine-marker at line N`: an HTML comment opens with `acceptance:`, `ac:`, `pipeline-` or `decision-log` | Remove the marker comment; the engine owns those. |
 | `missing` | `byPath` of `scripts/agent-context.cjs` | `<path>: missing at line 0`: a file named in `agentContext` is not in the commit tree | Commit the file or fix its path in `agentContext`. |
+| `one-way-door-line` | `checkContent` of `scripts/lib/agent-context-text.cjs` | `<path>: one-way-door-line at line N`: a line starts with `one-way-door:`, the line the engine reads in plans | Reword the line so it does not start with that word. |
+| `too-many-files` | `resolveFiles` of `scripts/agent-context.cjs` | `<source>: too-many-files at line 0`: more than 8 files for one role in the folder, or more than 8 paths in one `agentContext` list | Keep 8 files at most per source; merge files or list fewer. |
+| `unclosed-comment` | `checkContent` of `scripts/lib/agent-context-text.cjs` | `<path>: unclosed-comment at line N`: an HTML comment opener has no `-->` | Close the comment with `-->` or remove the opener. |
+
+## Assembler refusals named at run time
+
+The assembler builds these names while it runs (from a variable, or in a message without `at line`), so the guard does not extract them and does not check these rows. `<path>: <rule> at line 0` for the path and file rules; the config rules print the message shown.
+
+| name | raised at | what the user sees | remedy |
+|---|---|---|---|
+| `invalid-path` | `validatePath` of `scripts/agent-context.cjs` | `<path>: invalid-path at line 0` (or `projectSpecifics: invalid-path`): the path holds a character outside letters, digits and `. _ / -` | Rename the file or folder to those characters only. |
+| `absolute-path` | `validatePath` of `scripts/agent-context.cjs` | `<path>: absolute-path at line 0`: the path starts with `/` | Write the path relative to the repository root. |
+| `bad-segment` | `validatePath` of `scripts/agent-context.cjs` | `<path>: bad-segment at line 0`: the path has an empty, `.` or `..` segment | Write the path without those segments, such as `docs/rules.md`. |
+| `not-md` | `validatePath` of `scripts/agent-context.cjs` | `<path>: not-md at line 0`: a file listed in `agentContext` does not end in `.md` | List a `.md` file, or rename the file. |
+| `symlink` | `entryProblem` of `scripts/agent-context.cjs` | `<path>: symlink at line 0`: the file is a symbolic link in the commit tree | Commit a regular file in its place. |
+| `submodule` | `entryProblem` of `scripts/agent-context.cjs` | `<path>: submodule at line 0`: the path is a submodule | Commit a regular `.md` file in its place. |
+| `tree` | `entryProblem` of `scripts/agent-context.cjs` | `<path>: tree at line 0`: the path is a folder | List the `.md` files of the folder one by one. |
+| `not-regular-file` | `entryProblem` of `scripts/agent-context.cjs` | `<path>: not-regular-file at line 0`: the entry is neither a regular file, a link, a submodule nor a folder | Commit a regular `.md` file in its place. |
+| `ceiling` | `assemble` of `scripts/agent-context.cjs` | `ceiling: <n> bytes of specifics exceed 65536 at line 0` and exit 4: the raw files together are over 65536 bytes | Shorten the files or drop some from `agentContext`; a role text above 6144 bytes only warns. |
+| `secret-*` | `checkContent` of `scripts/lib/agent-context-text.cjs` | `<path>: secret-<kind> at line N`: the text matches a token or private-key form (`<kind>` is `github-token`, `github-pat`, `sk-rk-key` or `pem-private-key`); the value is never printed | Remove the secret from the file and rotate it. |
+| `bad ref` | `resolveReference` of `scripts/agent-context.cjs` | `bad ref: <ref> ...` and exit 2: `--ref` is not `origin/<branch>` or does not resolve to a commit | Pass `--ref origin/<branch>` for a branch fetched from origin. |
+| `unknown role` | `readConfig` of `scripts/agent-context.cjs` | `agentContext: unknown role "<name>"` (or `unknown role: <name>` after `--print` or `--accept-oversize`) and exit 2 | Use `*` or one of Mia, Sam, Nick, Morgan, Theo, spelt that way. |
 
 ## Assembler warnings
 
@@ -115,6 +172,34 @@ Reasons the pattern does not reach. Probe failures reach the result as `probeRea
 |---|---|---|---|
 | `block-merge-unchecked.sh: BLOCKED by pr-acceptance gate` | `hooks/block-merge-unchecked.sh` | A `gh pr merge` is refused: the PR acceptance checklist still has unchecked items | Prove and tick every box of the acceptance block, then merge again. |
 | `block-merge-unchecked.sh: BLOCKED by review-stale gate` | `hooks/block-merge-unchecked.sh` | A `gh pr merge` is refused: the PR has no review marker carrying a head sha, or the head moved since the last review | Relaunch the review on the current head (`Workflow` with `entryStage:"review"` and `prNumber`), then merge again. |
+
+## Template drift lines
+
+Printed by `scripts/template-drift.cjs` (run by `/lgtmgate:deliver` step 1 and after every plugin update). The script reads and never writes; a line that asks for an action says `fix before the run`, `remove before the run` or `decide`, and the status is `warn` only then. The guard does not check this section.
+
+| name | raised at | what the user sees | remedy |
+|---|---|---|---|
+| `obsolete` (acceptance rule) | `check` of `scripts/template-drift.cjs` | `.claude/rules/pr-acceptance.md` is still in the repository: init no longer copies it, the engine reads no such file, and an agent reads every rule file that exists, so a stale copy can contradict the plugin | `git rm .claude/rules/pr-acceptance.md`, commit and push on the base branch before the run. |
+| `obsolete` (status helper, flow suite) | `check` of `scripts/template-drift.cjs` | `.claude/scripts/gh-pipeline-status.sh` or `.claude/workflows/test-deliver-pipeline.js` is still in the repository: no code reads it; the line says `no effect on the run` | Remove it with `git rm` when convenient. |
+| `read-by-engine` absent | `check` of `scripts/template-drift.cjs` | `scripts/provision-worktree.sh` is missing. With a required `provision.extraLinks` entry (or an unreadable config) the run stops at provisioning with `PROVISION-NO-SCRIPT` (exit 2); with none, provisioning is skipped (`PROVISION-SKIPPED-NO-SCRIPT`) and the line is `info` | Run `/lgtmgate:init` (choose complete), then commit and push on the base branch. |
+| `read-by-engine` differs, token lacking | `check` of `scripts/template-drift.cjs` | Your provisioning script lacks a token the engine parses (`PROVISION-VERSION:2`, `LINKED `, `MISSING-SRC ` or `--soft`) | Compare with the `diff` command printed, port the new rules into your copy, keep your own, commit and push on the base branch. |
+| `read-by-engine` differs, other | `check` of `scripts/template-drift.cjs` | Your provisioning script differs from the template but carries every token the engine reads | Read the difference and keep a deliberate customisation; never overwrite it. |
+| `optional` | `check` of `scripts/template-drift.cjs` | `.claude/scripts/blocked-by-check.sh` is absent or differs; the engine does not read it; `no effect on the run` | Nothing to do before the run. |
+| `legacy-name` | `check` of `scripts/template-drift.cjs` | `scripts/provision_worktree.sh` is present; the engine falls back to it only while the new name is absent; `no effect on the run` | Alone: `git mv scripts/provision_worktree.sh scripts/provision-worktree.sh`. With the new name: `git rm scripts/provision_worktree.sh`. |
+| `order:` | `main` of `scripts/template-drift.cjs` | Three `order:` lines follow when at least one line asks for an action | Follow them: fix the config, act on the lines that ask, commit and push on the base branch. |
+| `next:` | `main` of `scripts/template-drift.cjs` | `next: nothing to do before the run, the next run can start` when no line asks for an action | Launch the run. |
+
+## Config check lines
+
+Printed by `scripts/config-check.cjs`; each `warn:` line states its effect and its gesture.
+
+| name | raised at | what the user sees | remedy |
+|---|---|---|---|
+| retired key | `check` of `scripts/config-check.cjs` | `conventionsRule` is ignored, so the rule file it names reaches no agent | Replace it with `agentContext["*"]` listing the rule file, commit and push on the base branch. |
+| conventions key missing | `check` of `scripts/config-check.cjs` | Neither `agentContext` nor `projectSpecifics` is set: the run starts but no project conventions reach the agents | Add one of them to `.claude/pipeline.config.json`, or run `/lgtmgate:init` and choose complete; commit and push. |
+| `minPluginVersion` missing | `check` of `scripts/config-check.cjs` | An older engine is not refused; `no effect on the run` | To refuse one, add the key with the plugin version, or run `/lgtmgate:init` and choose complete. |
+| config unreadable | `check` of `scripts/config-check.cjs` | The file is absent or not a JSON object: the run cannot read its settings | Run `/lgtmgate:init`. |
+| no path | `main` of `scripts/config-check.cjs` | No config path was given | Run `node scripts/config-check.cjs <path to .claude/pipeline.config.json>`. |
 
 ## Prerequisites
 

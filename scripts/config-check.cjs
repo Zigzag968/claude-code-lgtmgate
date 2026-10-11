@@ -16,10 +16,12 @@ const fs = require('fs')
 const RETIRED = [{ key: 'conventionsRule', replacement: 'agentContext["*"]' }]
 
 // Keys init writes and the README documents as the way to feed project conventions / refuse an old engine.
-// `anyOf` : one present key is enough (both turn the same injection on).
+// `anyOf` : one present key is enough (both turn the same injection on). `gesture` states the effect on the run
+// and what to do, so a consumer session never has to ask.
+const INIT = 'run /lgtmgate:init and choose "complete" (an existing config is never overwritten)'
 const RECOMMENDED = [
-  { anyOf: ['agentContext', 'projectSpecifics'], label: 'agentContext or projectSpecifics', effect: 'no project conventions reach the agents' },
-  { anyOf: ['minPluginVersion'], label: 'minPluginVersion', effect: 'an older engine is not refused' }
+  { anyOf: ['agentContext', 'projectSpecifics'], label: 'agentContext or projectSpecifics', gesture: `the run starts but no project conventions reach the agents; fix before the run: add one of them to .claude/pipeline.config.json, or ${INIT}, then commit and push on the base branch` },
+  { anyOf: ['minPluginVersion'], label: 'minPluginVersion', gesture: `no effect on the run: an older engine is not refused; to refuse one, add the key with the plugin version, or ${INIT}` }
 ]
 
 function present(config, key) {
@@ -34,7 +36,7 @@ function check(file) {
     config = JSON.parse(fs.readFileSync(file, 'utf8'))
     if (config === null || typeof config !== 'object' || Array.isArray(config)) throw new Error('not a JSON object')
   } catch (error) {
-    return { lines: [`warn: ${file} is absent or not a readable JSON object (${error.message}); run /lgtmgate:init`], retired: 0, missing: 0 }
+    return { lines: [`warn: ${file} is absent or not a readable JSON object (${error.message}); the run cannot read its settings; fix before the run: run /lgtmgate:init`], retired: 0, missing: 0 }
   }
   const lines = []
   let retired = 0
@@ -42,16 +44,15 @@ function check(file) {
   for (const r of RETIRED) {
     if (Object.prototype.hasOwnProperty.call(config, r.key)) {
       retired++
-      lines.push(`warn: retired key ${r.key} is ignored by the engine; replace it with ${r.replacement} (list the rule file there)`)
+      lines.push(`warn: retired key ${r.key} is ignored by the engine, so the rule file it names reaches no agent; fix before the run: replace it with ${r.replacement} (list the rule file there), then commit and push on the base branch`)
     }
   }
   for (const r of RECOMMENDED) {
     if (!r.anyOf.some((k) => present(config, k))) {
       missing++
-      lines.push(`warn: recommended key missing: ${r.label} (${r.effect})`)
+      lines.push(`warn: recommended key missing: ${r.label}; ${r.gesture}`)
     }
   }
-  if (retired + missing > 0) lines.push('warn: run /lgtmgate:init and choose "complete" to add them (an existing config is never overwritten)')
   return { lines, retired, missing }
 }
 
@@ -59,7 +60,7 @@ function main() {
   let result
   try {
     const file = process.argv[2]
-    result = file ? check(file) : { lines: ['warn: no config path given; usage: node scripts/config-check.cjs <path to .claude/pipeline.config.json>'], retired: 0, missing: 0 }
+    result = file ? check(file) : { lines: ['warn: no config path given; fix before the run: node scripts/config-check.cjs <path to .claude/pipeline.config.json>'], retired: 0, missing: 0 }
   } catch (error) {
     result = { lines: [`warn: config check failed (${error && error.message})`], retired: 0, missing: 0 }
   }

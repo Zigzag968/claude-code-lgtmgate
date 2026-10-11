@@ -1,35 +1,46 @@
 #!/usr/bin/env node
 'use strict'
 
-// Reports which files /lgtmgate:init copied into a consumer repo differ from the current plugin template (#38).
-// Same family as scripts/config-check.cjs: a data table, read-only, stdlib only, no network, no model call,
-// ALWAYS exit 0 (a failure is a warn line, never a throw). A deliberate customisation reads as "differs".
+// Reports which files /lgtmgate:init copied into a consumer repo are gone stale, and states for each line the
+// verdict and the gesture (#38, #426). Same family as scripts/config-check.cjs: a data table, read-only, stdlib
+// only, no network, no model call, ALWAYS exit 0 (a failure is a line, never a throw). A deliberate customisation
+// reads as "differs" and is never overwritten.
 //
 // Usage: node scripts/template-drift.cjs --root <consumer root>
-// Stdout: zero or more `warn:` / `info:` lines, an `order:` block when something needs action, then the last line
+// Stdout: zero or more `obsolete:` / `warn:` / `info:` lines, then either an `order:` block (some line asks for an
+//         action) or the single `next:` line, then the last line
 //         [template-drift] status=ok|warn read=<n> optional=<n> differs=<n> absent=<n>
+//         status=warn exactly when one line asks for an action (fix before / remove before / decide).
 
 const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')
 
-// One row per file init copies (skills/init/SKILL.md section 1), relative to the consumer root and to the plugin root.
-// role: read-by-engine (the engine reads it: a gap is a warn), optional, unused-by-engine (info only),
+// One row per file a consumer may hold, relative to the consumer root and to the plugin root.
+// role: obsolete (init no longer copies it and no code reads it: remove it), read-by-engine (the engine runs it;
+//       `tokens` are what the engine parses in its output), optional (an install slot the engine does not read),
 //       legacy-name (an old spelling compared with the new template, never counted as a copy).
 const TARGETS = [
-  { target: '.claude/rules/pr-acceptance.md', template: 'templates/pr-acceptance.md', role: 'read-by-engine' },
-  { target: 'scripts/provision-worktree.sh', template: 'templates/provision-worktree.sh', role: 'read-by-engine' },
+  { target: '.claude/rules/pr-acceptance.md', template: 'templates/pr-acceptance.md', role: 'obsolete', note: ' (an agent reads every rule file that exists, so a stale copy can contradict the plugin)', verdict: 'remove before the run' },
+  { target: '.claude/scripts/gh-pipeline-status.sh', template: 'templates/gh-pipeline-status.sh', role: 'obsolete', note: '', verdict: 'no effect on the run' },
+  { target: '.claude/workflows/test-deliver-pipeline.js', template: 'templates/test-deliver-pipeline.js', role: 'obsolete', note: '', verdict: 'no effect on the run' },
+  { target: 'scripts/provision-worktree.sh', template: 'templates/provision-worktree.sh', role: 'read-by-engine', tokens: ['PROVISION-VERSION:2', 'LINKED ', 'MISSING-SRC ', '--soft'] },
   { target: '.claude/scripts/blocked-by-check.sh', template: 'templates/blocked-by-check.sh', role: 'optional' },
-  { target: '.claude/scripts/gh-pipeline-status.sh', template: 'templates/gh-pipeline-status.sh', role: 'unused-by-engine' },
-  { target: '.claude/workflows/test-deliver-pipeline.js', template: 'templates/test-deliver-pipeline.js', role: 'unused-by-engine' },
   { target: 'scripts/provision_worktree.sh', template: 'templates/provision-worktree.sh', role: 'legacy-name' }
 ]
 
+const NONE = 'no effect on the run'
+const DECIDE = 'decide: read the difference, keep a deliberate customisation, never overwrite'
+const PORT = 'fix before the run: port the new rules from the template into your copy, keep the rules specific to your repository, commit and push on the base branch'
+const INSTALL = 'fix before the run: run /lgtmgate:init (choose "complete"), then commit and push on the base branch'
+const ASKS = ['fix before the run', 'remove before the run', 'decide:']
+
 const ORDER = [
   'order: 1. fix the config first (the config-check output above)',
-  'order: 2. then the copies listed above, keeping a deliberate customisation',
+  'order: 2. then act on the lines above that ask for it, keeping a deliberate customisation',
   'order: 3. commit and push on the base branch before the next run (the worktree reads the committed content)'
 ]
+const NEXT = 'next: nothing to do before the run, the next run can start'
 
 function digest(file) {
   return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex')
@@ -48,43 +59,78 @@ function rootArgument(argv) {
   return index >= 0 ? argv[index + 1] : undefined
 }
 
+// Number of provision.extraLinks entries that are not optional (the engine passes them as hard links), null when unreadable.
+function requiredLinks(root) {
+  try {
+    const config = JSON.parse(fs.readFileSync(path.join(root, '.claude/pipeline.config.json'), 'utf8'))
+    const links = config && config.provision && config.provision.extraLinks
+    if (links === undefined) return 0
+    if (!Array.isArray(links)) return null
+    return links.filter((link) => !link || link.optional !== true).length
+  } catch (error) {
+    return null
+  }
+}
+
+const earlyFailure = (line) => ({ lines: [line], read: 0, optional: 0, differs: 0, absent: 0, early: true })
+
 function check(root, pluginRoot) {
   try {
     if (!fs.statSync(root).isDirectory()) throw new Error('not a directory')
     fs.readdirSync(root)
   } catch (error) {
-    return { lines: [`warn: ${root} is not a readable directory (${error.message}); usage: node scripts/template-drift.cjs --root <consumer root>`], read: 0, optional: 0, differs: 0, absent: 0 }
+    return earlyFailure(`warn: ${root} is not a readable directory (${error.message}); fix before the run: node scripts/template-drift.cjs --root <consumer root>`)
   }
   const lines = []
   const count = { read: 0, optional: 0, differs: 0, absent: 0 }
   for (const row of TARGETS) {
     const consumerFile = path.join(root, row.target)
     const templateFile = path.join(pluginRoot, row.template)
-    const legacy = row.role === 'legacy-name'
-    const level = row.role === 'read-by-engine' ? 'warn' : 'info'
-    if (!exists(consumerFile)) {
-      if (legacy) continue
-      count.absent++
-      if (row.role === 'read-by-engine') lines.push(`warn: ${row.target} [${row.role}] absent; install it: /lgtmgate:init (choose "complete"), section 1 copies ${row.template}`)
-      else lines.push(`info: ${row.target} [${row.role}] absent`)
+    const present = exists(consumerFile)
+    const compare = `diff ${row.target} \${CLAUDE_PLUGIN_ROOT}/${row.template}`
+    if (row.role === 'obsolete') {
+      if (present) lines.push(`obsolete: ${row.target} is no longer copied by init and the engine does not read it; remove it: git rm ${row.target}, commit, push; ${row.verdict}${row.note}`)
       continue
     }
-    if (legacy) {
+    if (row.role === 'legacy-name') {
+      if (!present) continue
       const fix = exists(path.join(root, 'scripts/provision-worktree.sh'))
-        ? `git rm ${row.target}`
-        : `git mv ${row.target} scripts/provision-worktree.sh`
-      lines.push(`warn: ${row.target} [${row.role}] still present; the engine reads scripts/provision-worktree.sh first: ${fix}`)
+        ? `clean up: git rm ${row.target}`
+        : `rename it when convenient: git mv ${row.target} scripts/provision-worktree.sh`
+      const fallback = exists(path.join(root, 'scripts/provision-worktree.sh')) ? 'the new name wins' : 'the engine falls back to it while scripts/provision-worktree.sh is absent (the fallback goes under #364)'
+      lines.push(`info: ${row.target} [${row.role}] still present; ${fallback}; ${NONE}; ${fix}`)
+      continue
+    }
+    if (!present) {
+      if (row.role === 'read-by-engine') {
+        count.absent++
+        if (exists(path.join(root, 'scripts/provision_worktree.sh'))) continue
+        const required = requiredLinks(root)
+        if (required === 0) lines.push(`info: ${row.target} [${row.role}] absent; no required provision.extraLinks entry is configured, so provisioning is skipped (PROVISION-SKIPPED-NO-SCRIPT); ${NONE}`)
+        else lines.push(`warn: ${row.target} [${row.role}] absent; a required provision.extraLinks entry stops the run at provisioning (PROVISION-NO-SCRIPT, exit 2); ${INSTALL}`)
+      } else {
+        count.absent++
+        lines.push(`info: ${row.target} [${row.role}] absent; the engine does not read it; ${NONE}`)
+      }
       continue
     }
     if (row.role === 'read-by-engine') count.read++
     else count.optional++
-    if (digest(consumerFile) !== digest(templateFile)) {
-      count.differs++
-      lines.push(`${level}: ${row.target} [${row.role}] differs from the current template; compare: diff ${row.target} \${CLAUDE_PLUGIN_ROOT}/${row.template}`)
+    if (digest(consumerFile) === digest(templateFile)) continue
+    count.differs++
+    if (row.role === 'optional') {
+      lines.push(`info: ${row.target} [${row.role}] differs from the current template; the engine does not read it; ${NONE}; compare: ${compare}`)
+      continue
     }
+    const templateText = fs.readFileSync(templateFile, 'utf8')
+    const copyText = fs.readFileSync(consumerFile, 'utf8')
+    const lacking = row.tokens.find((token) => templateText.includes(token) && !copyText.includes(token))
+    if (lacking) lines.push(`warn: ${row.target} [${row.role}] differs from the current template and lacks '${lacking}', which the engine reads; compare: ${compare}; ${PORT}`)
+    else lines.push(`warn: ${row.target} [${row.role}] differs from the current template; compare: ${compare}; ${DECIDE}`)
   }
-  if (lines.length) lines.push(...ORDER)
-  return Object.assign({ lines }, count)
+  const asks = lines.some((line) => ASKS.some((ask) => line.includes(ask)))
+  lines.push(...(asks ? ORDER : [NEXT]))
+  return Object.assign({ lines, asks }, count)
 }
 
 function main() {
@@ -93,11 +139,11 @@ function main() {
     const root = rootArgument(process.argv)
     result = root
       ? check(path.resolve(root), path.join(__dirname, '..'))
-      : { lines: ['warn: no --root given; usage: node scripts/template-drift.cjs --root <consumer root>'], read: 0, optional: 0, differs: 0, absent: 0 }
+      : earlyFailure('warn: no --root given; fix before the run: node scripts/template-drift.cjs --root <consumer root>')
   } catch (error) {
-    result = { lines: [`warn: template drift check failed (${error && error.message})`], read: 0, optional: 0, differs: 0, absent: 0 }
+    result = earlyFailure(`warn: template drift check failed (${error && error.message}); fix before the run: node scripts/template-drift.cjs --root <consumer root>`)
   }
-  const status = result.lines.some((line) => line.startsWith('warn:')) ? 'warn' : 'ok'
+  const status = result.early || result.asks ? 'warn' : 'ok'
   const trailer = `[template-drift] status=${status} read=${result.read} optional=${result.optional} differs=${result.differs} absent=${result.absent}`
   process.stdout.write(result.lines.concat(trailer).join('\n') + '\n')
   process.exitCode = 0
