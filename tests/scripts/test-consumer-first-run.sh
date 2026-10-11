@@ -36,7 +36,6 @@ export GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL
 # consumer does. COMMANDS: what makes a gesture a command.
 VERDICTS='fix before the run
 replace the import
-decide:
 remove at your convenience
 no effect on the run'
 GESTURES='git rm
@@ -63,7 +62,7 @@ EOF
 return 1; }
 
 # the closed list still matches the code
-for P in 'fix before the run' 'replace the import' 'decide:' 'remove at your convenience' 'no effect on the run'; do
+for P in 'fix before the run' 'replace the import' 'remove at your convenience' 'no effect on the run'; do
   if grep -qF -- "$P" "$PLUGIN/scripts/template-drift.cjs" "$PLUGIN/scripts/config-check.cjs"; then ok "verdict-in-code: [$P] is still spoken by a script"; else bad "verdict-in-code: [$P] is in no script any more; update the closed list of this test"; fi
 done
 
