@@ -88,6 +88,36 @@ mkdir -p "$TMP/empty-root"
 hook "$P" "$TMP/empty-root"
 if [ "$hrc" -eq 0 ] && grep -q 'pipeline ready to use' "$TMP/hook.json"; then ok "H3 missing script fails silently"; else bad "H3 rc=$hrc"; fi
 
+# H4-H6: loaded plugin version and marketplace (fixture root laid out like the plugin cache)
+CR="$TMP/data/plugins/cache/market-stable-beta/lgtmgate/9.9.9"
+mkdir -p "$CR/.claude-plugin"
+printf '{"name":"lgtmgate","version":"9.9.9"}' > "$CR/.claude-plugin/plugin.json"
+printf '{"minPluginVersion":"1.3.0","projectSpecifics":".claude/lgtmgate"}' > "$P/.claude/pipeline.config.json"
+rm -f "$P/.claude/settings.json" "$P/.claude/settings.local.json"
+hook "$P" "$CR"
+if [ "$hrc" -eq 0 ] && grep -qF 'Loaded plugin: lgtmgate 9.9.9 from marketplace market-stable-beta.' "$TMP/hook.json" && ! grep -q 'WARNING' "$TMP/hook.json"; then ok "H4 hook names the loaded version and marketplace"; else bad "H4 rc=$hrc $(cat "$TMP/hook.json")"; fi
+
+printf '{"enabledPlugins":{"lgtmgate@market-stable":true}}' > "$P/.claude/settings.json"
+hook "$P" "$CR"
+W1=0; grep -qF 'enable lgtmgate@market-stable but this session loaded lgtmgate from market-stable-beta' "$TMP/hook.json" && W1=1
+rm -f "$P/.claude/settings.json"
+printf '{"enabledPlugins":{"lgtmgate@market-stable":true}}' > "$P/.claude/settings.local.json"
+hook "$P" "$CR"
+W2=0; grep -qF 'enable lgtmgate@market-stable but' "$TMP/hook.json" && W2=1
+printf '{"enabledPlugins":{"lgtmgate@market-stable-beta":true,"lgtmgate@market-stable":false}}' > "$P/.claude/settings.local.json"
+hook "$P" "$CR"
+W3=0; grep -q 'WARNING' "$TMP/hook.json" && W3=1
+if [ "$W1" -eq 1 ] && [ "$W2" -eq 1 ] && [ "$W3" -eq 0 ] && [ "$hrc" -eq 0 ]; then ok "H5 warning only for another marketplace"; else bad "H5 W1=$W1 W2=$W2 W3=$W3"; fi
+
+mkdir -p "$TMP/nomanifest"
+printf '{not json' > "$P/.claude/settings.json"
+printf '[1,2]' > "$P/.claude/settings.local.json"
+hook "$P" "$TMP/nomanifest"
+R1=$hrc; M1=0; grep -q 'pipeline ready to use' "$TMP/hook.json" && grep -qF 'version unknown' "$TMP/hook.json" && M1=1
+printf '{"enabledPlugins":["x"]}' > "$P/.claude/settings.json"
+hook "$P" "$CR"
+if [ "$R1" -eq 0 ] && [ "$M1" -eq 1 ] && [ "$hrc" -eq 0 ] && grep -q 'pipeline ready to use' "$TMP/hook.json" && ! grep -q 'WARNING' "$TMP/hook.json"; then ok "H6 hook stays fail-open on odd manifest and settings"; else bad "H6 R1=$R1 M1=$M1 hrc=$hrc"; fi
+
 RESULT=ok; [ "$FAIL" -eq 0 ] || RESULT=fail
 echo "[test-config-check] status=${RESULT} passed=${PASS} failed=${FAIL}"
 [ "$FAIL" -eq 0 ]
