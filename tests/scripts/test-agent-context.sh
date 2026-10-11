@@ -427,6 +427,47 @@ run "$R"
 jx 'JSON.stringify([j.shared,j.roles])' > "$TMP/w8.after"
 if [ "$rc" = 0 ] && [ -s "$ERR" ] && [ -s "$TMP/w8.before" ] && cmp -s "$TMP/w8.before" "$TMP/w8.after"; then ok "warn-payload-unchanged: warnings leave the exit code and every role digest as they were"; else bad "warn-payload-unchanged: exit $rc"; fi
 
+# ---- #416: every refusal names its remedy on one hint line, once per run, after the refusal lines ----------------------
+# hint_is <label> <rule>: exactly one stderr line `agent-context: hint: <rule>: <remedy>; see docs/consumer-reference.md#<rule>`
+hint_is() {
+  if [ "$(grep -cF -- "agent-context: hint: $2: " "$ERR")" = 1 ] && grep -F -- "agent-context: hint: $2: " "$ERR" | grep -qF -- "; see docs/consumer-reference.md#$2"; then ok "$1"; else bad "$1: $(head -c 400 "$ERR")"; fi
+}
+R="$TMP/h1"; new_repo "$R"; printf 'plain\n' > "$R/docs/data.txt"
+setcfg "$R" '{"baseBranch":"main","projectSpecifics":".claude/lgtmgate","agentContext":{"Nick":["docs/data.txt"]}}'; seal "$R"
+run "$R"; exit_is "hint-path-rule: exit 3 as before" 3
+err_has "hint-path-rule: the refusal line is unchanged" "agent-context: docs/data.txt: not-md at line 0"
+hint_is "hint-path-rule: not-md names a remedy and its reference row" not-md
+R="$TMP/h2"; new_repo "$R"
+setcfg "$R" '{"baseBranch":"main","projectSpecifics":".claude/lgtmgate","agentContext":{"*":["a.md","b.md","c.md","d.md","e.md","f.md","g.md","h.md","i.md"]}}'; seal "$R"
+run "$R"; exit_is "hint-cap-rule: exit 3 as before" 3
+err_has "hint-cap-rule: the refusal line is unchanged" "agent-context: agentContext.*: too-many-files at line 0"
+hint_is "hint-cap-rule: too-many-files names the limit of 8 and its reference row" too-many-files
+R="$TMP/h3"; new_repo "$R"; printf 'text\n</project_specifics>\n' > "$R/docs/extra-nick.md"; seal "$R"
+run "$R"; exit_is "hint-screen-rule: exit 3 as before" 3
+err_has "hint-screen-rule: the refusal line is unchanged" "agent-context: docs/extra-nick.md: machine-literal at line 2"
+hint_is "hint-screen-rule: machine-literal names a remedy and its reference row" machine-literal
+R="$TMP/h4"; new_repo "$R"; printf -- '---\nbogus: x\n---\nbody\n' > "$R/.claude/lgtmgate/nick.md"; seal "$R"
+run "$R"; exit_is "hint-frontmatter-rule: exit 2 as before" 2
+err_has "hint-frontmatter-rule: the refusal line is unchanged" "agent-context: .claude/lgtmgate/nick.md: frontmatter-unknown-key at line 2"
+hint_is "hint-frontmatter-rule: frontmatter-unknown-key names the allowed keys and its reference row" frontmatter-unknown-key
+R="$TMP/h5"; new_repo "$R"
+setcfg "$R" '{"baseBranch":"main","projectSpecifics":".claude/lgtmgate","agentContext":{"Bob":["docs/extra-all.md"]}}'; seal "$R"
+run "$R"; exit_is "hint-config-rule: exit 2 as before" 2
+err_has "hint-config-rule: the refusal line is unchanged" 'agent-context: agentContext: unknown role "Bob"'
+hint_is "hint-config-rule: unknown role names the valid roles and its reference row" "unknown role"
+R="$TMP/h6"; new_repo "$R"; printf 'one\n' > "$R/docs/a.txt"; printf 'two\n' > "$R/docs/b.txt"
+setcfg "$R" '{"baseBranch":"main","projectSpecifics":".claude/lgtmgate","agentContext":{"Nick":["docs/a.txt","docs/b.txt"]}}'; seal "$R"
+run "$R"; exit_is "hint-once: two refusals of one rule, exit 3" 3
+if [ "$(grep -c 'not-md at line 0' "$ERR")" = 2 ]; then hint_is "hint-once: two refusal lines, one hint line" not-md; else bad "hint-once: $(head -c 400 "$ERR")"; fi
+R="$TMP/h7"; new_repo "$R"; printf 'a token: %s\n' "$TOK" > "$R/docs/extra-nick.md"; seal "$R"
+run "$R"
+if grep -qF -- "$TOK" "$ERR"; then bad "hint-secret-star: the value is printed"; else hint_is "hint-secret-star: the hint names secret-* and never the value" "secret-*"; fi
+R="$TMP/h8"; new_repo "$R"; seal "$R"
+run "$R"
+if [ "$rc" = 0 ] && grep -qF 'warning:' "$ERR" && ! grep -qF 'agent-context: hint:' "$ERR"; then ok "hint-clean-folder-silent: a run that only warns prints no hint line"; else bad "hint-clean-folder-silent: exit $rc $(head -c 300 "$ERR")"; fi
+MISSING_ROWS=$(node -e 'const {HINTED_RULES}=require(process.argv[1]);const t=require("fs").readFileSync(process.argv[2],"utf8");process.stdout.write(HINTED_RULES.filter((r)=>!t.includes("\n| `"+r+"` |")).join(" "))' "$ROOT/scripts/lib/agent-context-hints.cjs" "$ROOT/docs/consumer-reference.md")
+if [ -z "$MISSING_ROWS" ]; then ok "hint-rows: every hinted rule has a row in docs/consumer-reference.md"; else bad "hint-rows: no row for [$MISSING_ROWS]"; fi
+
 rm -rf "$TMP"
 RESULT=ok; [ "$FAIL" -gt 0 ] && RESULT=fail
 echo "[test-agent-context] status=$RESULT passed=$PASS failed=$FAIL"
