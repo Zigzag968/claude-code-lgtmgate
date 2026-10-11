@@ -303,6 +303,33 @@ for k in accepts rejectsTamper found blockIos blockNone blockSkipsMissing resolv
   if [ "$(eng $k)" = "true" ]; then ok "lane-engine-$k"; else bad "lane-engine-$k: $(head -c 300 "$TMP/eng.err") $(eng problem)"; fi
 done
 
+# ---- #408: a line starting with @ is accepted only inside a closed fenced code block ---------------------------------
+SW='@Environment(\.horizontalSizeClass) private var horizontalSizeClass'
+# atcase <name> <printf format with one %s for the @ line or the planted value> [value]: a repo whose rule file holds the text, run
+atcase() { R="$TMP/$1"; new_repo "$R"; printf "$2" "${3:-$SW}" > "$R/docs/extra-nick.md"; seal "$R"; run "$R"; }
+atcase at-fence-backtick 'intro\n```swift\n%s\n```\n'; exit_is "at-fenced-backtick: an @ line in a closed backtick fence passes" 0
+atcase at-fence-tilde 'intro\n~~~swift\n%s\n~~~\n'; exit_is "at-fenced-tilde: an @ line in a closed tilde fence passes" 0
+atcase at-fence-indented 'intro\n   ```swift\n%s\n   ```\n'; exit_is "at-fenced-indented: a fence indented by three spaces holds" 0
+atcase at-unfenced 'intro\n%s\n'; exit_is "at-unfenced-exit3" 3
+err_has "at-unfenced-exit3: names the rule and the line" "at-line at line 2"
+atcase at-indented 'intro\n  %s\n'; exit_is "at-unfenced-indented-exit3" 3
+err_has "at-unfenced-indented-exit3: names the rule and the line" "at-line at line 2"
+atcase at-unclosed 'intro\n```swift\n%s\n'; exit_is "at-unclosed-fence-exit3" 3
+err_has "at-unclosed-fence-exit3: names the rule and the line" "at-line at line 3"
+atcase at-short-close 'intro\n````swift\n```\n%s\n'; exit_is "at-fence-closed-by-a-shorter-run-exit3" 3
+err_has "at-fence-closed-by-a-shorter-run-exit3: names the rule and the line" "at-line at line 4"
+atcase at-after-fence 'intro\n```\ncode\n```\n%s\n'; exit_is "at-after-a-closed-fence-exit3" 3
+err_has "at-after-a-closed-fence-exit3: names the rule and the line" "at-line at line 5"
+atcase at-fence-ctrl 'a\n```\nx%sy\n```\n' "$(printf '\001')"; exit_is "fenced-control-char-exit3" 3
+err_has "fenced-control-char-exit3: names the rule and the line" "control-char at line 3"
+atcase at-fence-invis 'a\n```\nx%sy\n```\n' "$(printf '\342\200\213')"; exit_is "fenced-invisible-char-exit3" 3
+err_has "fenced-invisible-char-exit3: names the rule and the line" "invisible-char at line 3"
+atcase at-fence-secret 'a\n```\n%s\n```\n' "$TOK"; exit_is "fenced-secret-exit3" 3
+if grep -q '^.*secret-.* at line 3' "$ERR"; then ok "fenced-secret-exit3: names a secret rule and the line"; else bad "fenced-secret-exit3: stderr: $(head -c 300 "$ERR")"; fi
+FA_ENG="$(sed -n '/^function fenceAfter/,/^}/p' "$ROOT/templates/pr-body-splice.cjs")"
+FA_TXT="$(sed -n '/^function fenceAfter/,/^}/p' "$ROOT/scripts/lib/agent-context-text.cjs")"
+if [ -n "$FA_ENG" ] && [ "$FA_ENG" = "$FA_TXT" ]; then ok "fence-rule-parity: fenceAfter of the screen is the engine's, byte for byte"; else bad "fence-rule-parity: the two fenceAfter differ"; fi
+
 rm -rf "$TMP"
 RESULT=ok; [ "$FAIL" -gt 0 ] && RESULT=fail
 echo "[test-agent-context] status=$RESULT passed=$PASS failed=$FAIL"
