@@ -8,8 +8,9 @@
 // Source of truth: `.claude/pipeline.config.json` as committed at `origin/<base>` (read by sha):
 //   projectSpecifics  folder holding shared.md, <role>.md, <role>.*.md (empty or absent = off)
 //   agentContext      {"*": [paths], "<Role>": [paths]} extra files per role (Mia|Sam|Nick|Morgan|Theo)
-// Per role, first wins, a path never repeats: shared.md (kept apart, in `shared`) -> <role>.md ->
-// <role>.*.md (alphabetical, discovered with git ls-tree, never readdir) -> agentContext["*"] ->
+// First wins, a path never repeats: shared.md then agentContext["*"] (both in `shared`, sent once, inside
+// the shared block, never copied into a role text; a `*` path that is a file of the folder stays with its
+// role) -> <role>.md -> <role>.*.md (alphabetical, discovered with git ls-tree, never readdir) ->
 // agentContext[Role]. A <role>.<seg>[.<subject>].md file is a SUBJECT (always part of the role text)
 // unless <seg> is a declared LANE: a lane name exists only through a `lane: <seg>` frontmatter in some
 // <role>.<seg>*.md of the folder; a sibling without frontmatter then belongs to that lane. The lane
@@ -186,7 +187,7 @@ function readLocalAccepts(file) {
   }
 }
 
-// Phase 2: which files, by name, from the ref's tree. Returns {files: Map, sharedPath, seqs: {role: [path]}, owned: {role: [path]}}
+// Phase 2: which files, by name, from the ref's tree. Returns {files: Map, sharedPath, starPaths, seqs: {role: [path]}, owned: {role: [path]}}
 // (owned = the folder's own files of the role, role.md first; the rest of seqs comes from agentContext).
 function resolveFiles(root, sha, config, errs) {
   const files = new Map()
@@ -241,7 +242,7 @@ function resolveFiles(root, sha, config, errs) {
     seqs[role] = [...own, ...starPaths, ...rolePaths]
     owned[role] = own
   }
-  return { files, sharedPath, seqs, owned, children }
+  return { files, sharedPath, starPaths, seqs, owned, children }
 }
 
 // Names of the files in the working-tree folder (names only, nothing is read); [] when the folder is not there.
@@ -271,11 +272,11 @@ function processFile(root, f, errs) {
 // The per-role blocks: base text (the files that belong to no lane), the lanes kept apart, digests, bytes, and the oversize
 // warnings. `context` holds the resolved inputs; `info` gets the roles and lane of every file it places. Returns {roles, maxRole}.
 function buildRoleBlocks(context) {
-  const { sha, sharedPath, seqs, owned, done, info, cls, accepted, warnings } = context
+  const { sha, sharedPaths, seqs, owned, done, info, cls, accepted, warnings } = context
   const roles = {}
   let maxRole = 0
   for (const role of ROLES) {
-    const seen = new Set(sharedPath ? [sharedPath] : [])
+    const seen = new Set(sharedPaths)
     const parts = []
     const laneParts = {}
     for (const p of seqs[role]) {
@@ -329,7 +330,7 @@ function assemble(options) {
   if (!config.dir && !config.agentContext) return empty
 
   const errs = []
-  const { files, sharedPath, seqs, owned, children } = resolveFiles(root, sha, config, errs)
+  const { files, sharedPath, starPaths, seqs, owned, children } = resolveFiles(root, sha, config, errs)
   if (errs.length) throw new Fail(3, errs)
   let total = 0
   for (const f of files.values()) total += f.bytes
@@ -349,11 +350,15 @@ function assemble(options) {
   }
 
   if (sharedPath && done.get(sharedPath).meta) warnings.push({ kind: 'frontmatter-on-shared-file', path: sharedPath })
+  // shared.md then the agentContext["*"] files, once; a `*` path owned by a role's folder files stays with that role
+  const ownedAll = new Set(Object.values(owned).flat())
+  const sharedPaths = [...new Set([...(sharedPath ? [sharedPath] : []), ...starPaths.filter((p) => !ownedAll.has(p))])]
+  const sharedFiles = sharedPaths.filter((p) => !done.get(p).empty)
   let shared = null
-  if (sharedPath && !done.get(sharedPath).empty) {
-    const text = done.get(sharedPath).body
+  if (sharedFiles.length > 0) {
+    const text = sharedFiles.map((p) => done.get(p).body).join('\n\n')
     shared = { text, digest: digestOf(sha, 'shared', text, []), bytes: Buffer.byteLength(text, 'utf8'), lanes: [] }
-    info.get(sharedPath).roles.push('shared')
+    for (const p of sharedFiles) info.get(p).roles.push('shared')
     if (shared.bytes > CAP_SHARED) warnings.push({ kind: 'shared-oversize', bytes: shared.bytes, recommended: CAP_SHARED })
   }
 
@@ -363,7 +368,7 @@ function assemble(options) {
   if (config.dir) warnings.push(...folderWarnings(config.dir, ROLES, children, worktreeNames(root, config.dir)))
 
   const accepted = { ...config.accepted, ...readLocalAccepts(options.local) }
-  const { roles, maxRole } = buildRoleBlocks({ sha, sharedPath, seqs, owned, done, info, cls, accepted, warnings })
+  const { roles, maxRole } = buildRoleBlocks({ sha, sharedPaths, seqs, owned, done, info, cls, accepted, warnings })
   const totalBytes = (shared ? shared.bytes : 0) + maxRole
   if (totalBytes > CAP_TOTAL) warnings.push({ kind: 'total-oversize', bytes: totalBytes, recommended: CAP_TOTAL })
 
