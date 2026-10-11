@@ -2446,7 +2446,7 @@ const PROBE_REASON_HINTS = {
     'and the lgtmgate:probe agent type must be resolvable; fix the plugin install/session and relaunch',
   'cmd-mismatch': 'the copied PROBE line belongs to a different command than the engine composed (the copier altered the command); relaunch',
   'probe-run-not-found': 'no probe-run.cjs location: pass args.pluginRoot (absolute plugin root) or config.probeRunPath and relaunch',
-  'command-not-run': 'the command did not run; relaunch once (if it repeats, check that pluginRoot is the current plugin: a probe-run.cjs older than --cmd-b64 never runs the command; if it is, capture the run and report the typed command as an incident)',
+  'command-not-run': 'the command did not run; relaunch once (if it repeats, check that pluginRoot is the current plugin: a probe-run.cjs older than --cmd-b64 never runs the command; if it is, capture the run and report the typed command as an incident; probeStderr: expect-cmd-mismatch means the digest guard refused the typed command, i.e. the probe agent mis-copied it)',
   'unparseable-line': `the probe answered no PROBE line, or one that does not parse; ${PROBE_RELAUNCH}`,
   'name-mismatch': `the PROBE line names another probe than the one asked for; ${PROBE_RELAUNCH}`,
   'unparseable-verify': `the probe answered no VERIFY line, or one that does not parse; ${PROBE_RELAUNCH}`,
@@ -2599,17 +2599,15 @@ function probeCommands({ wtPath: worktreeDirectory, issue: issueNumber, pluginRo
 // --- probeCommands:end ---
 
 // --- pluginVersion:start --- (pure & self-contained — keep extractable by the flow suite)
-// #195: read the plugin manifest of args.pluginRoot with a script of its own (node -e, never a template of
-// the possibly stale root) and judge the answer without a model. The probe parser is the long-standing
+// #195: read the plugin manifest of args.pluginRoot with a script and judge the answer without a model.
+// #490: the script is templates/plugin-version.cjs of that root, run by path (the b64 the probe agent copies stays
+// short); a root older than this change has none: node exits 1, the verdict reads "no usable answer". The probe parser is the long-standing
 // `lines`: the command prints exactly one line, PLUGIN-VERSION:<version> or PLUGIN-VERSION-ERROR:<cause>.
 // The reason never holds the root path (a local path pasted into GitHub is refused by the scrub hook): the
 // path travels in the result's own `pluginRoot` field.
 function pluginVersionCommand(pluginRootPath) {
   const q = (x) => `'${String(x).split("'").join("'\\''")}'`
-  const js = 'try{const v=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).version;' +
-    'console.log(typeof v==="string"&&v?"PLUGIN-VERSION:"+v:"PLUGIN-VERSION-ERROR:no-version")}' +
-    'catch(e){console.log("PLUGIN-VERSION-ERROR:"+(e&&e.code==="ENOENT"?"missing":"unreadable"))}'
-  return `node -e ${q(js)} ${q(pluginRootPath + '/.claude-plugin/plugin.json')}`
+  return `node ${q(pluginRootPath + '/templates/plugin-version.cjs')}`
 }
 // Order of two x.y.z[-pre.N][+build] versions (semver precedence, numeric per field: beta.9 < beta.10); -1 | 0 | 1,
 // null when either is not of that form. Used ONLY to word the remedy: whether the root is the engine's version is
@@ -2690,14 +2688,11 @@ function minPluginVersionVerdict({ engineVersion, minVersion, plugin }) {
 // #177: agents get the instruction snapshot of the session that launches them (anthropics/claude-code#88886), so a run
 // on another repository than the Lead session's would run under the wrong rules. A script compares the git common dir
 // of the Lead's session root with the run's worktree; the command prints exactly one line, read by the `lines` probe.
+// #490: templates/session-root.cjs (of the plugin dir) run by path; the worktree is its cwd (`cd '<wt>'` of the probe line).
 // No model judges. The reason never holds a path (the scrub hook refuses local paths in GitHub text).
-function sessionRootCommand(sessionRootPath, worktreeDirectory) {
+function sessionRootCommand(sessionRootPath, templatesDirectory) {
   const q = (x) => `'${String(x).split("'").join("'\\''")}'`
-  const js = 'try{const cp=require("child_process"),fs=require("fs");' +
-    'const d=(p)=>fs.realpathSync(cp.execFileSync("git",["-C",p,"rev-parse","--path-format=absolute","--git-common-dir"],{encoding:"utf8",stdio:["ignore","pipe","ignore"]}).trim());' +
-    'console.log(d(process.argv[1])===d(process.argv[2])?"SESSION-ROOT:same":"SESSION-ROOT:differs")}' +
-    'catch(e){console.log("SESSION-ROOT-ERROR:unreadable")}'
-  return `node -e ${q(js)} ${q(sessionRootPath)} ${q(worktreeDirectory)}`
+  return `node ${q(templatesDirectory + '/session-root.cjs')} ${q(sessionRootPath)}`
 }
 // -> null when the session root is the repository of the worktree, else { code, reason }; fails closed on anything else.
 function sessionRootVerdict({ probeFailed, exit, lines }) {
@@ -2721,8 +2716,8 @@ async function probe(name, command, { label, round = 0, onFail, noReuse = false,
   if (!isSafeProbeToken(name) || !isSafeProbeToken(label)) {
     throw new Error(`probe: unsafe name/label (${JSON.stringify(name)} / ${JSON.stringify(label)})`)
   }
-  const fail = (reason) => {
-    if (onFail) return onFail(reason)
+  const fail = (reason, stderr) => {
+    if (onFail) return onFail(reason, stderr)
     throw new Error(`probe ${name}/${label}: ${reason}`)
   }
   if (!config.probeRunPath && !pluginRoot) return fail('probe-run-not-found')
@@ -2747,7 +2742,7 @@ async function probe(name, command, { label, round = 0, onFail, noReuse = false,
     return fail(nv && !nv.ok && nv.reason === 'no-record' ? 'command-not-run' : 'unparseable-line')
   }
   if (parsed.name !== name) return fail('name-mismatch')
-  if (probeNotRun(parsed, want, gateCommand)) return fail('command-not-run')
+  if (probeNotRun(parsed, want, gateCommand)) return fail('command-not-run', 'expect-cmd-mismatch')
   if (parsed.cmd !== want) return fail('cmd-mismatch')
   const verified = parseVerifyLine(result && result.verify)
   if (!verified) return fail('unparseable-verify')
@@ -2823,13 +2818,13 @@ if (probeOnly) {
 // Only when the templates really come from pluginRoot (config.probeRunPath unset, as probeCommands and
 // probeScriptPath resolve them). A reason string on the existing escalate: no new status, agent or seam.
 if (!simulate && pluginRoot && !config.probeRunPath) {
-  const pv = await probe('lines', pluginVersionCommand(pluginRoot), { label: 'plugin-version', noReuse: true, b64: true, onFail: (reason) => ({ probeFailed: reason }) })
+  const pv = await probe('lines', pluginVersionCommand(pluginRoot), { label: 'plugin-version', noReuse: true, b64: true, onFail: (reason, stderr) => ({ probeFailed: reason, probeStderr: stderr || null }) })
   if (pv.probeFailed === 'agent-death') return finish(STATUS['provision-died'], { issue, trace })
   const skew = pluginVersionVerdict({ engineVersion: BUILD.version, probeFailed: pv.probeFailed, exit: pv.exit, lines: pv.json && pv.json.lines })
   if (skew && pv.probeFailed) {
     // the probe itself failed (first probe of the run): the signature every probe failure has had since #82
-    log(`Plugin version probe failed (${pv.probeFailed}) — failing closed` + (PROBE_REASON_HINTS[pv.probeFailed] ? `: ${PROBE_REASON_HINTS[pv.probeFailed]}` : ''))
-    return finish(STATUS['escalate'], { reason: 'provision-failed', issue, missing: [], exitCode: null, probeReason: pv.probeFailed, probeHint: PROBE_REASON_HINTS[pv.probeFailed] || null, trace })
+    log(`Plugin version probe failed (${pv.probeFailed})${pv.probeStderr ? ` [${pv.probeStderr}]` : ''} — failing closed` + (PROBE_REASON_HINTS[pv.probeFailed] ? `: ${PROBE_REASON_HINTS[pv.probeFailed]}` : ''))
+    return finish(STATUS['escalate'], { reason: 'provision-failed', issue, missing: [], exitCode: null, probeReason: pv.probeFailed, probeStderr: pv.probeStderr || null, probeHint: PROBE_REASON_HINTS[pv.probeFailed] || null, trace })
   }
   if (skew) {
     log(`Plugin version check failed — ${skew.reason}`)
@@ -2842,12 +2837,12 @@ if (!simulate && pluginRoot && !config.probeRunPath) {
 // instructions). The Lead passes its session root; same git common dir as the worktree, else escalate before
 // provisioning. A reason on the existing escalate: no new status, agent or seam, no label written.
 if (!simulate && sessionRoot) {
-  const sr = await probe('lines', sessionRootCommand(sessionRoot, worktreePath), { label: 'session-root', noReuse: true, b64: true, onFail: (reason) => ({ probeFailed: reason }) })
+  const sr = await probe('lines', sessionRootCommand(sessionRoot, config.probeRunPath ? config.probeRunPath.slice(0, config.probeRunPath.lastIndexOf('/')) : pluginRoot ? pluginRoot + '/templates' : worktreePath + '/templates'), { label: 'session-root', noReuse: true, b64: true, onFail: (reason, stderr) => ({ probeFailed: reason, probeStderr: stderr || null }) })
   if (sr.probeFailed === 'agent-death') return finish(STATUS['provision-died'], { issue, trace })
   const srv = sessionRootVerdict({ probeFailed: sr.probeFailed, exit: sr.exit, lines: sr.json && sr.json.lines })
   if (srv && sr.probeFailed) {
-    log(`Session root probe failed (${sr.probeFailed}) — failing closed` + (PROBE_REASON_HINTS[sr.probeFailed] ? `: ${PROBE_REASON_HINTS[sr.probeFailed]}` : ''))
-    return finish(STATUS['escalate'], { reason: 'provision-failed', issue, missing: [], exitCode: null, probeReason: sr.probeFailed, probeHint: PROBE_REASON_HINTS[sr.probeFailed] || null, trace })
+    log(`Session root probe failed (${sr.probeFailed})${sr.probeStderr ? ` [${sr.probeStderr}]` : ''} — failing closed` + (PROBE_REASON_HINTS[sr.probeFailed] ? `: ${PROBE_REASON_HINTS[sr.probeFailed]}` : ''))
+    return finish(STATUS['escalate'], { reason: 'provision-failed', issue, missing: [], exitCode: null, probeReason: sr.probeFailed, probeStderr: sr.probeStderr || null, probeHint: PROBE_REASON_HINTS[sr.probeFailed] || null, trace })
   }
   if (srv) {
     log(`Session root check failed — ${srv.reason}`)
@@ -2941,7 +2936,7 @@ if (entryStage !== 'plan') {
     ? simulate.probes?.provision
     : await (async () => {
         const result = await probe('provision', `(${provisionCommand}) 2>&1`,
-          { label: 'provision', onFail: (reason) => ({ probeFailed: reason }) })
+          { label: 'provision', onFail: (reason, stderr) => ({ probeFailed: reason, probeStderr: stderr || null }) })
         if (result.probeFailed) return result
         return {
           ok: result.exit === 0 && !result.json.error,
@@ -2955,9 +2950,9 @@ if (entryStage !== 'plan') {
     return finish(STATUS['provision-died'], { issue, trace })
   }
   if (provision?.probeFailed) {
-    log(`Provisioning probe failed (${provision.probeFailed}) — failing closed` + (PROBE_REASON_HINTS[provision.probeFailed] ? `: ${PROBE_REASON_HINTS[provision.probeFailed]}` : ''))
+    log(`Provisioning probe failed (${provision.probeFailed})${provision.probeStderr ? ` [${provision.probeStderr}]` : ''} — failing closed` + (PROBE_REASON_HINTS[provision.probeFailed] ? `: ${PROBE_REASON_HINTS[provision.probeFailed]}` : ''))
     await updateStatus('Blocked')
-    return finish(STATUS['escalate'], { reason: 'provision-failed', issue, missing: [], exitCode: null, probeReason: provision.probeFailed, probeHint: PROBE_REASON_HINTS[provision.probeFailed] || null, trace })
+    return finish(STATUS['escalate'], { reason: 'provision-failed', issue, missing: [], exitCode: null, probeReason: provision.probeFailed, probeStderr: provision.probeStderr || null, probeHint: PROBE_REASON_HINTS[provision.probeFailed] || null, trace })
   }
   log(`Provision: ok=${provision?.ok}, exitCode=${provision?.exitCode ?? 'unknown'}, ` +
     `skipped=${provision?.skipped === true}, ` +

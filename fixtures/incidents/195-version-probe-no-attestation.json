@@ -11,7 +11,7 @@
   },
   "calls": {
     "probe-195-lines-plugin-version-r0": {
-      "line": "PROBE name=lines exit=0 sha=4b0b2f33b20b777393f4cb55ea1d47c45786b52ad36822582a5ed67647e54ed5 cmd=5a6484c6d492f57c4ff7081ac8e245d27ec5a8b8078109a3b799f969b56e2647 json={\"lines\":[\"PLUGIN-VERSION:@@ENGINE_VERSION@@\"]}",
+      "line": "PROBE name=lines exit=0 sha=4b0b2f33b20b777393f4cb55ea1d47c45786b52ad36822582a5ed67647e54ed5 cmd=04a3b298c7222033c50a5be9695ec431a34feae137849a6055cd4690226f4a11 json={\"lines\":[\"PLUGIN-VERSION:@@ENGINE_VERSION@@\"]}",
       "verify": "VERIFY fail reason=no-attestation"
     }
   },

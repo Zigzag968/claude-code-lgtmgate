@@ -48,8 +48,8 @@
       "summary": "Declined: the plan is a design one-pager, there is nothing to implement. No PR opened."
     },
     "probe-187-lines-plugin-version-r0": {
-      "line": "PROBE name=lines exit=0 sha=4404d1779f84640da8cc12956741b1f3dc822de119714dc10643cb25f55649a5 cmd=2af1fd58e4141ac8977c54e48900baf5a81f43c1be46d2a1c6f38830f7582ec8 json={\"lines\":[\"PLUGIN-VERSION:@@ENGINE_VERSION@@\"]}",
-      "verify": "VERIFY ok line=PROBE name=lines exit=0 sha=4404d1779f84640da8cc12956741b1f3dc822de119714dc10643cb25f55649a5 cmd=2af1fd58e4141ac8977c54e48900baf5a81f43c1be46d2a1c6f38830f7582ec8 json={\"lines\":[\"PLUGIN-VERSION:@@ENGINE_VERSION@@\"]}"
+      "line": "PROBE name=lines exit=0 sha=4404d1779f84640da8cc12956741b1f3dc822de119714dc10643cb25f55649a5 cmd=7880357778fbb84100c0b3af12d7ed192d7bd5ff32aa75e7337521dce2c696d7 json={\"lines\":[\"PLUGIN-VERSION:@@ENGINE_VERSION@@\"]}",
+      "verify": "VERIFY ok line=PROBE name=lines exit=0 sha=4404d1779f84640da8cc12956741b1f3dc822de119714dc10643cb25f55649a5 cmd=7880357778fbb84100c0b3af12d7ed192d7bd5ff32aa75e7337521dce2c696d7 json={\"lines\":[\"PLUGIN-VERSION:@@ENGINE_VERSION@@\"]}"
     },
     "probe-187-provision-provision-r0": {
       "line": "PROBE name=provision exit=0 sha=6a53faffc682ff23ac09011e330cfd4d706b6cd81cf5a2ad7ab5728d74c7cba7 cmd=0c2303f2db9f509834673de12dfa7a0e68c9d2ad2540285111cabebf6b165c96 json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}",

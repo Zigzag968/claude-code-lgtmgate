@@ -2638,7 +2638,7 @@ await testCase('T478b probe(): command-not-run checked before cmd-mismatch, read
   const sha = extractBetween(source, '// --- sha256Hex:start ---', '// --- sha256Hex:end ---')
   const f = t478Fns(source)
   if (!sha || !f) return { ok: false, msg: 'sha256Hex or probeNotRun block not found in pipeline source' }
-  const call = source.indexOf("if (probeNotRun(parsed, want, gateCommand)) return fail('command-not-run')")
+  const call = source.indexOf("if (probeNotRun(parsed, want, gateCommand)) return fail('command-not-run', 'expect-cmd-mismatch')")
   const mismatch = source.indexOf("if (parsed.cmd !== want) return fail('cmd-mismatch')")
   const hints = (() => {
     const from = source.indexOf('const PROBE_RELAUNCH =')
@@ -2692,6 +2692,58 @@ await testCase('T485b probe prompt says nothing follows the last character of a 
   }
   const checks = [
     eq('the sentence is in the engine source exactly once', source.split('nothing follows its last character').length - 1, 1),
+  ]
+  return checks.find(c => c) || { ok: true }
+})
+
+// T490a (#490) — the base64 token the probe agent copies stays short: the two long inline commands became scripts run
+// by path, so no composed probe b64 value passes 200 characters (realistic roots), and the line still ends on --model haiku.
+await testCase('T490a every composed probe b64 value is at most 200 characters (#490)', async () => {
+  const source = SUITE_ARGS.fpSource
+  if (!source) {
+    log('SKIP — T490a: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const blocks = ['probeCommands', 'base64Utf8', 'pluginVersion', 'sessionRoot', 'sha256Hex'].map((n) => extractBetween(source, `// --- ${n}:start ---`, `// --- ${n}:end ---`))
+  if (blocks.some((b) => !b)) return { ok: false, msg: 'probeCommands, base64Utf8, pluginVersion, sessionRoot or sha256Hex block not found in pipeline source' }
+  const engine = new Function(blocks.join('\n') + '\nreturn { probeCommands, base64Utf8, pluginVersionCommand, sessionRootCommand, sha256Hex }')()
+  const plugin = '/opt/tools/plugins/cache/market/lgtmgate/1.3.0-beta.54'   // 55 characters
+  const session = '/work/apps/some-long-repository-name/main-checkout'         // 43+ characters
+  const commands = [engine.pluginVersionCommand(plugin), engine.sessionRootCommand(session, plugin + '/templates')]
+  const checks = []
+  for (const command of commands) {
+    const token = engine.base64Utf8(command)
+    const line = engine.probeCommands({ wtPath: '/work/worktrees/some-repository/issue-490', issue: 490, pluginRoot: plugin, name: 'lines', cmd: command, label: 'x', round: 0, noReuse: true, expectCmd: engine.sha256Hex(command), cmdB64: token }).run
+    checks.push(eq(`b64 of ${command.slice(0, 40)}... is at most 200 characters (got ${token.length})`, token.length <= 200, true))
+    checks.push(eq('the run line ends with --model haiku', line.endsWith(' --model haiku'), true))
+  }
+  checks.push(eq('neither command is an inline program', commands.some((c) => c.includes(' -e ')), false))
+  return checks.find(c => c) || { ok: true }
+})
+
+// T490c (#490) — the probe stderr (expect-cmd-mismatch when the digest guard refused the typed command) reaches the
+// escalation result of the three probe call sites, and the hint names it.
+await testCase('T490c probeStderr reaches the escalation results and the command-not-run hint (#490)', async () => {
+  const source = SUITE_ARGS.fpSource
+  if (!source) {
+    log('SKIP — T490c: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const hints = (() => {
+    const from = source.indexOf('const PROBE_RELAUNCH =')
+    const upTo = source.indexOf('\nconst PROBE_SCHEMA')
+    return from < 0 || upTo < 0 ? null : new Function(source.slice(from, upTo) + '\nreturn PROBE_REASON_HINTS')()
+  })()
+  const hint = hints && hints['command-not-run']
+  const count = (needle) => source.split(needle).length - 1
+  const checks = [
+    eq('the three onFail closures carry the stderr', count('onFail: (reason, stderr) => ({ probeFailed: reason, probeStderr: stderr || null })'), 3),
+    eq('the three escalations carry probeStderr', ['pv', 'sr', 'provision'].every((v) => source.includes(`probeStderr: ${v}.probeStderr || null`)), true),
+    eq('the refused-command branch passes the guard signature', source.includes("return fail('command-not-run', 'expect-cmd-mismatch')"), true),
+    eq('fail forwards the stderr to onFail', source.includes('if (onFail) return onFail(reason, stderr)'), true),
+    eq('the hint names expect-cmd-mismatch', typeof hint === 'string' && hint.includes('probeStderr: expect-cmd-mismatch'), true),
+    eq('the hint stays one line', typeof hint === 'string' && !hint.includes('\n'), true),
+    eq('no second probe agent call', count("callAgentSafe('probe'"), 1),
   ]
   return checks.find(c => c) || { ok: true }
 })
@@ -2888,10 +2940,10 @@ await testCase('T195d the check runs first, only when the templates come from pl
   const checks = [
     eq('gate precedes the provision probe', indexGate < indexProvision, true),
     eq('gate reads the manifest through probe(lines) with noReuse', body.includes("probe('lines', pluginVersionCommand(pluginRoot), { label: 'plugin-version', noReuse: true, b64: true"), true),
-    eq('the session-root probe is delivered as --cmd-b64 too (#338)', source.includes("probe('lines', sessionRootCommand(sessionRoot, worktreePath), { label: 'session-root', noReuse: true, b64: true"), true),
+    eq('the session-root probe is delivered as --cmd-b64 too (#338)', source.includes("probe('lines', sessionRootCommand(sessionRoot, config.probeRunPath ? config.probeRunPath.slice(0, config.probeRunPath.lastIndexOf('/')) : pluginRoot ? pluginRoot + '/templates' : worktreePath + '/templates'), { label: 'session-root', noReuse: true, b64: true"), true),
     eq('gate escalates on the existing status', body.includes("finish(STATUS['escalate'], { reason: skew.reason"), true),
     eq('the root path travels in its own result field, not in the reason', body.includes("{ reason: skew.reason, issue, pluginRoot, trace }"), true),
-    eq('a failure of the probe itself keeps the provision-failed signature', body.includes("reason: 'provision-failed', issue, missing: [], exitCode: null, probeReason: pv.probeFailed, probeHint: PROBE_REASON_HINTS[pv.probeFailed]"), true),
+    eq('a failure of the probe itself keeps the provision-failed signature', body.includes("reason: 'provision-failed', issue, missing: [], exitCode: null, probeReason: pv.probeFailed, probeStderr: pv.probeStderr || null, probeHint: PROBE_REASON_HINTS[pv.probeFailed]"), true),
     eq('gate writes no label (no updateStatus, no prWrite)', body.includes('updateStatus') || body.includes('prWrite'), false),
     eq('lines is registered in PROBES', source.includes("  'lines': 'lines',"), true),
   ]
@@ -2928,10 +2980,11 @@ await testCase('T177a the verdict on the real command: same repository passes, a
     const worktreeA = pathm.join(temporary, 'wt a')
     for (const r of [repositoryA, repositoryB]) { fsm.mkdirSync(r); git(r, 'init', '-q'); git(r, 'commit', '--allow-empty', '-q', '-m', 'init') }
     git(repositoryA, 'worktree', 'add', '-q', '-b', 'feat/x', worktreeA)
+    const templatesDirectory = pathm.join(pathm.dirname(pathm.dirname(SUITE_ARGS.fpScriptPath)), 'templates')
     const real = (sessionRoot, worktreePath) => {
       let out = ''
       let exit = 0
-      try { out = cp.execFileSync('sh', ['-c', sessionRootCommand(sessionRoot, worktreePath)], { encoding: 'utf8' }) } catch (error) { exit = error.status || 1 }
+      try { out = cp.execFileSync('sh', ['-c', sessionRootCommand(sessionRoot, templatesDirectory)], { encoding: 'utf8', cwd: worktreePath }) } catch (error) { exit = error.status || 1 }
       return { exit, lines: out.split('\n').filter((l) => l !== '') }
     }
     const same = real(repositoryA, worktreeA)
@@ -2977,7 +3030,7 @@ await testCase('T177b the gate runs before provisioning and any agent call, only
     eq('gate follows the plugin-version gate', indexPlugin >= 0 && indexPlugin < indexGate, true),
     eq('gate precedes the provision probe', indexGate < indexProvision, true),
     eq('gate precedes the entryStage re-check', indexRecheck > indexGate, true),
-    eq('gate reads through probe(lines) with noReuse', body.includes("probe('lines', sessionRootCommand(sessionRoot, worktreePath), { label: 'session-root', noReuse: true"), true),
+    eq('gate reads through probe(lines) with noReuse', body.includes("probe('lines', sessionRootCommand(sessionRoot, ") && body.includes("{ label: 'session-root', noReuse: true"), true),
     eq('gate escalates on the existing status with the verdict reason', body.includes("finish(STATUS['escalate'], { reason: srv.reason"), true),
     eq('gate writes no label and makes no agent call', body.includes('updateStatus') || body.includes('prWrite') || body.includes('agent('), false),
     eq('the reason is named in the source', source.includes("code: 'session-root-mismatch'"), true),
