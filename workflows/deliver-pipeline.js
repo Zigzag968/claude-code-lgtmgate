@@ -33,7 +33,7 @@ export const meta = {
 // | `mode` | 'auto' (default) \| 'semi' \| 'manual' |
 // | `entryStage` | 'plan' (default) \| 'dev' \| 'review' (skip completed stages on crash-resume) |
 // | `proceedThrough` | last stage the Lead authorized to RUN on resume ('plan'\|'dev'\|'review'\|null). The pipeline PAUSES before any stage beyond it, in every mode (mode 'auto' without it runs through; #187). proceedThrough='plan' stops at plan-ready. Validated up front (#208): any other value escalates `invalid-proceedThrough`, nothing runs; echoed by dryRun. 'plan' is what resolves a design-step stop at entryStage='plan' (both triggers); a later stage does not. |
-// | `planText` | Sam's plan text, supplied on resume (entryStage='dev'\|'review') so the hand-off survives a crash without re-reading GitHub. If absent on resume, the plan is re-materialized from the artifact file (see planPath below). |
+// | `planText` | Sam's plan text, supplied on resume (entryStage='dev'\|'review') so the hand-off survives a crash without re-reading GitHub. If absent on resume, the plan is re-materialized from the artifact file (see planPath below). The `plan` of a plan-ready result carries script-written `targetFiles:` and `design-step: required` lines (beside `lanes:`) that the dev\|review entry reads; the on-disk artifact lacks them. |
 // | `resumeReason` | optional, null by default. Set by the Lead on an entryStage:'dev' relaunch that follows a status:'escalate', reason:'mergeable-conflicting' result (#170), to thread WHY the resume happens into Nick's prompt (#183) — otherwise Nick reasons only from branch/plan content. Allow-list deliberately narrow (one value today): a branch-mismatch or plan-stale escalate doesn't resolve by relaunching Nick with this same message. |
 // | `dryRun` | if true, validate args and return immediately (no agents spawned) |
 // | `probeOnly` | optional { name, cmd, label, round }: run ONE probe() (probe-run gate, #80) and return status 'dry-run-ok' reason 'probe-only'. Lets a run-offline fixture reach probe() while no engine call site is migrated yet. Not a simulate key. |
@@ -47,7 +47,7 @@ export const meta = {
 // | `planFreshness` | optional, default 'advisory' (#103): before Dev, diff Sam's declared `targetFiles` against origin/<baseBranch> so a plan whose premise moved upstream since the worktree's frozen base is caught before Nick opens a PR. Resolution order: this arg, then config.planFreshness, then the 'advisory' fallback (arg wins per-run over the project default); a value outside 'advisory'\|'gate'\|'off' throws. 'advisory' warns Nick + traces `plan-stale:<n>`, no routing change. 'gate' escalates (reason:'plan-stale') before Nick is spawned. 'off' skips the probe. |
 // | `maxAuditRounds` | bound on the auditor <-> scout amendment loop (default 2, mirrors maxPlanAttempts). Must be a positive integer; a non-integer or < 1 throws. HARD CEILING: values above AUDIT_ROUNDS_CEILING (2) throw unless maxAuditRoundsOverrideReason is a non-empty string naming the risk class that justifies the extra round(s) — never config-reachable, arg-only, on every launch. The reason is echoed in the dryRun/escalate/plan-ready returns and pushed onto `trace` as `audit-budget-override:<n>`. |
 // | `maxAuditRoundsOverrideReason` | required non-empty string whenever maxAuditRounds > 2; ignored (trimmed to '') otherwise. See "HARD CEILING" above. |
-// | `architectureDecisionApproved` | asserts the design-step-trigger's architecture-only pass (see Theo's design-step signals below) already happened and was approved, so the design-step gate does not require proceedThrough:'plan' on this launch. Also required (#208) on an entryStage='dev'\|'review' launch whose `planText` announces a declared one-way-door kind: the entry answers design-step-required otherwise, and also when `planText` is blank on a repo that declares kinds or paths (the door cannot be read). |
+// | `architectureDecisionApproved` | asserts the design-step-trigger's architecture-only pass (see Theo's design-step signals below) already happened and was approved, so the design-step gate does not require proceedThrough:'plan' on this launch. Also required (#208) on an entryStage='dev'\|'review' launch whose `planText` announces a declared one-way-door kind: the entry answers design-step-required otherwise, and also when `planText` is blank on a repo that declares kinds or paths (the door cannot be read). The entry also stops (#221) on a `design-step: required` line and on a `targetFiles:` line matching `oneWayDoorPaths`. |
 // | `maxPlanAmendRounds` | optional, DEFAULT 0 (issue #97): dark-launch kill-switch for routing a Morgan-classified PLAN defect (as opposed to a code defect) back to Sam for a plan amendment instead of forever re-dispatching Nick against a frozen, unfixable plan. 0 (the shipped default) is SHADOW MODE — Morgan's itemOwners classification is still computed and traced (`plan-route-shadow:<round>`), but every item is still routed to Nick as a code defect, so the off-path behaviour is byte-for-bit identical to before #97. Must be a non-negative integer; a non-integer or negative value throws. Flipped by the human only after observing shadow-mode `trace` evidence that the classification is trustworthy. |
 // | `simulate` | test fixture object; the only key the engine reads is `simulate.probes`, a map keyed by seam name (agent mocks sam/mia/nick/morgan/theo/audit/planCheck/preflight/alreadyDoneCheck, parsed-value probes such as headSha/prBody/mergeState/behindCount, agentTypeUnresolved, branchCheckRaw, ...). When set, no real agent is spawned and the trace is still recorded. The translation from the suite's flat keys to `probes` and every default live in run() of the flow suite (scripts/run-flow-suite.cjs runs it); the engine carries no `??` default on a seam. `simulate.probes[<role>] = 'DIE'` (the literal string) is the plain-death lever for a role, since `null` is nullish. An object value of `sam` is a per-attempt map of partial Sam returns (the plan-verification attempt, or the review round of a plan amendment), keyed like `planCheck`'s (#182). |
 // | `stamp` | optional epoch ms of the run (the harness bans an argless `new Date()`, which breaks resume): read by the already-done guard's future-merged check, the artifact-floor fallback and the preflight probes' `--stamp`; absent -> each degrades gracefully. |
@@ -134,7 +134,7 @@ export const meta = {
 // `version`, checked against plugin.json by tests/templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '1.4.0-beta.17', cutFrom: '6c33890' }
+const BUILD = { plugin: 'lgtmgate', version: '1.4.0-beta.18', cutFrom: 'e9bac42' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -169,6 +169,7 @@ let lanesSam = []
 let lanesDevelopment = []
 let lanesReport = null
 let lanesUnresolved = false
+let designStepOpen = false   // #221: Theo's design-step trigger fired and no architecture decision is approved; written into the plan-ready plan
 let retiredKeyPath = null
 // #183: the ids of the human-gate boxes the PR body shows ticked (a person's tick): the one kind of box settled by the body.
 let boxesGates = []
@@ -1923,6 +1924,30 @@ function oneWayDoorSignals(plan, targetFiles, context = {}) {
   ].slice(0, 10)
   return { kinds, summary }
 }
+// #221: the two facts the dev|review entry cannot recompute (Sam's sanitized targetFiles, Theo's unapproved design-step
+// trigger) ride inside the plan text as script-written lines, like `lanes:` (#271). Pure; never throws.
+function appendDoorFacts(plan, facts = {}) {
+  const base = String(plan ?? '').trimEnd()
+  const targets = safePlanTargets(facts?.targets)
+  let out = base
+  if (targets.length > 0) out += `\ntargetFiles: ${targets.join(', ')}`
+  if (facts?.designStep === true) out += '\ndesign-step: required'
+  return out
+}
+// The facts persisted in a plan: the LAST column-0 line starting `targetFiles:` (`none` or blank = []), and any column-0
+// line `design-step: required`. Targets go through the same sanitizer as the plan phase.
+function doorFactsFromPlanText(planBody) {
+  let targetsLine = null
+  let designStep = false
+  for (const l of String(planBody ?? '').split('\n')) {
+    const lower = l.toLowerCase()
+    if (lower.startsWith('targetfiles:')) targetsLine = l.slice('targetfiles:'.length)
+    if (lower.trim() === 'design-step: required' && !l.startsWith(' ') && !l.startsWith('\t')) designStep = true
+  }
+  const value = targetsLine === null ? '' : targetsLine.trim()
+  const targets = value === '' || value.toLowerCase() === 'none' ? [] : safePlanTargets(value.split(',').join(' ').split(' '))
+  return { targets, designStep }
+}
 // --- oneWayDoor:end ---
 
 // --- engineRules:start --- (pure & self-contained — engine-only rules, emitted only for the repo that IS this plugin, #163)
@@ -3120,6 +3145,7 @@ if (after('plan', entryStage)) {
   const designStepSignalCount =
     [diag.persistentStateSignal, diag.authSecurityBoundarySignal, diag.deployConfigSignal].filter(Boolean).length
   const designStepTriggered = designStepSignalCount >= 2 || diag.immatureVendorApiSignal === true
+  designStepOpen = designStepTriggered && !architectureDecisionApproved
   if (designStepTriggered && !architectureDecisionApproved && proceedThrough !== 'plan') {
     log(`Design-step trigger fired (signals: ${designStepSignalCount}/3 + immatureVendorApi=${!!diag.immatureVendorApiSignal}) — architecture decision not yet approved`)
     await updateStatus('Blocked')
@@ -3452,7 +3478,7 @@ if (after('plan', entryStage)) {
   }
 
   if (gate('plan')) return finish(STATUS['plan-ready'], {
-    plan: sam.plan, planPath, issue, trace,
+    plan: appendDoorFacts(sam.plan, { targets: sam.targetFiles, designStep: designStepOpen }), planPath, issue, trace,
     ...(oneWayDoor.kinds.length > 0 ? { oneWayDoorHits: oneWayDoor.kinds } : {}),
     auditVerdict: auditResult?.verdict ?? null,
     auditFindings: auditResult?.findings ?? [],
@@ -3585,8 +3611,9 @@ if (entryStage === 'dev' || entryStage === 'review') {
 // #208 — a launch entering at dev|review skips Theo and Sam, so the plan-phase design-step stops never ran in this
 // process: the one the entry can still see is the one-way door announced in `planText`, read by the same parser and
 // the same declared kinds as the plan phase. Without architectureDecisionApproved the run answers the same status
-// instead of running Dev through the door. Theo's signals and the `targetFiles` paths are not available here (#221):
-// the Lead carries that approval on a dev|review relaunch. A blank `planText` on a repo that declares kinds or paths
+// instead of running Dev through the door. Theo's unapproved design-step trigger and Sam's `targetFiles` reach this entry
+// as the script-written `design-step: required` and `targetFiles:` lines of the plan-ready plan (#221), read back here
+// from `planText`; a `planText` taken from the artifact lacks them, and the Lead then carries the approval. A blank `planText` on a repo that declares kinds or paths
 // cannot be read (the plan is then re-read from the artifact by an agent, the workflow has no filesystem): the door
 // cannot be ruled out, so the entry answers the same status asking for `planText` or the approval. Placed after the
 // already-done guard: a closed issue or a merged PR answers already-done, with no Project write.
@@ -3602,7 +3629,17 @@ if ((entryStage === 'dev' || entryStage === 'review') && !architectureDecisionAp
       reason: `this repo declares one-way-door kinds or paths and the launch at entryStage='${entryStage}' carries no planText, so the door cannot be read: relaunch with planText (the plan, read for its one-way-door line) or with architectureDecisionApproved:true`,
     })
   }
-  const entryDoor = oneWayDoorSignals(planText, [], { issue, planPath, paths: config.oneWayDoorPaths, kinds: config.oneWayDoorKinds })
+  const entryFacts = doorFactsFromPlanText(planText)
+  if (entryFacts.designStep) {
+    log(`R3 design-step at entryStage='${entryStage}': planText carries the design-step line — architecture decision not approved`)
+    trace.push('one-way-door-entry:design-step')
+    await updateStatus('Blocked')
+    return finish(STATUS['design-step-required'], {
+      issue, trace, planPath,
+      reason: `Theo's design-step trigger fired for this issue and no architecture decision was approved (the plan carries \`design-step: required\`): relaunch at entryStage='${entryStage}' with architectureDecisionApproved:true once the decision is recorded`,
+    })
+  }
+  const entryDoor = oneWayDoorSignals(planText, entryFacts.targets, { issue, planPath, paths: config.oneWayDoorPaths, kinds: config.oneWayDoorKinds })
   if (entryDoor.kinds.length > 0) {
     log(`R3 one-way-door at entryStage='${entryStage}': planText adds ${entryDoor.kinds.join(' + ')} — architecture decision not approved`)
     trace.push(`one-way-door-entry:${entryDoor.kinds.join('+')}`)
