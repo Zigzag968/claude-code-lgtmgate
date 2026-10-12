@@ -192,6 +192,15 @@ Printed by `scripts/template-drift.cjs` (run by `/lgtmgate:deliver` step 1 and a
 | `order:` | `main` of `scripts/template-drift.cjs` | Three `order:` lines follow when at least one line asks for an action | Follow them: fix the config, act on the lines that ask, commit and push on the base branch. |
 | `next:` | `main` of `scripts/template-drift.cjs` | `next: nothing to do before the run, the next run can start` when no line asks for an action | Launch the run. |
 
+## Plugin versions lines
+
+Printed by `scripts/plugin-versions.sh` (run by `/lgtmgate:deliver` step 0). The script reads and never writes; a failed plugin load surfaces later as `no-attestation` (see that row), these lines name the cause before the run. The guard does not check this section.
+
+| name | raised at | what the user sees | remedy |
+|---|---|---|---|
+| `MARKETPLACE-CONFLICT` | declaration check of `scripts/plugin-versions.sh` | `MARKETPLACE-CONFLICT: <name> is declared with different sources: <file> (<kind> <value>), ...` and exit 1: one marketplace name carries different `source` objects in the user, project or local settings, and the plugin may fail to load | Keep one declaration, or give every declaration the same source, in the files named on the line; then restart the session. |
+| `CONFLICT` | `scripts/plugin-versions.sh` | `CONFLICT: both channels enabled in scope=<scope> project=<p>: <m1>, <m2>` and exit 1: both channels of the plugin are enabled for one scope and project, so the hooks fire twice | `claude plugin disable lgtmgate@<other channel> --scope <scope>`, then restart the session. |
+
 ## Config check lines
 
 Printed by `scripts/config-check.cjs`; each `warn:` line states its effect and its gesture.

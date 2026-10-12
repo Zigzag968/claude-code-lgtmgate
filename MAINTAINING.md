@@ -362,7 +362,8 @@ installs the stable, `sha`-pinned version.
 
 Hard rule: **one `lgtmgate` manifest active per repo**. Two enabled plugins with the same manifest
 name shadow each other silently (anthropics/claude-code#45266) and their hooks fire twice; enabling
-both channels at the same scope prints no warning (checked on the canary).
+both channels at the same scope raises no warning in Claude Code (checked on the canary); `scripts/plugin-versions.sh` reports it as `CONFLICT`.
+The same marketplace name must carry one source across user, project and local settings; a difference is reported as `MARKETPLACE-CONFLICT`.
 
 After 1.0.0 is published, a dedicated commit moves `main` to 1.1.0-beta.1 so the beta channel stays distinguishable from stable.
 
