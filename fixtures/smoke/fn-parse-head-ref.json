@@ -1,0 +1,11 @@
+{
+  "name": "fn-parse-head-ref",
+  "blocks": ["parseHeadRef"],
+  "cases": [
+    { "fn": "parseHeadReference", "args": ["feat/issue-70\n", "feat/issue-70"], "expect": { "returns": "feat/issue-70" } },
+    { "fn": "parseHeadReference", "args": ["PR #776 is on branch `feat/issue-760`.", "feat/issue-760"], "expect": { "returns": "feat/issue-760" } },
+    { "fn": "parseHeadReference", "args": ["it is `feat/a-1` or `feat/b-2`", "feat/a-1"], "expect": { "returns": null } },
+    { "fn": "parseHeadReference", "args": ["", "feat/issue-760"], "expect": { "returns": null } },
+    { "fn": "parseHeadReference", "args": ["PR is on feat/issue-9."], "expect": { "returns": "feat/issue-9" } }
+  ]
+}
