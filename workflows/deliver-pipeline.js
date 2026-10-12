@@ -223,6 +223,8 @@ const finish = async (outcome, extra = {}) => {
     ? { reason: 'classifier-outage: resume with resumeFromRunId' } : {}), ...outcome, ...extra }
 }
 
+// #520 — the five progress-box titles, one constant: the launch file written by hooks/workflow-args-expand.sh differs from this engine only in the `meta` literal and this line (scripts/lib/launch-file.cjs).
+const PHASE_TITLES = { setup: 'Setup', diagnose: 'Diagnose', plan: 'Plan', dev: 'Dev', review: 'Review' }
 const argumentsIn = (typeof args === 'string' ? JSON.parse(args) : args) || {}
 // The removed scout arg: refuse it before anything else (zero agent call), with the remedy in the message.
 if (argumentsIn.scoutAgent !== undefined) throw new Error('removed: declare lanes with a `lane:` frontmatter in `.claude/lgtmgate/<role>.<lane>.md`; start a fresh run at the wanted entryStage')
@@ -256,6 +258,10 @@ const {
   stamp = null,
 } = argumentsIn
 
+// #520 — a reference the expansion hook should have replaced: refuse before anything runs (zero agent call).
+if (argumentsIn.projectSpecificsRef !== undefined || argumentsIn.configRef !== undefined) {
+  throw new Error('unexpanded-reference: args still carries projectSpecificsRef or configRef, so the expansion hook did not run (hooks disabled, plugin older than this engine, or a launch without the hook). Nothing ran. Launch in full form (launch-args.cjs --mode full) or enable the plugin hooks; see docs/consumer-reference.md (unexpanded-reference).')
+}
 const worktreePath = worktreeArgument || legacyWorktreePath
 if (!issue || !brief || !worktreePath) throw new Error('Missing required args: issue, brief, worktreePath')
 // #13/#12 — `config` is REQUIRED and must be an object: the workflow sandbox has no filesystem, so
@@ -300,7 +306,7 @@ const tooOld = minPluginVersionVerdict({ engineVersion: BUILD.version, minVersio
 if (tooOld) return finish(STATUS['escalate'], { reason: tooOld.reason, issue })
 // Run identity (#130): first log line + Setup phase, before any agent call, so runs can be told apart.
 log(`deliver #${issue} — ${String(brief).slice(0, 80)}${entryStage === 'review' ? ` (PR #${prNumber})` : ''}`)
-phase('Setup')
+phase(PHASE_TITLES.setup)
 // planAudit: arg wins per-run over the project default; an explicit `false` beats a
 // `true` config (`??` only falls through on null/undefined, never on a real `false`).
 const planAuditEnabled = planAudit ?? config.planAudit ?? false
@@ -3110,7 +3116,7 @@ let diag = null
 let pm = null
 if (after('plan', entryStage)) {
   await runState('plan')
-  phase('Diagnose')
+  phase(PHASE_TITLES.diagnose)
   diag = await callAgentSafe(
     'theo',
     `Qualify issue #${issue} before Sam plans anything — this gate runs for EVERY nightly-dispatched issue, no exceptions. Brief: ${brief}\n\n` +
@@ -3131,7 +3137,7 @@ if (after('plan', entryStage)) {
       `Return { confirmed: bool, evidence: string, actualCause: string|null, persistentStateSignal: bool, authSecurityBoundarySignal: bool, deployConfigSignal: bool, immatureVendorApiSignal: bool, designStepSignalEvidence: string, issueClassificationMismatch: bool${lanesFound.length > 0 ? ', lanes: string[], laneEvidence: string' : ''} }. confirmed=true means "proceed to Sam". evidence is what you checked and ` +
       `found (command run + observed output, or the codebase check performed). actualCause is set only when a claimed cause was refuted and you found the real one.`,
     {
-      agentType: 'Theo', phase: 'Diagnose', schema: DIAGNOSIS, label: `diagnose-issue-${issue}`, model: 'sonnet',
+      agentType: 'Theo', phase: PHASE_TITLES.diagnose, schema: DIAGNOSIS, label: `diagnose-issue-${issue}`, model: 'sonnet',
       // #54 registry-gap fallback (P1): if 'Theo' fails to resolve via agentType, callAgentSafe
       // retries persona-in-prompt on the remaining attempt budget instead of dying outright.
       personaFallback: THEO_PERSONA,
@@ -3272,14 +3278,14 @@ const samScoutPrompt = ({ fixBlock = '', auditFixBlock = '', reviewFixBlock = ''
 // ---------------------------------------------------------------------------
 
 if (after('plan', entryStage)) {
-  phase('Plan')
+  phase(PHASE_TITLES.plan)
   await updateStatus('Plan')   // FIRST — so NO-GO → trace ['Plan','Blocked']
 
   if (pmReview) {
     pm = await callAgentSafe(
       'mia',
       `PM framing for issue #${issue}. Brief: ${brief}`,
-      { agentType: 'Mia', phase: 'Plan', model: 'haiku', label: `mia-issue-${issue}` },
+      { agentType: 'Mia', phase: PHASE_TITLES.plan, model: 'haiku', label: `mia-issue-${issue}` },
     )
     if (isAgentDeath(pm)) {
       log('Mia died — degrading to no PM framing (framing-degraded), continuing')
@@ -3314,7 +3320,7 @@ if (after('plan', entryStage)) {
       planAttempt++
       planPass++
       // #141 — a plan planned again gets its own progress box (`Plan 2`, …); the first pass stays in `Plan`.
-      const planPhase = planPass > 1 ? `Plan ${planPass}` : 'Plan'
+      const planPhase = planPass > 1 ? `${PHASE_TITLES.plan} ${planPass}` : PHASE_TITLES.plan
       if (planPass > 1) phase(planPhase)
       const fixBlock = checkIssues.length
         ? `\n\nPLAN-VERIFICATION GATE FLAGGED THIS PLAN (attempt ${planAttempt}) — fix ALL of these before resubmitting:\n${checkIssues.map(index => `- ${index}`).join('\n')}`
@@ -3779,7 +3785,7 @@ const assertBranchConformance = async (pullRequestNumber, nickBranchFallback) =>
 }
 
 if (after('dev', entryStage)) {
-  phase('Dev')
+  phase(PHASE_TITLES.dev)
   await updateStatus('Dev')
   await runState('dev')
 
@@ -3898,7 +3904,7 @@ if (after('dev', entryStage)) {
   nick = await callAgentSafe(
     'nick',
     nickPrompt,
-    { agentType: 'Nick', phase: 'Dev', schema: NICK, label: `nick-issue-${issue}`, model: 'sonnet' },
+    { agentType: 'Nick', phase: PHASE_TITLES.dev, schema: NICK, label: `nick-issue-${issue}`, model: 'sonnet' },
   )
   if (isAgentDeath(nick)) {
     return finish(STATUS['dev-died'], { issue, trace })
@@ -3915,7 +3921,7 @@ if (after('dev', entryStage)) {
 // ---------------------------------------------------------------------------
 
 if (after('review', entryStage)) {
-  phase('Review')
+  phase(PHASE_TITLES.review)
   await updateStatus('Review')
   await runState('review')
 
@@ -4780,7 +4786,7 @@ if (after('review', entryStage)) {
       `then POST your verdict (LGTM | REQUIRED_CHANGES | REGRESSION_DETECTED) as a comment on PR #${pr}. Prefix that posted comment EXACTLY with the pipeline-review-round marker \`${reviewVerdictMarker}\` as its own first line${reviewShaRule} (hidden HTML marker; do NOT let it leak into \`items\`). ` +
       `${morganItemsRule(acceptanceBlock)}` +
       `For each item in \`items\`, ALSO classify it in \`itemOwners\` ({item, itemOwner, proof}): 'code-defect' is the DEFAULT whenever you are uncertain — a plan owner ('plan-defect'|'checklist-wording-defect') REQUIRES a concrete \`proof\` quoting the exact contradiction between the plan/checklist and reality, and NEVER excuses unfinished code. ${ACCEPTANCE_PRESENCE_RULE}A box whose verification failed or was not run stays 'code-defect'.`,
-    { agentType: 'Morgan', phase: 'Review', schema: MORGAN, label: `morgan-pr-${issue}-${pr}-r${round}`, model: morganModel },
+    { agentType: 'Morgan', phase: PHASE_TITLES.review, schema: MORGAN, label: `morgan-pr-${issue}-${pr}-r${round}`, model: morganModel },
     round,
   )
 
@@ -4814,7 +4820,7 @@ if (after('review', entryStage)) {
     previousRoundItems = v.items || []
     round++
     // #141 — each extra review round gets its own progress box (`Review 2`, …) holding that round's fix, preflight and review.
-    const roundPhase = `Review ${round + 1}`
+    const roundPhase = `${PHASE_TITLES.review} ${round + 1}`
     phase(roundPhase)
     log(`Round ${round}: ${v.verdict} (${(v.items || []).length} items)`)
 
