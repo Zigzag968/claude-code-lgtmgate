@@ -8,7 +8,9 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 W="$ROOT/scripts/run-probe-evals-docker.sh"
 TMP_BASE="$(cd "${TMPDIR:-/tmp}" && pwd -P)"
 WORK="$(mktemp -d "$TMP_BASE/eval-credential-test.XXXXXX")"
-trap 'rm -rf "$WORK"' EXIT
+# The wrapper mkdirs evals/results; an empty dir left behind makes gate-check stop skipping the eval metric.
+[ -d "$ROOT/evals/results" ] && HAD_RESULTS=1 || HAD_RESULTS=0
+trap 'rm -rf "$WORK"; [ "$HAD_RESULTS" = 1 ] || rmdir "$ROOT/evals/results" 2>/dev/null' EXIT
 
 pass_count=0
 fail_count=0
