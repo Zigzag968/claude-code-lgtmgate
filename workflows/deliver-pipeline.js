@@ -174,10 +174,13 @@ let retiredKeyPath = null
 let boxesGates = []
 // #183: why the last pr-write probe call gave no usable answer (null while it did), read by tickAcceptanceBoxes.
 let prWriteFailure = null
+// #502: the last per-run state value written (runState skips a repeat) and whether any was written (finish writes the terminal value only then).
+let lastRunState = null
+let runStateStarted = false
 // simulate-only: the PR body as the run composed it (tick, decision log, acceptance sync); finish() exposes it on every terminal.
 let prBodyPreview = null
 // Status registry (#180) — every outcome a run can return, one entry per status, in pipeline order.
-// finish(def, extra) is the only way out of the run, so no status reaches a return as a string
+// finish(def, extra) is the only way out of the run (async: it awaits the terminal run-state write, #502), so no status reaches a return as a string
 // literal; `resumable` belongs to the status (a `*-died` run, or one parked for the Lead, resumes
 // through resumeFromRunId), never to a call site. scripts/guards.cjs (status-table) checks these keys
 // against the Lead's table in skills/deliver/SKILL.md §5, both ways. agentDeathRouting() below keeps its
@@ -206,7 +209,9 @@ const STATUS = Object.freeze({
   'ready-pending-human': { status: 'ready-pending-human', resumable: true },
   'ready': { status: 'ready' },
 })
-const finish = (outcome, extra = {}) => ({ buildStamp: BUILD_STAMP, ...(simulate ? { nickPromptPreview, provisionCmdPreview: provisionCommandPreview, preflightFixPromptPreview, prBodyPreview } : {}),
+const finish = async (outcome, extra = {}) => {
+  if (runStateStarted) await runState(outcome.status)
+  return { buildStamp: BUILD_STAMP, ...(simulate ? { nickPromptPreview, provisionCmdPreview: provisionCommandPreview, preflightFixPromptPreview, prBodyPreview } : {}),
   ...(boxesMapped ? { boxes: boxesMapped } : {}),
   ...(specificsLine ? { specifics: specificsLine } : {}),
   ...(specificsOversize ? { specificsOversize } : {}),
@@ -214,7 +219,8 @@ const finish = (outcome, extra = {}) => ({ buildStamp: BUILD_STAMP, ...(simulate
   ...(lanesUnresolved ? { lanesUnresolved: true } : {}),
   ...(retiredKeyPath ? { retiredKeyPath } : {}),
   ...(classifierOutageDeath && outcome.status.endsWith('-died')
-    ? { reason: 'classifier-outage: resume with resumeFromRunId' } : {}), ...outcome, ...extra })
+    ? { reason: 'classifier-outage: resume with resumeFromRunId' } : {}), ...outcome, ...extra }
+}
 
 const argumentsIn = (typeof args === 'string' ? JSON.parse(args) : args) || {}
 // The removed scout arg: refuse it before anything else (zero agent call), with the remedy in the message.
@@ -2807,6 +2813,23 @@ async function prWrite(op, label, round, argv) {
   return out
 }
 
+// runState (#502): the per-run state file `.pipeline/issue-<N>.json` of the MAIN checkout, written through the pr-write probe
+// (op run-state) so the Stop watchdog and the SessionStart stub see this run: `plan|dev|review` while it runs, the STATUS
+// value on exit. Fail-open; never writes in simulate, dryRun or probeOnly. prWrite resets the shared prWriteFailure
+// (read by tickAcceptanceBoxes), so it is saved and restored here.
+async function runState(state) {
+  if (simulate || dryRun || probeOnly) return
+  if (state === lastRunState) return
+  lastRunState = state
+  runStateStarted = true
+  const savedFailure = prWriteFailure
+  try {
+    await prWrite('run-state', 'run-state-' + sanitizeProbeToken(state), 0, ['--issue', issue, '--status', state])
+  } finally {
+    prWriteFailure = savedFailure
+  }
+}
+
 // probeOnly (#80): reach probe() from a run-offline fixture while no call site exists yet.
 if (probeOnly) {
   const r = await probe(probeOnly.name, probeOnly.cmd, { ...probeOnly })
@@ -3025,6 +3048,7 @@ let diag = null
 // used. Assignment sites are unchanged; `pm` stays null when pmReview is off or Mia degrades.
 let pm = null
 if (after('plan', entryStage)) {
+  await runState('plan')
   phase('Diagnose')
   diag = await callAgentSafe(
     'theo',
@@ -3685,6 +3709,7 @@ const assertBranchConformance = async (pullRequestNumber, nickBranchFallback) =>
 if (after('dev', entryStage)) {
   phase('Dev')
   await updateStatus('Dev')
+  await runState('dev')
 
   // Plan-freshness probe (#103) — best-effort, read-only (fetch + diff only, never checkout/
   // reset/rebase/pull/merge). Diffs Sam's declared target files against origin/<baseBranch> so a
@@ -3817,6 +3842,7 @@ if (after('dev', entryStage)) {
 if (after('review', entryStage)) {
   phase('Review')
   await updateStatus('Review')
+  await runState('review')
 
   const pr = nick?.prNumber ?? prNumber
   if (!pr) {

@@ -93,6 +93,8 @@ jobs:
         run: bash tests/templates/test-probe-run.sh
       - name: runtime forwarder stubs regression test
         run: bash tests/scripts/test-runtime-stubs.sh
+      - name: per-run state file regression test
+        run: bash tests/scripts/test-run-state.sh
       - name: cleanup-worktree script regression test
         run: bash tests/scripts/test-cleanup-worktree.sh
       - name: verify-workflow-launch regression test
