@@ -581,6 +581,8 @@ if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: canary-step: MAINTAINING.md 
 
 . "$REPO_ROOT/tests/scripts/lib/readme-contract-cases.sh"
 
+. "$REPO_ROOT/tests/scripts/lib/launch-bytes-cases.sh"
+
 STATUS=ok; [ "$FAIL_N" -eq 0 ] || STATUS=fail
 echo "[test-guards] status=${STATUS} passed=${PASS_N} failed=${FAIL_N}"
 [ "$FAIL_N" -eq 0 ]

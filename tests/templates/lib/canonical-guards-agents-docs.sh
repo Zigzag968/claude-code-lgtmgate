@@ -412,3 +412,34 @@ else
   pass "review-comment-no-checkbox: no checkbox line in the Morgan persona"
 fi
 
+
+# =============================================================================
+# Invariant 37 — launch-args-no-content
+# =============================================================================
+# #527: the `args = {` block of the "## 4." launch section holds placeholders only (every value starts with `<` or `"<`):
+# a content field there is what the Lead retypes at every launch, and the bytes of a launch are measured by
+# scripts/runtime/launch-args.cjs. FAIL naming the lines when a key line has another value, or when the block is not found
+# (fewer than 5 key lines). Self-proof: a planted copy with one more content field must be reported.
+# DELIVER_SKILL_FILE is an override for negative runs.
+launch_args_keys() {
+  awk '/^## 4\. /{s=1; next} /^## /{s=0} s && /^args = [{]/{b=1; next} b && /^[}]/{b=0} b && /^  [A-Za-z]+:/{print}' "$1"
+}
+launch_args_content() {
+  launch_args_keys "$1" | awk '{ v=$0; sub(/^  [A-Za-z]+:[ ]*/, "", v); if (v !~ /^<|^"</) print }'
+}
+LA_FILE="${DELIVER_SKILL_FILE:-skills/deliver/SKILL.md}"
+LA_KEYS=$(launch_args_keys "$LA_FILE" 2>/dev/null | wc -l | tr -d ' ')
+LA_BAD=$(launch_args_content "$LA_FILE" 2>/dev/null)
+LA_PLANT="$(mktemp "${TMPDIR:-/tmp}/launch-args-plant.XXXXXX")"
+awk '{ print } /^args = [{]/ { print "  note: \"pasted content\"," }' "$LA_FILE" > "$LA_PLANT" 2>/dev/null
+LA_PLANTED=$(launch_args_content "$LA_PLANT" | grep -c 'pasted content' || true)
+rm -f "$LA_PLANT"
+if [ "${LA_KEYS:-0}" -lt 5 ]; then
+  fail "launch-args-no-content" "args block not found in $LA_FILE (${LA_KEYS:-0} key lines)"
+elif [ -n "$LA_BAD" ]; then
+  fail "launch-args-no-content" "content field in the section 4 args block: $LA_BAD"
+elif [ "${LA_PLANTED:-0}" != "1" ]; then
+  fail "launch-args-no-content" "a planted content field was not reported"
+else
+  pass "launch-args-no-content: no content field in the section 4 args block; a planted content field is reported"
+fi

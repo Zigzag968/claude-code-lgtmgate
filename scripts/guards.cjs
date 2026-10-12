@@ -83,7 +83,7 @@
 //      the suites report (scripts/count-tests.cjs). The rule lives in scripts/lib/readme-contract.cjs.
 //
 // Env (test seams, all optional)
-//   GUARDS_ONLY            comma list among r1,wired,guard-steps,version,parity,budgets,instructions,status,phases,init-stubs,audit,consumer-reference,canary-step,readme-contract (default: all)
+//   GUARDS_ONLY            comma list among r1,wired,guard-steps,version,parity,budgets,instructions,status,phases,init-stubs,audit,consumer-reference,canary-step,readme-contract,launch-bytes (default: all)
 //   GUARDS_CONSUMER_BASELINE_BASE  base consumer-reference baseline file (default: git show origin/main:scripts/consumer-reference-baseline.json)
 //   GUARDS_BASE_YML        guards.yml used as the base for guard-steps (default: git show origin/main:.github/workflows/guards.yml)
 //   GUARDS_BASE_FILE       workflow file used as the base for R1 (default: git show origin/main:<file>)
@@ -114,7 +114,7 @@ const WORKFLOW = 'workflows/deliver-pipeline.js'
 const MANIFEST = '.claude-plugin/plugin.json'
 const GUARDS_YML = '.github/workflows/guards.yml'
 const DELIVER_MD = 'skills/deliver/SKILL.md'
-const ONLY = process.env.GUARDS_ONLY ? process.env.GUARDS_ONLY.split(',') : ['r1', 'wired', 'guard-steps', 'version', 'parity', 'budgets', 'instructions', 'status', 'phases', 'init-stubs', 'audit', 'consumer-reference', 'canary-step', 'readme-contract']
+const ONLY = process.env.GUARDS_ONLY ? process.env.GUARDS_ONLY.split(',') : ['r1', 'wired', 'guard-steps', 'version', 'parity', 'budgets', 'instructions', 'status', 'phases', 'init-stubs', 'audit', 'consumer-reference', 'canary-step', 'readme-contract', 'launch-bytes']
 
 // Suites that are NOT named in guards.yml, each with its reason. Add a suite here only if it is
 // red on main (report it, do not wire it) or is run through another runner.
@@ -594,6 +594,6 @@ function checkReadmeContract() {
   out('PASS: readme-contract: README.md keeps its sections, dynamic badges, config rows, environment variables and test counts')
 }
 
-const CHECKS = { r1: checkR1, wired: checkWired, 'guard-steps': checkGuardSteps, version: checkVersion, parity: checkSamParity, budgets: checkDocumentBudgets, instructions: checkInstructionsWired, status: checkStatusTable, phases: checkPhaseTitles, 'init-stubs': checkInitStubs, audit: checkAudit, 'consumer-reference': checkConsumerReference, 'canary-step': checkCanaryStep, 'readme-contract': checkReadmeContract }
+const CHECKS = { r1: checkR1, wired: checkWired, 'guard-steps': checkGuardSteps, version: checkVersion, parity: checkSamParity, budgets: checkDocumentBudgets, instructions: checkInstructionsWired, status: checkStatusTable, phases: checkPhaseTitles, 'init-stubs': checkInitStubs, audit: checkAudit, 'consumer-reference': checkConsumerReference, 'canary-step': checkCanaryStep, 'readme-contract': checkReadmeContract, 'launch-bytes': () => { failed += require('./lib/launch-bytes.cjs').run(ROOT, out) } }
 for (const [key, run] of Object.entries(CHECKS)) if (ONLY.includes(key)) run()
 process.exit(failed ? 1 : 0)

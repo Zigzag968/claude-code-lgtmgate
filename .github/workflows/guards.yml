@@ -69,6 +69,10 @@ jobs:
         run: bash tests/scripts/test-redact-fixture.sh
       - name: agent-context self-test
         run: bash tests/scripts/test-agent-context.sh
+      - name: launch fixtures ratios
+        run: node scripts/gen-launch-fixtures.cjs --check
+      - name: launch-args self-test
+        run: bash tests/scripts/test-launch-args.sh
       - name: context-print self-test
         run: bash tests/scripts/test-context-print.sh
       - name: init-specifics self-test
