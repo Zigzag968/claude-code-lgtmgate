@@ -8,7 +8,8 @@
 # other plugins ignored, target from origin/main, fail closed (exit 2) on every unexpected payload, no install,
 # --plugin, shadowed installs (a more specific scope of the same channel applies to --project), the loaded plugin root
 # (--loaded-root, LOADED-CACHE and its printed uninstall command), installs of another project (listed, not counted),
-# a CLI-disabled install that the project's own settings enable (#480, exit 2), and read-only (the fake only ever sees `plugin list --json`).
+# a CLI-disabled install that the project's own settings enable (#480, exit 2), one marketplace declared with different
+# sources across user, project and local settings (MARKETPLACE-CONFLICT, #501), and read-only (the fake only ever sees `plugin list --json`).
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -32,6 +33,8 @@ FAKE
 chmod +x "$BASE/bin/claude"
 FAKE_LOG="$BASE/claude.log"; : > "$FAKE_LOG"
 export FAKE_LOG
+# isolate every case from the real home: the user settings file is read from here
+export CLAUDE_CONFIG_DIR="$BASE/userclaude"; mkdir -p "$CLAUDE_CONFIG_DIR"
 
 # entry <id> <version> <scope> <enabled true|false> [<projectPath>]: one object of the payload, neutral fake paths
 entry() {
@@ -258,6 +261,37 @@ printf '{"enabledPlugins":{"%s":true}}\n' "$BETA" > "$P13/.claude/settings.local
 list "$BASE/l13b.json" "$(entry "$BETA" "$RC13" local true "$P13")"
 pv "$BASE/l13b.json" --target "$RC13" --project "$P13" --loaded-root "/cache/$BETA/$RC13"
 [ "$RC" -eq 0 ] && ok "CLI and file agree (enabled): exit 0" || bad "agree enabled (rc=$RC): $OUT"
+
+# 14. #501: one marketplace declared with different sources in the user, project and local settings
+P14="$BASE/projD"; mkdir -p "$P14/.claude"
+U14="$CLAUDE_CONFIG_DIR/settings.json"; PS14="$P14/.claude/settings.json"; PL14="$P14/.claude/settings.local.json"
+GH='{"source":{"source":"github","repo":"o/r"}}'; URL='{"source":{"source":"url","url":"https://x/m.json"}}'
+reset14() { rm -f "$U14" "$PS14" "$PL14"; }
+decl() { printf '{"extraKnownMarketplaces":{"%s":%s}}\n' "$2" "$3" > "$1"; }
+list "$BASE/l14.json" "$(entry "$BETA" "$T" user true)"
+reset14; decl "$U14" m1 "$GH"; decl "$PS14" m1 "$URL"
+pv "$BASE/l14.json" --target "$T" --project "$P14"
+[ "$RC" -eq 1 ] && has 'MARKETPLACE-CONFLICT: m1' && has "$U14" && has "$PS14" && has 'github o/r' && has 'url https://x/m.json' && [ "$(last_line)" = "plugin-versions: 1 install(s) of lgtmgate, target $T, 1 problem(s)" ] \
+  && ok "a github and a url source for one marketplace in user and project settings: exit 1 naming both files" || bad "decl github vs url (rc=$RC): $OUT"
+reset14; decl "$PS14" m1 "$GH"; decl "$PL14" m1 "$URL"
+pv "$BASE/l14.json" --target "$T" --project "$P14"
+[ "$RC" -eq 1 ] && has 'MARKETPLACE-CONFLICT: m1' && has "$PS14" && has "$PL14" && ok "project settings vs local settings: exit 1 naming both files" || bad "decl project vs local (rc=$RC): $OUT"
+reset14; decl "$U14" m1 "$GH"; decl "$PS14" m1 "$GH"
+pv "$BASE/l14.json" --target "$T" --project "$P14"
+[ "$RC" -eq 0 ] && ! has MARKETPLACE-CONFLICT && ok "the same source in two files: exit 0" || bad "decl identical (rc=$RC): $OUT"
+reset14; decl "$U14" m1 "$GH"; decl "$PS14" m2 "$URL"
+pv "$BASE/l14.json" --target "$T" --project "$P14"
+[ "$RC" -eq 0 ] && ! has MARKETPLACE-CONFLICT && ok "different names, each declared once: exit 0" || bad "decl different names (rc=$RC): $OUT"
+reset14; decl "$U14" m1 "$GH"; decl "$PS14" m1 '{"source":{"source":"github","repo":"o/r","path":".claude-plugin/marketplace-beta.json"}}'
+pv "$BASE/l14.json" --target "$T" --project "$P14"
+[ "$RC" -eq 1 ] && has 'MARKETPLACE-CONFLICT: m1' && ok "a github source with an extra path key against the plain one: exit 1 (whole-object comparison)" || bad "decl extra key (rc=$RC): $OUT"
+reset14; decl "$U14" m1 "$GH"; decl "$PS14" m1 "$URL"
+pv "$BASE/l9.json" --target "$T" --project "$P14"
+[ "$RC" -eq 1 ] && has 'MARKETPLACE-CONFLICT: m1' && [ "$(last_line)" = 'plugin-versions: no install of lgtmgate found' ] && ok "a declaration conflict with no install: exit 1, the no-install line stays last" || bad "decl no install (rc=$RC): $OUT"
+reset14; decl "$U14" m1 "$GH"; printf '{not json\n' > "$PS14"
+pv "$BASE/l14.json" --target "$T" --project "$P14"
+[ "$RC" -eq 0 ] && ! has MARKETPLACE-CONFLICT && ok "a settings file that is not JSON is skipped: exit 0" || bad "decl bad json (rc=$RC): $OUT"
+reset14
 
 # 10. read-only: the fake saw `plugin list --json` and nothing else, across every case above
 if [ -s "$FAKE_LOG" ] && [ "$(sort -u "$FAKE_LOG")" = "plugin list --json" ]; then
