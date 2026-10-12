@@ -174,6 +174,8 @@ ok=0; bash -n "$G" 2>/dev/null && ok=1
 check "probe-eval-gate.sh parses" "$ok"
 ok=0; grep -q 'probe-eval-gate.sh' "$R" && ok=1
 check "run-probe-evals.sh calls the gate" "$ok"
+ok=0; grep -q 'eval-preflight.sh' "$R" && ok=1
+check "run-probe-evals.sh references the host preflight (eval-preflight.sh)" "$ok"
 
 # mkres.cjs <file> <case> <spec>: spec = comma list of <count>x<score>, a trailing ! sets an error on
 # those runs ("8x1,2x0.75" = 8 clean runs, 2 runs at 0.75). Also writes the case mean like the real file.
@@ -268,7 +270,8 @@ SH
 chmod +x "$FAKEBIN/claude"
 # runner_run <results-dir> sets GOUT and GRC; the spec files and rc come from $FAKE
 runner_run() {
-  GOUT="$(PATH="$FAKEBIN:$PATH" FAKE_DIR="$FAKE" FAKE_MKRES="$WORK/mkres.cjs" PROBE_EVALS_RESULTS_DIR="$1" bash "$R" 2>&1)"
+  mkdir -p "$WORK/emptycfg"
+  GOUT="$(PATH="$FAKEBIN:$PATH" DOCKER_CONFIG="$WORK/emptycfg" FAKE_DIR="$FAKE" FAKE_MKRES="$WORK/mkres.cjs" PROBE_EVALS_RESULTS_DIR="$1" bash "$R" 2>&1)"
   GRC=$?
 }
 set_fake() { echo 10x1 > "$FAKE/probe-provision.spec"; echo "$1" > "$FAKE/probe-pr-state.spec"; echo 10x1 > "$FAKE/probe-pr-write.spec"; echo "$2" > "$FAKE/rc"; }
