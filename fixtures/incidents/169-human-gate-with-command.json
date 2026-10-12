@@ -79,6 +79,14 @@
     "plan-check-169-2": {
       "verdict": "CONFORMING",
       "issues": []
+    },
+    "probe-169-pr-write-run-state-plan-r0": {
+      "line": "PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=860b1ac69289c7af989e1945f351e43cd9b29b88e76b567ea07f98d2a2afcb1e json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}",
+      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=860b1ac69289c7af989e1945f351e43cd9b29b88e76b567ea07f98d2a2afcb1e json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}"
+    },
+    "probe-169-pr-write-run-state-plan-ready-r0": {
+      "line": "PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=e90e282b6ae83a32b3878cf380a50447cd5fed33dd92d902624717f59194289c json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}",
+      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=e90e282b6ae83a32b3878cf380a50447cd5fed33dd92d902624717f59194289c json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}"
     }
   },
   "expect": {
@@ -88,7 +96,9 @@
       "probe:lines:haiku",
       "probe:provision:haiku",
       "probe:provision-freshness:haiku",
-      "acceptance-items-refused:1"
+      "probe:pr-write:haiku",
+      "acceptance-items-refused:1",
+      "probe:pr-write:haiku"
     ],
     "logsInclude": [
       "acceptance item problem(s) found by the script",

@@ -20,6 +20,14 @@ wait), the awaiting-EXTERNAL value `"blocked-by"` (the run is correctly parked w
 in ANOTHER repo — see [Cross-repo blockedBy signal](#cross-repo-blockedby-signal) below), an absent
 status, and any unrecognized/typo'd value (fails safe: never flagged as stuck).
 
+### Who writes the state file
+
+- The engine writes it (#502): op `run-state` of `scripts/runtime/pr-write.sh`, through the same `pr-write` probe as every other write of a run. No Lead action is needed.
+- Path `<main checkout>/.pipeline/issue-<N>.json`, content `{"issue":N,"status":"...","lastTouchedAt":"<UTC ISO>"}`, written atomically (temp file, then `mv`) so each write refreshes the mtime the watchdog reads.
+- Values: `plan` (before the Diagnose stage), `dev`, `review` while the run is in flight, then the status the run returns (`ready`, `plan-ready`, `escalate`, `review-died`, ...). None of the exit values is on the whitelist, so a finished or parked run is never flagged.
+- Why the main checkout: the Stop hook scans `$CLAUDE_PROJECT_DIR/.pipeline`, never a worktree's own `.pipeline/`. Outside a git checkout the op falls back to the directory it runs in.
+- Fail-open: a failed write is logged and the run continues; a simulated, dry or probe-only run writes nothing.
+
 ## Staleness threshold
 
 `.claude/pipeline.config.json` -> `{"supervision": {"staleMinutes": N}}`, default `30`. A

@@ -38,6 +38,14 @@
       "issueCreatedAt": "2026-01-01T00:00:00Z",
       "mergedPrClosesIssue": false,
       "checkFailed": false
+    },
+    "probe-123-pr-write-run-state-review-r0": {
+      "line": "PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=0ad444dc5d0c00633a0c25fc04d76e0d66799d2c6f8c22699f407e3db24c4f3a json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}",
+      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=0ad444dc5d0c00633a0c25fc04d76e0d66799d2c6f8c22699f407e3db24c4f3a json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}"
+    },
+    "probe-123-pr-write-run-state-escalate-r0": {
+      "line": "PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=a1bef32401b1c8b17932d688728ed30ba3eec53e634ea73d0dfb72a15e30b61b json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}",
+      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=a1bef32401b1c8b17932d688728ed30ba3eec53e634ea73d0dfb72a15e30b61b json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}"
     }
   },
   "expect": {
