@@ -41,7 +41,7 @@ description: Run or debug the probe evals of issue #81 (`claude plugin eval` on 
 
 ## How a case finds the plugin
 - A run gets an allowlisted environment only: `CLAUDE_PLUGIN_ROOT` is NOT exported to subagent Bash, but `EVAL_*` variables pass (doc: https://code.claude.com/docs/en/plugin-evals, `env` field).
-- `scripts/run-probe-evals.sh` exports `EVAL_PLUGIN_ROOT`; the case prompts call `$EVAL_PLUGIN_ROOT/templates/probe-run.cjs`.
+- `scripts/run-probe-evals.sh` exports `EVAL_PLUGIN_ROOT`; the case prompts call `$EVAL_PLUGIN_ROOT/scripts/runtime/probe-run.cjs`.
 - Each prompt gives the probe agent TWO commands (run, then `--verify`): the `SubagentStop-probe.sh` hook refuses to stop the agent without an attested PROBE and VERIFY pair.
 
 ## Known pitfalls
@@ -49,7 +49,7 @@ description: Run or debug the probe evals of issue #81 (`claude plugin eval` on 
 - `401 Invalid bearer token`: the token was pasted broken across lines. Re-add it to the Keychain on one line.
 - `401 OAuth access token is invalid`: the token was revoked. Run `claude setup-token` and replace the Keychain item.
 - Eval refused on the macOS host (#94308): use the Docker wrapper, never the bare script.
-- `Cannot find module '/templates/probe-run.cjs'`: a prompt still uses `$CLAUDE_PLUGIN_ROOT`; use `$EVAL_PLUGIN_ROOT`.
+- `Cannot find module '/scripts/runtime/probe-run.cjs'`: a prompt still uses `$CLAUDE_PLUGIN_ROOT`; use `$EVAL_PLUGIN_ROOT`.
 - The probe agent answers "I need two commands": the prompt gives only the run command; add the `--verify` command.
 - Score meaning: 4 graders weighted 1 each, so 0.25 per grader (agent-dispatched, bash-called, probe-line, verify-ok).
   - `probe-line` pins the WHOLE expected PROBE line (sha, cmd, json) and must match the whole final message: one flipped hex char, a paraphrase, an invented line, prose or a code fence around it fails.
@@ -61,4 +61,4 @@ description: Run or debug the probe evals of issue #81 (`claude plugin eval` on 
   - 0.00 = the agent was never dispatched, so nothing ran.
   - The gate is not a score threshold: it counts fully passed runs (1.00 each), at least 29 of 30 (see The gate).
 - The pinned lines are constants: the case commands are fixed, so `sha`, `cmd` and `json` never vary (checked twice offline).
-  - If a case command or `templates/probe-run.cjs` output changes, regenerate its two graders; `tests/scripts/test-probe-evals.sh` fails until the pinned line equals the real one.
+  - If a case command or `scripts/runtime/probe-run.cjs` output changes, regenerate its two graders; `tests/scripts/test-probe-evals.sh` fails until the pinned line equals the real one.

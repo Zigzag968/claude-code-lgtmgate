@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Tick-equivalence test: the acceptance-box tick exists three times, in the python of scripts/lead-merge.sh (the
 # --tick-from-review step), as tickAcceptanceBlock in workflows/deliver-pipeline.js and as the `tick` mode of
-# templates/pr-body-splice.cjs. The same body and the same boxes to tick go through the three; the outputs must be byte-equal
+# scripts/runtime/pr-body-splice.cjs. The same body and the same boxes to tick go through the three; the outputs must be byte-equal
 # (after dropping the suffix lead-merge appends to a ticked line). The three files are read, never edited.
 # The python reads fences, CRLF and the final newline as the engine does, so every case diffs the python against the engine byte
 # for byte. One difference is intended: the python keeps the non-box lines of the block in place, the engine moves them after the
@@ -61,7 +61,7 @@ run_case() {
   python3 "$T/tick.py" "$T/body.txt" "$T/review.txt" 2>/dev/null > "$T/py.raw"
   strip_suffix "$T/py.raw" "$T/py.out"
   node "$T/run-engine.js" "$T/engine.js" "$T/body.txt" "$T/rendered.txt" "$tick" "$keep" "$T/eng.out" || { bad "tick-equivalence $name: the engine tick failed"; return; }
-  node "$SRC/templates/pr-body-splice.cjs" tick "$T/body.txt" "$T/rendered.txt" "$T/cli.out" "$tick" "$keep" || { bad "tick-equivalence $name: the template CLI tick failed"; return; }
+  node "$SRC/scripts/runtime/pr-body-splice.cjs" tick "$T/body.txt" "$T/rendered.txt" "$T/cli.out" "$tick" "$keep" || { bad "tick-equivalence $name: the template CLI tick failed"; return; }
   if [ "$name" = crlf ]; then
     [ "$(grep -c "$CR" "$T/eng.out")" -gt 0 ] || { bad "tick-equivalence $name: the engine lost the CR"; return; }
   fi
@@ -77,7 +77,7 @@ run_literal() {
   python3 "$T/tick.py" "$T/body.txt" "$T/review.txt" 2>/dev/null > "$T/py.raw"
   strip_suffix "$T/py.raw" "$T/py.out"
   node "$T/run-engine.js" "$T/engine.js" "$T/body.txt" "$T/rendered.txt" "$tick" "$keep" "$T/eng.out" || { bad "tick-equivalence $name: the engine tick failed"; return; }
-  node "$SRC/templates/pr-body-splice.cjs" tick "$T/body.txt" "$T/rendered.txt" "$T/cli.out" "$tick" "$keep" || { bad "tick-equivalence $name: the template CLI tick failed"; return; }
+  node "$SRC/scripts/runtime/pr-body-splice.cjs" tick "$T/body.txt" "$T/rendered.txt" "$T/cli.out" "$tick" "$keep" || { bad "tick-equivalence $name: the template CLI tick failed"; return; }
   d=$(diff "$want" "$T/py.out") || { bad "tick-equivalence $name: python differs from the expected body: $d"; return; }
   d=$(diff "$T/eng.out" "$T/cli.out") || { bad "tick-equivalence $name: engine vs template CLI differ: $d"; return; }
   ok "tick-equivalence $name: python matches the literal body, engine and template CLI agree"

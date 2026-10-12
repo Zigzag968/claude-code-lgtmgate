@@ -33,7 +33,7 @@ printf 'x\n<!-- acceptance:start -->\n- [x] <!-- ac:1 --> a\n- [ ] <!-- ac:2 -->
 printf 'x\n<!-- acceptance:start -->\n- [x] a\n- [ ] b\n<!-- acceptance:end -->\n' > "$T/open.md"
 printf 'x\n<!-- acceptance:start -->\n- [x] a\n' > "$T/noend.md"
 printf 'x\n- [ ] no acceptance section at all\n' > "$T/none.md"
-# fenced examples (#202): a marker pair inside a fenced code block is not the acceptance block (the engine's rule, templates/pr-body-splice.cjs)
+# fenced examples (#202): a marker pair inside a fenced code block is not the acceptance block (the engine's rule, scripts/runtime/pr-body-splice.cjs)
 FX='```\n<!-- acceptance:start -->\n- [ ] an example box\n<!-- acceptance:end -->\n```\n'
 FX4='````\n```\n<!-- acceptance:start -->\n- [ ] an example box\n<!-- acceptance:end -->\n```\n````\n'
 FXT='~~~\n<!-- acceptance:start -->\n- [ ] an example box\n<!-- acceptance:end -->\n~~~\n'

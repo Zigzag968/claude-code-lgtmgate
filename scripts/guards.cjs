@@ -63,10 +63,10 @@
 //      numbered titles `Review 2`, `Plan 2` rely on this; titles are compared after trimming surrounding whitespace,
 //      as the viewer does). Only the meta block is read. A failure names the title.
 //   init-stubs (#267): the six stubs `/lgtmgate:init` creates under .claude/lgtmgate/ (STUBS of
-//      scripts/init-specifics.cjs) carry none of the engine vocabulary (ENGINE_WORDS_RE) and are empty once
+//      scripts/runtime/init-specifics.cjs) carry none of the engine vocabulary (ENGINE_WORDS_RE) and are empty once
 //      their comments are stripped (a stub injects nothing into an agent's prompt). Since #271 the lane stub
 //      (laneStub of the same module, frontmatter and comments stripped) and the persona sentence
-//      (laneSentence of scripts/agent-context.cjs) are held to the same vocabulary rule. A failure names the stub.
+//      (laneSentence of scripts/runtime/agent-context.cjs) are held to the same vocabulary rule. A failure names the stub.
 //   audit (#289): the code-quality ratchet. Rule 2 first (cheap): scripts/audit-baseline.json may never raise a
 //      (file, rule) count above `git show origin/main:scripts/audit-baseline.json` (absent = 0); with no base baseline
 //      (bootstrap) it prints `SKIP: baseline-vs-origin (no base baseline)`, and with an unresolvable origin/main it FAILS
@@ -97,7 +97,7 @@
 //   GUARDS_STATUS_JS_FILE  workflow file for status-table (default: workflows/deliver-pipeline.js)
 //   GUARDS_DELIVER_MD      Lead runbook for status-table (default: skills/deliver/SKILL.md)
 //   GUARDS_PHASES_JS_FILE  workflow file for phase-titles (default: workflows/deliver-pipeline.js)
-//   GUARDS_INIT_STUBS      module exporting STUBS for init-stubs (default: scripts/init-specifics.cjs)
+//   GUARDS_INIT_STUBS      module exporting STUBS for init-stubs (default: scripts/runtime/init-specifics.cjs)
 //   GUARDS_TEST_COUNTS     JSON map suite label -> count for readme-contract (default: run the suites)
 //   GUARDS_ROOT            repo root (default: parent of scripts/)
 
@@ -420,7 +420,7 @@ function checkPhaseTitles() {
 function checkInitStubs() {
   let module_
   try {
-    module_ = require(process.env.GUARDS_INIT_STUBS || path.join(ROOT, 'scripts/init-specifics.cjs'))
+    module_ = require(process.env.GUARDS_INIT_STUBS || path.join(ROOT, 'scripts/runtime/init-specifics.cjs'))
   } catch (_) {
     bad('FAIL: init-stubs: cannot load the stubs module')
     return
@@ -453,13 +453,13 @@ function checkInitStubs() {
   }
   let laneSentences = 0
   try {
-    const sentence = require(path.join(ROOT, 'scripts/agent-context.cjs')).laneSentence('Ivy', 'senior iOS engineer')
+    const sentence = require(path.join(ROOT, 'scripts/runtime/agent-context.cjs')).laneSentence('Ivy', 'senior iOS engineer')
     const w = ENGINE_WORDS_RE.exec(sentence)
     if (w) problems.push(`lane sentence carries the engine word '${w[0]}'`)
     if (sentence === '') problems.push('lane sentence is empty for a persona')
     laneSentences = 1
   } catch (_) {
-    problems.push('cannot load laneSentence from scripts/agent-context.cjs')
+    problems.push('cannot load laneSentence from scripts/runtime/agent-context.cjs')
   }
   if (problems.length) { for (const pr of problems) bad(`FAIL: init-stubs: ${pr}`); return }
   out(`PASS: init-stubs: ${names.length} stubs, ${laneStubs} lane stub, ${laneSentences} lane sentence, no engine vocabulary, empty once comments are stripped`)

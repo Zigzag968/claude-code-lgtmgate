@@ -97,8 +97,8 @@
       "issues": []
     },
     "probe-33-preflight-dev-r0": {
-      "line": "PROBE name=preflight exit=0 sha=2da8cc840849e3cd7a8c497d4661929df2e8be5972b07b6dc5877a9c6f66eea9 cmd=e9b51518230eedf4dc79f663804fcd987d05f493f9f5ea4f91794663c3de0ee5 json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/wt/root/issue-33/.git\",\"writable\":false}",
-      "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=2da8cc840849e3cd7a8c497d4661929df2e8be5972b07b6dc5877a9c6f66eea9 cmd=e9b51518230eedf4dc79f663804fcd987d05f493f9f5ea4f91794663c3de0ee5 json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/wt/root/issue-33/.git\",\"writable\":false}"
+      "line": "PROBE name=preflight exit=0 sha=2da8cc840849e3cd7a8c497d4661929df2e8be5972b07b6dc5877a9c6f66eea9 cmd=ac79e870a77bbc587fd459e0fae192e3e192f1544485983793acedf7a09cc14c json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/wt/root/issue-33/.git\",\"writable\":false}",
+      "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=2da8cc840849e3cd7a8c497d4661929df2e8be5972b07b6dc5877a9c6f66eea9 cmd=ac79e870a77bbc587fd459e0fae192e3e192f1544485983793acedf7a09cc14c json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/wt/root/issue-33/.git\",\"writable\":false}"
     }
   },
   "expect": {

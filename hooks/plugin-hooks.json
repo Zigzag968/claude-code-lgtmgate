@@ -40,7 +40,7 @@
             "type": "command",
             "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/PostToolUse-probe-attest.sh\"",
             "timeout": 10,
-            "description": "Attest the PROBE and VERIFY lines the lgtmgate:probe agent copies from templates/probe-run.cjs (fail-open, never blocks)"
+            "description": "Attest the PROBE and VERIFY lines the lgtmgate:probe agent copies from scripts/runtime/probe-run.cjs (fail-open, never blocks)"
           }
         ]
       }

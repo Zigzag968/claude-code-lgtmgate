@@ -8,9 +8,9 @@ The root folders are enforced by `.ls-lint.yml` and `node scripts/audit.cjs --ch
 | `agents/` | the pipeline (agent personas) | one persona per role | `sam.md`, `nick.md`, `morgan.md` |
 | `skills/` | Claude Code users | the skills shipped with the plugin; each is a slash command /lgtmgate:<name> | `deliver/SKILL.md`, `init/SKILL.md`, `context/SKILL.md` |
 | `hooks/` | Claude Code (plugin hooks) | hook scripts named after their event | `plugin-hooks.json`, `block-merge-unchecked.sh` |
-| `templates/` | consumer repos and the engine | files `/lgtmgate:init` copies (the provisioning script, the cross-repo signal helper), templates the engine reads and scripts it runs | `probe-run.cjs`, `pr-acceptance.md`, `pipeline.config.template.json` |
+| `templates/` | consumer repos and the engine | files `/lgtmgate:init` copies (the provisioning script, the cross-repo signal helper), templates the engine reads | `pr-acceptance.md`, `pipeline.config.template.json` |
 | `tests/` | maintainers and CI | every test suite, in `hooks/`, `scripts/` or `templates/` after the folder it exercises (`templates/test-deliver-pipeline.js` stays: `scripts/run-flow-suite.cjs` loads it, init no longer copies it) | `scripts/test-guards.sh`, `templates/test-canonical-guards.sh` |
-| `scripts/` | maintainers and CI | audit, guards, merge and CI helpers | `audit.cjs`, `guards.cjs`, `lead-merge.sh` |
+| `scripts/` | maintainers and CI | audit, guards, merge and CI helpers; `scripts/runtime/` holds the engine runtime scripts (probe-run.cjs, pr-state.sh, pr-write.sh, preflight.sh, pr-body-splice.cjs, gh-read-class.sh, agent-context.cjs, init-specifics.cjs) | `audit.cjs`, `guards.cjs`, `lead-merge.sh` |
 | `plugins/` | marketplace users | the second plugin of this marketplace | `backlog/` |
 | `docs/` | maintainers and readers | reference pages, no code | `supervision.md`, `critical-paths.md`, `layout.md` |
 | `evals/` | maintainers | probe evals: prompts and graders | `probe-pr-state/` |

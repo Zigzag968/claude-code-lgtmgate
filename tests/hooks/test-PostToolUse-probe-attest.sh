@@ -41,7 +41,7 @@ fresh() { CWD="$(mktemp -d "$WORK/c.XXXXXX")"; }
 
 # (a) probe + probe-run command + PROBE stdout -> one jsonl line
 fresh
-mk lgtmgate:probe "node templates/probe-run.cjs --label x --round 0 --out /o --parser lines --cmd 'true'" | bash "$ATTEST"
+mk lgtmgate:probe "node scripts/runtime/probe-run.cjs --label x --round 0 --out /o --parser lines --cmd 'true'" | bash "$ATTEST"
 RC=$?
 ok=0
 [ "$RC" -eq 0 ] && [ "$(attest_lines)" = "1" ] &&
@@ -50,7 +50,7 @@ check "probe + probe-run command -> attested (agent_id, tool_use_id, line)" "$ok
 
 # (a2) quoted absolute path is also accepted
 fresh
-mk lgtmgate:probe "node \"/abs/plugin/templates/probe-run.cjs\" --label x" | bash "$ATTEST"
+mk lgtmgate:probe "node \"/abs/plugin/scripts/runtime/probe-run.cjs\" --label x" | bash "$ATTEST"
 [ "$(attest_lines)" = "1" ] && ok=1 || ok=0
 check "quoted absolute probe-run path -> attested" "$ok"
 
@@ -59,8 +59,8 @@ for q in dq sq; do
   fresh
   D="$(mktemp -d "$WORK/wt dir.XXXXXX")"
   case "$q" in
-    dq) P="cd \"$D\" && node \"/abs/my plugin/templates/probe-run.cjs\" --label x" ;;
-    sq) P="cd '$D' && node '/abs/my plugin/templates/probe-run.cjs' --label x" ;;
+    dq) P="cd \"$D\" && node \"/abs/my plugin/scripts/runtime/probe-run.cjs\" --label x" ;;
+    sq) P="cd '$D' && node '/abs/my plugin/scripts/runtime/probe-run.cjs' --label x" ;;
   esac
   mk lgtmgate:probe "$P" | bash "$ATTEST"
   ok=0
@@ -68,7 +68,7 @@ for q in dq sq; do
   check "spaces in quoted plugin root + worktree ($q) -> attested" "$ok"
 done
 fresh
-mk lgtmgate:probe "node \"/abs/my plugin/templates/probe-run.cjs\" --label x" | bash "$ATTEST"
+mk lgtmgate:probe "node \"/abs/my plugin/scripts/runtime/probe-run.cjs\" --label x" | bash "$ATTEST"
 [ "$(attest_lines)" = "1" ] && ok=1 || ok=0
 check "double-quoted spaced path without cd -> attested" "$ok"
 fresh
@@ -78,13 +78,13 @@ check "spaced path to a different script -> ignored" "$ok"
 
 # (b) other agent -> ignored
 fresh
-mk lgtmgate:Morgan "node templates/probe-run.cjs --label x" | bash "$ATTEST"; RC=$?
+mk lgtmgate:Morgan "node scripts/runtime/probe-run.cjs --label x" | bash "$ATTEST"; RC=$?
 [ "$RC" -eq 0 ] && [ "$(attest_lines)" = "0" ] && ok=1 || ok=0
 check "lgtmgate:Morgan -> ignored" "$ok"
 
 # (c) no agent_type -> ignored
 fresh
-mk - "node templates/probe-run.cjs --label x" | bash "$ATTEST"; RC=$?
+mk - "node scripts/runtime/probe-run.cjs --label x" | bash "$ATTEST"; RC=$?
 [ "$RC" -eq 0 ] && [ "$(attest_lines)" = "0" ] && ok=1 || ok=0
 check "no agent_type -> ignored" "$ok"
 
@@ -102,13 +102,13 @@ check "probe + node other.cjs -> ignored" "$ok"
 
 # (f) probe-run.cjs.evil -> ignored
 fresh
-mk lgtmgate:probe "node templates/probe-run.cjs.evil --label x" | bash "$ATTEST"; RC=$?
+mk lgtmgate:probe "node scripts/runtime/probe-run.cjs.evil --label x" | bash "$ATTEST"; RC=$?
 [ "$RC" -eq 0 ] && [ "$(attest_lines)" = "0" ] && ok=1 || ok=0
 check "probe-run.cjs.evil -> ignored" "$ok"
 
 # (f2) probe-run command but stdout without a PROBE line -> nothing attested
 fresh
-mk lgtmgate:probe "node templates/probe-run.cjs --label x" "no probe here" | bash "$ATTEST"
+mk lgtmgate:probe "node scripts/runtime/probe-run.cjs --label x" "no probe here" | bash "$ATTEST"
 [ "$(attest_lines)" = "0" ] && ok=1 || ok=0
 check "no PROBE line in stdout -> ignored" "$ok"
 
@@ -117,9 +117,9 @@ for q in bare dq sq; do
   fresh
   D="$(mktemp -d "$WORK/wt.XXXXXX")"
   case "$q" in
-    bare) P="cd $D && node /abs/plugin/templates/probe-run.cjs --label x" ;;
-    dq)   P="cd \"$D\" && node \"/abs/plugin/templates/probe-run.cjs\" --label x" ;;
-    sq)   P="cd '$D' && node '/abs/plugin/templates/probe-run.cjs' --label x" ;;
+    bare) P="cd $D && node /abs/plugin/scripts/runtime/probe-run.cjs --label x" ;;
+    dq)   P="cd \"$D\" && node \"/abs/plugin/scripts/runtime/probe-run.cjs\" --label x" ;;
+    sq)   P="cd '$D' && node '/abs/plugin/scripts/runtime/probe-run.cjs' --label x" ;;
   esac
   mk lgtmgate:probe "$P" | bash "$ATTEST"
   ok=0
@@ -136,23 +136,23 @@ mk lgtmgate:probe "cd $D && ls x" | bash "$ATTEST"
 check "cd-prefix: cd <dir> && <other command> -> ignored" "$ok"
 
 fresh
-mk lgtmgate:Morgan "cd $D && node /abs/plugin/templates/probe-run.cjs --label x" | bash "$ATTEST"
+mk lgtmgate:Morgan "cd $D && node /abs/plugin/scripts/runtime/probe-run.cjs --label x" | bash "$ATTEST"
 [ ! -e "$D/.pipeline/probe-attest.jsonl" ] && [ "$(attest_lines)" = "0" ] && ok=1 || ok=0
 check "cd-prefix: non-probe agent -> ignored" "$ok"
 
 fresh
-mk lgtmgate:probe "cd $CWD && node /abs/plugin/templates/probe-run.cjs --label x" | bash "$ATTEST"
+mk lgtmgate:probe "cd $CWD && node /abs/plugin/scripts/runtime/probe-run.cjs --label x" | bash "$ATTEST"
 [ "$(attest_lines)" = "1" ] && ok=1 || ok=0
 check "cd-prefix: dir equal to cwd -> attested once" "$ok"
 
 fresh
-mk lgtmgate:probe "cd $CWD && node /abs/plugin/templates/probe-run.cjs --verify --label x --round 2 --out /o --parser lines --attest /a" "VERIFY ok line=$PLINE" | bash "$ATTEST"
+mk lgtmgate:probe "cd $CWD && node /abs/plugin/scripts/runtime/probe-run.cjs --verify --label x --round 2 --out /o --parser lines --attest /a" "VERIFY ok line=$PLINE" | bash "$ATTEST"
 [ "$(attest_lines)" = "1" ] &&
   [ "$(jq -r '[.kind, .label, (.round|tostring), .line] | join("|")' "$CWD/.pipeline/probe-attest.jsonl")" = "verify|x|2|VERIFY ok line=$PLINE" ] && ok=1 || ok=0
 check "verify: a VERIFY line is attested with kind, label and round" "$ok"
 
 fresh
-mk lgtmgate:probe "node templates/probe-run.cjs --label y --round 1 --out /o --parser lines --cmd 'true'" | bash "$ATTEST"
+mk lgtmgate:probe "node scripts/runtime/probe-run.cjs --label y --round 1 --out /o --parser lines --cmd 'true'" | bash "$ATTEST"
 [ "$(jq -r '[.kind, .label, (.round|tostring)] | join("|")' "$CWD/.pipeline/probe-attest.jsonl")" = "probe|y|1" ] && ok=1 || ok=0
 check "probe entry carries kind, label and round" "$ok"
 

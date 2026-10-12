@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # A consumer's first run, read-only (#430, epic #428). Builds scratch consumer repositories (a bare remote and a clone)
 # for two states and runs the three consumer-facing scripts against them: scripts/config-check.cjs,
-# scripts/template-drift.cjs and scripts/agent-context.cjs. Everything runs in $TMPDIR; no network, no delivery, no
+# scripts/template-drift.cjs and scripts/runtime/agent-context.cjs. Everything runs in $TMPDIR; no network, no delivery, no
 # model call, nothing is written in the repository.
 #   (a) as the current plugin leaves it: the files /lgtmgate:init copies, the stubs of init-specifics.cjs, a config with
 #       the recommended keys;
@@ -84,7 +84,7 @@ old() { git -C "$ROOT" show "$OLD:$1" > "$2" 2>/dev/null; }
 A=$(consumer a)
 cp "$PLUGIN/templates/blocked-by-check.sh" "$A/.claude/scripts/blocked-by-check.sh"
 cp "$PLUGIN/templates/provision-worktree.sh" "$A/scripts/provision-worktree.sh"
-node "$PLUGIN/scripts/init-specifics.cjs" --root "$A" > /dev/null
+node "$PLUGIN/scripts/runtime/init-specifics.cjs" --root "$A" > /dev/null
 VERSION=$(node -p 'require(process.argv[1]).version' "$PLUGIN/.claude-plugin/plugin.json")
 printf '{"baseBranch":"main","projectSpecifics":".claude/lgtmgate","minPluginVersion":"%s","agentContext":{"*":[]},"preflight":{"envSymlink":"ignore"}}\n' "$VERSION" > "$A/.claude/pipeline.config.json"
 seal "$A"
@@ -134,7 +134,7 @@ no_question() { local l=$1; shift; if cat "$@" | grep -n '?'; then bad "$l-no-qu
 report a "$A"
 if ! grep -q '^warn:' "$TMP/a.report"; then ok "a-no-warn: a fresh consumer prints no warn: line"; else bad "a-no-warn: $(grep '^warn:' "$TMP/a.report" | head -n 1)"; fi
 verdicts_and_gestures a
-node "$PLUGIN/scripts/agent-context.cjs" --root "$A" > "$TMP/a.ac" 2> "$TMP/a.acerr" < /dev/null; RC=$?
+node "$PLUGIN/scripts/runtime/agent-context.cjs" --root "$A" > "$TMP/a.ac" 2> "$TMP/a.acerr" < /dev/null; RC=$?
 if [ "$RC" = 0 ] && ! grep -q 'hint:' "$TMP/a.acerr"; then ok "a-assembler: exit 0 and no refusal on the stubs init left"; else bad "a-assembler: exit $RC: $(head -c 300 "$TMP/a.acerr")"; fi
 no_question a "$TMP/a.report" "$TMP/a.acerr"
 
@@ -150,7 +150,7 @@ done <<EOF
 $(lines b)
 EOF
 if [ -z "$NOT_ALLOWED" ]; then ok "b-verdicts: every line is no effect on the run, remove at your convenience, or names a command"; else bad "b-verdicts: $NOT_ALLOWED"; fi
-node "$PLUGIN/scripts/agent-context.cjs" --root "$B" > "$TMP/b.ac" 2> "$TMP/b.acerr" < /dev/null; RC=$?
+node "$PLUGIN/scripts/runtime/agent-context.cjs" --root "$B" > "$TMP/b.ac" 2> "$TMP/b.acerr" < /dev/null; RC=$?
 if [ "$RC" = 0 ]; then ok "b-assembler: exit 0 (projectSpecifics off)"; else bad "b-assembler: exit $RC: $(head -c 300 "$TMP/b.acerr")"; fi
 no_question b "$TMP/b.report" "$TMP/b.acerr"
 
@@ -187,7 +187,7 @@ refusal() {
   printf '%s\n' "$cfg" > "$dir/.claude/pipeline.config.json"
   [ -n "$rel" ] && printf '%b' "$content" > "$dir/$rel"
   seal "$dir"
-  node "$PLUGIN/scripts/agent-context.cjs" --root "$dir" > "$TMP/r.out" 2> "$TMP/r.err" < /dev/null; local rc=$?
+  node "$PLUGIN/scripts/runtime/agent-context.cjs" --root "$dir" > "$TMP/r.out" 2> "$TMP/r.err" < /dev/null; local rc=$?
   local last; last=$(grep -v '^$' "$TMP/r.err" | tail -n 1)
   local pointer="; see docs/consumer-reference.md#$rule"
   if [ "$rc" != "$want" ]; then bad "refusal-$fam: exit $rc, wanted $want: $(head -c 300 "$TMP/r.err")"; return; fi

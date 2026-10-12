@@ -40,7 +40,7 @@ J=workflows/deliver-pipeline.js
 site literal "$J" ACCEPTANCE_START 1 "^const ACCEPTANCE_START = '([^']*)'\$"
 site literal "$J" includes 1 ".*b\\.includes\\('([^']*acceptance:start[^']*)'\\).*"
 site literal "$J" AC_BLOCK_START 1 "^const AC_BLOCK_START = '([^']*)'\$"
-C=templates/pr-body-splice.cjs
+C=scripts/runtime/pr-body-splice.cjs
 site literal "$C" ACCEPTANCE_START 1 "^const ACCEPTANCE_START = '([^']*)'\$"
 site literal "$C" includes 1 ".*b\\.includes\\('([^']*acceptance:start[^']*)'\\).*"
 site literal scripts/lib/acceptance-check.sh MSTART 1 ".*MSTART = \"([^\"]*)\".*"

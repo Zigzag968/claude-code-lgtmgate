@@ -29,7 +29,7 @@ node -e '
 check "[239] PARSERS preflight keeps readFailed only from the closed set (branch mode) and adds no key when absent" "$ok"
 
 # [307] layout of the planned paths: preflight.sh dev --engine true runs ls-lint on empty files at the planned paths
-PF307="$SCRIPT_DIR/preflight.sh"
+PF307="$ROOT/scripts/runtime/preflight.sh"
 if command -v jq >/dev/null 2>&1 && [ -x "$ROOT/node_modules/.bin/ls-lint" ] && [ -f "$ROOT/.ls-lint.yml" ]; then
   W307="$WORK/layout307"; mkdir -p "$W307"
   cp "$ROOT/.ls-lint.yml" "$W307/.ls-lint.yml"; ln -sfn "$ROOT/node_modules" "$W307/node_modules"
@@ -67,11 +67,11 @@ node -e '
 check "[307] PARSERS preflight keeps a well-formed layout and nulls a malformed one" "$ok"
 
 BLK='/^\/\/ --- prBodySplice:start ---/,/^\/\/ --- prBodySplice:end ---/p'
-[ -n "$(sed -n "$BLK" "$ROOT/workflows/deliver-pipeline.js")" ] && [ "$(sed -n "$BLK" "$ROOT/workflows/deliver-pipeline.js")" = "$(sed -n "$BLK" "$SCRIPT_DIR/pr-body-splice.cjs")" ] && ok=1 || ok=0
+[ -n "$(sed -n "$BLK" "$ROOT/workflows/deliver-pipeline.js")" ] && [ "$(sed -n "$BLK" "$ROOT/workflows/deliver-pipeline.js")" = "$(sed -n "$BLK" "$ROOT/scripts/runtime/pr-body-splice.cjs")" ] && ok=1 || ok=0
 check "pr-body-splice.cjs: source identical to the engine block" "$ok"
 
 # [237] acceptanceBoxes: a first line of only carriage returns is blank whatever their number (the engine file and the template)
-for f237 in "$ROOT/workflows/deliver-pipeline.js" "$SCRIPT_DIR/pr-body-splice.cjs"; do
+for f237 in "$ROOT/workflows/deliver-pipeline.js" "$ROOT/scripts/runtime/pr-body-splice.cjs"; do
   ok=0
   node -e '
     const fs = require("fs"), assert = require("assert")

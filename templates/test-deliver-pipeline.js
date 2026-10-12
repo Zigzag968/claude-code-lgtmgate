@@ -2484,14 +2484,14 @@ await testCase('T272 probeCommands() extracted from source markers (#82)', async
   const fallback = pc({ ...base })
   const att = "--attest '/wt/issue-7/.pipeline/probe-attest.jsonl'"
   const checks = [
-    eq('run starts with cd prefix + quoted plugin script', withRoot.run.startsWith("cd '/wt/issue-7' && node '/plug/templates/probe-run.cjs' "), true),
-    eq('verify starts with the same prefix', withRoot.verify.startsWith("cd '/wt/issue-7' && node '/plug/templates/probe-run.cjs' --verify "), true),
+    eq('run starts with cd prefix + quoted plugin script', withRoot.run.startsWith("cd '/wt/issue-7' && node '/plug/scripts/runtime/probe-run.cjs' "), true),
+    eq('verify starts with the same prefix', withRoot.verify.startsWith("cd '/wt/issue-7' && node '/plug/scripts/runtime/probe-run.cjs' --verify "), true),
     eq('run carries --cmd with the quoted command', withRoot.run.includes("--cmd 'echo '\\''hi'\\'''"), true),
     eq('run has no --verify', withRoot.run.includes('--verify'), false),
     eq('verify has --attest <wt>/.pipeline/probe-attest.jsonl', withRoot.verify.includes(att), true),
     eq('verify has no --cmd', withRoot.verify.includes('--cmd'), false),
     eq('config.probeRunPath wins over pluginRoot', configWins.run.includes("node '/cfg/probe-run.cjs' "), true),
-    eq('fallback is the worktree copy', fallback.run.includes("node '/wt/issue-7/templates/probe-run.cjs' "), true),
+    eq('fallback is the worktree copy', fallback.run.includes("node '/wt/issue-7/scripts/runtime/probe-run.cjs' "), true),
     eq('same out dir in both', withRoot.run.includes("--out '/wt/issue-7/.pipeline/probes/issue-7'") && withRoot.verify.includes("--out '/wt/issue-7/.pipeline/probes/issue-7'"), true),
     eq('default run has no --no-reuse (provision record rule unchanged)', withRoot.run.includes('--no-reuse'), false),
     eq('noReuse run carries --no-reuse before --cmd (#83)', /--no-reuse --cmd /.test(pc({ ...base, pluginRoot: '/plug', noReuse: true }).run), true),

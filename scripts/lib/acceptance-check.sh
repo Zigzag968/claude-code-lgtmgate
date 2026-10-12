@@ -3,7 +3,7 @@
 # scripts/lead-merge.sh so both apply the SAME rule from .claude/rules/pr-acceptance.md.
 # bash 3.2 safe. Defines functions only; no side effect on source.
 #
-# The engine writes (ticks) only the LAST marker pair outside a fence (acceptanceSpan / fenceAfter in templates/pr-body-splice.cjs, #202):
+# The engine writes (ticks) only the LAST marker pair outside a fence (acceptanceSpan / fenceAfter in scripts/runtime/pr-body-splice.cjs, #202):
 # the last start and the last end marker, each alone on its line (trailing space/tab and one \r allowed), outside a ``` or ~~~ fence
 # (3+ chars, up to 3 spaces of indent, closed by the same character at least as long with nothing but blanks after; a fence never closed
 # runs to the end of the body). This lib finds that block the same way, so the engine, the merge hook and lead-merge agree on it.

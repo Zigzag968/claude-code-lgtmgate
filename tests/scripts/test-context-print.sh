@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Self-test of `scripts/agent-context.cjs --print` (#268): the table (no role) and the fenced role view,
+# Self-test of `scripts/runtime/agent-context.cjs --print` (#268): the table (no role) and the fenced role view,
 # on a synthetic repo built from fixtures/specifics/context-src with a fully pinned commit (author,
 # committer, date, message), so the goldens in fixtures/specifics/context-golden are stable.
 #   bash tests/scripts/test-context-print.sh                  run the checks
@@ -9,7 +9,7 @@
 set -u
 cd "$(dirname "$0")/../.." || exit 1
 ROOT=$(pwd)
-AC="$ROOT/scripts/agent-context.cjs"
+AC="$ROOT/scripts/runtime/agent-context.cjs"
 SRC="$ROOT/fixtures/specifics/context-src"
 SRC_LANES="$ROOT/fixtures/specifics/context-lanes-src"
 GOLD="$ROOT/fixtures/specifics/context-golden"

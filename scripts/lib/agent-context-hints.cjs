@@ -1,6 +1,6 @@
 'use strict'
 
-// Remedy lines of scripts/agent-context.cjs (#416): each refusal rule has one line `agent-context: hint: <rule>: <remedy>; see
+// Remedy lines of scripts/runtime/agent-context.cjs (#416): each refusal rule has one line `agent-context: hint: <rule>: <remedy>; see
 // docs/consumer-reference.md#<rule>`, printed once per run after the refusal lines. Pure functions, no git, no file system.
 // A rule enters the table with its row in docs/consumer-reference.md (tests/scripts/test-agent-context.sh checks each one).
 

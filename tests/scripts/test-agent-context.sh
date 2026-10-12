@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Self-test of scripts/agent-context.cjs (#264): per-role specifics assembled from the base ref of a
+# Self-test of scripts/runtime/agent-context.cjs (#264): per-role specifics assembled from the base ref of a
 # synthetic git repo built in $TMPDIR from fixtures/agent-context/base. Covers the source order, the
 # `*`/role lists, dedup, the file-level refusals (exit 3), the frontmatter schema (exit 2), the caps
 # (warning at the recommended size, exit 4 at the hard ceiling), the digest (recomputed independently),
@@ -10,7 +10,7 @@
 set -u
 cd "$(dirname "$0")/../.." || exit 1
 ROOT=$(pwd)
-AC="$ROOT/scripts/agent-context.cjs"
+AC="$ROOT/scripts/runtime/agent-context.cjs"
 BASE="$ROOT/fixtures/agent-context/base"
 PASS=0; FAIL=0
 ok()  { PASS=$((PASS+1)); echo "ok: $1"; }
@@ -473,7 +473,7 @@ atcase at-fence-invis 'a\n```\nx%sy\n```\n' "$(printf '\342\200\213')"; exit_is 
 err_has "fenced-invisible-char-exit3: names the rule and the line" "invisible-char at line 3"
 atcase at-fence-secret 'a\n```\n%s\n```\n' "$TOK"; exit_is "fenced-secret-exit3" 3
 if grep -q '^.*secret-.* at line 3' "$ERR"; then ok "fenced-secret-exit3: names a secret rule and the line"; else bad "fenced-secret-exit3: stderr: $(head -c 300 "$ERR")"; fi
-FA_ENG="$(sed -n '/^function fenceAfter/,/^}/p' "$ROOT/templates/pr-body-splice.cjs")"
+FA_ENG="$(sed -n '/^function fenceAfter/,/^}/p' "$ROOT/scripts/runtime/pr-body-splice.cjs")"
 FA_TXT="$(sed -n '/^function fenceAfter/,/^}/p' "$ROOT/scripts/lib/agent-context-text.cjs")"
 if [ -n "$FA_ENG" ] && [ "$FA_ENG" = "$FA_TXT" ]; then ok "fence-rule-parity: fenceAfter of the screen is the engine's, byte for byte"; else bad "fence-rule-parity: the two fenceAfter differ"; fi
 

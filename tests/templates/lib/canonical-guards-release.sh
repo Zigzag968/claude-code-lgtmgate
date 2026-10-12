@@ -414,11 +414,11 @@ GH_STATUS_A="templates/gh-pipeline-status.sh"
 GH_STATUS_B=".claude/scripts/gh-pipeline-status.sh"
 if [ -f "$WORKFLOW_FILE" ] && grep -q 'gh project item-list' "$WORKFLOW_FILE"; then
   fail "project-item-lookup" "$WORKFLOW_FILE still calls 'gh project item-list' (board scan) — updateStatus() must use the issue's own projectItems connection instead"
-elif [ -f "templates/pr-write.sh" ] && grep -q 'gh project item-list' "templates/pr-write.sh"; then
-  fail "project-item-lookup" "templates/pr-write.sh still calls 'gh project item-list' (board scan)"
-elif [ ! -f "templates/pr-write.sh" ] || ! grep -q 'projectItems(first:' "templates/pr-write.sh" || ! grep -q 'select(.project.number==' "templates/pr-write.sh"; then
-  # #85: the status write moved from updateStatus()'s haiku prompt into templates/pr-write.sh (op status).
-  fail "project-item-lookup" "templates/pr-write.sh is missing the issue-side GraphQL projectItems lookup (projectItems(first: / select(.project.number==)"
+elif [ -f "scripts/runtime/pr-write.sh" ] && grep -q 'gh project item-list' "scripts/runtime/pr-write.sh"; then
+  fail "project-item-lookup" "scripts/runtime/pr-write.sh still calls 'gh project item-list' (board scan)"
+elif [ ! -f "scripts/runtime/pr-write.sh" ] || ! grep -q 'projectItems(first:' "scripts/runtime/pr-write.sh" || ! grep -q 'select(.project.number==' "scripts/runtime/pr-write.sh"; then
+  # #85: the status write moved from updateStatus()'s haiku prompt into scripts/runtime/pr-write.sh (op status).
+  fail "project-item-lookup" "scripts/runtime/pr-write.sh is missing the issue-side GraphQL projectItems lookup (projectItems(first: / select(.project.number==)"
 elif [ ! -f "$GH_STATUS_A" ] || [ ! -f "$GH_STATUS_B" ]; then
   fail "project-item-lookup" "one or both of $GH_STATUS_A / $GH_STATUS_B is missing"
 elif ! cmp -s "$GH_STATUS_A" "$GH_STATUS_B"; then

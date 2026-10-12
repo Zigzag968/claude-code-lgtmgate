@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# PostToolUse(Bash) — attest that a PROBE / VERIFY line really came out of templates/probe-run.cjs (#80, #83).
+# PostToolUse(Bash) — attest that a PROBE / VERIFY line really came out of scripts/runtime/probe-run.cjs (#80, #83).
 # Only for the lgtmgate:probe agent (spike #79: agent_type is namespaced) AND a probe-run command.
 # Appends {agent_id, tool_use_id, kind, label, round, line, ts} to <cwd>/.pipeline/probe-attest.jsonl:
 # kind=probe for the PROBE line of a run command, kind=verify for the VERIFY line of a `--verify`

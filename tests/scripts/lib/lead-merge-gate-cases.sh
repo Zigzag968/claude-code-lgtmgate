@@ -171,7 +171,7 @@ D="$(setup happy-id)"; run "$D" "$BASE/good-id.md"; rc=$?
 D_AFTER_3B="$D"
 
 # 3c. fenced examples (#202): a marker pair inside a fenced code block is not the acceptance block (the engine's rule,
-# templates/pr-body-splice.cjs), so the gate reads the same block the engine ticked
+# scripts/runtime/pr-body-splice.cjs), so the gate reads the same block the engine ticked
 fx='```\n<!-- acceptance:start -->\n- [ ] an example box\n<!-- acceptance:end -->\n```\n'
 fx4='````\n```\n<!-- acceptance:start -->\n- [ ] an example box\n<!-- acceptance:end -->\n```\n````\n'
 fxt='~~~\n<!-- acceptance:start -->\n- [ ] an example box\n<!-- acceptance:end -->\n~~~\n'
@@ -210,7 +210,7 @@ if command -v node >/dev/null 2>&1; then
   . "$ACC_LIB"
   printf 'SENT' > "$BASE/sent.txt"
   for f in fx-before-ok fx-after-ok fx-before-open fx-after-open fx-long-tilde-ok fx-unclosed-before fx-unclosed-after fx-only good open; do
-    node "$ROOT/templates/pr-body-splice.cjs" splice acceptance "$BASE/$f.md" "$BASE/sent.txt" "$BASE/sent.out" >/dev/null 2>&1; erc=$?
+    node "$ROOT/scripts/runtime/pr-body-splice.cjs" splice acceptance "$BASE/$f.md" "$BASE/sent.txt" "$BASE/sent.out" >/dev/null 2>&1; erc=$?
     acceptance_extract_block < "$BASE/$f.md" > "$BASE/blk.txt"; lrc=$?
     if [ "$erc" -eq 3 ]; then
       [ "$lrc" -eq 3 ] && ok "fenced-example parity $f: no block, as in the engine" || bad "fenced-example parity $f: engine finds no block, lib rc=$lrc"

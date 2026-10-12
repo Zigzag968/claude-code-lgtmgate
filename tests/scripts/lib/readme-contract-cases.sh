@@ -4,11 +4,11 @@
 
 # mkrc <dir>: a minimal root holding copies of what the rule reads.
 mkrc() {
-  mkdir -p "$1/workflows" "$1/templates" "$1/scripts"
+  mkdir -p "$1/workflows" "$1/templates" "$1/scripts/runtime"
   cp "$REPO_ROOT/README.md" "$1/README.md"
   cp "$REPO_ROOT/workflows/deliver-pipeline.js" "$1/workflows/deliver-pipeline.js"
   cp "$REPO_ROOT/templates/pipeline.config.template.json" "$1/templates/pipeline.config.template.json"
-  cp "$REPO_ROOT/scripts/agent-context.cjs" "$1/scripts/agent-context.cjs"
+  cp "$REPO_ROOT/scripts/runtime/agent-context.cjs" "$1/scripts/runtime/agent-context.cjs"
 }
 # run_rc <dir> [counts-file] -> sets RC and OUT
 run_rc() { OUT="$(GUARDS_ROOT="$1" GUARDS_ONLY=readme-contract GUARDS_TEST_COUNTS="${2:-$RC_COUNTS}" node "$REPO_ROOT/scripts/guards.cjs" 2>&1)"; RC=$?; }

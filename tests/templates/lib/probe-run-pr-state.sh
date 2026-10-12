@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # pr-state.sh end to end, case (j) (sourced by tests/templates/test-probe-run.sh, never executed).
 # (j) pr-state.sh end to end (#84): stub gh first on PATH. No network.
-PS="$SCRIPT_DIR/pr-state.sh"
+PS="$ROOT/scripts/runtime/pr-state.sh"
 if command -v jq >/dev/null 2>&1; then
   PSD="$WORK/ps"; mkdir -p "$PSD/bin" "$PSD/wt"
   cat > "$PSD/bin/gh" <<'GHEOF'
@@ -269,7 +269,7 @@ GHEOF
   check "[164] pr-state parser keeps decisionLog (a list of strings, else null)" "$ok"
 
   # [164] pr-body-splice.cjs: a block whose end marker is indented stays ONE block; the entries mode reads the real block
-  SPL="$SCRIPT_DIR/pr-body-splice.cjs"
+  SPL="$ROOT/scripts/runtime/pr-body-splice.cjs"
   printf 'Closes #146\n\n<!-- decision-log:start -->\n  ## Decision log\n  - round 0 — REQUIRED_CHANGES (1 blocker)\n  <!-- decision-log:end -->\n' > "$WORK/dl-pre.md"
   printf '<!-- decision-log:start -->\n## Decision log\n- round 0 — a\n- round 1 — b\n<!-- decision-log:end -->\n' > "$WORK/dl-text.md"
   ok=0

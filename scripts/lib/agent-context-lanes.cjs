@@ -1,6 +1,6 @@
 'use strict'
 
-// Lane rules of scripts/agent-context.cjs, moved out to keep that file under the line limit: which owned file belongs to
+// Lane rules of scripts/runtime/agent-context.cjs, moved out to keep that file under the line limit: which owned file belongs to
 // which lane and the persona sentence. Pure functions, no git, no file system.
 
 // Remedy shown once per run next to a frontmatter-on-context-file refusal (agent-context.cjs and the init proposal).

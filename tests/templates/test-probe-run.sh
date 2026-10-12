@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Regression test for templates/probe-run.cjs (E2.2, #80), templates/preflight.sh (#83) and templates/pr-state.sh (#84) and templates/pr-write.sh (#85): pure parsers replayed against
+# Regression test for scripts/runtime/probe-run.cjs (E2.2, #80), scripts/runtime/preflight.sh (#83) and scripts/runtime/pr-state.sh (#84) and scripts/runtime/pr-write.sh (#85): pure parsers replayed against
 # fixtures/probes/*.raw, plus end-to-end runs of the CLI in a temp dir. No network. bash 3.2 safe.
 set -uo pipefail
 
