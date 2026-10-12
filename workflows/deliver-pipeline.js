@@ -23,10 +23,10 @@ export const meta = {
 // | `brief` | one-line description of the change (required) |
 // | `worktreePath` | shared worktree absolute path (required) |
 // | `wtPath` | old spelling of `worktreePath`, still accepted; `worktreePath` wins when both are given; removed in #452 |
-// | `config` | REQUIRED object: the parsed `.claude/pipeline.config.json`, supplied by the Lead. Absent or not an object (e.g. a JSON string) -> throws before any agent call (#13, #12). Project-specific configuration (stack-agnostic; see pipeline.config.template.json): `{ ghProject, baseBranch, branchPrefix, worktreeRoot, commands:{build,test,format}, ciChecks:[], regressionGuard:{testGlob,testFnPattern,baselineCmd}, provision:{extraLinks:[{src,dst}]}, preflight:{canonicalStringBan:[]}, commitHygiene:{squashBeforeHandoff,maxCommits}, commentHygiene:bool, oneWayDoorPaths:[] (optional; R3 path globs/prefixes, default none; see oneWayDoorSignals), oneWayDoorKinds:[] (optional; R3 kinds among status\|agent\|hook\|seam, default none), engineRepo:true (optional; marks the repo that IS this plugin: engine-only rules, default absent = consumer; see engineRules), minPluginVersion:'x.y.z[-pre.N]' (optional, off by default; the oldest engine version this repo accepts: an engine below it escalates `plugin-version-too-old` before anything runs, #233; an unusable value throws), repo:'owner/repo' }` — repo: code repo for cross-repo runs; absent -> cwd-resolved. worktreeRoot resolution order: LGTMGATE_WORKTREE_ROOT env var -> configLocal.worktreeRoot -> config.worktreeRoot -> worktreePath's parent dir (see resolveWorktreeRoot below). |
+// | `config` | REQUIRED object: the parsed `.claude/pipeline.config.json`, supplied by the Lead. Absent or not an object (e.g. a JSON string) -> throws before any agent call (#13, #12). Project-specific configuration (stack-agnostic; see pipeline.config.template.json): `{ ghProject, baseBranch, branchPrefix, worktreeRoot, commands:{build,test,format}, ciChecks:[], regressionGuard:{testGlob,testFnPattern,baselineCmd}, provision:{extraLinks:[{src,dst}]}, preflight:{canonicalStringBan:[]}, commitHygiene:{squashBeforeHandoff,maxCommits}, commentHygiene:bool, oneWayDoorPaths:[] (optional; R3 path globs/prefixes, default none; see oneWayDoorSignals), oneWayDoorKinds:[] (optional; R3 kinds among status\|agent\|hook\|seam, default none), engineRepo:true (optional; marks the repo that IS this plugin: engine-only rules, default absent = consumer; see engineRules), r2Scope:{issueType,paths:[],fixtureDir} (optional, engine repo only: the one definition of the R2 scope, shared with the merge gate; see r2ScopeOf), minPluginVersion:'x.y.z[-pre.N]' (optional, off by default; the oldest engine version this repo accepts: an engine below it escalates `plugin-version-too-old` before anything runs, #233; an unusable value throws), repo:'owner/repo' }` — repo: code repo for cross-repo runs; absent -> cwd-resolved. worktreeRoot resolution order: LGTMGATE_WORKTREE_ROOT env var -> configLocal.worktreeRoot -> config.worktreeRoot -> worktreePath's parent dir (see resolveWorktreeRoot below). |
 // | `configLocal` | parsed `.claude/pipeline.config.local.json`, supplied by the Lead (the workflow sandbox has no filesystem — see resolveWorktreeRoot below); only `worktreeRoot` is read today (#61). Gitignored, machine-local, never versioned. Absent/garbage -> {}. |
 // | `pmReview` | run Mia before Sam (default false) |
-// | `issueType` | the issue's type, from its `type:*` label (e.g. 'bug', 'feature', 'chore'); optional, absent = not a bug. With 'bug' AND a Sam target under `workflows/` AND config.engineRepo is true, the R2 fixture acceptance item is injected into Nick's prompt (#76, #163). A launch arg, not a simulate key. |
+// | `issueType` | the issue's type, from its `type:*` label (e.g. 'bug', 'feature', 'chore'); optional, absent = not a bug. When it equals `r2Scope.issueType` AND a Sam target starts with one of `r2Scope.paths` AND config.engineRepo is true, the R2 fixture acceptance item is injected into Nick's prompt (#76, #163). A launch arg, not a simulate key. |
 // | `branchOverride` | exact branch name used verbatim instead of <branchPrefix>issue-<N> (#232; rebase-without-force-push, numbered slices). Arg, else config.branchOverride. Empty = unset; chars limited to [A-Za-z0-9._/-]. Skips the config-prefix reconcile so a config-prefix branch is never accepted. |
 // | `branchPrefix` | top-level arg is IGNORED (config.branchPrefix wins); a differing value logs a warning + trace 'branch-prefix-arg-ignored' (#232). Use branchOverride to force a branch. config.branchPrefix absent/blank -> falls back to 'features/' and traces 'branch-prefix-fallback-default' (#267), so a caller that fails to thread the project's own branchPrefix through config is diagnosable, not silent. |
 // | `prNumber` | existing PR number; required when entryStage='review' |
@@ -1925,6 +1925,19 @@ const SAM_PLAN_RULE = 'PLAN RULE: plan the smallest change that removes the caus
 const SAM_ENGINE_LAYER_RULE = 'LAYER RULE: plan the smallest change that removes the cause class; never a `simulate.*` seam; say in the plan if the diff adds a status, an `agent()`, a hook or a seam; list `patch-avoided:` with the patches you rejected.'
 const isEngineRepository = (pipelineConfig) => pipelineConfig !== null && typeof pipelineConfig === 'object' && pipelineConfig.engineRepo === true
 const samLayerRule = (pipelineConfig) => isEngineRepository(pipelineConfig) ? SAM_ENGINE_LAYER_RULE : SAM_PLAN_RULE
+// R2 scope (#200): ONE definition, `r2Scope` in the engine repo's .claude/pipeline.config.json, read here (dispatch) and by
+// scripts/lib/merge-gates.sh (merge, same shape rule, config read from origin/main). They differ by nature only in the input:
+// dispatch applies the scope to Sam's PLANNED targets with the worktree config; merge applies it to the REAL diff with the
+// origin/main config. Read through the parameter (never config.r2Scope): engine-only key, like engineRepo.
+const r2ScopeOf = (pipelineConfig) => {
+  if (!isEngineRepository(pipelineConfig)) return null
+  const scope = pipelineConfig.r2Scope
+  if (scope === null || typeof scope !== 'object') return null
+  const nonEmpty = (v) => typeof v === 'string' && v.length > 0
+  if (!nonEmpty(scope.issueType) || !nonEmpty(scope.fixtureDir)) return null
+  if (!Array.isArray(scope.paths) || scope.paths.length === 0 || !scope.paths.every(nonEmpty)) return null
+  return { issueType: scope.issueType, paths: scope.paths, fixtureDir: scope.fixtureDir }
+}
 // --- engineRules:end ---
 
 // --- safeAbsorbedIssues:start --- (pure & self-contained — keep extractable by the consuming project's tests)
@@ -3796,9 +3809,12 @@ if (after('dev', entryStage)) {
   const closesLine = [epicReference, ...samAbsorbedIssues.map(n => 'Closes #' + n)].join(', ')
   // R2 (#76): deterministic — the fixture acceptance item is decided here, never by Nick's judgment.
   // Engine-repo only (#163): the fixtures dir and replay script it names exist only in this plugin's repo.
-  const r2Applies = isEngineRepository(config) && issueType === 'bug' && safePlanTargets(samTargetFiles).some(p => p.startsWith('workflows/'))
+  // Scope = `r2Scope` of the config (r2ScopeOf; same data the merge gate reads, #200). Engine repo with a broken scope: logged, R2 off.
+  const r2Scope = r2ScopeOf(config)
+  if (isEngineRepository(config) && r2Scope === null) log('R2 not applied: engineRepo is true but r2Scope is missing or invalid in the pipeline config (see README, r2Scope)')
+  const r2Applies = r2Scope !== null && issueType === r2Scope.issueType && safePlanTargets(samTargetFiles).some(p => r2Scope.paths.some(q => p.startsWith(q)))
   const r2Note = r2Applies
-    ? `R2 fixture rule (issue #${issue}): add this acceptance item to the checklist verbatim — "fixture \`fixtures/incidents/${issue}-*.json\` present, replayed red on base and green on the branch by \`scripts/run-offline.cjs\`". If no such fixture exists in the branch, run \`gh issue edit ${issue} -R ${repository || '<repo>'} --add-label no-fixture\` and use \`Refs #${issue}\` instead of \`Closes #${issue}\` on the first line of the PR body (the issue then stays open). `
+    ? `R2 fixture rule (issue #${issue}): add this acceptance item to the checklist verbatim — "fixture \`${r2Scope.fixtureDir}/${issue}-*.json\` present, replayed red on base and green on the branch by \`scripts/run-offline.cjs\`". If no such fixture exists in the branch, run \`gh issue edit ${issue} -R ${repository || '<repo>'} --add-label no-fixture\` and use \`Refs #${issue}\` instead of \`Closes #${issue}\` on the first line of the PR body (the issue then stays open). `
     : ''
   const nickPrompt = (
     `Work in the shared worktree "${worktreePath}" (cd into it; it already exists${worktreeRoot ? `; worktree root: ${worktreeRoot}` : ''}). ` +
