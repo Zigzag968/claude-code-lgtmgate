@@ -139,4 +139,4 @@ function problems({ names, rows, baseline, baseBaseline }) {
   return found
 }
 
-module.exports = { REFERENCE_PATH, FAMILIES, PREREQUISITES_HEADING, extractNames, parseReference, problems }
+module.exports = { REFERENCE_PATH, FAMILIES, PREREQUISITES_HEADING, extractNames, extractConfig, parseReference, problems }

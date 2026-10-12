@@ -78,9 +78,12 @@
 //      remedy in docs/consumer-reference.md, or a name in scripts/consumer-reference-baseline.json; a row for a name the code no longer
 //      emits, an empty remedy, a baseline name that is gone or already has a row, and a baseline name absent from origin/main's baseline
 //      each FAIL. The rule lives in scripts/lib/consumer-reference.cjs.
+//   readme-contract (#159): README.md keeps its Status, Known limitations, Use at your own risk and environment-variable sections, its dynamic badges
+//      (no number typed in a badge URL), a row for every config key and a documented variable for every override the code reads, and the test numbers
+//      the suites report (scripts/count-tests.cjs). The rule lives in scripts/lib/readme-contract.cjs.
 //
 // Env (test seams, all optional)
-//   GUARDS_ONLY            comma list among r1,wired,guard-steps,version,parity,budgets,instructions,status,phases,init-stubs,audit,consumer-reference,canary-step (default: all)
+//   GUARDS_ONLY            comma list among r1,wired,guard-steps,version,parity,budgets,instructions,status,phases,init-stubs,audit,consumer-reference,canary-step,readme-contract (default: all)
 //   GUARDS_CONSUMER_BASELINE_BASE  base consumer-reference baseline file (default: git show origin/main:scripts/consumer-reference-baseline.json)
 //   GUARDS_BASE_YML        guards.yml used as the base for guard-steps (default: git show origin/main:.github/workflows/guards.yml)
 //   GUARDS_BASE_FILE       workflow file used as the base for R1 (default: git show origin/main:<file>)
@@ -95,6 +98,7 @@
 //   GUARDS_DELIVER_MD      Lead runbook for status-table (default: skills/deliver/SKILL.md)
 //   GUARDS_PHASES_JS_FILE  workflow file for phase-titles (default: workflows/deliver-pipeline.js)
 //   GUARDS_INIT_STUBS      module exporting STUBS for init-stubs (default: scripts/init-specifics.cjs)
+//   GUARDS_TEST_COUNTS     JSON map suite label -> count for readme-contract (default: run the suites)
 //   GUARDS_ROOT            repo root (default: parent of scripts/)
 
 const fs = require('fs')
@@ -102,6 +106,7 @@ const path = require('path')
 const { countAgentCalls, countSimulateSeams, countRegexApps, parserMarkerErrors, ymlRunText, jobRunText, parseSemver, cmp, proseLines, importReferences, STATUS_SECTION, statusRegistryKeys, statusTableRows, declaredPhaseTitles } = require('./lib/guards-scan.cjs')
 const consumerReference = require('./lib/consumer-reference.cjs')
 const canaryStep = require('./lib/canary-step.cjs')
+const readmeContract = require('./lib/readme-contract.cjs')
 const { execFileSync } = require('child_process')
 
 const ROOT = process.env.GUARDS_ROOT || path.resolve(__dirname, '..')
@@ -109,7 +114,7 @@ const WORKFLOW = 'workflows/deliver-pipeline.js'
 const MANIFEST = '.claude-plugin/plugin.json'
 const GUARDS_YML = '.github/workflows/guards.yml'
 const DELIVER_MD = 'skills/deliver/SKILL.md'
-const ONLY = process.env.GUARDS_ONLY ? process.env.GUARDS_ONLY.split(',') : ['r1', 'wired', 'guard-steps', 'version', 'parity', 'budgets', 'instructions', 'status', 'phases', 'init-stubs', 'audit', 'consumer-reference', 'canary-step']
+const ONLY = process.env.GUARDS_ONLY ? process.env.GUARDS_ONLY.split(',') : ['r1', 'wired', 'guard-steps', 'version', 'parity', 'budgets', 'instructions', 'status', 'phases', 'init-stubs', 'audit', 'consumer-reference', 'canary-step', 'readme-contract']
 
 // Suites that are NOT named in guards.yml, each with its reason. Add a suite here only if it is
 // red on main (report it, do not wire it) or is run through another runner.
@@ -582,17 +587,13 @@ function checkCanaryStep() {
   out(`PASS: canary-step: ${canaryStep.PATH} names the step "${canaryStep.HEADING}" and its ${canaryStep.SCRIPTS.length} scripts`)
 }
 
-if (ONLY.includes('r1')) checkR1()
-if (ONLY.includes('wired')) checkWired()
-if (ONLY.includes('guard-steps')) checkGuardSteps()
-if (ONLY.includes('version')) checkVersion()
-if (ONLY.includes('parity')) checkSamParity()
-if (ONLY.includes('budgets')) checkDocumentBudgets()
-if (ONLY.includes('instructions')) checkInstructionsWired()
-if (ONLY.includes('status')) checkStatusTable()
-if (ONLY.includes('phases')) checkPhaseTitles()
-if (ONLY.includes('init-stubs')) checkInitStubs()
-if (ONLY.includes('audit')) checkAudit()
-if (ONLY.includes('consumer-reference')) checkConsumerReference()
-if (ONLY.includes('canary-step')) checkCanaryStep()
+// ---- readme-contract (#159): the rule lives in scripts/lib/readme-contract.cjs
+function checkReadmeContract() {
+  const found = readmeContract.problems(ROOT, process.env.GUARDS_TEST_COUNTS)
+  if (found.length) { for (const problem of found) bad(problem); return }
+  out('PASS: readme-contract: README.md keeps its sections, dynamic badges, config rows, environment variables and test counts')
+}
+
+const CHECKS = { r1: checkR1, wired: checkWired, 'guard-steps': checkGuardSteps, version: checkVersion, parity: checkSamParity, budgets: checkDocumentBudgets, instructions: checkInstructionsWired, status: checkStatusTable, phases: checkPhaseTitles, 'init-stubs': checkInitStubs, audit: checkAudit, 'consumer-reference': checkConsumerReference, 'canary-step': checkCanaryStep, 'readme-contract': checkReadmeContract }
+for (const [key, run] of Object.entries(CHECKS)) if (ONLY.includes(key)) run()
 process.exit(failed ? 1 : 0)
