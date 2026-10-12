@@ -36,7 +36,7 @@ exit 0
 SH
 chmod +x "$FAKEBIN"/*
 
-OUT="$(env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_API_KEY PATH="$FAKEBIN:$PATH" HOME="$WORK/home" FAKE_WORK="$WORK" FAKE_EXPECTED="$TOKEN" bash "$W" 2>&1)"
+OUT="$(env -u CLAUDE_CODE_OAUTH_TOKEN PATH="$FAKEBIN:$PATH" HOME="$WORK/home" FAKE_WORK="$WORK" FAKE_EXPECTED="$TOKEN" bash "$W" 2>&1)"
 RC=$?
 printf '%s\n' "$OUT" > "$WORK/runner.out"
 
@@ -50,8 +50,15 @@ ok=1; case "$OUT" in *"$TOKEN"*) ok=0 ;; esac
 check "the fake token is absent from the runner stdout+stderr" "$ok"
 
 ok=0
-grep -q -- '-e CLAUDE_CODE_OAUTH_TOKEN -e ANTHROPIC_API_KEY' "$WORK/docker.argv" && ! grep -q -- 'CLAUDE_CODE_OAUTH_TOKEN=' "$WORK/docker.argv" && ok=1
-check "docker run passes the variable by bare name (-e NAME), never NAME=value" "$ok"
+grep -q -- '-e CLAUDE_CODE_OAUTH_TOKEN ' "$WORK/docker.argv" && ! grep -q -- '-e [A-Z_]*API_KEY' "$WORK/docker.argv" && ! grep -q -- 'CLAUDE_CODE_OAUTH_TOKEN=' "$WORK/docker.argv" && ok=1
+check "docker run passes only the OAuth token by bare name (-e NAME), never NAME=value" "$ok"
+
+ok=1; grep -q 'ANTHROPIC_API_KEY' "$W" && ok=0
+check "the wrapper no longer names ANTHROPIC_API_KEY (runner is OAuth-only)" "$ok"
+
+ok=0
+grep -q -- "$ROOT:/workspace:ro" "$WORK/docker.argv" && grep -q -- "$ROOT/evals/results:/workspace/evals/results" "$WORK/docker.argv" && ok=1
+check "the repo is mounted read-only, only evals/results writable" "$ok"
 
 # ps can be denied by a tool sandbox; the token-free scan above covers docker.ps whenever it was recorded
 if [ -s "$WORK/docker.ps" ]; then

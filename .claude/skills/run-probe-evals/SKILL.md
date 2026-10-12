@@ -18,7 +18,8 @@ description: Run or debug the probe evals of issue #81 (`claude plugin eval` on 
 - `bash scripts/run-probe-evals-docker.sh`
 - Optional case names after the script restrict the run, e.g. `... run-probe-evals-docker.sh probe-provision`.
   - A restricted run is gated on its own runs (95 % of 10 per case); only the full 3-case run is the E2 gate.
-- Needs the Bash sandbox disabled when launched from a Claude session (Docker and Keychain).
+- Docker and Keychain need the Bash sandbox disabled when launched from a Claude session. In a supervised session that needs the maintainer's explicit approval for that command. An unsupervised session must stop and report the blocker, never disable the sandbox (`.claude/rules/pr-acceptance.md`, section "Autonomy in unsupervised sessions").
+- The runner takes the OAuth token only (no API key); the repo is mounted read-only, only `evals/results` is writable.
 - The cost shown is an estimate: it draws on the subscription quota, nothing is billed.
 
 ## The gate

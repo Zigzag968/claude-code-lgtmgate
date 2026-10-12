@@ -28,7 +28,7 @@ export FAKE_CLAUDE_LOG="$WORK/claude.log"
 
 # run <args...> sets OUT (stdout+stderr) and RC; env: no credential variable unless the case sets one
 run() {
-  OUT="$(env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_API_KEY PATH="$FAKEBIN:$PATH" HOME="$WORK/home" DOCKER_CONFIG="$WORK/cfg" bash "$P" "$@" 2>&1)"
+  OUT="$(env -u CLAUDE_CODE_OAUTH_TOKEN PATH="$FAKEBIN:$PATH" HOME="$WORK/home" DOCKER_CONFIG="$WORK/cfg" bash "$P" "$@" 2>&1)"
   RC=$?
 }
 has() { case "$OUT" in *"$1"*) return 0 ;; *) return 1 ;; esac; }
@@ -52,7 +52,7 @@ ok=0; [ "$RC" -eq 1 ] && has 'lgtmgate-eval-token' && has 'Fix:' && ok=1
 check "missing Keychain item -> exit 1, names the item and the fix" "$ok"
 
 # a credential already in the environment skips the Keychain probe
-OUT="$(FAKE_SECURITY_RC=44 ANTHROPIC_API_KEY=x PATH="$FAKEBIN:$PATH" HOME="$WORK/home" bash "$P" docker 2>&1)"; RC=$?
+OUT="$(FAKE_SECURITY_RC=44 CLAUDE_CODE_OAUTH_TOKEN=x PATH="$FAKEBIN:$PATH" HOME="$WORK/home" bash "$P" docker 2>&1)"; RC=$?
 ok=0; [ "$RC" -eq 0 ] && ok=1
 check "credential env var set -> Keychain not required" "$ok"
 

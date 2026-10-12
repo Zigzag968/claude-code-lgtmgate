@@ -42,7 +42,7 @@ case "$MODE" in
       echo "eval-preflight: Docker daemon not answering within ${PROBE_TIMEOUT}s. Fix: start Docker Desktop and wait for the whale icon to settle, then rerun." >&2
       exit 1
     fi
-    if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ] && [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+    if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
       if ! command -v security >/dev/null 2>&1 || ! with_timeout "$PROBE_TIMEOUT" security find-generic-password -s "$KEYCHAIN_ITEM"; then
         echo "eval-preflight: Keychain item $KEYCHAIN_ITEM not readable." >&2
         echo "  Fix: claude setup-token, then: security add-generic-password -a \"\$USER\" -s $KEYCHAIN_ITEM -T /usr/bin/security -w" >&2
