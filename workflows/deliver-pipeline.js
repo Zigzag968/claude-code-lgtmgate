@@ -849,8 +849,10 @@ const AC_BLOCK_END = '<!-- acceptance:end -->'
 function numberItems(entries) {
   return entries.map((entry, index) => ({ id: index + 1, text: entry.text.trim(), humanGate: entry.humanGate === true }))
 }
-function renderLine(item, withId = true) {
-  return `- [ ] ${withId ? `${AC_ID_OPEN}${item.id} --> ` : ''}${item.humanGate ? `${AC_TAG} ` : ''}${item.text}`
+// With ids the line is the checkbox prefix, the machine id comment, then (visible, default) the id as bold text for the
+// human reader, then the tag. The comment stays first: every id reader requires it right after the checkbox prefix.
+function renderLine(item, withId = true, visible = true) {
+  return `- [ ] ${withId ? `${AC_ID_OPEN}${item.id} --> ` : ''}${withId && visible ? `**ac:${item.id}** ` : ''}${item.humanGate ? `${AC_TAG} ` : ''}${item.text}`
 }
 // The lines to put between the acceptance markers (the markers stay the body's own).
 function renderChecklist(items) {
@@ -875,7 +877,11 @@ function parseChecklist(text) {
     let rest = t.slice(5).trim()
     if (rest === '') continue
     const id = leadingId(rest)
-    if (id !== null) rest = rest.slice(rest.indexOf('-->') + 3).trim()
+    if (id !== null) {
+      rest = rest.slice(rest.indexOf('-->') + 3).trim()
+      const vis = `**ac:${id}**`
+      if (rest.startsWith(vis)) rest = rest.slice(vis.length).trim()
+    }
     const g = rest.toLowerCase().indexOf(AC_TAG)
     const humanGate = g >= 0
     if (humanGate) rest = (rest.slice(0, g).trimEnd() + ' ' + rest.slice(g + AC_TAG.length).trimStart()).trim()
@@ -1092,7 +1098,7 @@ function validateAcceptanceItems(entries) {
 // of #153, now per item). Empty items -> [].
 function planLacksItems(plan, items) {
   const text = String(plan ?? '')
-  return items.filter((item) => !text.includes(renderLine(item)) && !text.includes(renderLine(item, false))).map((item) => renderLine(item))
+  return items.filter((item) => !text.includes(renderLine(item)) && !text.includes(renderLine(item, true, false)) && !text.includes(renderLine(item, false))).map((item) => renderLine(item, true, false))
 }
 // Morgan's `boxes` [{ id, proven, proof }] mapped by id to the rendered items: { boxes: [{ id, text, humanGate, proven,
 // proof }] in item order, unknown: ids no item carries (dropped), missing: the non-gate item ids Morgan returned no box for
@@ -1132,7 +1138,9 @@ function morganBoxesNote(block) {
     'Quote a box line exactly as it stands in the PR body, its <!-- ac:n --> comment included, wherever you quote one (items, itemOwners). ' +
     'Besides items, return boxes: one { id, proven, proof } per box above; proven is true only when you ran its verification and it passed; proof is the command and its verbatim output. ' +
     'Return an entry for EVERY box above, including a box that already reads [x] in the PR body (ticked by the workflow at an earlier round, or by the Lead): re-run its verification this round; a box you return no proven entry for this round is not proven, whatever the body shows. ' +
-    'You do not edit the PR body\'s boxes: the workflow ticks by id the boxes you return as proven and never ticks a [human-gate] box, which is settled only when the PR body already shows it checked by a person (your proven means nothing for it). items carries the quoted line of every box you did not prove. '
+    'You do not edit the PR body\'s boxes: the workflow ticks by id the boxes you return as proven and never ticks a [human-gate] box, which is settled only when the PR body already shows it checked by a person (your proven means nothing for it). items carries the quoted line of every box you did not prove. ' +
+    'In the comment you post, never write a checkbox line (no open or ticked box): reference boxes as plain bullets or a numbered list by id (ac:n) and end with the exact line `tick in the PR description, not here`. ' +
+    'For a human-gate box write `Human gate ac:n: act in the PR description, section Acceptance checklist, item ac:n`. '
 }
 // The sentence of both Morgan prompts that tells her what to put in `items` and when to emit REQUIRED_CHANGES. Without a
 // block (a run with no ids) it is the historical text, byte for byte; with a block the workflow ticks: she ticks none,
@@ -3815,7 +3823,7 @@ if (after('dev', entryStage)) {
       `If that push fails because the SSH remote is unreachable in the sandbox (\`ssh_dispatch_run_fatal\`, \`Broken pipe\`, \`Connection refused\`, \`Could not resolve hostname\`; CC issues #30619, #33300), retry ONCE over HTTPS through the gh credential helper (github.com:443 is reachable, SSH is not): \`${httpsPushCommandFor(expectedBranchName)}\` (explicit refspec, no upstream flag, no sandbox bypass). If the HTTPS push fails too, do not bypass the sandbox and do not open a PR: stop, return prNumber 0 with a summary that quotes the failing command and its error. ` +
       `Open a PR (draft) with EXPLICIT refs — gh resolves HEAD from the invoking cwd, not the worktree branch: \`gh pr create --draft${prFlag} --base ${baseBranch} --head ${expectedBranchName} ...\`. ` +
       `${r2Note}` +
-      `Compose the PR body in this order (artifact-first structure): first line \`${closesLine}\` — one \`Closes #N\` per fully-resolved issue (the epic plus every issue Sam's plan explicitly named as fully resolved by this bundle; never for an issue flagged partial/residual in the plan — that one stays open, with a forward-reference comment on the child issue instead, as already practiced); ${subIssuesGateNote(subIssuesUncovered, issue)}then a \`## What this ships\` H2 with a bullet summary of the diff; then, ONLY IF the acceptance checklist below contains a \`[human-gate]\` item, an optional \`## <Human> — N gestures\` H2 listing those manual human actions (omit this H2 entirely when no \`[human-gate]\` item exists — never ship an empty stub section); then a \`## Acceptance checklist\` H2. Copy the acceptance checklist into the PR body between \`<!-- acceptance:start -->\`/\`<!-- acceptance:end -->\`. ${nickBlockNote(acceptanceBlock)}Leave an EMPTY \`<!-- decision-log:start -->\`/\`<!-- decision-log:end -->\` marker pair right after the acceptance block — workflow-owned, never hand-fill it. Close with a \`<details><summary>Technical detail</summary>\` fold holding the test plan / feature flag / risk notes. Post a comment on issue #${issue} linking the PR, then idle.`
+      `Compose the PR body in this order (artifact-first structure): first line \`${closesLine}\` — one \`Closes #N\` per fully-resolved issue (the epic plus every issue Sam's plan explicitly named as fully resolved by this bundle; never for an issue flagged partial/residual in the plan — that one stays open, with a forward-reference comment on the child issue instead, as already practiced); ${subIssuesGateNote(subIssuesUncovered, issue)}then a \`## What this ships\` H2 with a bullet summary of the diff; then, ONLY IF the acceptance checklist below contains a \`[human-gate]\` item, an optional \`## <Human> — N gestures\` H2 listing those manual human actions (omit this H2 entirely when no \`[human-gate]\` item exists — never ship an empty stub section); then a \`## Acceptance checklist\` H2 (each human gesture names the PR description, section Acceptance checklist, item ac:N, as the place to act). Copy the acceptance checklist into the PR body between \`<!-- acceptance:start -->\`/\`<!-- acceptance:end -->\`. ${nickBlockNote(acceptanceBlock)}Leave an EMPTY \`<!-- decision-log:start -->\`/\`<!-- decision-log:end -->\` marker pair right after the acceptance block — workflow-owned, never hand-fill it. Close with a \`<details><summary>Technical detail</summary>\` fold holding the test plan / feature flag / risk notes. Post a comment on issue #${issue} linking the PR, then idle.`
   )
   if (simulate) nickPromptPreview = nickPrompt
   nick = await callAgentSafe(
