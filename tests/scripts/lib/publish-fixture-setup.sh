@@ -68,6 +68,16 @@ if (variant === 'liveversion' || variant === 'skew') {
     f.expect = { status: 'escalate' }
   }
 }
+// assertions a capture names (#507): the nick branch value and a log line carrying the planted evidence marker
+if (variant.startsWith('assert')) {
+  f.calls['diagnose-issue-123'].evidence = 'zzlogx9 marker'
+  f.expect.resultIncludes = { branch: f.calls['nick-issue-123'].branch }
+  f.expect.logsInclude = ['Diagnosis confirmed: zzlogx9 marker']
+  if (variant === 'assert-badres') f.expect.resultIncludes = { branch: 'features/other' }
+  if (variant === 'assert-badlog') f.expect.logsInclude = ['no such log line zzabsent']
+  if (variant === 'assert-badkey') f.expect.trace = []
+  if (variant === 'assert-empty') f.expect.logsInclude = []
+}
 if (variant === 'badstatus') f.expect.status = 'escalate'
 if (variant === 'note') f.note = 'free text'
 fs.writeFileSync(out, JSON.stringify(f, null, 2) + '\n')
