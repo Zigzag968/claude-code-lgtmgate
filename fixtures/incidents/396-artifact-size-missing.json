@@ -300,6 +300,22 @@
     "probe-10-pr-state-window-end-r0": {
       "line": "PROBE name=pr-state exit=0 sha=a8b32cf00378fe91a54034dccde0e3ca94c9910a227cd02b45dcb8ccea6a880c cmd=ca3f12ed370ce2103485408842b2b4852f7f1222d5b999298ebaf1fdd71577fb json={\"now\":\"2026-10-10T16:49:21Z\",\"headRefName\":\"feat/issue-10\",\"headRefOid\":\"e46995ddc84b1c966d1a4f5662e43e3183f8f826\",\"bodyDigest\":\"34dd25d18b17\",\"acceptanceChecked\":[],\"decisionLog\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-10-10T16:43:19Z\",\"commitCount\":1,\"ciState\":\"green\",\"ciChecks\":{\"Analyze (actions)\":\"green\",\"Analyze (javascript-typescript)\":\"green\",\"Analyze (python)\":\"green\",\"CodeQL\":\"green\",\"guards\":\"green\",\"smoke-install\":\"green\"},\"reviewCommentIds\":[\"IC_kwDOUzMNuc8AAAABa5TC5A\"],\"openIssues\":[],\"openIssuesTruncated\":false,\"files\":[\"agents/theo.md\",\"fixtures/incidents/10-request-pin.json\",\"templates/test-deliver-pipeline.js\",\"workflows/deliver-pipeline.js\"]}",
       "verify": "VERIFY ok line=PROBE name=pr-state exit=0 sha=a8b32cf00378fe91a54034dccde0e3ca94c9910a227cd02b45dcb8ccea6a880c cmd=ca3f12ed370ce2103485408842b2b4852f7f1222d5b999298ebaf1fdd71577fb json={\"now\":\"2026-10-10T16:49:21Z\",\"headRefName\":\"feat/issue-10\",\"headRefOid\":\"e46995ddc84b1c966d1a4f5662e43e3183f8f826\",\"bodyDigest\":\"34dd25d18b17\",\"acceptanceChecked\":[],\"decisionLog\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-10-10T16:43:19Z\",\"commitCount\":1,\"ciState\":\"green\",\"ciChecks\":{\"Analyze (actions)\":\"green\",\"Analyze (javascript-typescript)\":\"green\",\"Analyze (python)\":\"green\",\"CodeQL\":\"green\",\"guards\":\"green\",\"smoke-install\":\"green\"},\"reviewCommentIds\":[\"IC_kwDOUzMNuc8AAAABa5TC5A\"],\"openIssues\":[],\"openIssuesTruncated\":false,\"files\":[\"agents/theo.md\",\"fixtures/incidents/10-request-pin.json\",\"templates/test-deliver-pipeline.js\",\"workflows/deliver-pipeline.js\"]}"
+    },
+    "probe-10-pr-write-run-state-plan-r0": {
+      "line": "PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=2c46f4d46f397cfd887a5ec572915d87a8f6dd6cd45a11210fb6d17040b85238 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}",
+      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=2c46f4d46f397cfd887a5ec572915d87a8f6dd6cd45a11210fb6d17040b85238 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}"
+    },
+    "probe-10-pr-write-run-state-dev-r0": {
+      "line": "PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=b268603b60f71d5d0012b61d65ca3a93b2f0d2bcc4ffa97588ec80a4a53b14ce json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}",
+      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=b268603b60f71d5d0012b61d65ca3a93b2f0d2bcc4ffa97588ec80a4a53b14ce json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}"
+    },
+    "probe-10-pr-write-run-state-review-r0": {
+      "line": "PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=783295d23a7b5f489fedfbff3870e50220f729a34fb50e64b5c0248cd258b6ca json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}",
+      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=783295d23a7b5f489fedfbff3870e50220f729a34fb50e64b5c0248cd258b6ca json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}"
+    },
+    "probe-10-pr-write-run-state-escalate-r0": {
+      "line": "PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=ab398bc5aef665476465b6b1da8263226f55735516434d8f3bdb5ecdf71fc182 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}",
+      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=ab398bc5aef665476465b6b1da8263226f55735516434d8f3bdb5ecdf71fc182 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}"
     }
   },
   "expect": {
@@ -310,12 +326,16 @@
       "probe:lines:haiku",
       "probe:provision:haiku",
       "probe:provision-freshness:haiku",
+      "probe:pr-write:haiku",
+      "probe:pr-write:haiku",
       "probe:preflight:haiku",
       "probe:preflight:haiku",
+      "probe:pr-write:haiku",
       "probe:git-rev-list-count:haiku",
       "probe:pr-state:haiku",
       "probe:pr-state:haiku",
-      "artifact-proof-rejected:artifact-size-missing"
+      "artifact-proof-rejected:artifact-size-missing",
+      "probe:pr-write:haiku"
     ],
     "traceExact": true,
     "callLabels": [
@@ -323,19 +343,23 @@
       "probe-10-lines-session-root-r0",
       "probe-10-provision-provision-r0",
       "probe-10-provision-freshness-provision-freshness-r0",
+      "probe-10-pr-write-run-state-plan-r0",
       "diagnose-issue-10",
       "scout-issue-10-1",
       "plan-check-10-1",
       "scout-issue-10-2",
       "plan-check-10-2",
+      "probe-10-pr-write-run-state-dev-r0",
       "probe-10-preflight-dev-r0",
       "nick-issue-10",
       "probe-10-preflight-branch-r0",
+      "probe-10-pr-write-run-state-review-r0",
       "probe-10-git-rev-list-count-worktree-behind-395-r0",
       "preflight-10-395-0",
       "probe-10-pr-state-window-start-r0",
       "morgan-pr-10-395-r0",
-      "probe-10-pr-state-window-end-r0"
+      "probe-10-pr-state-window-end-r0",
+      "probe-10-pr-write-run-state-escalate-r0"
     ]
   }
 }

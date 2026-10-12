@@ -243,6 +243,14 @@
         "plan-check-123-1": {
           "verdict": "CONFORMING",
           "issues": []
+        },
+        "probe-123-pr-write-run-state-plan-r0": {
+          "line": "PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=47e49955d459148192ecd05674f27b0dc7c23df7524eb4dfa7cef45b3af397e3 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}",
+          "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=47e49955d459148192ecd05674f27b0dc7c23df7524eb4dfa7cef45b3af397e3 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}"
+        },
+        "probe-123-pr-write-run-state-plan-ready-r0": {
+          "line": "PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=4e4ca5354e17cf9a0b11596e7ba3f7303954f0bc0d8843ef304683dcea85cff8 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}",
+          "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=4e4ca5354e17cf9a0b11596e7ba3f7303954f0bc0d8843ef304683dcea85cff8 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}"
         }
       },
       "expect": {
@@ -258,8 +266,10 @@
           "probe:lines:haiku",
           "probe:provision:haiku",
           "probe:provision-freshness:haiku",
+          "probe:pr-write:haiku",
           "lanes:ios",
-          "lanes:theo=ios,paths=-"
+          "lanes:theo=ios,paths=-",
+          "probe:pr-write:haiku"
         ],
         "traceExact": true
       }
@@ -500,6 +510,14 @@
           "mergedAt": "",
           "mergedPrClosesIssue": false,
           "checkFailed": false
+        },
+        "probe-123-pr-write-run-state-dev-r0": {
+          "line": "PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=5f6c0bcf41c76cde922e320858db5647b4c90b68b6a1424bb6c711c9922d77b3 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}",
+          "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=5f6c0bcf41c76cde922e320858db5647b4c90b68b6a1424bb6c711c9922d77b3 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}"
+        },
+        "probe-123-pr-write-run-state-dev-done-r0": {
+          "line": "PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=2872c9f9249030b8fe95ca75a4185c4c77ab634be2c581c70bf0165f8ba352f9 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}",
+          "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=2872c9f9249030b8fe95ca75a4185c4c77ab634be2c581c70bf0165f8ba352f9 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}"
         }
       },
       "expect": {
@@ -539,8 +557,10 @@
           "probe:lines:haiku",
           "probe:provision:haiku",
           "lanes:ios",
+          "probe:pr-write:haiku",
           "probe:preflight:haiku",
-          "probe:preflight:haiku"
+          "probe:preflight:haiku",
+          "probe:pr-write:haiku"
         ],
         "traceExact": true
       }

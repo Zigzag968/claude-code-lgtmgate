@@ -62,6 +62,14 @@
     "probe-187-preflight-dev-r0": {
       "line": "PROBE name=preflight exit=0 sha=fba9cf99f4fe9617de364c0ded430e3bc6bf531be3796b9962e073d0e8065132 cmd=346ba53953571541f6caa8f06fcbbbbfea77fffd04a399a68c0365fd5a6106c8 json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/wt/root/.git/worktrees/issue-187\",\"writable\":true}",
       "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=fba9cf99f4fe9617de364c0ded430e3bc6bf531be3796b9962e073d0e8065132 cmd=346ba53953571541f6caa8f06fcbbbbfea77fffd04a399a68c0365fd5a6106c8 json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/wt/root/.git/worktrees/issue-187\",\"writable\":true}"
+    },
+    "probe-187-pr-write-run-state-plan-r0": {
+      "line": "PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=7a5717e9e2e972532ba588ecf81785da5320498111992ec84fdfb92d43ccc105 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}",
+      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=7a5717e9e2e972532ba588ecf81785da5320498111992ec84fdfb92d43ccc105 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}"
+    },
+    "probe-187-pr-write-run-state-plan-ready-r0": {
+      "line": "PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=0b92966f1134213e6a258cce7b5c3516c6ebc6a44adc8a43f9ea0a4386b002c8 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}",
+      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=0b92966f1134213e6a258cce7b5c3516c6ebc6a44adc8a43f9ea0a4386b002c8 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}"
     }
   },
   "expect": {
@@ -70,15 +78,19 @@
       "branch-prefix-fallback-default",
       "probe:lines:haiku",
       "probe:provision:haiku",
-      "probe:provision-freshness:haiku"
+      "probe:provision-freshness:haiku",
+      "probe:pr-write:haiku",
+      "probe:pr-write:haiku"
     ],
     "callLabels": [
       "probe-187-lines-plugin-version-r0",
       "probe-187-provision-provision-r0",
       "probe-187-provision-freshness-provision-freshness-r0",
+      "probe-187-pr-write-run-state-plan-r0",
       "diagnose-issue-187",
       "scout-issue-187-1",
-      "plan-check-187-1"
+      "plan-check-187-1",
+      "probe-187-pr-write-run-state-plan-ready-r0"
     ]
   }
 }

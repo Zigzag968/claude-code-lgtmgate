@@ -44,6 +44,10 @@
 #       --expect-digest D (optional): the body digest (12 hex, as pr-state.sh) the caller last saw; a different
 #       first read -> failed/stale-read. The body is also re-read right before the edit: changed since the
 #       first read -> failed/stale-read, no edit (#151).
+#   run-state --issue N --status S
+#       (#502) write the per-run state file <main checkout>/.pipeline/issue-N.json, {issue,status,lastTouchedAt}, that the Stop
+#       watchdog and the SessionStart stub read. S is lowercase letters and hyphens. The main checkout is the parent of the git
+#       common dir (a worktree's own .pipeline is never scanned); anything else falls back to the worktree. Atomic: temp file then mv.
 #   comment ops: on a thread of >= 100 comments the marker lookup re-reads ALL comments through REST.
 # reasons on failed: bad-args, read-failed, write-failed, splice-failed, no-markers, unknown-id, human-gate-id, stale-read, guard-failed-restored.
 # Requires jq, gh and node (body-splice). bash 3.2 compatible. Never uses rm (the stderr file is overwritten each call).
@@ -51,7 +55,7 @@
 OP="${1:-}"
 [ $# -ge 1 ] && shift
 
-WORKTREE=""; REPO=""; PR=""; NUMBER=""; MARKER=""; BODY=""; ID=""; ISSUE=""; PROJECT_NUMBER=""; PID=""; FID=""; OID=""; MODE=""; TEXT=""; TEXT_B64=""; EXPECT=""; IDS=""; KEEP=""
+WORKTREE=""; REPO=""; PR=""; NUMBER=""; MARKER=""; BODY=""; ID=""; ISSUE=""; PROJECT_NUMBER=""; PID=""; FID=""; OID=""; MODE=""; TEXT=""; TEXT_B64=""; EXPECT=""; IDS=""; KEEP=""; RSTATUS=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --wt|--worktree) WORKTREE="${2:-}" ;;
@@ -69,6 +73,7 @@ while [ $# -gt 0 ]; do
     --mode) MODE="${2:-}" ;;
     --text) TEXT="${2:-}" ;;
     --text-b64) TEXT_B64="${2:-}" ;;
+    --status) RSTATUS="${2:-}" ;;
     --ids) IDS="${2:-}" ;;
     --keep) KEEP="${2:-}" ;;
     --expect-digest) EXPECT="${2:-}" ;;
@@ -136,6 +141,22 @@ minimize_op() {
   else
     emit failed write-failed
   fi
+}
+
+run_state_op() {
+  local gc root dir tmp bytes
+  if ! is_num "$ISSUE"; then emit failed bad-args; return; fi
+  case "$RSTATUS" in ''|*[!a-z-]*) emit failed bad-args; return ;; esac
+  gc="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || gc=""
+  case "$gc" in */.git) root="${gc%/.git}" ;; *) root="$PWD" ;; esac
+  [ -n "$root" ] || root="$PWD"
+  dir="$root/.pipeline"
+  tmp="$dir/issue-$ISSUE.json.tmp"
+  mkdir -p "$dir" 2>/dev/null || { emit failed write-failed; return; }
+  jq -nc --argjson i "$ISSUE" --arg s "$RSTATUS" --arg t "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    '{issue:$i, status:$s, lastTouchedAt:$t}' > "$tmp" 2>/dev/null || { emit failed write-failed; return; }
+  bytes="$(wc -c < "$tmp" | tr -d ' ')"
+  if mv -f "$tmp" "$dir/issue-$ISSUE.json" 2>/dev/null; then emit written "" "$bytes"; else emit failed write-failed; fi
 }
 
 status_op() {
@@ -212,6 +233,7 @@ main() {
     pr-comment) comment_op pr "$PR" ;;
     minimize) minimize_op ;;
     status) status_op ;;
+    run-state) run_state_op ;;
     body-splice) body_splice_op ;;
     *) emit failed bad-args ;;
   esac

@@ -99,6 +99,18 @@
     "probe-33-preflight-dev-r0": {
       "line": "PROBE name=preflight exit=0 sha=2da8cc840849e3cd7a8c497d4661929df2e8be5972b07b6dc5877a9c6f66eea9 cmd=ac79e870a77bbc587fd459e0fae192e3e192f1544485983793acedf7a09cc14c json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/wt/root/issue-33/.git\",\"writable\":false}",
       "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=2da8cc840849e3cd7a8c497d4661929df2e8be5972b07b6dc5877a9c6f66eea9 cmd=ac79e870a77bbc587fd459e0fae192e3e192f1544485983793acedf7a09cc14c json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/wt/root/issue-33/.git\",\"writable\":false}"
+    },
+    "probe-33-pr-write-run-state-plan-r0": {
+      "line": "PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=7d4f1ab946fddea548e4828b5e83da1c22c9d1ece4ae217aa09ad6005e05feb1 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}",
+      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=7d4f1ab946fddea548e4828b5e83da1c22c9d1ece4ae217aa09ad6005e05feb1 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}"
+    },
+    "probe-33-pr-write-run-state-dev-r0": {
+      "line": "PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=d72f257667078be9a325d7e44c384243775cabcf2e2c3fbee5496032ed831fa6 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}",
+      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=d72f257667078be9a325d7e44c384243775cabcf2e2c3fbee5496032ed831fa6 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}"
+    },
+    "probe-33-pr-write-run-state-escalate-r0": {
+      "line": "PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=60c29b61040fff872e2322d7040e2b860ad20ddd7b87faf97e12e2394e7c53c3 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}",
+      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=60c29b61040fff872e2322d7040e2b860ad20ddd7b87faf97e12e2394e7c53c3 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}"
     }
   },
   "expect": {
@@ -108,8 +120,11 @@
       "probe:lines:haiku",
       "probe:provision:haiku",
       "probe:provision-freshness:haiku",
+      "probe:pr-write:haiku",
+      "probe:pr-write:haiku",
       "probe:preflight:haiku",
-      "worktree-git-dir-not-writable:/wt/root/issue-33/.git"
+      "worktree-git-dir-not-writable:/wt/root/issue-33/.git",
+      "probe:pr-write:haiku"
     ]
   }
 }

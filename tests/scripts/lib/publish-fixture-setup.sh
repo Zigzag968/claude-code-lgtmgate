@@ -38,6 +38,8 @@ if (variant === 'nogo') {
   f.calls['scout-issue-123-1'].decision = 'NO-GO'
   f.calls['scout-issue-123-1'].rationale = 'adds ZQCUSTOMERSTATUS for Acme'
   f.expect.status = 'no-go'
+  // the run now also writes its terminal state (#502): the same answer as the ready write, under the no-go label
+  f.calls['probe-123-pr-write-run-state-no-go-r0'] = JSON.parse(JSON.stringify(f.calls['probe-123-pr-write-run-state-ready-r0']))
 }
 if (variant === 'oneword') {
   // single-word private values, each one also a literal of the engine file (agent names, branch names, a decision)

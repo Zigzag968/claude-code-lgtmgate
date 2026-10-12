@@ -108,6 +108,22 @@
     "probe-123-pr-state-sig-after-r1": {
       "line": "PROBE name=pr-state exit=0 sha=3db97813d3f35e5488d7bd0a4df525f2043fbb38bec5e1283d69931d12b70ced cmd=80cc5268f28c2240de8c19c762c405b16257ae1f9a80b1a2f376078defd184ef json={\"now\":\"2026-01-01T00:00:00Z\",\"headRefName\":\"features/issue-123\",\"headRefOid\":\"abc123def456\",\"bodyDigest\":\"0123456789ab\",\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-01-01T00:30:00Z\",\"commitCount\":1,\"reviewCommentIds\":[],\"openIssues\":null,\"openIssuesTruncated\":false}",
       "verify": "VERIFY ok line=PROBE name=pr-state exit=0 sha=3db97813d3f35e5488d7bd0a4df525f2043fbb38bec5e1283d69931d12b70ced cmd=80cc5268f28c2240de8c19c762c405b16257ae1f9a80b1a2f376078defd184ef json={\"now\":\"2026-01-01T00:00:00Z\",\"headRefName\":\"features/issue-123\",\"headRefOid\":\"abc123def456\",\"bodyDigest\":\"0123456789ab\",\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-01-01T00:30:00Z\",\"commitCount\":1,\"reviewCommentIds\":[],\"openIssues\":null,\"openIssuesTruncated\":false}"
+    },
+    "probe-123-pr-write-run-state-plan-r0": {
+      "line": "PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=47e49955d459148192ecd05674f27b0dc7c23df7524eb4dfa7cef45b3af397e3 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}",
+      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=47e49955d459148192ecd05674f27b0dc7c23df7524eb4dfa7cef45b3af397e3 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}"
+    },
+    "probe-123-pr-write-run-state-dev-r0": {
+      "line": "PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=5f6c0bcf41c76cde922e320858db5647b4c90b68b6a1424bb6c711c9922d77b3 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}",
+      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=5f6c0bcf41c76cde922e320858db5647b4c90b68b6a1424bb6c711c9922d77b3 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}"
+    },
+    "probe-123-pr-write-run-state-review-r0": {
+      "line": "PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=0ad444dc5d0c00633a0c25fc04d76e0d66799d2c6f8c22699f407e3db24c4f3a json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}",
+      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=0ad444dc5d0c00633a0c25fc04d76e0d66799d2c6f8c22699f407e3db24c4f3a json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}"
+    },
+    "probe-123-pr-write-run-state-escalate-r0": {
+      "line": "PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=a1bef32401b1c8b17932d688728ed30ba3eec53e634ea73d0dfb72a15e30b61b json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}",
+      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=a1bef32401b1c8b17932d688728ed30ba3eec53e634ea73d0dfb72a15e30b61b json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}"
     }
   },
   "expect": {

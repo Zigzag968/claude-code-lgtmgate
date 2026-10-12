@@ -121,6 +121,22 @@
     "probe-123-pr-write-status-PR-Ready-r0": {
       "line": "PROBE name=pr-write exit=0 sha=16d0b6a4f20b1f2ae9b54436f0da355521cba63397715c491aa8d921b5d85652 cmd=1523bd6dc73d86371295f6ed89270288c253e77a038b14a5080de69c83684e47 json={\"op\":\"status\",\"result\":\"written\",\"reason\":null,\"bytes\":null}",
       "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=16d0b6a4f20b1f2ae9b54436f0da355521cba63397715c491aa8d921b5d85652 cmd=1523bd6dc73d86371295f6ed89270288c253e77a038b14a5080de69c83684e47 json={\"op\":\"status\",\"result\":\"written\",\"reason\":null,\"bytes\":null}"
+    },
+    "probe-123-pr-write-run-state-plan-r0": {
+      "line": "PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=47e49955d459148192ecd05674f27b0dc7c23df7524eb4dfa7cef45b3af397e3 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}",
+      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=47e49955d459148192ecd05674f27b0dc7c23df7524eb4dfa7cef45b3af397e3 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}"
+    },
+    "probe-123-pr-write-run-state-dev-r0": {
+      "line": "PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=5f6c0bcf41c76cde922e320858db5647b4c90b68b6a1424bb6c711c9922d77b3 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}",
+      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=5f6c0bcf41c76cde922e320858db5647b4c90b68b6a1424bb6c711c9922d77b3 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}"
+    },
+    "probe-123-pr-write-run-state-review-r0": {
+      "line": "PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=0ad444dc5d0c00633a0c25fc04d76e0d66799d2c6f8c22699f407e3db24c4f3a json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}",
+      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=0ad444dc5d0c00633a0c25fc04d76e0d66799d2c6f8c22699f407e3db24c4f3a json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}"
+    },
+    "probe-123-pr-write-run-state-ready-r0": {
+      "line": "PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=66a06739cf674dc269441ec5c2363d4639cb38f81fec54f690bfada17d80263d json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}",
+      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=66a06739cf674dc269441ec5c2363d4639cb38f81fec54f690bfada17d80263d json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}"
     }
   },
   "expect": {

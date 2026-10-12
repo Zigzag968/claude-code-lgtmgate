@@ -287,6 +287,22 @@
     "probe-257-pr-state-merge-r0": {
       "line": "PROBE name=pr-state exit=0 sha=3767a6d729c9d3d60c65241e1b8663b1233e7935733b50fc82254f383329cd72 cmd=350c4484f5893cfe5f4b7d467590a67a5ec752e13c6191b84e14ef9ff8b1cf9c json={\"now\":\"2026-10-03T17:42:40Z\",\"headRefName\":\"feat/issue-257\",\"headRefOid\":\"a996535df7d4c4b7b66f0ffa37c7a503c78b5990\",\"bodyDigest\":\"5a0fdef5ceaa\",\"acceptanceChecked\":[1,2,3,4,5,6],\"decisionLog\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-10-03T17:29:04Z\",\"commitCount\":2,\"reviewCommentIds\":[\"IC_kwDOUzMNuc8AAAABY_IDVQ\"],\"openIssues\":[],\"openIssuesTruncated\":false}",
       "verify": "VERIFY ok line=PROBE name=pr-state exit=0 sha=3767a6d729c9d3d60c65241e1b8663b1233e7935733b50fc82254f383329cd72 cmd=350c4484f5893cfe5f4b7d467590a67a5ec752e13c6191b84e14ef9ff8b1cf9c json={\"now\":\"2026-10-03T17:42:40Z\",\"headRefName\":\"feat/issue-257\",\"headRefOid\":\"a996535df7d4c4b7b66f0ffa37c7a503c78b5990\",\"bodyDigest\":\"5a0fdef5ceaa\",\"acceptanceChecked\":[1,2,3,4,5,6],\"decisionLog\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-10-03T17:29:04Z\",\"commitCount\":2,\"reviewCommentIds\":[\"IC_kwDOUzMNuc8AAAABY_IDVQ\"],\"openIssues\":[],\"openIssuesTruncated\":false}"
+    },
+    "probe-257-pr-write-run-state-plan-r0": {
+      "line": "PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=80bbe09df3b285c146ff75c100b6765610cb5d9cd1e0b788ca9228d567e2c1b1 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}",
+      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=80bbe09df3b285c146ff75c100b6765610cb5d9cd1e0b788ca9228d567e2c1b1 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}"
+    },
+    "probe-257-pr-write-run-state-dev-r0": {
+      "line": "PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=c4c59f1c337767031d197feb611ff674eef0afd096ef0899e938c62eed6cf9f5 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}",
+      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=c4c59f1c337767031d197feb611ff674eef0afd096ef0899e938c62eed6cf9f5 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}"
+    },
+    "probe-257-pr-write-run-state-review-r0": {
+      "line": "PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=e2ecff96dbdf757a9e23eeca06190493145fb965f3c11f432b83f10625ae2973 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}",
+      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=e2ecff96dbdf757a9e23eeca06190493145fb965f3c11f432b83f10625ae2973 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}"
+    },
+    "probe-257-pr-write-run-state-ready-pending-human-r0": {
+      "line": "PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=42d0c4d84051b6ebc2709fb9e162dd4ad6c17d589471b05a9ba8c118e5fef505 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}",
+      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=42d0c4d84051b6ebc2709fb9e162dd4ad6c17d589471b05a9ba8c118e5fef505 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}"
     }
   },
   "expect": {
@@ -295,8 +311,11 @@
       "probe:lines:haiku",
       "probe:provision:haiku",
       "probe:provision-freshness:haiku",
+      "probe:pr-write:haiku",
+      "probe:pr-write:haiku",
       "probe:preflight:haiku",
       "probe:preflight:haiku",
+      "probe:pr-write:haiku",
       "probe:git-rev-list-count:haiku",
       "probe:pr-state:haiku",
       "probe:pr-state:haiku",
@@ -305,6 +324,7 @@
       "probe:pr-write:haiku",
       "acceptance-open-lgtm:0",
       "acceptance-ticked:round=0,n=12",
+      "probe:pr-write:haiku",
       "probe:pr-write:haiku"
     ],
     "traceExact": true,
@@ -312,12 +332,15 @@
       "probe-257-lines-plugin-version-r0",
       "probe-257-provision-provision-r0",
       "probe-257-provision-freshness-provision-freshness-r0",
+      "probe-257-pr-write-run-state-plan-r0",
       "diagnose-issue-257",
       "scout-issue-257-1",
       "plan-check-257-1",
+      "probe-257-pr-write-run-state-dev-r0",
       "probe-257-preflight-dev-r0",
       "nick-issue-257",
       "probe-257-preflight-branch-r0",
+      "probe-257-pr-write-run-state-review-r0",
       "probe-257-git-rev-list-count-worktree-behind-206-r0",
       "preflight-257-206-0",
       "nick-preflight-fix-257-206",
@@ -327,7 +350,8 @@
       "probe-257-pr-state-window-end-r0",
       "probe-257-pr-write-acceptance-tick-r0",
       "probe-257-pr-write-acceptance-tick-retry-r0",
-      "probe-257-pr-write-decision-log-r0"
+      "probe-257-pr-write-decision-log-r0",
+      "probe-257-pr-write-run-state-ready-pending-human-r0"
     ],
     "promptIncludes": [
       {

@@ -219,6 +219,22 @@
     "probe-185-pr-state-merge-r0": {
       "line": "PROBE name=pr-state exit=0 sha=3767a6d729c9d3d60c65241e1b8663b1233e7935733b50fc82254f383329cd72 cmd=350c4484f5893cfe5f4b7d467590a67a5ec752e13c6191b84e14ef9ff8b1cf9c json={\"now\":\"2026-10-03T17:42:40Z\",\"headRefName\":\"feat/issue-185\",\"headRefOid\":\"a996535df7d4c4b7b66f0ffa37c7a503c78b5990\",\"bodyDigest\":\"5a0fdef5ceaa\",\"acceptanceChecked\":[1,2,3,4,5,6],\"decisionLog\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-10-03T17:29:04Z\",\"commitCount\":2,\"reviewCommentIds\":[\"IC_kwDOUzMNuc8AAAABY_IDVQ\"],\"openIssues\":[],\"openIssuesTruncated\":false}",
       "verify": "VERIFY ok line=PROBE name=pr-state exit=0 sha=3767a6d729c9d3d60c65241e1b8663b1233e7935733b50fc82254f383329cd72 cmd=350c4484f5893cfe5f4b7d467590a67a5ec752e13c6191b84e14ef9ff8b1cf9c json={\"now\":\"2026-10-03T17:42:40Z\",\"headRefName\":\"feat/issue-185\",\"headRefOid\":\"a996535df7d4c4b7b66f0ffa37c7a503c78b5990\",\"bodyDigest\":\"5a0fdef5ceaa\",\"acceptanceChecked\":[1,2,3,4,5,6],\"decisionLog\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-10-03T17:29:04Z\",\"commitCount\":2,\"reviewCommentIds\":[\"IC_kwDOUzMNuc8AAAABY_IDVQ\"],\"openIssues\":[],\"openIssuesTruncated\":false}"
+    },
+    "probe-185-pr-write-run-state-plan-r0": {
+      "line": "PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=54bf17d52f647322df9e8ab53dc056491efd430c66b217b17f5a6e51b81d7bf7 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}",
+      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=54bf17d52f647322df9e8ab53dc056491efd430c66b217b17f5a6e51b81d7bf7 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}"
+    },
+    "probe-185-pr-write-run-state-dev-r0": {
+      "line": "PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=4449f601b48b6bf8f22cb19ceb212a6fdbe46775729ddf39d8f9bc68c0d8b6e2 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}",
+      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=4449f601b48b6bf8f22cb19ceb212a6fdbe46775729ddf39d8f9bc68c0d8b6e2 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}"
+    },
+    "probe-185-pr-write-run-state-review-r0": {
+      "line": "PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=fc0c32da3c8446ecb842caf533cac44c9f46c4c810337e71d6344a6133ab8c8b json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}",
+      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=fc0c32da3c8446ecb842caf533cac44c9f46c4c810337e71d6344a6133ab8c8b json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}"
+    },
+    "probe-185-pr-write-run-state-ready-r0": {
+      "line": "PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=fd170367ceeedf0cabc2a144481f2296b2d5b60f6e4b073d436b72000a6ca91b json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}",
+      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=fd170367ceeedf0cabc2a144481f2296b2d5b60f6e4b073d436b72000a6ca91b json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}"
     }
   },
   "expect": {
@@ -227,8 +243,11 @@
       "probe:lines:haiku",
       "probe:provision:haiku",
       "probe:provision-freshness:haiku",
+      "probe:pr-write:haiku",
+      "probe:pr-write:haiku",
       "probe:preflight:haiku",
       "probe:preflight:haiku",
+      "probe:pr-write:haiku",
       "probe:git-rev-list-count:haiku",
       "probe:pr-state:haiku",
       "probe:pr-state:haiku",
@@ -237,19 +256,23 @@
       "probe:pr-write:haiku",
       "acceptance-ticked:round=0,n=6",
       "probe:pr-write:haiku",
-      "probe:pr-state:haiku"
+      "probe:pr-state:haiku",
+      "probe:pr-write:haiku"
     ],
     "traceExact": true,
     "callLabels": [
       "probe-185-lines-plugin-version-r0",
       "probe-185-provision-provision-r0",
       "probe-185-provision-freshness-provision-freshness-r0",
+      "probe-185-pr-write-run-state-plan-r0",
       "diagnose-issue-185",
       "scout-issue-185-1",
       "plan-check-185-1",
+      "probe-185-pr-write-run-state-dev-r0",
       "probe-185-preflight-dev-r0",
       "nick-issue-185",
       "probe-185-preflight-branch-r0",
+      "probe-185-pr-write-run-state-review-r0",
       "probe-185-git-rev-list-count-worktree-behind-206-r0",
       "preflight-185-206-0",
       "nick-preflight-fix-185-206",
@@ -260,7 +283,8 @@
       "probe-185-pr-write-acceptance-tick-r0",
       "probe-185-pr-write-acceptance-tick-retry-r0",
       "probe-185-pr-write-decision-log-r0",
-      "probe-185-pr-state-merge-r0"
+      "probe-185-pr-state-merge-r0",
+      "probe-185-pr-write-run-state-ready-r0"
     ]
   }
 }

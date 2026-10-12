@@ -82,6 +82,14 @@
     "probe-151-provision-freshness-provision-freshness-r0": {
       "line": "PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b cmd=aeedbb11a66e9abca86f7c808f52d0448e197b92ffa3334d359ce066bb3b003f json={\"state\":\"fresh\",\"behind\":0,\"own\":0}",
       "verify": "VERIFY ok line=PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b cmd=aeedbb11a66e9abca86f7c808f52d0448e197b92ffa3334d359ce066bb3b003f json={\"state\":\"fresh\",\"behind\":0,\"own\":0}"
+    },
+    "probe-151-pr-write-run-state-plan-r0": {
+      "line": "PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=be02830bb61dfa21547ff368d44ebd7445e0a856fc74d26794836225245df8fa json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}",
+      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=be02830bb61dfa21547ff368d44ebd7445e0a856fc74d26794836225245df8fa json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}"
+    },
+    "probe-151-pr-write-run-state-escalate-r0": {
+      "line": "PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=f44ea2fb9258c96c2827c837a490ea5a09fb31f5c418d129555013f93a317345 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}",
+      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=f44ea2fb9258c96c2827c837a490ea5a09fb31f5c418d129555013f93a317345 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}"
     }
   },
   "expect": {
