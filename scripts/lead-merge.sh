@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Lead merge gesture (#74): scripts/lead-merge.sh <pr> [-R owner/repo] [--tick-from-review]
+# Lead merge gesture (#74): scripts/lead-merge.sh <pr> [-R owner/repo] [--tick-from-review | --tick-ids <csv>]
 # Run from a checkout of the PR head branch. Steps, each exit code checked:
 #   1. acceptance checklist via scripts/lib/acceptance-check.sh (same lib as the merge hook):
 #      any `- [ ]` between the acceptance markers, or missing markers, refuses.
@@ -52,6 +52,9 @@
 #      `Fixed by #<PR> (merged).`, each still-open issue named by a closing keyword (Closes/Fixes/Resolves #N,
 #      same repo, parsed from the body read BEFORE the merge). `Refs #N` is never closed. A failed merge or a
 #      PR not read back as merged exits non-zero and touches no issue (#109).
+# --tick-ids <csv> (#196): ids from untickableItems[].id, after the Lead re-ran each proof. After the freshness and exception gates
+#   (as for the other flag), the box of each id is ticked via pr-body-splice.cjs tick-ids (scripts/lib/tick-gates.sh) and PATCHed
+#   over REST; a [human-gate] id or an id with no box is refused, nothing ticked; then the step-1 gate decides. Exclusive with the flag below.
 # --tick-from-review (#9): Morgan proved boxes but the auto-mode classifier refused his `gh pr edit` tick, so they stay
 #   `- [ ]` (`verified-untickable`). With the flag, after step 1b and before the base merge, the script reads Morgan's
 #   latest verdict comment, ticks the boxes it lists as proven, then RE-FETCHES the body and re-runs the step-1 gate,
@@ -86,22 +89,26 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/lib/review-check.sh"
 # shellcheck source=lib/merge-gates.sh
 . "$SCRIPT_DIR/lib/merge-gates.sh"
+# shellcheck source=lib/tick-gates.sh
+. "$SCRIPT_DIR/lib/tick-gates.sh"
 
 MANIFEST=".claude-plugin/plugin.json"
 WORKFLOW="workflows/deliver-pipeline.js"
 
 die() { echo "lead-merge: $*" >&2; exit 1; }
 
-PR=""; REPO=""; TICK=0
+PR=""; REPO=""; TICK=0; TICK_IDS=""
 while [ $# -gt 0 ]; do
   case "$1" in
     -R|--repo) [ $# -ge 2 ] || die "$1 needs a value"; REPO="$2"; shift 2 ;;
     --tick-from-review) TICK=1; shift ;;
+    --tick-ids) [ $# -ge 2 ] || die "$1 needs a value"; TICK_IDS="$2"; shift 2 ;;
     -*) die "unknown option: $1" ;;
     *) [ -z "$PR" ] || die "unexpected argument: $1"; PR="$1"; shift ;;
   esac
 done
-case "$PR" in ''|*[!0-9]*) die "usage: scripts/lead-merge.sh <pr-number> [-R owner/repo] [--tick-from-review]" ;; esac
+[ "$TICK" -eq 0 ] || [ -z "$TICK_IDS" ] || die "--tick-ids and --tick-from-review are exclusive"
+case "$PR" in ''|*[!0-9]*) die "usage: scripts/lead-merge.sh <pr-number> [-R owner/repo] [--tick-from-review | --tick-ids <csv>]" ;; esac
 
 # Repo resolution: -R flag, else .claude/pipeline.config.json "repo", else gh repo view.
 if [ -z "$REPO" ] && [ -f .claude/pipeline.config.json ]; then
@@ -150,8 +157,8 @@ rc=0
 printf '%s\n' "$body" | acceptance_check_body || rc=$?
 if [ "$rc" -ne 0 ]; then
   # --tick-from-review (#9): open boxes (rc 1) are handled by the tick step below, which re-runs this gate
-  if [ "$TICK" -eq 1 ] && [ "$rc" -eq 1 ]; then
-    echo "lead-merge: open boxes found, trying --tick-from-review"
+  if { [ "$TICK" -eq 1 ] || [ -n "$TICK_IDS" ]; } && [ "$rc" -eq 1 ]; then
+    echo "lead-merge: open boxes found, trying the tick flag"
   else
     die "PR #$PR acceptance gate failed (rc=$rc); nothing bumped, nothing merged"
   fi
@@ -185,47 +192,13 @@ lm_gate_declared_exceptions "$body" "$pr_head"
 # Rule and scope: scripts/lib/merge-gates.sh (lm_gate_r2_waivers).
 lm_gate_r2_waivers "$body" "$pr_head" "$lm_tmp"
 
-# --- 1c. --tick-from-review (#9) -----------------------------------------------
-if [ "$TICK" -eq 1 ] && [ "$rc" -eq 1 ]; then
+# --- 1c. --tick-from-review (#9) / --tick-ids (#196) ---------------------------
+if { [ "$TICK" -eq 1 ] || [ -n "$TICK_IDS" ]; } && [ "$rc" -eq 1 ]; then
   tick_tmp="$lm_tmp"   # comments.json was read in step 1a: same snapshot as the freshness check
-  pick_rc=0
-  PR="$PR" python3 - "$tick_tmp/comments.json" "$tick_tmp/verdict_at.txt" > "$tick_tmp/review.txt" <<'PY' || pick_rc=$?
-import json, os, re, sys
-raw, dec, i, comments = open(sys.argv[1]).read(), json.JSONDecoder(), 0, []
-while i < len(raw):
-    if raw[i].isspace():
-        i += 1; continue
-    obj, i = dec.raw_decode(raw, i)
-    comments.extend(obj if isinstance(obj, list) else [obj])
-marker = re.compile(r"<!-- pipeline-review-round pr=%s( sha=[0-9a-fA-F]{40})? -->" % os.environ["PR"])
-def marked(c):
-    lines = (c.get("body") or "").replace("\r", "").split("\n")
-    return lines, bool(lines) and bool(marker.fullmatch(lines[0].strip()))
-best = None
-for n, c in enumerate(comments):
-    lines, is_marked = marked(c)
-    if is_marked and len([l for l in lines[1:] if l.strip()]) >= 2:
-        best = n
-if best is None:
-    sys.exit(1)
-if any(marked(c)[1] for c in comments[best + 1:]):
-    sys.exit(2)  # a later marker comment (e.g. a Nick push-note): the verdict is stale
-open(sys.argv[2], "w").write(comments[best].get("created_at") or "")
-print(comments[best]["body"])
-PY
-  case "$pick_rc" in
-    0) ;;
-    2) die "FAIL: tick-from-review: a push followed Morgan's verdict; re-review first" ;;
-    *) die "PR #$PR has no Morgan review comment (marker '<!-- pipeline-review-round pr=$PR -->' with a multi-line verdict); nothing ticked, nothing merged" ;;
-  esac
-  # the PR head must not be newer than the verdict (REST: pulls/<N> head sha -> commits/<sha> committer date)
-  head_sha="$pr_head"
-  head_date="$(gh api "repos/$REPO/commits/$head_sha" --jq .commit.committer.date)" || die "cannot read the commit date of $head_sha"
-  verdict_at="$(cat "$tick_tmp/verdict_at.txt")"
-  [ -n "$head_date" ] && [ -n "$verdict_at" ] || die "tick-from-review: cannot compare the head commit date with the verdict date; nothing ticked"
-  python3 -c 'import sys; sys.exit(0 if sys.argv[1] <= sys.argv[2] else 1)' "$head_date" "$verdict_at" \
-    || die "FAIL: tick-from-review: a push followed Morgan's verdict; re-review first"
-  printf '%s\n' "$body" > "$tick_tmp/body.txt"
+  if [ -n "$TICK_IDS" ]; then
+    lm_tick_ids "$TICK_IDS" "$tick_tmp"
+  else
+  lm_tick_pick_review "$tick_tmp"
   python3 - "$tick_tmp/body.txt" "$tick_tmp/review.txt" > "$tick_tmp/newbody.txt" <<'PY' || die "tick step failed"
 import re, sys
 rows = open(sys.argv[1], newline="").read().split("\n")
@@ -292,14 +265,8 @@ for i, raw in enumerate(rows):
     out.append(line + cr)
 sys.stdout.write("\n".join(out))
 PY
-  if ! cmp -s "$tick_tmp/body.txt" "$tick_tmp/newbody.txt"; then
-    bash "$SCRIPT_DIR/runtime/pii-guard.sh" check < "$tick_tmp/newbody.txt" > "$tick_tmp/pii.txt" 2>/dev/null || die "tick-from-review: pii-guard refused ($(sed 's/^pii-refused://' "$tick_tmp/pii.txt")); nothing written"
-    gh api -X PATCH "repos/$REPO/pulls/$PR" -F "body=@$tick_tmp/newbody.txt" >/dev/null || die "cannot PATCH the PR #$PR body"
+  lm_tick_write "$tick_tmp"
   fi
-  body="$(gh pr view "$PR" -R "$REPO" --json body -q .body)" || die "cannot re-read PR #$PR body"
-  rc=0
-  printf '%s\n' "$body" | acceptance_check_body || rc=$?
-  [ "$rc" -eq 0 ] || die "PR #$PR acceptance gate still failing after --tick-from-review (rc=$rc); nothing bumped, nothing merged"
 fi
 
 # --- 2. sync with the remote head branch ---------------------------------------

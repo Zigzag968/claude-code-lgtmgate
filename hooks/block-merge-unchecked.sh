@@ -39,9 +39,9 @@ if printf '%s' "$cmd" | grep -qE 'gh[[:space:]]+pr[[:space:]]+merge'; then
 # Only an executed call counts (command position, optionally after bash/sh): `grep ... lead-merge.sh`
 # or `cat scripts/lead-merge.sh` merely name the file.
 elif printf '%s' "$cmd" | grep -qE '(^|[;&|(])[[:space:]]*((bash|sh)[[:space:]]+)?([^[:space:];&|]*/)?lead-merge\.sh([[:space:]]|$)'; then
-  # --tick-from-review (#9) exists to tick the boxes Morgan proved: the script ticks, re-checks the
+  # --tick-from-review (#9) and --tick-ids (#196) exist to tick the boxes Morgan proved: the script ticks, re-checks the
   # body and refuses the merge if any box is still open, so the pre-check here would only block it.
-  if printf '%s' "$cmd" | grep -qE 'lead-merge\.sh[^;&|]*--tick-from-review'; then exit 0; fi
+  if printf '%s' "$cmd" | grep -qE 'lead-merge\.sh[^;&|]*--tick-(from-review|ids)'; then exit 0; fi
   kind="script"
   prnum="$(printf '%s' "$cmd" | grep -oE 'lead-merge\.sh[[:space:]]+[0-9]+' | grep -oE '[0-9]+$' || true)"
 else
