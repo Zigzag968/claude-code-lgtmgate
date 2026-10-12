@@ -72,9 +72,12 @@ EOX
 
 # R2 scope = engine repo (`engineRepo: true` in .claude/pipeline.config.json ON origin/main, never the PR's own copy, so a PR
 # cannot switch the rule off) + an issue named by a closing keyword or Refs (`#N`, `<this repo>#N` or its URL; anywhere in the
-# PR body or in a commit message of the PR) labelled `type:bug` + a PR head touching workflows/. Such a PR must add or modify
-# fixtures/incidents/<N>-*.json holding valid JSON at the PR head, or carry a valid declared exception (an `exception:` line
-# already validated by 1b above). The PR is each tip judged (lm_sync_head: the remote head, the local head when it holds
+# PR body or in a commit message of the PR) labelled with the scope's issueType + a PR head touching one of the scope's paths. Such
+# a PR must add or modify <fixtureDir>/<N>-*.json holding valid JSON at the PR head, REPLAYED green on the PR head and red on
+# origin/main, or carry a valid declared exception (an `exception:` line already validated by 1b above). The scope (issueType,
+# paths, fixtureDir) is `r2Scope` of the same origin/main config, the one definition workflows/deliver-pipeline.js reads too (#200,
+# r2ScopeOf; same shape rule). Dispatch applies it to Sam's planned targets, merge to the real diff. Known limits of the replay:
+# red = any failing replay (a harness error counts as red), and the runner executed is the one on origin/main. The PR is each tip judged (lm_sync_head: the remote head, the local head when it holds
 # unpushed commits) against origin/main (three dots) and every tip that changes workflows/ needs its own fixture. Renames are
 # not detected (a file moved out of workflows/ is still a change there; a fixture moved in is still an addition). Only the
 # exact line the bump writes (`const BUILD = { plugin: 'lgtmgate', version: '<semver>', cutFrom: '<literal>' }`) is not a
@@ -83,19 +86,19 @@ EOX
 r2_fail() { echo "FAIL: r2-waiver: $*" >&2; die "PR #$PR R2 waiver not declared; nothing bumped, nothing merged"; }
 # r2_fixtures_of <tip> <n>: the files fixtures/incidents/<n>-<name>.json (that exact path, no subfolder) the PR added or modified
 # between origin/main and <tip>, NUL-separated. `-z` keeps non-ASCII names unquoted; renames are split into their parts.
-r2_fixtures_of() {
-  git diff -z --no-renames --name-status "origin/main...$1" | N="$2" python3 -c '
+r2_fixtures_of() {   # needs $r2_dir (set by lm_gate_r2_waivers)
+  git diff -z --no-renames --name-status "origin/main...$1" | N="$2" D="$r2_dir" python3 -c '
 import os, re, sys
 parts = sys.stdin.buffer.read().split(b"\0")
-pat = re.compile(rb"fixtures/incidents/" + re.escape(os.environ["N"].encode()) + rb"-[^/]+\.json")
+pat = re.compile(re.escape(os.environ["D"].encode()) + rb"/" + re.escape(os.environ["N"].encode()) + rb"-[^/]+\.json")
 for status, path in zip(parts[0::2], parts[1::2]):
     if status in (b"A", b"M") and pat.fullmatch(path):
         sys.stdout.buffer.write(path + b"\0")'
 }
-# r2_changes_workflows <tip>: prints 1 when the PR (origin/main...<tip>) really changes workflows/, 0 when it only rewrites the BUILD
+# r2_changes_workflows <tip>: prints 1 when the PR (origin/main...<tip>) really changes the scope's paths ($r2_paths), 0 when it only rewrites the BUILD
 # line of the workflow (the bump). Renames are not detected: a file moved out of workflows/ is still a change there.
 r2_changes_workflows() {
-  git diff --no-renames -U0 "origin/main...$1" -- workflows/ | WORKFLOW="$WORKFLOW" python3 -c '
+  git diff --no-renames -U0 "origin/main...$1" -- "${r2_paths[@]}" | WORKFLOW="$WORKFLOW" python3 -c '
 import os, re, sys
 own = "diff --git a/%s b/%s" % (os.environ["WORKFLOW"], os.environ["WORKFLOW"])
 # the one line the bump writes (see step 4): known keys in order, quoted literals only (\x27 = the single quote), no code fits in it
@@ -116,9 +119,44 @@ for line in sys.stdin.read().split("\n"):
 print(1 if any(h != own or not seen or not lines or ext or any(not build.fullmatch(l) for l in lines) for h, seen, lines, ext in blocks) else 0)'
 }
 
+# r2_scope_read <config.json>: prints issueType, fixtureDir, then one path per line, exit 0; exit 1 when r2Scope is missing or
+# malformed. SAME shape rule as r2ScopeOf in workflows/deliver-pipeline.js (non-empty strings, non-empty paths array).
+r2_scope_read() {
+  python3 -c '
+import json, sys
+s = json.load(open(sys.argv[1])).get("r2Scope")
+ok = lambda v: isinstance(v, str) and v != "" and "\n" not in v
+if not (isinstance(s, dict) and ok(s.get("issueType")) and ok(s.get("fixtureDir"))):
+    sys.exit(1)
+p = s.get("paths")
+if not (isinstance(p, list) and p and all(ok(x) for x in p)):
+    sys.exit(1)
+print(s["issueType"]); print(s["fixtureDir"])
+for x in p:
+    print(x)' "$1" 2>/dev/null
+}
+# r2_replay_tip <tip> <fixture-path> <tmp>: the fixture must replay green with the PR workflow and red with the origin/main one
+# (offline, OFFLINE_STRICT=1: a failed run exits non-zero). Skipped with a NOTE when origin/main has no runner yet.
+r2_replay_tip() {
+  local t="$1" fx="$2" d="$3/r2-replay" out
+  git cat-file -e origin/main:scripts/run-offline.cjs 2>/dev/null || { echo "NOTE: r2-replay skipped (no scripts/run-offline.cjs on origin/main)" >&2; return 0; }
+  mkdir -p "$d"
+  git show origin/main:scripts/run-offline.cjs > "$d/run-offline.cjs" || r2_fail "r2-replay: cannot read the runner on origin/main"
+  git show "origin/main:$WORKFLOW" > "$d/base-workflow.js" 2>/dev/null || r2_fail "r2-replay: cannot read $WORKFLOW on origin/main"
+  git show "$t:$WORKFLOW" > "$d/tip-workflow.js" 2>/dev/null || r2_fail "r2-replay: cannot read $WORKFLOW on the PR head"
+  git show "$t:$fx" > "$d/fixture.json" || r2_fail "r2-replay: cannot read $fx on the PR head"
+  if ! out="$(cd "$d" && OFFLINE_STRICT=1 node run-offline.cjs fixture.json --fp tip-workflow.js 2>&1)"; then
+    r2_fail "r2-replay: fixture is not green on the branch ($fx): $(printf '%s' "$out" | tail -n 1)"
+  fi
+  if out="$(cd "$d" && OFFLINE_STRICT=1 node run-offline.cjs fixture.json --fp base-workflow.js 2>&1)"; then
+    r2_fail "r2-replay: fixture is not red on base ($fx): it does not reproduce the bug ($(printf '%s' "$out" | tail -n 1))"
+  fi
+}
+
 lm_gate_r2_waivers() {
   local body="$1" pr_head="$2" lm_tmp="$3"
-  local r2_engine r2_wf_tips r2_wf r2_refs r2_seen n info t covered fx
+  local r2_engine r2_wf_tips r2_wf r2_refs r2_seen n info t covered fx r2_scope p
+  r2_type=""; r2_dir=""; r2_paths=()
   if [ -z "$exc_lines" ]; then
     r2_engine=0
     if git show origin/main:.claude/pipeline.config.json > "$lm_tmp/base-config.json" 2>/dev/null \
@@ -126,6 +164,12 @@ lm_gate_r2_waivers() {
       r2_engine=1
     fi
     if [ "$r2_engine" -eq 1 ]; then
+      r2_scope="$(r2_scope_read "$lm_tmp/base-config.json")" || die "engineRepo is true on origin/main but r2Scope is missing or invalid in .claude/pipeline.config.json; fix it (README, config table, r2Scope row)"
+      r2_type="$(printf '%s\n' "$r2_scope" | sed -n 1p)"
+      r2_dir="$(printf '%s\n' "$r2_scope" | sed -n 2p)"
+      while IFS= read -r p; do r2_paths+=("$p"); done <<EOP
+$(printf '%s\n' "$r2_scope" | sed -n '3,$p')
+EOP
       lm_sync_head "$pr_head"
       r2_wf_tips=""
       for t in $lm_tips; do
@@ -141,15 +185,15 @@ lm_gate_r2_waivers() {
           case "$r2_seen" in *" $n "*) continue ;; esac
           r2_seen="$r2_seen$n "
           info="$(gh api "repos/$REPO/issues/$n" --jq '.state + " " + ([.labels[].name] | join(","))')" || r2_fail "cannot read issue #$n"
-          case ",${info#* }," in *,type:bug,*) ;; *) continue ;; esac
+          case ",${info#* }," in *",type:$r2_type,"*) ;; *) continue ;; esac
           for t in $r2_wf_tips; do   # every tip that changes workflows/ carries its own valid fixture
             covered=0
             r2_fixtures_of "$t" "$n" > "$lm_tmp/fixtures.list" || die "cannot diff the PR against origin/main"
             while IFS= read -r -d '' fx; do
               if git show "$t:$fx" 2>/dev/null | python3 -c 'import json,sys; json.load(sys.stdin)' >/dev/null 2>&1; then covered=1; break; fi
             done < "$lm_tmp/fixtures.list"
-            if [ "$covered" -eq 1 ]; then continue; fi
-            r2_fail "issue #$n is type:bug and the PR changes workflows/ but adds or modifies no valid (non-empty JSON) fixtures/incidents/$n-*.json; add the fixture (replayed red on base, green on the branch) or declare the waiver with 'exception: <what> — <why> — #M' in the acceptance block (#M an open tech-debt issue, DEBT(#M) marker in the diff)"
+            if [ "$covered" -eq 1 ]; then r2_replay_tip "$t" "$fx" "$lm_tmp"; continue; fi
+            r2_fail "issue #$n is type:$r2_type and the PR changes ${r2_paths[*]} but adds or modifies no valid (non-empty JSON) $r2_dir/$n-*.json; add the fixture (replayed red on base, green on the branch) or declare the waiver with 'exception: <what> — <why> — #M' in the acceptance block (#M an open tech-debt issue, DEBT(#M) marker in the diff)"
           done
         done
       fi

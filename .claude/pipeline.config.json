@@ -12,6 +12,7 @@
   "ciChecks": ["guards", "smoke-install"],
   "oneWayDoorKinds": ["status", "agent", "hook", "seam"],
   "engineRepo": true,
+  "r2Scope": { "issueType": "bug", "paths": ["workflows/"], "fixtureDir": "fixtures/incidents" },
   "oneWayDoorPaths": [
     "hooks/**",
     "!hooks/test-*",
