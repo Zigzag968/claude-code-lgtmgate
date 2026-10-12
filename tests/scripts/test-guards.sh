@@ -12,6 +12,7 @@
 # audit (the default list runs the audit check: a baseline raised vs origin/main fails; #289; rename-aware rule 2 and NEW-RULE, #303).
 # The audit cases really run scripts/audit.cjs: like test-audit.sh this file needs `npm ci` and ruff at the version of ruff.toml on PATH.
 # canary-step (the real MAINTAINING.md passes; no section and a missing script name fail naming the rule; #432).
+# readme-contract (#159): sections, dynamic badges, config rows, environment variables and test counts, in tests/scripts/lib/readme-contract-cases.sh.
 # Ends with `[test-guards] status=<ok|fail> passed=<n> failed=<n>`.
 set -u
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -577,6 +578,8 @@ run_canary "$T/cs-none"
 if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: canary-step: MAINTAINING.md has no heading'; then ok "canary-step: a MAINTAINING.md without the section -> FAIL naming the rule"; else ko "canary-step no section (rc=$RC) $OUT"; fi
 run_canary "$T/cs-name"
 if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: canary-step: MAINTAINING.md step does not name config-check.cjs$'; then ok "canary-step: a section missing one script name -> FAIL naming that script"; else ko "canary-step missing name (rc=$RC) $OUT"; fi
+
+. "$REPO_ROOT/tests/scripts/lib/readme-contract-cases.sh"
 
 STATUS=ok; [ "$FAIL_N" -eq 0 ] || STATUS=fail
 echo "[test-guards] status=${STATUS} passed=${PASS_N} failed=${FAIL_N}"

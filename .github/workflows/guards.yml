@@ -1,6 +1,6 @@
 name: guards
 
-# Runs on every PR to main. This repo is public and `guards` is a required status check of the
+# Runs on every PR to main and on push to main (base code only, for the README status badge). This repo is public and `guards` is a required status check of the
 # `main-protection` ruleset (see MAINTAINING.md section 5 and tests/templates/test-canonical-guards.sh),
 # so a red `guards` blocks the merge. Job `guards` runs, in order:
 #   - tests/templates/test-canonical-guards.sh : canonical guard net (invariants 2-22) plus
@@ -21,6 +21,8 @@ name: guards
 # BASE branch's token/secrets. The runner is ubuntu-latest (tests are deterministic and pinned).
 on:
   pull_request:
+    branches: [main]
+  push:
     branches: [main]
 
 permissions:

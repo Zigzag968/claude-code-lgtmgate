@@ -1,0 +1,39 @@
+name: badges
+
+# Publishes the JSON behind the README Tests badge (#159): the total of the offline suites, counted by
+# scripts/count-tests.cjs from the suites' own summary lines, written to tests.json on the orphan branch `badges`.
+# That JSON is the only file of the branch; it is force-pushed so no history grows. Shields reads it through its endpoint badge.
+# Triggers are push on main and manual dispatch only; never `pull_request` / `pull_request_target`
+# (this job holds `contents: write`, and the count runs the checked-out code). No PAT, no other secret: GITHUB_TOKEN only.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests-badge:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+      - name: Count the offline tests and write the endpoint JSON
+        run: node scripts/count-tests.cjs --endpoint "$RUNNER_TEMP/badges/tests.json"
+      - name: Publish tests.json to the badges branch
+        working-directory: ${{ runner.temp }}/badges
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git init -q
+          git checkout -q -B badges
+          git add tests.json
+          git -c user.name=github-actions -c user.email=41898282+github-actions[bot]@users.noreply.github.com commit -q -m "badges: tests count"
+          git push -q --force "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" badges
