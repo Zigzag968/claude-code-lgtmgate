@@ -30,7 +30,7 @@ jobs:
       - name: Publish tests.json to the badges branch
         working-directory: ${{ runner.temp }}/badges
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           git init -q
           git checkout -q -B badges
