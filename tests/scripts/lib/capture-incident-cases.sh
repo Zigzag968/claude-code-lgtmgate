@@ -17,6 +17,7 @@ if expect_ok "relaunch base"; then
   case "$OUT" in *"[offline] status=ok"*) ok "relaunch capture replays status=ok";; *) bad "relaunch replay: $OUT";; esac
   case "$OUT" in *"unanswered call"*) bad "relaunch has an unanswered call: $OUT";; *) ok "relaunch no unanswered call";; esac
   case "$OUT" in *"next: scripts/publish-fixture.sh"*) ok "next step printed";; *) bad "no next step: $OUT";; esac
+  case "$OUT" in *"plugin repository only"*) ok "next step names its repository";; *) bad "next step lacks the repository note: $OUT";; esac
   NCALLS=$(node -e 'process.stdout.write(String(Object.keys(require(process.env.ROOT+"/fixtures/smoke/auto-lgtm.json").calls).length))')
   case "$OUT" in *"calls=$NCALLS cached=0"*) ok "relaunch cached absent is false (cached=0, calls=$NCALLS)";; *) bad "cached count: $OUT";; esac
   case "$(cat "$CAP")" in *cached*) bad "relaunch capture carries a cached key";; *) ok "relaunch capture carries no run metadata";; esac
