@@ -1,6 +1,6 @@
 {
   "name": "478-probe-refused-read-command-not-run",
-  "note": "#478: a consumer replay of release candidate 2: the plugin-version read probe copy was refused by probe-run (exit -1, empty-output digest, a refused: cmd digest), nothing ran. The run ends provision-failed with probeReason command-not-run, not cmd-mismatch.",
+  "note": "#478: a consumer replay of release candidate 2: the plugin-version read probe copy was refused by probe-run (exit -1, empty-output digest, a refused: cmd digest), nothing ran. The run ends provision-failed with probeReason command-not-run, not cmd-mismatch. The engine retries a read probe once with a fresh agent (#486): the second answer repeats the recorded failure (no raw capture of a retry exists; the next canary run replaces it).",
   "args": {
     "pluginRoot": "/plugin",
     "issue": 478,
@@ -10,20 +10,28 @@
     "mode": "auto"
   },
   "calls": {
-    "probe-478-lines-plugin-version-r0": {
-      "line": "PROBE name=lines exit=-1 sha=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 cmd=66638a2aac8d22b74215e2d434b9bfd67410ede5b1bb4994669f556463f96b50 json={\"lines\":[]}",
-      "verify": "VERIFY ok line=PROBE name=lines exit=-1 sha=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 cmd=66638a2aac8d22b74215e2d434b9bfd67410ede5b1bb4994669f556463f96b50 json={\"lines\":[]}"
-    }
+    "probe-478-lines-plugin-version-r0": [
+      {
+        "line": "PROBE name=lines exit=-1 sha=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 cmd=66638a2aac8d22b74215e2d434b9bfd67410ede5b1bb4994669f556463f96b50 json={\"lines\":[]}",
+        "verify": "VERIFY ok line=PROBE name=lines exit=-1 sha=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 cmd=66638a2aac8d22b74215e2d434b9bfd67410ede5b1bb4994669f556463f96b50 json={\"lines\":[]}"
+      },
+      {
+        "line": "PROBE name=lines exit=-1 sha=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 cmd=66638a2aac8d22b74215e2d434b9bfd67410ede5b1bb4994669f556463f96b50 json={\"lines\":[]}",
+        "verify": "VERIFY ok line=PROBE name=lines exit=-1 sha=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 cmd=66638a2aac8d22b74215e2d434b9bfd67410ede5b1bb4994669f556463f96b50 json={\"lines\":[]}"
+      }
+    ]
   },
   "expect": {
     "status": "escalate",
     "reason": "provision-failed",
     "trace": [
       "branch-prefix-fallback-default",
+      "probe:lines:haiku",
       "probe:lines:haiku"
     ],
     "traceExact": true,
     "callLabels": [
+      "probe-478-lines-plugin-version-r0",
       "probe-478-lines-plugin-version-r0"
     ],
     "logsInclude": [

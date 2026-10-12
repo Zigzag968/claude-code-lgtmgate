@@ -2640,8 +2640,8 @@ await testCase('T478b probe(): command-not-run checked before cmd-mismatch, read
   const sha = extractBetween(source, '// --- sha256Hex:start ---', '// --- sha256Hex:end ---')
   const f = t478Fns(source)
   if (!sha || !f) return { ok: false, msg: 'sha256Hex or probeNotRun block not found in pipeline source' }
-  const call = source.indexOf("if (probeNotRun(parsed, want, gateCommand)) return fail('command-not-run', 'expect-cmd-mismatch')")
-  const mismatch = source.indexOf("if (parsed.cmd !== want) return fail('cmd-mismatch')")
+  const call = source.indexOf("if (probeNotRun(parsed, want, gateCommand)) return { reason: 'command-not-run', stderr: 'expect-cmd-mismatch' }")
+  const mismatch = source.indexOf("if (parsed.cmd !== want) return { reason: 'cmd-mismatch' }")
   const hints = (() => {
     const from = source.indexOf('const PROBE_RELAUNCH =')
     const upTo = source.indexOf('\nconst PROBE_SCHEMA')
@@ -2652,9 +2652,39 @@ await testCase('T478b probe(): command-not-run checked before cmd-mismatch, read
     eq('the remap call exists and passes gateCommand', call >= 0, true),
     eq('it runs before the cmd-mismatch check', call >= 0 && call < mismatch, true),
     eq('the constant is sha256 of the empty string', f.EMPTY_OUTPUT_SHA256, new Function(sha + "\nreturn sha256Hex('')")()),
-    eq('the command-not-run hint says relaunch once', typeof hint === 'string' && hint.includes('the command did not run; relaunch once'), true),
+    eq('the command-not-run hint says the engine already ran the probe twice', typeof hint === 'string' && hint.includes('the engine ran the probe once more with a fresh agent'), true),
     eq('the hint is one line', typeof hint === 'string' && !hint.includes('\n'), true),
     eq('the hint says what to do when it repeats (#485)', typeof hint === 'string' && hint.includes('report the typed command'), true),
+  ]
+  return checks.find(c => c) || { ok: true }
+})
+
+// T486 (#486) — a read probe that ends command-not-run runs once more with a fresh agent, through the same call site;
+// no loop, never for a gated write, cmd-mismatch, unparseable-line or agent-death.
+await testCase('T486 probe(): a read command-not-run is retried once through the single probe call site (#486)', async () => {
+  const source = SUITE_ARGS.fpSource
+  if (!source) {
+    log('SKIP — T486: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const from = source.indexOf('async function probe(')
+  const upTo = source.indexOf('// preflightProbe', from)
+  const body = from < 0 || upTo < 0 ? '' : source.slice(from, upTo)
+  const first = body.indexOf('let outcome = await attempt()')
+  const condition = body.slice(first, body.indexOf('{', first + 30))
+  const count = (needle) => body.split(needle).length - 1
+  const hints = (() => {
+    const a = source.indexOf('const PROBE_RELAUNCH =')
+    const b = source.indexOf('\nconst PROBE_SCHEMA')
+    return a < 0 || b < 0 ? null : new Function(source.slice(a, b) + '\nreturn PROBE_REASON_HINTS')()
+  })()
+  const checks = [
+    eq('the probe body was found', first > 0, true),
+    eq('the retry condition names command-not-run and excludes gated writes', condition.includes("outcome.reason === 'command-not-run'") && condition.includes('!gateCommand'), true),
+    eq('exactly one retry call follows the first', count('await attempt()'), 2),
+    eq('no loop around the retry', /\b(while|for)\s*\(/.test(body), false),
+    eq('one probe call site', count("callAgentSafe('probe'"), 1),
+    eq('the hint no longer carries the old single-relaunch advice', !String(hints && hints['command-not-run']).includes('relaunch' + ' once'), true),
   ]
   return checks.find(c => c) || { ok: true }
 })
@@ -2741,11 +2771,11 @@ await testCase('T490c probeStderr reaches the escalation results and the command
   const checks = [
     eq('the three onFail closures carry the stderr', count('onFail: (reason, stderr) => ({ probeFailed: reason, probeStderr: stderr || null })'), 3),
     eq('the three escalations carry probeStderr', ['pv', 'sr', 'provision'].every((v) => source.includes(`probeStderr: ${v}.probeStderr || null`)), true),
-    eq('the refused-command branch passes the guard signature', source.includes("return fail('command-not-run', 'expect-cmd-mismatch')"), true),
+    eq('the refused-command branch passes the guard signature', source.includes("return { reason: 'command-not-run', stderr: 'expect-cmd-mismatch' }"), true),
     eq('fail forwards the stderr to onFail', source.includes('if (onFail) return onFail(reason, stderr)'), true),
     eq('the hint names expect-cmd-mismatch', typeof hint === 'string' && hint.includes('probeStderr: expect-cmd-mismatch'), true),
     eq('the hint stays one line', typeof hint === 'string' && !hint.includes('\n'), true),
-    eq('no second probe agent call', count("callAgentSafe('probe'"), 1),
+    eq('the retry reuses the one probe call site', count("callAgentSafe('probe'"), 1),
   ]
   return checks.find(c => c) || { ok: true }
 })

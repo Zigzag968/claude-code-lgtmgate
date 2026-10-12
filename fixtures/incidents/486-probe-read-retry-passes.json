@@ -1,0 +1,85 @@
+{
+  "name": "486-probe-read-retry-passes",
+  "note": "#486: the plugin-version read probe ends command-not-run once (no PROBE line, verify says no-record) and the engine runs it once more with a fresh agent, which passes; the run reaches the plan. Composed from #485 (failing answer) and a smoke fixture (passing answer), not a raw capture.",
+  "args": {
+    "pluginRoot": "/plugin",
+    "issue": 123,
+    "brief": "fix slugify accents",
+    "worktreePath": "/wt/root/issue-123",
+    "config": {},
+    "mode": "semi"
+  },
+  "calls": {
+    "probe-123-lines-plugin-version-r0": [
+      {
+        "line": "",
+        "verify": "VERIFY fail reason=no-record"
+      },
+      {
+        "line": "PROBE name=lines exit=0 sha=4b0b2f33b20b777393f4cb55ea1d47c45786b52ad36822582a5ed67647e54ed5 cmd=7880357778fbb84100c0b3af12d7ed192d7bd5ff32aa75e7337521dce2c696d7 json={\"lines\":[\"PLUGIN-VERSION:@@ENGINE_VERSION@@\"]}",
+        "verify": "VERIFY ok line=PROBE name=lines exit=0 sha=4b0b2f33b20b777393f4cb55ea1d47c45786b52ad36822582a5ed67647e54ed5 cmd=7880357778fbb84100c0b3af12d7ed192d7bd5ff32aa75e7337521dce2c696d7 json={\"lines\":[\"PLUGIN-VERSION:@@ENGINE_VERSION@@\"]}"
+      }
+    ],
+    "probe-123-provision-provision-r0": {
+      "line": "PROBE name=provision exit=0 sha=30ad404e7bf922808eeb13427c66400303e810a9392f80082fb0abe2fc6fc271 cmd=db6fbcd27fc949fce2354699dba657b6761291af184ae5890b1a9fbfaefc9360 json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}",
+      "verify": "VERIFY ok line=PROBE name=provision exit=0 sha=30ad404e7bf922808eeb13427c66400303e810a9392f80082fb0abe2fc6fc271 cmd=db6fbcd27fc949fce2354699dba657b6761291af184ae5890b1a9fbfaefc9360 json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}"
+    },
+    "probe-123-provision-freshness-provision-freshness-r0": {
+      "line": "PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b cmd=f7148584e77c9da7779115228bbfa0f4223ff89ed5d3031f3e51605249a7eaa7 json={\"state\":\"fresh\",\"behind\":0,\"own\":0}",
+      "verify": "VERIFY ok line=PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b cmd=f7148584e77c9da7779115228bbfa0f4223ff89ed5d3031f3e51605249a7eaa7 json={\"state\":\"fresh\",\"behind\":0,\"own\":0}"
+    },
+    "diagnose-issue-123": {
+      "confirmed": true,
+      "evidence": "reproduced: `node -e` prints the wrong slug",
+      "actualCause": "accent stripping",
+      "persistentStateSignal": false,
+      "authSecurityBoundarySignal": false,
+      "deployConfigSignal": false,
+      "immatureVendorApiSignal": false
+    },
+    "scout-issue-123-1": {
+      "decision": "GO",
+      "plan": "## Plan\n1. src/slugify.js: transliterate before stripping\n\n## Acceptance checklist\n- [ ] `npm test` passes",
+      "rationale": "",
+      "targetFiles": [
+        "src/slugify.js"
+      ],
+      "absorbedIssues": [],
+      "acceptanceChecklist": "- [ ] `npm test` passes"
+    },
+    "plan-check-123-1": {
+      "verdict": "CONFORMING",
+      "issues": []
+    },
+    "probe-123-pr-write-run-state-plan-r0": {
+      "line": "PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=47e49955d459148192ecd05674f27b0dc7c23df7524eb4dfa7cef45b3af397e3 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}",
+      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=47e49955d459148192ecd05674f27b0dc7c23df7524eb4dfa7cef45b3af397e3 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}"
+    },
+    "probe-123-pr-write-run-state-plan-ready-r0": {
+      "line": "PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=4e4ca5354e17cf9a0b11596e7ba3f7303954f0bc0d8843ef304683dcea85cff8 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}",
+      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=4e4ca5354e17cf9a0b11596e7ba3f7303954f0bc0d8843ef304683dcea85cff8 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}"
+    }
+  },
+  "expect": {
+    "status": "plan-ready",
+    "trace": [
+      "branch-prefix-fallback-default",
+      "probe:lines:haiku",
+      "probe:lines:haiku"
+    ],
+    "callLabels": [
+      "probe-123-lines-plugin-version-r0",
+      "probe-123-lines-plugin-version-r0",
+      "probe-123-provision-provision-r0",
+      "probe-123-provision-freshness-provision-freshness-r0",
+      "probe-123-pr-write-run-state-plan-r0",
+      "diagnose-issue-123",
+      "scout-issue-123-1",
+      "plan-check-123-1",
+      "probe-123-pr-write-run-state-plan-ready-r0"
+    ],
+    "logsInclude": [
+      "running the probe once more with a fresh agent"
+    ]
+  }
+}
