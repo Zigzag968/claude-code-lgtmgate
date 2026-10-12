@@ -123,7 +123,7 @@ fi
 [ -n "$REPO" ] || die "cannot resolve the repo (pass -R owner/repo)"
 
 # --- 1. acceptance checklist -------------------------------------------------
-body="$(gh pr view "$PR" -R "$REPO" --json body -q .body)" || die "cannot read PR #$PR body"
+acceptance_read_pr_body "$PR" "$REPO" || die "cannot read PR #$PR body (or it holds a NUL byte); nothing bumped, nothing merged"
 # issue_refs <keyword alternation> <header|all> [<owner/repo>]: the issue numbers named by `<keyword> <ref>`. Input on stdin:
 # text chunks separated by NUL (the PR body, then one chunk per commit message), each parsed on its own. Fenced code blocks
 # and inline `code` spans are stripped before matching, so proofs quoting `Closes #N` never count. Case-insensitive,
@@ -201,7 +201,8 @@ if { [ "$TICK" -eq 1 ] || [ -n "$TICK_IDS" ]; } && [ "$rc" -eq 1 ]; then
     lm_tick_ids "$TICK_IDS" "$tick_tmp"
   else
   lm_tick_pick_review "$tick_tmp" "$pr_head"
-  python3 - "$tick_tmp/body.txt" "$tick_tmp/review.txt" > "$tick_tmp/newbody.txt" <<'PY' || die "tick step failed"
+  span="$(printf '%s\n' "$body" | acceptance_block_span)" || die "tick-from-review: no acceptance block to tick; nothing ticked"
+  python3 - "$tick_tmp/body.txt" "$tick_tmp/review.txt" "${span% *}" "${span#* }" > "$tick_tmp/newbody.txt" <<'PY' || die "tick step failed"
 import re, sys
 rows = open(sys.argv[1], newline="").read().split("\n")
 def fence_after(line, fence):
@@ -229,20 +230,13 @@ for line in review:
     n = norm(raw)
     proven.append(n)
 suffix = " — ticked by lead-merge from Morgan's review"
-fenced, start, end, fence = [], -1, -1, ""
+fenced, fence = [], ""
+start, end = int(sys.argv[3]), int(sys.argv[4])  # the engine's block, from acceptance_block_span (single source)
 for i, raw in enumerate(rows):
     line = raw[:-1] if raw.endswith("\r") else raw
     nxt = fence_after(line, fence)
     fenced.append(fence != "" or nxt != "")
-    if fence == "" and nxt == "":
-        marker = line.rstrip(" \t")
-        if marker == "<!-- acceptance:start -->":
-            start = i
-        elif marker == "<!-- acceptance:end -->":
-            end = i
     fence = nxt
-if end <= start:
-    start = end = -1  # no block: nothing is ticked
 out = []
 for i, raw in enumerate(rows):
     cr = "\r" if raw.endswith("\r") else ""

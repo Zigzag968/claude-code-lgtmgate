@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Parity test of the acceptance start marker: the engine, the splice template, the acceptance-check lib and the
-# lead-merge script each spell it on their own. Every literal spelling must equal one canonical string and every
+# Parity test of the acceptance start marker: the engine, the splice template and the acceptance-check lib
+# each spell it on their own. Every literal spelling must equal one canonical string and every
 # regex spelling must match it. Sites are located by their quoted text, never by line number.
 # PARITY_ROOT points the test at another copy of the four files (negative runs); the harness always comes from the repo.
 # bash 3.2 compatible. Trailer: [test-marker-parity] passed=<n> failed=<n>
@@ -44,8 +44,8 @@ C=scripts/runtime/pr-body-splice.cjs
 site literal "$C" ACCEPTANCE_START 1 "^const ACCEPTANCE_START = '([^']*)'\$"
 site literal "$C" includes 1 ".*b\\.includes\\('([^']*acceptance:start[^']*)'\\).*"
 site literal scripts/lib/acceptance-check.sh MSTART 1 ".*MSTART = \"([^\"]*)\".*"
-site literal scripts/lead-merge.sh marker 1 ".*marker == \"([^\"]*acceptance:start[^\"]*)\".*"
-site regex scripts/lib/merge-gates.sh re.search 1 ".*re\\.search\\(r\"([^\"]*acceptance:start[^\"]*)\".*"
+# scripts/lead-merge.sh and scripts/lib/merge-gates.sh no longer spell the marker: their readers take the block from
+# acceptance_extract_block (issue #203), so the lib MSTART above is the one remaining shell spelling.
 
 echo "[test-marker-parity] passed=$PASS failed=$FAIL"
 [ "$FAIL" -eq 0 ]
