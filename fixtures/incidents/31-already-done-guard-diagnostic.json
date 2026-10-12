@@ -1,0 +1,68 @@
+{
+  "name": "31-already-done-guard-diagnostic",
+  "note": "Synthetic shape of incident 31 (no raw journal is kept). The already-done result carries the guard own diagnostic. issueState reads _ because the publication neutralizes values the baseline replay does not need; status and trace are identical before and after the fix, so the fix is pinned by resultIncludes and logsInclude, which the pre-fix engine fails.",
+  "args": {
+    "pluginRoot": "_",
+    "issue": 123,
+    "brief": "_",
+    "worktreePath": "_",
+    "config": {},
+    "mode": "semi",
+    "entryStage": "dev",
+    "planText": "_\n_\n\n_\n- [ ] <!-- ac:1 --> `ls -l report.txt` shows a file\n"
+  },
+  "calls": {
+    "probe-123-lines-plugin-version-r0": {
+      "line": "PROBE name=lines exit=0 sha=dc3e556a33de82f91e3d3c086e61b607988b397e0c834aee0aa7848c6b3354d4 cmd=4ecc52a6072c98feaf1a76e8937f1ee538d8dcf775794e2cca42c443ee2a2818 json={\"lines\":[\"PLUGIN-VERSION:@@ENGINE_VERSION@@\"]}",
+      "verify": "VERIFY ok line=PROBE name=lines exit=0 sha=dc3e556a33de82f91e3d3c086e61b607988b397e0c834aee0aa7848c6b3354d4 cmd=4ecc52a6072c98feaf1a76e8937f1ee538d8dcf775794e2cca42c443ee2a2818 json={\"lines\":[\"PLUGIN-VERSION:@@ENGINE_VERSION@@\"]}"
+    },
+    "probe-123-lines-config-project-recheck-r0": {
+      "line": "PROBE name=lines exit=0 sha=209bf7c018a5733f7991a3cb09f07e5d2bce2233977d4a3c96a19850595b5430 cmd=a8f1675e83c53c6c76fd0e3d6016e032e169160ab5d875e880b78372b42c2e92 json={\"lines\":[]}",
+      "verify": "VERIFY ok line=PROBE name=lines exit=0 sha=209bf7c018a5733f7991a3cb09f07e5d2bce2233977d4a3c96a19850595b5430 cmd=a8f1675e83c53c6c76fd0e3d6016e032e169160ab5d875e880b78372b42c2e92 json={\"lines\":[]}"
+    },
+    "probe-123-provision-provision-r0": {
+      "line": "PROBE name=provision exit=0 sha=df70c44d40d7d0dfa302aadd6fc5a8b3ef14fa8ca16cf9856f73932abae06a33 cmd=5245918d5bf10c9e32a649b29b25f6e8fedfabf868c4db72ad0238e9d6e98078 json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}",
+      "verify": "VERIFY ok line=PROBE name=provision exit=0 sha=df70c44d40d7d0dfa302aadd6fc5a8b3ef14fa8ca16cf9856f73932abae06a33 cmd=5245918d5bf10c9e32a649b29b25f6e8fedfabf868c4db72ad0238e9d6e98078 json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}"
+    },
+    "already-done-check-123": {
+      "isAlreadyDone": true,
+      "isIssueClosed": false,
+      "issueState": "_",
+      "isMerged": true,
+      "mergedAt": "2026-07-31T10:52:36Z",
+      "mergedPr": 446,
+      "mergedHeadRef": "features/issue-123",
+      "mergedPrClosesIssue": true,
+      "issueCreatedAt": "_",
+      "checkFailed": false
+    }
+  },
+  "expect": {
+    "status": "already-done",
+    "trace": [
+      "branch-prefix-fallback-default",
+      "probe:lines:haiku",
+      "probe:lines:haiku",
+      "probe:provision:haiku"
+    ],
+    "traceExact": true,
+    "callLabels": [
+      "probe-123-lines-plugin-version-r0",
+      "probe-123-lines-config-project-recheck-r0",
+      "probe-123-provision-provision-r0",
+      "already-done-check-123"
+    ],
+    "resultIncludes": {
+      "guard": {
+        "reason": "merged",
+        "mergedPr": 446,
+        "mergedHeadRef": "features/issue-123",
+        "mergedPrClosesIssue": true,
+        "issueState": "_"
+      }
+    },
+    "logsInclude": [
+      "mergedPr=446"
+    ]
+  }
+}
