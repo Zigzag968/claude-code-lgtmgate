@@ -182,14 +182,22 @@ resolved `ready`/`no-go`/`escalate`), do a check-in pass rather than silently ab
   - waits until the PR reports the pushed sha with at least one check (bounded poll, cli/cli#7401), then asks the API whether `main` requires status checks (classic branch protection, then rulesets; HTTP 403/404 = none, any other answer refuses): required (`mode: required-checks`) waits for them to register, then `gh pr checks --watch --fail-fast --required`; none (`mode: no-required-checks`, e.g. a private repo on GitHub Free) polls `gh pr checks --json` until the head's checks are green, restricted to `config.ciChecks` when set. A timeout names the mode
   - `gh pr merge --merge --delete-branch` (never the auto-merge flag)
   - reads the PR back over REST (`merged` true and `merged_at` set); only then closes each still-open `Closes/Fixes/Resolves #N` issue found in the PR body's header block only (lines before the first `## ` line, code fences and inline code stripped) with `Fixed by #<PR> (merged).` (`Refs #N` never closed; a failed or unverified merge exits non-zero and closes nothing)
+  - after the verified read-back only, a worktree step (#168): by default ONE offer line naming the `cleanup-worktree.sh` command; with `--cleanup` the merged worktree is removed through that script, run from the main checkout. A refusal or failure of the cleanup prints its reason and never changes the exit code of a merged PR; an unverified merge prints neither the offer nor removes anything
   - then sync the main checkout: `git fetch origin && git merge --ff-only origin/main` (the fetch in the HTTPS form of §0 when the sandbox refuses it)
 - **No resume across a pin move**: never `resumeFromRunId` a run after the plugin version or pin changed (`BUILD` differs from the one the run started on) — relaunch fresh.
 - **Only remove the worktree after an explicit order from the user** (uncommitted work could still live there). The SubagentStop hook only warns, never deletes.
-- On order:
+- On order, inventory first (read-only; `-C <repo>` points at a checkout of another repository), then remove:
   ```bash
+  bash ${CLAUDE_PLUGIN_ROOT}/scripts/worktree-inventory.sh [-C <repo>]
   bash ${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-worktree.sh "<WORKTREE>"
+  bash ${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-worktree.sh --class <merged|closed-unmerged|no-pr-empty|all> [-C <repo>] [--dry-run]
   ```
-  The script refuses unless the worktree is merged and clean; `hooks/deny-destructive-git.sh` denies a raw `git worktree remove`. It sources the hook library next to it (`../hooks/lib-worktree-root.sh`), so it is called from the plugin folder, from any repository; a consumer has no copy of it and `/lgtmgate:init` does not install one.
+  The inventory prints one line per worktree under the root: `CLASS ISSUE BRANCH PR TREE AHEAD RUN PATH`. Classes, first match wins (one REST call per worktree, no GraphQL):
+  - `merged`: PR merged. Removable
+  - `closed-unmerged`: PR closed, not merged. Removable
+  - `no-pr-empty`: no PR and no commit ahead of the base. Removable
+  - `open-pr`, `unknown` (PR lookup failed), `ahead` (no PR, commits ahead of the base), `dirty`, `in-flight`, `detached`: never removed
+  Never removed whatever the order: a worktree with uncommitted or untracked files, one with a run in flight (state file `.pipeline/issue-<N>.json` in `in-progress|plan|dev|review`, or a fresh file under its `.pipeline`), the main tree, one outside the worktree root; `--force` is never passed. `--class` runs the single-path guard chain on every worktree of the class (`all` = the three removable classes), `--dry-run` only prints `WOULD-REMOVE <path>`, the last line is `REMOVED n, REFUSED m`. Branch rule: after the removal `git branch -d` (never `-D`) when the class is `merged` or the branch has no commit ahead; a refusal prints `BRANCH-KEPT <branch> (<reason>)`, a closed-unmerged branch with commits is left alone. `hooks/deny-destructive-git.sh` denies a raw `git worktree remove`. The scripts source the libraries next to them (`lib/worktree-state.sh`, `../hooks/lib-worktree-root.sh`), so they are called from the plugin folder, from any repository; a consumer has no copy of them and `/lgtmgate:init` does not install one.
 
 ## Reporting
 Short status to the user at each milestone (plan-ready / dev-done / needs-revision / verified-untickable / ready / no-go / escalate): what happened + the next decision. Bullets, no prose.
