@@ -16,6 +16,8 @@ export ROOT="$REPO_ROOT"
 SRC="${PARITY_ROOT:-$REPO_ROOT}"
 T="$(mktemp -d "${TMPDIR:-/tmp}/tick-equivalence.XXXXXX")"
 trap 'rm -rf "$T"' EXIT
+# shellcheck source=../../scripts/lib/acceptance-check.sh
+. "$SRC/scripts/lib/acceptance-check.sh"
 SUFFIX=" — ticked by lead-merge from Morgan's review"
 SM='<!-- acceptance:start -->'; EM='<!-- acceptance:end -->'
 BOXES=( '- [ ] <!-- ac:1 --> alpha' '- [ ] <!-- ac:2 --> beta' '- [ ] <!-- ac:3 --> [human-gate] gamma' )
@@ -54,11 +56,18 @@ CR=$(printf '\r')
 # strip_suffix <in> <out>: drop the lead-merge suffix at the end of a line, before a CR when the line has one
 strip_suffix() { sed "s/$SUFFIX\$//; s/$SUFFIX$CR\$/$CR/" "$1" > "$2"; }
 
+# tick_py: the python of the tick step, given the block span the way lead-merge gives it (acceptance_block_span, #203)
+tick_py() {
+  local sp
+  sp="$(acceptance_block_span < "$T/body.txt")" || return 1
+  python3 "$T/tick.py" "$T/body.txt" "$T/review.txt" "${sp% *}" "${sp#* }" 2>/dev/null > "$T/py.raw"
+}
+
 # run_case <name> <tick csv> <keep csv>   (the body is in $T/body.txt)
 run_case() {
   local name="$1" tick="$2" keep="$3" d
   review "$tick" "$T/review.txt"
-  python3 "$T/tick.py" "$T/body.txt" "$T/review.txt" 2>/dev/null > "$T/py.raw"
+  tick_py
   strip_suffix "$T/py.raw" "$T/py.out"
   node "$T/run-engine.js" "$T/engine.js" "$T/body.txt" "$T/rendered.txt" "$tick" "$keep" "$T/eng.out" || { bad "tick-equivalence $name: the engine tick failed"; return; }
   node "$SRC/scripts/runtime/pr-body-splice.cjs" tick "$T/body.txt" "$T/rendered.txt" "$T/cli.out" "$tick" "$keep" || { bad "tick-equivalence $name: the template CLI tick failed"; return; }
@@ -74,7 +83,7 @@ run_case() {
 run_literal() {
   local name="$1" tick="$2" keep="$3" want="$4" d
   review "$tick" "$T/review.txt"
-  python3 "$T/tick.py" "$T/body.txt" "$T/review.txt" 2>/dev/null > "$T/py.raw"
+  tick_py
   strip_suffix "$T/py.raw" "$T/py.out"
   node "$T/run-engine.js" "$T/engine.js" "$T/body.txt" "$T/rendered.txt" "$tick" "$keep" "$T/eng.out" || { bad "tick-equivalence $name: the engine tick failed"; return; }
   node "$SRC/scripts/runtime/pr-body-splice.cjs" tick "$T/body.txt" "$T/rendered.txt" "$T/cli.out" "$tick" "$keep" || { bad "tick-equivalence $name: the template CLI tick failed"; return; }

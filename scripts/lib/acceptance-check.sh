@@ -19,15 +19,18 @@
 #   - an empty block (markers with no line between) is accepted: the behaviour of the base, unchanged (no box = nothing unproven).
 # Known limits, not handled here:
 #   - a box prefixed by a Unicode blank (`<NBSP>- [ ] x`) is invisible to this C-locale grep, and it is not a checkbox on GitHub either;
-#   - the python readers of scripts/lead-merge.sh (tick-from-review, exceptions) do not know fences (issue #203);
-#   - callers that capture the body with `$(...)` before piping it here (hooks/block-merge-unchecked.sh, scripts/lead-merge.sh) lose a NUL byte
-#     before this lib sees it: the NUL refusal only covers a body piped straight in;
+#   - the merge hook (hooks/block-merge-unchecked.sh) still captures the body with `$(...)` before piping it here, so it loses a NUL byte
+#     before this lib sees it (issue #211); lead-merge reads the body through acceptance_read_pr_body, which refuses a NUL;
 #   - acceptance_has_markers is unchanged (a plain grep).
 #
 #   acceptance_extract_block  reads a PR body on stdin, prints the lines between the engine's (last) pair
 #     rc 0  block found (printed)
 #     rc 3  no block (no start, no end, end not after start, or the markers hidden in a fence); prints nothing
 #     rc 4  ambiguous body (see above); prints nothing
+#   acceptance_block_span   reads a PR body on stdin, prints "<start> <end>": the 0-based line indexes of the engine's start and end marker
+#     lines (same rc as acceptance_extract_block); lets a caller edit the block without re-implementing the fence rule
+#   acceptance_read_pr_body <pr> <repo>   sets the global $body from `gh pr view`, through a temp file: rc 0 ok, rc 1 gh failed,
+#     rc 3 the body holds a NUL byte (message on stderr; `$(...)` would drop it silently)
 #   acceptance_check_body   reads a PR body on stdin
 #     rc 0  every box in the block(s) between <!-- acceptance:start --> / <!-- acceptance:end --> is checked
 #     rc 1  at least one unchecked `- [ ]` box (each one listed on stderr)
@@ -95,6 +98,7 @@ _acc_awk='
   END {
     if (amb) exit 4
     if (!ls || !le || le <= ls) exit 3
+    if (mode == "span") { print ls - 1, le - 1; exit 0 }
     if (mode == "block") { for (i = ls + 1; i < le; i++) print L[i]; exit 0 }
     for (i = ls + 1; i < le; i++) U[i] = 1
     for (i = 1; i <= NR; i++) if (U[i]) print L[i]
@@ -103,6 +107,25 @@ _acc_awk='
 
 acceptance_extract_block() {
   LC_ALL=C awk -v mode=block "$_acc_awk"
+}
+
+acceptance_block_span() {
+  LC_ALL=C awk -v mode=span "$_acc_awk"
+}
+
+# acceptance_read_pr_body <pr> <repo>: sets the global $body to the PR body, read through a temp file so a NUL byte is seen, not dropped
+acceptance_read_pr_body() {
+  local f size kept
+  f="$(mktemp "${TMPDIR:-/tmp}/acc-prbody.XXXXXX")" || return 1
+  if ! gh pr view "$1" -R "$2" --json body -q .body > "$f"; then rm -f "$f"; return 1; fi
+  size="$(wc -c < "$f" | tr -d ' ')"; kept="$(LC_ALL=C tr -d '\000' < "$f" | wc -c | tr -d ' ')"
+  if [ "$size" != "$kept" ]; then
+    rm -f "$f"
+    echo 'acceptance-check: ambiguous acceptance block (NUL byte): the body holds a NUL character, which the shell drops and the engine keeps, so the two could read the fences differently. Remove it. Nothing is guessed.' >&2
+    return 3
+  fi
+  body="$(cat "$f")"; rm -f "$f"
+  return 0
 }
 
 # the lines the gate reads: the engine's block (the last pair) plus every other start..end pair outside a fence, so a

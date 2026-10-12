@@ -42,22 +42,17 @@ exc_marker_in_every_tip() {
 lm_gate_declared_exceptions() {
   local body="$1" pr_head="$2" info kind val
   lm_tips=""
-  exc_lines="$(printf '%s\n' "$body" | python3 -c '
+  # the block is the engine's one (acceptance_extract_block): fences and markers are read in one place; no block = no exception
+  exc_lines="$(printf '%s\n' "$body" | { acceptance_extract_block || true; } | python3 -c '
 import re, sys
-inb = False
 for line in sys.stdin.read().splitlines():
-    if re.search(r"<!--\s*acceptance:end\s*-->", line):
-        inb = False
-    if inb:
-        m = re.match(r"\s*(?:-\s*(?:\[[ xX]\]\s*)?)?exception:\s*(.*)$", line, re.I)
-        if m:
-            parts = [p.strip() for p in re.split(r"\s+(?:\u2014|--)\s+", m.group(1))]
-            if len(parts) == 3 and parts[0] and parts[1] and re.fullmatch(r"#\d+", parts[2]):
-                print("OK\t" + parts[2][1:])
-            else:
-                print("BAD\t" + line.strip())
-    if re.search(r"<!--\s*acceptance:start\s*-->", line):
-        inb = True')" || die "cannot parse declared exceptions"
+    m = re.match(r"\s*(?:-\s*(?:\[[ xX]\]\s*)?)?exception:\s*(.*)$", line, re.I)
+    if m:
+        parts = [p.strip() for p in re.split(r"\s+(?:\u2014|--)\s+", m.group(1))]
+        if len(parts) == 3 and parts[0] and parts[1] and re.fullmatch(r"#\d+", parts[2]):
+            print("OK\t" + parts[2][1:])
+        else:
+            print("BAD\t" + line.strip())')" || die "cannot parse declared exceptions"
   git fetch origin "+refs/heads/main:refs/remotes/origin/main" || die "git fetch origin main failed"
   if [ -n "$exc_lines" ]; then
     lm_sync_head "$pr_head"

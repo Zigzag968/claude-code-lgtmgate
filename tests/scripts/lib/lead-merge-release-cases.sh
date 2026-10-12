@@ -125,6 +125,21 @@ tick_body "$IG" "$BASE/tki3.md"; D="$(setup tk-ids-hg)"; mkc "$D" "$BASE/rv1.md"
 D="$(setup tk-both)"; mkc "$D" "$BASE/rv1.md"; RUN_FLAGS_OVERRIDE="--tick-ids 1 --tick-from-review" tick_run "$D" "$BASE/tki2.md"; rc=$?
 [ "$rc" -ne 0 ] && [ ! -e "$D/log.patch" ] && grep -q 'exclusive' "$D/out" && ok "both tick flags: refused" || bad "both flags (rc=$rc): $(tail -3 "$D/out")"
 
+# 15m. fenced-reader (#203): the exception and tick readers take the block from acceptance_extract_block, so a fenced example
+# (markers, box or `exception:` line inside a ``` fence) is never read as the real thing
+FEX='```\n<!-- acceptance:start -->\n- [x] exception: x -- y -- #9\n<!-- acceptance:end -->\n```\n'
+D="$(setup fenced-reader-before)"; mkdir -p "$D/issues"
+printf "Closes #1\n$FEX<!-- acceptance:start -->\n- [x] a\n<!-- acceptance:end -->\n" > "$BASE/fr-before.md"; run "$D" "$BASE/fr-before.md"; rc=$?
+[ "$rc" -eq 0 ] && grep -q 'pr merge' "$D/log" && ok "fenced-reader: exception example in a fence BEFORE the real block is not read" || bad "fenced-reader before (rc=$rc): $(tail -3 "$D/out")"
+D="$(setup fenced-reader-after)"; mkdir -p "$D/issues"
+printf "Closes #1\n<!-- acceptance:start -->\n- [x] a\n<!-- acceptance:end -->\n$FEX" > "$BASE/fr-after.md"; run "$D" "$BASE/fr-after.md"; rc=$?
+[ "$rc" -eq 0 ] && grep -q 'pr merge' "$D/log" && ok "fenced-reader: exception example in a fence AFTER the real block is not read" || bad "fenced-reader after (rc=$rc): $(tail -3 "$D/out")"
+FBX='```\n<!-- acceptance:start -->\n'"$B1"'\n<!-- acceptance:end -->\n```\n'
+printf "Closes #1\n$FBX<!-- acceptance:start -->\n%s\n<!-- acceptance:end -->\n$FBX" "$B1" > "$BASE/fr-tick.md"
+D="$(setup fenced-reader-tick)"; mkc "$D" "$BASE/rv1.md"; tick_run "$D" "$BASE/fr-tick.md"; rc=$?
+[ "$rc" -eq 0 ] && grep -q 'pr merge 7 -R o/r --merge' "$D/log" && [ "$(grep -c -- '^- \[x\]' "$D/log.patch")" = 1 ] && [ "$(grep -c -- '^- \[ \]' "$D/log.patch")" = 2 ] \
+  && ok "fenced-reader: tick-from-review ticks only the real box, the two fenced copies stay open" || bad "fenced-reader tick (rc=$rc): $(tail -3 "$D/out"); $(cat "$D/log.patch" 2>/dev/null)"
+
 # 16. consumer repo (#145): no plugin manifest in the merged tree -> bump skipped, the rest of the gesture runs
 rm_files() { # <dir> <clone> <branch> <files...>: remove tracked files in a clone and push the branch
   local d="$1" clone="$2" br="$3"; shift 3
