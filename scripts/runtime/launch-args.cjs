@@ -45,7 +45,7 @@ function build(options) {
   const config = readJson(nodePath.join(root, '.claude', 'pipeline.config.json'), false)
   const localFile = nodePath.join(root, '.claude', 'pipeline.config.local.json')
   const configLocal = readJson(localFile, true)
-  const args = {
+  const arguments_ = {
     issue: options.issue === undefined ? 1 : options.issue,
     brief: options.brief === undefined ? DEFAULT_BRIEF : options.brief,
     worktreePath: options.worktreePath === undefined ? root : options.worktreePath,
@@ -56,14 +56,14 @@ function build(options) {
   }
   if (config.projectSpecifics || config.agentContext) {
     const { files, ...wire } = assemble({ root, ref: options.ref || 'origin/main', local: localFile })
-    args.projectSpecifics = wire
+    arguments_.projectSpecifics = wire
   }
-  args.pluginRoot = options.pluginRoot === undefined ? nodePath.resolve(__dirname, '..', '..') : options.pluginRoot
-  args.sessionRoot = options.sessionRoot === undefined ? root : options.sessionRoot
-  if (stage !== 'plan') args.entryStage = stage
-  if (stage === 'review') args.prNumber = options.pr === undefined ? 1 : options.pr
-  if (options.planFile !== undefined) args.planText = fs.readFileSync(options.planFile, 'utf8')
-  return args
+  arguments_.pluginRoot = options.pluginRoot === undefined ? nodePath.resolve(__dirname, '..', '..') : options.pluginRoot
+  arguments_.sessionRoot = options.sessionRoot === undefined ? root : options.sessionRoot
+  if (stage !== 'plan') arguments_.entryStage = stage
+  if (stage === 'review') arguments_.prNumber = options.pr === undefined ? 1 : options.pr
+  if (options.planFile !== undefined) arguments_.planText = fs.readFileSync(options.planFile, 'utf8')
+  return arguments_
 }
 
 function parseArguments(argv) {
@@ -94,8 +94,8 @@ function parseArguments(argv) {
 
 function main(argv) {
   try {
-    const args = build(parseArguments(argv))
-    process.stdout.write(JSON.stringify(args) + '\n')
+    const arguments_ = build(parseArguments(argv))
+    process.stdout.write(JSON.stringify(arguments_) + '\n')
     return 0
   } catch (error) {
     const first = String(error && error.errors ? error.errors[0] : error && error.message ? error.message : error).split('\n')[0]

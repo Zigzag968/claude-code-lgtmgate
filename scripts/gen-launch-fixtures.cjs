@@ -6,7 +6,7 @@
 // a real consumer: the text comes from a fixed vocabulary and a seeded PRNG, so every run builds the same bytes.
 //
 // Usage: node scripts/gen-launch-fixtures.cjs --check
-//        node scripts/gen-launch-fixtures.cjs --tree <dir> --size 4k|22k|60k
+//        node scripts/gen-launch-fixtures.cjs --tree <directory> --size 4k|22k|60k
 // --check exits 0 and prints `ratios within tolerance`, or prints `FAIL: ...` lines and exits 1.
 
 const fs = require('fs')
@@ -101,21 +101,21 @@ function files(size) {
   return out
 }
 
-function gitRun(dir, arguments_) {
-  execFileSync('git', ['-C', dir, '-c', 'user.name=t', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', ...arguments_], { stdio: 'ignore' })
+function gitRun(directory, arguments_) {
+  execFileSync('git', ['-C', directory, '-c', 'user.name=t', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', ...arguments_], { stdio: 'ignore' })
 }
 
-// makeTree(dir, size): a git tree with one commit and refs/remotes/origin/main on it.
-function makeTree(dir, size) {
-  fs.mkdirSync(dir, { recursive: true })
-  gitRun(dir, ['init', '-q'])
+// makeTree(directory, size): a git tree with one commit and refs/remotes/origin/main on it.
+function makeTree(directory, size) {
+  fs.mkdirSync(directory, { recursive: true })
+  gitRun(directory, ['init', '-q'])
   for (const [p, body] of Object.entries(files(size))) {
-    fs.mkdirSync(nodePath.join(dir, nodePath.dirname(p)), { recursive: true })
-    fs.writeFileSync(nodePath.join(dir, p), body)
+    fs.mkdirSync(nodePath.join(directory, nodePath.dirname(p)), { recursive: true })
+    fs.writeFileSync(nodePath.join(directory, p), body)
   }
-  gitRun(dir, ['add', '-A'])
-  gitRun(dir, ['commit', '-q', '-m', 'fixture'])
-  gitRun(dir, ['update-ref', 'refs/remotes/origin/main', 'HEAD'])
+  gitRun(directory, ['add', '-A'])
+  gitRun(directory, ['commit', '-q', '-m', 'fixture'])
+  gitRun(directory, ['update-ref', 'refs/remotes/origin/main', 'HEAD'])
 }
 
 function check() {
@@ -143,15 +143,15 @@ function check() {
 }
 
 function main(argv) {
-  const get = (flag) => { const i = argv.indexOf(flag); return i >= 0 ? argv[i + 1] : undefined }
+  const get = (flag) => { const index = argv.indexOf(flag); return index >= 0 ? argv[index + 1] : undefined }
   if (argv.includes('--check')) return check()
-  const dir = get('--tree')
+  const directory = get('--tree')
   const size = get('--size')
-  if (!dir || !SIZES[size]) {
-    process.stderr.write('usage: gen-launch-fixtures.cjs --check | --tree <dir> --size 4k|22k|60k\n')
+  if (!directory || !SIZES[size]) {
+    process.stderr.write('usage: gen-launch-fixtures.cjs --check | --tree <directory> --size 4k|22k|60k\n')
     return 2
   }
-  makeTree(dir, size)
+  makeTree(directory, size)
   return 0
 }
 

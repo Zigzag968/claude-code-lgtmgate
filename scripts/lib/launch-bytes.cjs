@@ -32,19 +32,19 @@ const FIXED = { worktreePath: '/wt', pluginRoot: '/pl', sessionRoot: '/ss' }
 function measure(root) {
   const generator = require(path.join(root, 'scripts', 'gen-launch-fixtures.cjs'))
   const launch = require(path.join(root, 'scripts', 'runtime', 'launch-args.cjs'))
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'launch-bytes-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'launch-bytes-'))
   const result = { plan: {}, review: {} }
   try {
     for (const size of SIZES) {
-      const tree = path.join(dir, size)
+      const tree = path.join(directory, size)
       generator.makeTree(tree, size)
       for (const stage of STAGES) {
-        const args = launch.build({ root: tree, ref: 'origin/main', stage, mode: 'full', ...FIXED })
-        result[stage][size] = Buffer.byteLength(JSON.stringify(args))
+        const arguments_ = launch.build({ root: tree, ref: 'origin/main', stage, mode: 'full', ...FIXED })
+        result[stage][size] = Buffer.byteLength(JSON.stringify(arguments_))
       }
     }
   } finally {
-    fs.rmSync(dir, { recursive: true, force: true })
+    fs.rmSync(directory, { recursive: true, force: true })
   }
   return result
 }

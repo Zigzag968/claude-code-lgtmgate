@@ -87,7 +87,7 @@ args = {
   issue:  <N>,
   brief:  "<brief>",
   worktreePath: "<WORKTREE>",
-  mode:   "auto",   // or the --mode value (semi | manual) when given
+  mode:   <"auto", or the --mode value (semi | manual) when given>,
   pmReview: <true if the issue's pm_review checkbox is checked, false otherwise>,
   config: <the full .claude/pipeline.config.json object>,
   configLocal: <parsed content of .claude/pipeline.config.local.json, or {} if absent — the workflow sandbox does not read files (legacy#61), so it's the Lead who reads and passes it through>,
@@ -101,6 +101,7 @@ args = {
   sessionRoot: <absolute project root of THIS session (the directory it was opened in); the workflow has no env, so the Lead passes it; its git common dir must equal the repository of worktreePath, else the run escalates session-root-mismatch before provisioning (#177)>
 }
 ```
+- The issue is the source of truth; the brief stays required and short and points to it. The block above holds no content field (every value is a <placeholder>; guarded by launch-args-no-content), and scripts/runtime/launch-args.cjs prints its size for the maintainers.
 - `wtPath` is the old spelling of `worktreePath`, still accepted (`worktreePath` wins when both are given).
 - **Resolved plugin component** -> launch by the **namespaced** name `lgtmgate:deliver-pipeline` (never the bare name `deliver-pipeline`, which a `--plugin-dir` or another project can shadow — claude-agent-pipeline#54).
 - **Resolved not-yet-migrated local copy** -> launch explicitly with `Workflow({ scriptPath: "<repo>/.claude/workflows/deliver-pipeline.js", args })` — never by name, bare or namespaced: this project's copied test suite still validates THIS copy, not the plugin's component.
