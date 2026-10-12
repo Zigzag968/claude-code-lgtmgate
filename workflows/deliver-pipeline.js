@@ -2497,7 +2497,7 @@ const PROBE_REASON_HINTS = {
     'and the lgtmgate:probe agent type must be resolvable; fix the plugin install/session and relaunch',
   'cmd-mismatch': 'the copied PROBE line belongs to a different command than the engine composed (the copier altered the command); relaunch',
   'probe-run-not-found': 'no probe-run.cjs location: pass args.pluginRoot (absolute plugin root) or config.probeRunPath and relaunch',
-  'command-not-run': 'the command did not run; relaunch once (if it repeats, check that pluginRoot is the current plugin: a probe-run.cjs older than --cmd-b64 never runs the command; if it is, capture the run and report the typed command as an incident; probeStderr: expect-cmd-mismatch means the digest guard refused the typed command, i.e. the probe agent mis-copied it)',
+  'command-not-run': 'the command did not run, and the engine ran the probe once more with a fresh agent; relaunch (if it repeats, check that pluginRoot is the current plugin: a probe-run.cjs older than --cmd-b64 never runs the command; if it is, capture the run and report the typed command as an incident; probeStderr: expect-cmd-mismatch means the digest guard refused the typed command, i.e. the probe agent mis-copied it)',
   'unparseable-line': `the probe answered no PROBE line, or one that does not parse; ${PROBE_RELAUNCH}`,
   'name-mismatch': `the PROBE line names another probe than the one asked for; ${PROBE_RELAUNCH}`,
   'unparseable-verify': `the probe answered no VERIFY line, or one that does not parse; ${PROBE_RELAUNCH}`,
@@ -2598,7 +2598,7 @@ function sha256Hex(string_) {
 
 // --- probeNotRun:start --- (#478, pure)
 // probe-run's refusal record prints exit -1, the empty-output digest and a `refused:` cmd digest: nothing was executed.
-// A read probe names it command-not-run (relaunch once); a gated write keeps cmd-mismatch, which tickAcceptanceBoxes
+// A read probe names it command-not-run (retried once by the engine); a gated write keeps cmd-mismatch, which tickAcceptanceBoxes
 // retries once (#212).
 const EMPTY_OUTPUT_SHA256 = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
 function probeNotRun(parsed, want, gated) { return !gated && parsed.exit === -1 && parsed.sha === EMPTY_OUTPUT_SHA256 && parsed.cmd !== want }
@@ -2788,27 +2788,37 @@ async function probe(name, command, { label, round = 0, onFail, noReuse = false,
     `The first prints exactly one line starting with "PROBE ": answer it verbatim as "line". ` +
     `The second prints exactly one line starting with "VERIFY ": answer it verbatim as "verify". ` +
     `Never judge or retry; if a command printed no such line, answer "" for that field.`
-  trace.push(`probe:${name}:haiku`)
-  const result = await callAgentSafe('probe', prompt,
-    { agentType: 'lgtmgate:probe', schema: PROBE_SCHEMA, label: `probe-${issue}-${name}-${label}-r${round}`, model: 'haiku', personaFallback: PROBE_PERSONA }, round)
-  if (isAgentDeath(result)) return fail('agent-death')
-  const parsed = parseProbeLine(result && result.line)
-  if (!parsed) {
-    // #338: no PROBE line and a verify that finds no record = the script never produced one: the command never ran
-    const nv = parseVerifyLine(result && result.verify)
-    return fail(nv && !nv.ok && nv.reason === 'no-record' ? 'command-not-run' : 'unparseable-line')
+  // One probe-agent invocation; returns { parsed } or { reason, stderr } (never calls fail itself).
+  const attempt = async () => {
+    trace.push(`probe:${name}:haiku`)
+    const result = await callAgentSafe('probe', prompt,
+      { agentType: 'lgtmgate:probe', schema: PROBE_SCHEMA, label: `probe-${issue}-${name}-${label}-r${round}`, model: 'haiku', personaFallback: PROBE_PERSONA }, round)
+    if (isAgentDeath(result)) return { reason: 'agent-death' }
+    const parsed = parseProbeLine(result && result.line)
+    if (!parsed) {
+      // #338: no PROBE line and a verify that finds no record = the script never produced one: the command never ran
+      const nv = parseVerifyLine(result && result.verify)
+      return { reason: nv && !nv.ok && nv.reason === 'no-record' ? 'command-not-run' : 'unparseable-line' }
+    }
+    if (parsed.name !== name) return { reason: 'name-mismatch' }
+    if (probeNotRun(parsed, want, gateCommand)) return { reason: 'command-not-run', stderr: 'expect-cmd-mismatch' }
+    if (parsed.cmd !== want) return { reason: 'cmd-mismatch' }
+    const verified = parseVerifyLine(result && result.verify)
+    if (!verified) return { reason: 'unparseable-verify' }
+    if (!verified.ok) return { reason: verified.reason === 'no-attestation' ? 'no-attestation' : `verify-${verified.reason}` }
+    const vp = parseProbeLine(verified.line)
+    if (!vp || vp.sha !== parsed.sha) return { reason: 'sha-mismatch' }
+    if (vp.cmd !== want) return { reason: 'cmd-mismatch' }
+    if (verified.line !== String(result.line).trim()) return { reason: 'line-mismatch' }
+    return { parsed }
   }
-  if (parsed.name !== name) return fail('name-mismatch')
-  if (probeNotRun(parsed, want, gateCommand)) return fail('command-not-run', 'expect-cmd-mismatch')
-  if (parsed.cmd !== want) return fail('cmd-mismatch')
-  const verified = parseVerifyLine(result && result.verify)
-  if (!verified) return fail('unparseable-verify')
-  if (!verified.ok) return fail(verified.reason === 'no-attestation' ? 'no-attestation' : `verify-${verified.reason}`)
-  const vp = parseProbeLine(verified.line)
-  if (!vp || vp.sha !== parsed.sha) return fail('sha-mismatch')
-  if (vp.cmd !== want) return fail('cmd-mismatch')
-  if (verified.line !== String(result.line).trim()) return fail('line-mismatch')
-  return parsed
+  // #486: a read probe that ends command-not-run (a stochastic mis-copy, side-effect free) runs once more with a fresh agent
+  let outcome = await attempt()
+  if (outcome.reason === 'command-not-run' && !gateCommand) {
+    log(`probe ${name}/${label}: command-not-run — running the probe once more with a fresh agent`)
+    outcome = await attempt()
+  }
+  return outcome.reason ? fail(outcome.reason, outcome.stderr) : outcome.parsed
 }
 
 // preflightProbe (#83): the pre-Dev / branch-guard reads as ONE probe (scripts/runtime/preflight.sh, parser

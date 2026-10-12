@@ -1,6 +1,6 @@
 {
   "name": "485-version-probe-trailing-quote-command-not-run",
-  "note": "#485: the composed plugin-version command ends with --cmd-b64 <token> in the consumer capture; the probe agent typed the same text plus a final single quote, the shell answered unmatched quote (exit 1), probe-run.cjs never ran and no record exists (empty line, verify says no-record). The run ends as the documented provision-failed with probeReason command-not-run; no engine retry (split to #486). The composed command now ends with --model haiku, so the closing quote no longer lands on the long token.",
+  "note": "#485: the composed plugin-version command ends with --cmd-b64 <token> in the consumer capture; the probe agent typed the same text plus a final single quote, the shell answered unmatched quote (exit 1), probe-run.cjs never ran and no record exists (empty line, verify says no-record). The run ends as the documented provision-failed with probeReason command-not-run; The composed command now ends with --model haiku, so the closing quote no longer lands on the long token. The engine retries a read probe once with a fresh agent (#486): the second answer repeats the recorded failure (no raw capture of a retry exists; the next canary run replaces it).",
   "args": {
     "pluginRoot": "/cache/lgtmgate/current",
     "issue": 485,
@@ -10,20 +10,28 @@
     "mode": "auto"
   },
   "calls": {
-    "probe-485-lines-plugin-version-r0": {
-      "line": "",
-      "verify": "VERIFY fail reason=no-record"
-    }
+    "probe-485-lines-plugin-version-r0": [
+      {
+        "line": "",
+        "verify": "VERIFY fail reason=no-record"
+      },
+      {
+        "line": "",
+        "verify": "VERIFY fail reason=no-record"
+      }
+    ]
   },
   "expect": {
     "status": "escalate",
     "reason": "provision-failed",
     "trace": [
       "branch-prefix-fallback-default",
+      "probe:lines:haiku",
       "probe:lines:haiku"
     ],
     "traceExact": true,
     "callLabels": [
+      "probe-485-lines-plugin-version-r0",
       "probe-485-lines-plugin-version-r0"
     ],
     "logsInclude": [
