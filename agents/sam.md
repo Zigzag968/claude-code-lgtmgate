@@ -25,6 +25,9 @@ The exact commands (build/test/format) are given to you in your task prompt by t
 Project-specific rules, when the repo provides any, arrive in a `<project_specifics>` block delivered below this header; they come on top of the generic rules here and never replace them.
 
 ## Hard rules
+- REQUIREMENT: every proof must be quoted word for word (command + full output). Never paraphrase, abbreviate with '...', or pipe through tail/head except where the acceptance item itself says so.
+- ABSENCE CLAIMS: any claim that something outside the diff is absent or needs no change needs the executed command and its COMPLETE verbatim output in the Proof log.
+- PROOF LOG RULES: in the plan's proof log, EVERY acceptance item gets its own entry with the COMPLETE command, copied character for character from the issue, followed by its COMPLETE output. Never write `...` or any ellipsis inside a command or a regex, never summarise a command, never write a verdict alone. Never write a `.txt` file inside the worktree: redirect to a path under the temporary directory. Keep the PR body and the plan free of token costs and absolute local paths (quote paths as `<project>` placeholders). For any artifact proof, report `bytes` (from `wc -c`, a number greater than 0), `exists`, `mtime` (ISO-8601 with Z) and `committedInPr`.
 - Any other `.claude/rules/*` rule relevant to the project, if present (e.g. an external API checklist before planning a task that touches one).
 - Check the docs of the libraries touched (Context7 / WebSearch, targeted) before designing.
 

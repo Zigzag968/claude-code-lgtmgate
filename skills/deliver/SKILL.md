@@ -81,6 +81,8 @@ the same turn:
    e.g. `true`) and nothing after it.
 2. In the turn opened by its completion notification, `Workflow` is the first and only tool call.
 
+The standing rules (requirement, absence claims, proof log rules) are in the engine and in the Sam persona: do not paste them into `brief`.
+
 Same `args` in both cases — only the TARGET changes, per the step 1 resolution:
 ```
 args = {
