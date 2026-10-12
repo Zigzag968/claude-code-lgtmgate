@@ -3970,6 +3970,87 @@ await testCase('T208k design-step one-way-door relaunch: proceedThrough:review a
   return eq('status', r.status, 'design-step-required') || t208NoDevelopment(r) || { ok: true }
 })
 
+// T221 (#221) — the dev|review entry reads two facts back from the plan text: Sam's sanitized targetFiles and Theo's
+// unapproved design-step trigger, written by the script as the last lines of the plan-ready plan (like `lanes:`).
+const T221_CONFIG = { ...CONFIG, oneWayDoorPaths: ['hooks/**', '!hooks/test-*'] }
+const T221_THEO2 = { ...T77_THEO, persistentStateSignal: true, authSecurityBoundarySignal: true }
+const T221_SIM = { sam: 'GO', morgan: [{ verdict: 'LGTM' }] }
+const t221Plan = (extra = {}) => run({ mode: 'semi', proceedThrough: 'plan', config: T221_CONFIG, simulate: { theo: T77_THEO, sam: 'GO', samPlan: 'plan' + T77_CK, ...extra } })
+await testCase('T221a plan run with a path hit: plan-ready carries oneWayDoorHits and a script-written targetFiles line last', async () => {
+  const r = await t221Plan({ samTargetFiles: ['hooks/x.sh'] })
+  return eq('status', r.status, 'plan-ready')
+    || eq('oneWayDoorHits', JSON.stringify(r.oneWayDoorHits), JSON.stringify(['path']))
+    || (String(r.plan).split('\n').pop() === 'targetFiles: hooks/x.sh' ? null : { ok: false, msg: `plan must end with the targetFiles line, got ${JSON.stringify(String(r.plan).slice(-80))}` })
+    || { ok: true }
+})
+
+await testCase('T221b path relaunch: planText = the plan-ready plan stops at dev and review without approval, proceeds with it', async () => {
+  const r = await t221Plan({ samTargetFiles: ['hooks/x.sh'] })
+  for (const entry of [{ entryStage: 'dev' }, { entryStage: 'review', prNumber: 190 }]) {
+    const stopped = await run({ ...entry, mode: 'semi', config: T221_CONFIG, planText: r.plan, simulate: T221_SIM })
+    const error = eq(`status (${entry.entryStage})`, stopped.status, 'design-step-required')
+      || eq('oneWayDoorHits', JSON.stringify(stopped.oneWayDoorHits), JSON.stringify(['path']))
+      || (String(stopped.reason).includes('hooks/x.sh') ? null : { ok: false, msg: `reason must name hooks/x.sh, got ${JSON.stringify(stopped.reason)}` })
+      || t208NoDevelopment(stopped)
+    if (error) return error
+    const approved = await run({ ...entry, mode: 'semi', config: T221_CONFIG, planText: r.plan, architectureDecisionApproved: true, simulate: T221_SIM })
+    const error2 = eq(`approved status (${entry.entryStage})`, approved.status, 'ready')
+    if (error2) return error2
+  }
+  return { ok: true }
+})
+
+await testCase('T221c Theo trigger: plan-ready plan carries design-step: required, the entry stops on it, approval lifts it; an approved plan run writes no line', async () => {
+  const r = await t221Plan({ theo: T221_THEO2 })
+  const error = eq('plan status', r.status, 'plan-ready')
+    || (String(r.plan).split('\n').includes('design-step: required') ? null : { ok: false, msg: 'plan must carry the design-step line' })
+  if (error) return error
+  const stopped = await run({ entryStage: 'dev', mode: 'semi', config: T221_CONFIG, planText: r.plan, simulate: T221_SIM })
+  const approved = await run({ entryStage: 'dev', mode: 'semi', config: T221_CONFIG, planText: r.plan, architectureDecisionApproved: true, simulate: T221_SIM })
+  const already = await run({ mode: 'semi', proceedThrough: 'plan', config: T221_CONFIG, architectureDecisionApproved: true, simulate: { theo: T221_THEO2, sam: 'GO', samPlan: 'plan' + T77_CK } })
+  return eq('entry status', stopped.status, 'design-step-required')
+    || ((stopped.trace || []).includes('one-way-door-entry:design-step') ? null : { ok: false, msg: `trace must carry one-way-door-entry:design-step, got ${JSON.stringify(stopped.trace)}` })
+    || t208NoDevelopment(stopped)
+    || eq('approved status', approved.status, 'ready')
+    || eq('already-approved plan status', already.status, 'plan-ready')
+    || (String(already.plan).includes('design-step:') ? { ok: false, msg: 'an approved plan run must write no design-step line' } : null)
+    || { ok: true }
+})
+
+await testCase('T221d no fact, no appended line: no hit and no trigger writes no line, and `targetFiles: none`, no line, or an excluded path all proceed', async () => {
+  const plain = await t221Plan({})
+  const excluded = await t221Plan({ samTargetFiles: ['hooks/test-a.sh'] })
+  const error = eq('plain status', plain.status, 'plan-ready')
+    || eq('excluded status', excluded.status, 'plan-ready')
+  if (error) return error
+  for (const r of [plain, excluded]) {
+    if (String(r.plan).split('\n').some((line) => line.startsWith('design-step:'))) return { ok: false, msg: 'no design-step line expected' }
+  }
+  for (const planText of ['plan\ntargetFiles: none\n' + T77_CK, 'plan\n' + SIM_DEFAULTS.samAcceptanceChecklist, 'plan\ntargetFiles: hooks/test-a.sh\n' + T77_CK]) {
+    const r = await run({ entryStage: 'dev', mode: 'semi', config: T221_CONFIG, planText, simulate: T221_SIM })
+    const failure = eq('entry status', r.status, 'ready')
+    if (failure) return failure
+  }
+  return { ok: true }
+})
+
+await testCase('T221e hostile targetFiles line: only safe entries survive the read-back', async () => {
+  const hostile = (files) => `plan${T77_CK}\ntargetFiles: ${files}\n`
+  const unsafeOnly = await run({ entryStage: 'dev', mode: 'semi', config: { ...CONFIG, oneWayDoorPaths: ['etc/', '/abs'] }, planText: hostile('../etc/passwd, /abs, etc/x; rm'), simulate: T221_SIM })
+  const withSafe = await run({ entryStage: 'dev', mode: 'semi', config: T221_CONFIG, planText: hostile('../etc/passwd, /abs, hooks/a.sh; rm, hooks/b.sh'), simulate: T221_SIM })
+  return eq('unsafe-only status', unsafeOnly.status, 'ready')
+    || eq('with safe status', withSafe.status, 'design-step-required')
+    || (String(withSafe.reason).includes('hooks/b.sh') && !String(withSafe.reason).includes('passwd') ? null : { ok: false, msg: `only hooks/b.sh may hit, got ${JSON.stringify(withSafe.reason)}` })
+    || { ok: true }
+})
+
+await testCase('T221f no new result field: plan-ready keys are the same with and without facts', async () => {
+  const withFacts = await t221Plan({ samTargetFiles: ['hooks/x.sh'], theo: T221_THEO2 })
+  const without = await t221Plan({})
+  const keys = (r) => Object.keys(r).filter((k) => k !== 'oneWayDoorHits').sort().join(',')
+  return eq('keys', keys(withFacts), keys(without)) || { ok: true }
+})
+
 // T77e (#77) — the product-direction line goes to Sam and Morgan only: Nick's prompt carries none, and no
 // prompt of the engine names docs/codemap.md. The engine imports no doc: agents receive each repo's own
 // instructions natively. The rules themselves live in the repo's docs, never in the prompt (no DEBT marker).
