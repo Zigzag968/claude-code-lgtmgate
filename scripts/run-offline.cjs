@@ -103,11 +103,18 @@ function engineVersionOfStamp(stamp) {
   const m = /^\[pipeline\] [^@\s]+@(\S+)(?: |$)/.exec(stamp)
   return m && ENGINE_VERSION_RE.test(m[1]) ? m[1] : null
 }
+// `@@ENGINE_CHANNEL@@` stands for the channel inferred from that version's shape (a pre-release tag = beta, a plain
+// x.y.z = stable), the same rule as the engine's pluginVersionChannel, so a skew reason survives a stable-versioned build.
+const ENGINE_CHANNEL_TOKEN = '@@ENGINE_CHANNEL@@'
+function channelOfVersion(v) {
+  if (!ENGINE_VERSION_RE.test(String(v))) return 'unknown'
+  return String(v).includes('-') ? 'beta' : 'stable'
+}
 function withEngineVersion(fixture, version) {
   const raw = JSON.stringify(fixture)
-  if (!raw.includes(ENGINE_VERSION_TOKEN)) return fixture
+  if (!raw.includes(ENGINE_VERSION_TOKEN) && !raw.includes(ENGINE_CHANNEL_TOKEN)) return fixture
   if (!version) throw new Error(`[offline] fixture "${fixture.name}" uses ${ENGINE_VERSION_TOKEN} but the engine under test has no BUILD version`)
-  return JSON.parse(raw.split(ENGINE_VERSION_TOKEN).join(version))
+  return JSON.parse(raw.split(ENGINE_VERSION_TOKEN).join(version).split(ENGINE_CHANNEL_TOKEN).join(channelOfVersion(version)))
 }
 
 // The answer of the plugin version probe (#195) is journaled with the LITERAL engine version, which lead-merge bumps at
@@ -538,7 +545,7 @@ async function main() {
 }
 
 // Required by scripts/publish-fixture.cjs; run as a CLI otherwise (spawned or direct use is unchanged).
-module.exports = { commandOfPrompt, firstCommandHash, setCommandHash, stripExports, buildPipelineRunner, replayFixture, engineVersionOf, engineVersionOfStamp, ENGINE_VERSION_RE, tokenizeVersionProbes, ENGINE_VERSION_TOKEN }
+module.exports = { commandOfPrompt, firstCommandHash, setCommandHash, stripExports, buildPipelineRunner, replayFixture, engineVersionOf, engineVersionOfStamp, ENGINE_VERSION_RE, tokenizeVersionProbes, ENGINE_VERSION_TOKEN, ENGINE_CHANNEL_TOKEN, channelOfVersion }
 
 if (require.main === module) {
   main().catch((error) => {

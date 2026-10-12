@@ -9,7 +9,7 @@
 # --plugin, shadowed installs (a more specific scope of the same channel applies to --project), the loaded plugin root
 # (--loaded-root, LOADED-CACHE and its printed uninstall command), installs of another project (listed, not counted),
 # a CLI-disabled install that the project's own settings enable (#480, exit 2), one marketplace declared with different
-# sources across user, project and local settings (MARKETPLACE-CONFLICT, #501), and read-only (the fake only ever sees `plugin list --json`).
+# sources across user, project and local settings (MARKETPLACE-CONFLICT, #501), the CONFLICT runbook (#516: the deliver step 0 stops, the printed disable command of each channel), and read-only (the fake only ever sees `plugin list --json`).
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -293,13 +293,29 @@ pv "$BASE/l14.json" --target "$T" --project "$P14"
 [ "$RC" -eq 0 ] && ! has MARKETPLACE-CONFLICT && ok "a settings file that is not JSON is skipped: exit 0" || bad "decl bad json (rc=$RC): $OUT"
 reset14
 
+# 15. #516 runbook: a CONFLICT stops the deliver launch, and the line prints the disable command of each channel
+SKILL="$ROOT/skills/deliver/SKILL.md"
+BUL="$(grep -E '^- .*`CONFLICT` line' "$SKILL" 2>/dev/null)"
+if [ -n "$BUL" ] && case "$BUL" in *stop*"claude plugin disable lgtmgate@"*RESTART*consumer-reference*) true ;; *) false ;; esac; then
+  ok "runbook: the deliver step 0 CONFLICT bullet stops the launch, names the disable command, the RESTART and its entry"
+else
+  bad "runbook: deliver SKILL.md has no CONFLICT bullet with stop / claude plugin disable lgtmgate@ / RESTART / consumer-reference: $BUL"
+fi
+pv "$BASE/l4.json" --target "$T"
+[ "$RC" -eq 1 ] && has 'claude plugin disable lgtmgate@zigzag-plugins-beta --scope user' && has 'claude plugin disable lgtmgate@zigzag-plugins --scope user' && has 'then restart the session' \
+  && ok "runbook: the CONFLICT line prints the disable command of each channel and the restart" || bad "runbook conflict line (rc=$RC): $OUT"
+# the printed form is the runbook's `claude plugin disable lgtmgate@<unwanted channel> --scope <scope>` with the placeholders filled
+TPL="$(printf '%s' "$BUL" | grep -o 'claude plugin disable lgtmgate@<[^>]*> --scope <[^>]*>' | head -n 1)"
+FILLED="$(printf '%s' "$TPL" | sed -e 's/<unwanted channel>/zigzag-plugins-beta/' -e 's/<scope>/user/')"
+[ -n "$TPL" ] && has "$FILLED" && ok "runbook: the printed command has the shape the runbook documents" || bad "runbook shape (template '$TPL', filled '$FILLED'): $OUT"
+
 # 10. read-only: the fake saw `plugin list --json` and nothing else, across every case above
 if [ -s "$FAKE_LOG" ] && [ "$(sort -u "$FAKE_LOG")" = "plugin list --json" ]; then
   ok "read-only: every claude call of every case was exactly 'plugin list --json'"
 else
   bad "read-only: the fake claude saw other calls: $(sort -u "$FAKE_LOG" | tr '\n' ';')"
 fi
-if ! grep -vE '^[[:space:]]*#|LOADED-CACHE:' "$SCRIPT" | grep -qE 'plugin (update|install|enable|disable|uninstall)|git (fetch|pull|push)|jq'; then
+if ! grep -vE '^[[:space:]]*#|LOADED-CACHE:|CONFLICT:' "$SCRIPT" | grep -qE 'plugin (update|install|enable|disable|uninstall)|git (fetch|pull|push)|jq'; then
   ok "read-only: the script holds no update/install/enable/disable, no fetch and no jq"
 else
   bad "read-only: the script mentions a write command, a fetch or jq"

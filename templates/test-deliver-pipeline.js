@@ -2823,6 +2823,11 @@ await testCase('T195b a different plugin version escalates, the reason names bot
     includes('a newer root does not get the stale-root remedy', newer.reason, 'relaunch the workflow at the current version'),
     eq('a newer root is not told to pass the current root', newer.reason.includes('pass the current plugin root'), false),
     eq('the reason is never provision-failed', older.reason.startsWith('provision-failed'), false),
+    includes('names the root build and its inferred channel', older.reason, '0.0.1-old (beta channel)'),
+    includes('names the engine build and its inferred channel', older.reason, `engine is ${V} (${V.includes('-') ? 'beta' : 'stable'} channel)`),
+    includes('a plain x.y.z root is the stable channel', newer.reason, '99.0.0 (stable channel)'),
+    eq('the reason ends with the pointer to its entry', older.reason.endsWith('see docs/consumer-reference.md, Run reasons, plugin-version-skew'), true),
+    includes('a root version that is not a version has an unknown channel', pluginVersionVerdict({ engineVersion: V, exit: 0, lines: ['PLUGIN-VERSION:not-a-version'] }).reason, '(unknown channel)'),
   ]
   return checks.find(c => c) || { ok: true }
 })

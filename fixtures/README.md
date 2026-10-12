@@ -56,6 +56,8 @@ increasing offsets). A label repeats only when its `calls` entry is an array. An
   `pluginVersionCommand(pluginRoot)`, see `195-stale-plugin-root`). The token `@@ENGINE_VERSION@@`, anywhere in a fixture,
   resolves to the engine's `BUILD` version (refused against an engine with none): use it in that answer's `json=` and in
   any `expect` naming the engine, so the fixture survives the version bump at merge.
+  `@@ENGINE_CHANNEL@@` resolves to the channel inferred from that version's shape (pre-release tag = `beta`, plain x.y.z = `stable`),
+  for a skew reason that names the engine's channel (`engine is @@ENGINE_VERSION@@ (@@ENGINE_CHANNEL@@ channel)`).
   A `verify` answer of `VERIFY fail reason=no-attestation` reproduces a session whose attest hook is not enabled
   (`probeReason: no-attestation`, see `82-provision-no-attestation`). The VERIFY line is attested by the same hook as
   the PROBE line (bound to the call's label and round), and the probe agent may not stop without the pair (#83). The persona fallback (agent type not found) has no fixture (the harness

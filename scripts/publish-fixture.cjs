@@ -54,6 +54,7 @@ const path = require('path')
 const crypto = require('crypto')
 const { spawnSync } = require('child_process')
 const { stripExports, buildPipelineRunner, replayFixture, tokenizeVersionProbes, ENGINE_VERSION_TOKEN, commandOfPrompt, firstCommandHash, setCommandHash } = require('./run-offline.cjs')
+const { ENGINE_CHANNEL_TOKEN, channelOfVersion } = require('./run-offline.cjs')
 
 const REPO = path.resolve(__dirname, '..')
 const NAME_RE = /^[0-9]+-[a-z0-9][a-z0-9-]*(\.json)?$/
@@ -411,6 +412,8 @@ async function pruneAndExpect(session) {
   cand.expect = { status: fin.result.status }
   if (fin.result.reason !== undefined) cand.expect.reason = fin.result.reason
   if (typeof cand.expect.reason === 'string' && cand.expect.reason.startsWith('plugin-version-') && run.engineVersion) {
+    const withChannel = `engine is ${run.engineVersion} (${channelOfVersion(run.engineVersion)} channel);`
+    cand.expect.reason = cand.expect.reason.split(withChannel).join(`engine is ${ENGINE_VERSION_TOKEN} (${ENGINE_CHANNEL_TOKEN} channel);`)
     cand.expect.reason = cand.expect.reason.split(`engine is ${run.engineVersion};`).join(`engine is ${ENGINE_VERSION_TOKEN};`)
   }
   cand.expect.trace = Array.isArray(fin.result.trace) ? fin.result.trace : []

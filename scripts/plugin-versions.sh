@@ -17,7 +17,7 @@
 #   ` SHADOWED by <scope> install version <v>` when a more specific install of the same channel applies to the project;
 #   ` OTHER-PROJECT: not loaded for this project, not counted` when the install is enabled, local or project scope, and its
 #   project does not contain the project;
-#   `CONFLICT: both channels enabled in scope=<scope> project=<p>: <m1>, <m2>` when two marketplaces are both enabled for the
+#   `CONFLICT: both channels enabled in scope=<scope> project=<p>: <m1>, <m2>; keep one and disable the other: claude plugin disable <plugin>@<m1> --scope <scope> or ... <m2> ...; then restart the session` when two marketplaces are both enabled for the
 #   same scope and project (the same plugin enabled from two channels);
 #   `MARKETPLACE-CONFLICT: <name> is declared with different sources: <file> (<kind> <value>), ...` when one marketplace name
 #   is declared in two or more of the user, project and local settings files (`extraKnownMarketplaces`) with different `source`
@@ -182,7 +182,8 @@ for r in rows:
     print(line)
 for (scope, proj) in sorted(groups):
     if len(groups[(scope, proj)]) > 1:
-        print("CONFLICT: both channels enabled in scope=%s project=%s: %s" % (scope, proj, ", ".join(sorted(groups[(scope, proj)]))))
+        ms = sorted(groups[(scope, proj)])
+        print("CONFLICT: both channels enabled in scope=%s project=%s: %s; keep one and disable the other: %s; then restart the session" % (scope, proj, ", ".join(ms), " or ".join("claude plugin disable %s@%s --scope %s" % (plugin, m, scope) for m in ms)))
         problems += 1
 for l in decl_lines:
     print(l)
