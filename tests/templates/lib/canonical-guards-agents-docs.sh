@@ -400,3 +400,15 @@ else
   pass "stale-rule-priority-parity: sentence once in sam and morgan"
 fi
 
+# =============================================================================
+# Invariant 36 — review-comment-no-checkbox
+# =============================================================================
+# #236: Morgan's comment template never renders a checkbox line (open or ticked); boxes are referenced by id in plain bullets.
+# FAIL when any line of the Morgan persona starts (after spaces) with a checkbox. AGENTS_DIR is an override for negative runs.
+RN_N=$(grep -cE '^ *- \[[ xX]\]' "$AGENTS_DIR/morgan.md" 2>/dev/null || true)
+if [ "${RN_N:-0}" != "0" ]; then
+  fail "review-comment-no-checkbox" "$RN_N checkbox line(s) in $AGENTS_DIR/morgan.md"
+else
+  pass "review-comment-no-checkbox: no checkbox line in the Morgan persona"
+fi
+

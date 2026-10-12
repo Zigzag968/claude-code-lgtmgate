@@ -746,11 +746,13 @@ const T182_ITEMS = [
 // What numberItems must make of T182_ITEMS: { id, text, humanGate } in this key order (the suite compares JSON).
 const T182_CANON = T182_ITEMS.map((it, index) => ({ id: index + 1, text: it.text, humanGate: it.humanGate }))
 // The lines `items` must render to, written BY HAND: an oracle independent of renderChecklist.
-const t182Lines = (items, ids = true) =>
-  items.map((it, index) => `- [ ] ${ids ? `<!-- ac:${index + 1} --> ` : ''}${it.humanGate ? '[human-gate] ' : ''}${it.text}`)
+// Default = the engine-rendered body form (id comment, then the visible bold id, #236); visible=false = Sam's comment-only form.
+const t182Lines = (items, ids = true, visible = true) =>
+  items.map((it, index) => `- [ ] ${ids ? `<!-- ac:${index + 1} --> ` : ''}${ids && visible ? `**ac:${index + 1}** ` : ''}${it.humanGate ? '[human-gate] ' : ''}${it.text}`)
+const t182BodyLines = (items) => t182Lines(items)
 // A Sam return carrying the items as data AND their lines in the plan text, as the contract asks.
 const t182Sam = (items, ids = true) => ({
-  plan: '## Plan\n1. change it\ntargetFiles: none\n\n## Acceptance checklist\n' + t182Lines(items, ids).join('\n') + '\n',
+  plan: '## Plan\n1. change it\ntargetFiles: none\n\n## Acceptance checklist\n' + t182Lines(items, ids, false).join('\n') + '\n',
   acceptanceItems: items,
 })
 // A permissive plan-check model: when a plan is refused, only the script can have refused it.
@@ -5655,7 +5657,7 @@ await testCase('T182a acceptance items round-trip: parse(render(x)) deep-equals 
   const x = fns.numberItems(T182_ITEMS)
   const error1 = eq('numberItems', x, T182_CANON)
   const error2 = eq('parse(render(x))', fns.parseChecklist(fns.renderChecklist(x)), x)
-  const error3 = eq('rendered lines against the hand-written oracle', fns.renderChecklist(x).split('\n'), t182Lines(T182_ITEMS))
+  const error3 = eq('rendered lines against the hand-written oracle', fns.renderChecklist(x).split('\n'), t182BodyLines(T182_ITEMS))
   if (error1 || error2 || error3) return error1 || error2 || error3
   // Negative control: a reader that loses the human-gate flag must NOT reproduce x, so the equality above can fail.
   const flagLost = fns.parseChecklist(fns.renderChecklist(x)).map((it) => ({ ...it, humanGate: false }))
@@ -5907,7 +5909,7 @@ await testCase('T182i a summary-only plan is refused with one line per missing i
   const error1 = eq('status', r1.status, 'escalate')
   const error2 = eq('reason', r1.reason, 'plan-not-conforming')
   const error3 = eq('planCheckIssues.length', issues.length, 1 + T182_ITEMS.length)
-  const error4 = includes('planCheckIssues[1] names the first line to write', String(issues[1] || ''), t182Lines(T182_ITEMS)[0])
+  const error4 = includes('planCheckIssues[1] names the first line to write', String(issues[1] || ''), t182Lines(T182_ITEMS, true, false)[0])
   const r2 = await run({ mode: 'semi', simulate: { sam: { 1: t182Sam(T182_ITEMS, false) }, planCheck: T182_CONFORMING } })
   const error5 = eq('lines without ids: status', r2.status, 'plan-ready')
   return error1 || error2 || error3 || error4 || error5 || { ok: true }
@@ -6271,9 +6273,9 @@ await testCase('T183d Morgan proving 2 of 3 boxes leaves exactly ids 1 and 3 tic
   })
   const p = String(r.prBodyPreview || '')
   const error1 = eq('status', r.status, 'ready-pending-human')
-  const error2 = includes('box 1 ticked', p, '- [x] <!-- ac:1 --> ' + T182_ITEMS[0].text)
+  const error2 = includes('box 1 ticked', p, '- [x] <!-- ac:1 --> **ac:1** ' + T182_ITEMS[0].text)
   const error3 = includes('the gate stays open, tag and text intact', p, lines[1])
-  const error4 = includes('box 3 ticked', p, '- [x] <!-- ac:3 --> ' + T182_ITEMS[2].text)
+  const error4 = includes('box 3 ticked', p, '- [x] <!-- ac:3 --> **ac:3** ' + T182_ITEMS[2].text)
   const error5 = eq('ticked boxes in the body', p.split('- [x] ').length - 1, 2)
   const error6 = includes('trace', r.trace || [], 'acceptance-ticked:round=0,n=2')
   return error1 || error2 || error3 || error4 || error5 || error6 || { ok: true }
@@ -6622,7 +6624,7 @@ await testCase('T183l a line Nick added to the acceptance block (no id) survives
   const fns = t183Splice()
   if (!fns) return t182Skip('T183l')
   const out = fns.tickAcceptanceBlock(t183Body([...T183_L3, T183_R2_LINE]), T183_L3.join('\n'), [1, 2, 3], [])
-  const error6 = includes('block level', out, '- [x] <!-- ac:3 --> ' + T183_PLAIN[2].text + '\n' + T183_R2_LINE + '\n<!-- acceptance:end -->')
+  const error6 = includes('block level', out, '- [x] <!-- ac:3 --> **ac:3** ' + T183_PLAIN[2].text + '\n' + T183_R2_LINE + '\n<!-- acceptance:end -->')
   return error1 || error2 || error3 || error4 || error5 || error6 || { ok: true }
 })
 
@@ -6775,7 +6777,7 @@ await testCase('T183r a box ticked in the body but absent from Morgan\'s boxes i
   const error1 = eq('status', r.status, 'needs-revision')
   const error2 = eq('items: the box returned by no one', r.items, [T183_L3[0]])
   const error3 = includes('boxes-missing:1', r.trace || [], 'boxes-missing:1')
-  const error4 = includes('box 1 reopened', p, '- [ ] <!-- ac:1 --> ' + T183_PLAIN[0].text)
+  const error4 = includes('box 1 reopened', p, '- [ ] <!-- ac:1 --> **ac:1** ' + T183_PLAIN[0].text)
   const error5 = eq('boxes 2 and 3 ticked', t183Ticked(p).length, 2)
   // REQUIRED_CHANGES form: the same, for every box she returned nothing for.
   const w = await t183Review({ prBody: body, morgan: [{ verdict: 'REQUIRED_CHANGES', items: [T183_L3[1]], boxes: [{ id: 3, proven: true, proof: 'p3' }] }] })
@@ -6935,7 +6937,7 @@ await testCase('T183u a CRLF body keeps its line breaks through the tick and the
   if (!fns) return t182Skip('T183u')
   const crlf = (s) => s.split('\n').join('\r\n')
   const rendered = T183_L3.join('\n')
-  const body = crlf('x\n<!-- acceptance:start -->\n- [x] <!-- ac:1 --> ' + T183_PLAIN[0].text + '\n' + T183_L3[1] + '\n' + T183_L3[2] + '\n<!-- acceptance:end -->\ny\n')
+  const body = crlf('x\n<!-- acceptance:start -->\n- [x] <!-- ac:1 --> **ac:1** ' + T183_PLAIN[0].text + '\n' + T183_L3[1] + '\n' + T183_L3[2] + '\n<!-- acceptance:end -->\ny\n')
   const error1 = eq('tick that changes nothing is byte-identical', fns.tickAcceptanceBlock(body, rendered, [1], []), body)
   const ticked = fns.tickAcceptanceBlock(body, rendered, [1, 2], [])
   const error2 = eq('a real tick: every line break of the output is CRLF', ticked.split('\r\n').join('').includes('\n'), false)
@@ -6949,6 +6951,26 @@ await testCase('T183u a CRLF body keeps its line breaks through the tick and the
   const withExtra = crlf('x\n<!-- acceptance:start -->\n' + rendered + '\n' + T183_R2_LINE + '\n<!-- acceptance:end -->\n')
   const error6 = eq('CRLF body with an extra line is stable', fns.tickAcceptanceBlock(withExtra, rendered, [], []), withExtra)
   return error1 || error2 || error3 || error4 || error5 || error6 || { ok: true }
+})
+
+await testCase('T236a the visible id: every rendered line carries bold ac:N after the comment; the readers take visible and comment-only forms alike; Morgan note carries the pointer and the human-gate message', async () => {
+  const fns = t182Block()
+  if (!fns) return t182Skip('T236a')
+  const x = fns.numberItems(T182_ITEMS)
+  const rendered = fns.renderChecklist(x).split('\n')
+  const error1 = eq('visible id on every line, human gate included', rendered.map((line, index) => line.startsWith('- [ ] <!-- ac:' + (index + 1) + ' --> **ac:' + (index + 1) + '** ')), rendered.map(() => true))
+  const error2 = eq('parse(render) equals items', fns.parseChecklist(fns.renderChecklist(x)), x)
+  const error3 = eq('comment-only form parses to the same items', fns.parseChecklist(t182Lines(T182_ITEMS, true, false).join('\n')), fns.parseChecklist(rendered.join('\n')))
+  const error4 = eq('id readers still see the visible form', rendered.map((line) => fns.boxLineId(line)), [1, 2, 3])
+  const commentOnlyPlan = '## Acceptance checklist\n' + t182Lines(T182_ITEMS, true, false).join('\n') + '\n'
+  const error5 = eq('planLacksItems accepts the comment-only form', fns.planLacksItems(commentOnlyPlan, x), [])
+  const error6 = eq('planLacksItems reports a missing item in the comment-only form', fns.planLacksItems('nothing here', x), t182Lines(T182_ITEMS, true, false))
+  const note = fns.morganBoxesNote(rendered.join('\n'))
+  const error7 = includes('Morgan note carries the pointer line', note, 'tick in the PR description, not here')
+  const error8 = includes('Morgan note names where a human gate acts', note, 'section Acceptance checklist, item ac:n')
+  const error9 = includes('Morgan note forbids checkbox lines in the comment', note, 'never write a checkbox line')
+  const error10 = eq('legacy note stays empty', fns.morganBoxesNote(''), '')
+  return error1 || error2 || error3 || error4 || error5 || error6 || error7 || error8 || error9 || error10 || { ok: true }
 })
 
 await testCase('T183v two entries for one id that contradict each other: the box is not proven', async () => {
@@ -7011,7 +7033,7 @@ await testCase('T183x every line of the acceptance block that is not an id box s
     const error1 = eq(name + ': status', r.status, 'ready')
     const error2 = eq(name + ': the 3 id boxes ticked', t183Ticked(p).length, 3)
     const tail = '\n' + foreign + '\nlast: ' + foreign + '\n<!-- acceptance:end -->'
-    const error3 = includes(name + ': the foreign lines, in order, right after the rendered lines', p, '- [x] <!-- ac:3 --> ' + T183_PLAIN[2].text + tail)
+    const error3 = includes(name + ': the foreign lines, in order, right after the rendered lines', p, '- [x] <!-- ac:3 --> **ac:3** ' + T183_PLAIN[2].text + tail)
     const error4 = foreign === '' ? null : eq(name + ': the foreign line is not duplicated', p.split('\n' + foreign + '\n').length - 1, 1)
     if (error1 || error2 || error3 || error4) return error1 || error2 || error3 || error4
     if (!fns) continue
@@ -7094,7 +7116,7 @@ await testCase('T183z a human-gate box is settled by the body alone: ticked by a
   // (c) The gate was ticked by a person and Morgan returns a proof: ready, and the tick stays.
   const c = await gate(ticked, [proof(1), proof(2), proof(3)])
   const error9 = eq('(c) status', c.status, 'ready')
-  const error10 = includes('(c) the gate stays ticked', String(c.prBodyPreview || ''), '- [x] <!-- ac:2 --> [human-gate] ')
+  const error10 = includes('(c) the gate stays ticked', String(c.prBodyPreview || ''), '- [x] <!-- ac:2 --> **ac:2** [human-gate] ')
   // (d) A non-gate box is still missing when the gate is settled: the gate does not stand for it.
   const d = await gate(ticked, [proof(1)])
   const error11 = eq('(d) status', d.status, 'needs-revision')
