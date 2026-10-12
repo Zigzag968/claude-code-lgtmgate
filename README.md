@@ -5,12 +5,36 @@
   <img src=".github/assets/header-static.png" width="100%" alt="lgtmgate: merge gate for agent-generated pull requests. Animated illustration: GitHub issues ride two assembly lines through plan, dev and review. A pull request sent back by review is fixed and checked again. The LGTM gate opens only when CI and every checklist item are green, and after a human's merge go-ahead the Lead's arm sets each approved pull request onto main.">
 </picture>
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Claude Code Plugin](https://img.shields.io/badge/Claude%20Code-plugin-5A32FB)](https://code.claude.com/docs/en/plugins)
-[![Tests: 936 offline](https://img.shields.io/badge/tests-936%20offline-2ea043)](#engineering-highlights)
+[![License](https://img.shields.io/github/license/Zigzag968/claude-code-lgtmgate)](LICENSE)
+[![Claude Code Plugin](https://img.shields.io/badge/Claude_Code-plugin-blueviolet)](https://code.claude.com/docs/en/plugins)
+[![guards](https://github.com/Zigzag968/claude-code-lgtmgate/actions/workflows/guards.yml/badge.svg?branch=main)](https://github.com/Zigzag968/claude-code-lgtmgate/actions/workflows/guards.yml)
+[![CodeQL](https://github.com/Zigzag968/claude-code-lgtmgate/actions/workflows/dynamic/github-code-scanning/codeql/badge.svg)](https://github.com/Zigzag968/claude-code-lgtmgate/security/code-scanning)
+[![Latest release](https://img.shields.io/github/v/release/Zigzag968/claude-code-lgtmgate)](https://github.com/Zigzag968/claude-code-lgtmgate/releases)
+[![Last commit](https://img.shields.io/github/last-commit/Zigzag968/claude-code-lgtmgate)](https://github.com/Zigzag968/claude-code-lgtmgate/commits/main)
+[![Maturity](https://img.shields.io/badge/maturity-beta-orange)](#status)
+[![Tests](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FZigzag968%2Fclaude-code-lgtmgate%2Fbadges%2Ftests.json)](#engineering-highlights)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/Zigzag968/claude-code-lgtmgate/badge)](https://scorecard.dev/viewer/?uri=github.com/Zigzag968/claude-code-lgtmgate)
 
 lgtmgate is a Claude Code plugin that takes a GitHub issue through to a merge-ready pull request. A diagnosis agent checks the issue is real before anyone writes a plan for it. A reviewer checks each item on the acceptance checklist against actual evidence, a command's output or an artifact, before approving. None of the agents merge anything themselves, including when this repo ships its own releases.
+
+## Status
+
+- **Channels**: `stable` is the commit pinned by `sha` in `.claude-plugin/marketplace.json`, served through the `zigzag-plugins` marketplace; `beta` is every merge on `main`, served through `zigzag-plugins-beta`. The Latest release badge above shows the last published release; details in the Release channels fold under Install.
+- **Maturity**: beta. The pipeline runs real issues end to end, but its interfaces (config keys, statuses, hooks) can still change between releases.
+- The second plugin of this repository, `backlog`, is versioned separately (see [the backlog plugin](#this-repo-is-also-a-marketplace-the-backlog-plugin)).
+
+## Known limitations
+
+- The merge hook refuses `gh pr merge` only inside a session where it is wired in; a merge from the GitHub web UI is not intercepted.
+- The Lead waiting for a go-ahead before merging is a prompt-level convention; nothing in the tooling enforces it.
+- Probe evals run locally and are not part of CI: in `.github/workflows/guards.yml` the eval results and canary runs report SKIP.
+- The offline tests call no model, so an agent's judgement (a plan, a review verdict) is not covered by them.
+- GitHub only: issues, pull requests and `gh`.
+- `.claude/pipeline.config.json` is trusted-operator input, not sandboxed against injected prompt content (see `SECURITY.md`).
+
+## Use at your own risk
+
+lgtmgate is MIT-licensed and comes with no warranty. Try it first on a disposable repository, read the commands you put in the config before a run executes them, and review each pull request before you merge it.
 
 ## How it works
 
@@ -78,10 +102,25 @@ The default behavior is deliberately conservative, but most of it can be tuned p
 
 The full key-by-key reference, including precedence rules and edge cases, is in the folded table further down.
 
+## Local overrides and environment variables
+
+- `.claude/pipeline.config.local.json` is a per-machine file, git-ignored and never versioned. Today `worktreeRoot` is the only engine key read from it; `specifics.acceptOversize` is also written there by `scripts/agent-context.cjs --accept-oversize`.
+- Precedence for the worktree root: environment variable, then the local file, then the versioned `.claude/pipeline.config.json`, then the parent directory of the worktree.
+
+| Variable | Read by | Default | Effect |
+|----------|---------|---------|--------|
+| `LGTMGATE_WORKTREE_ROOT` | the engine (`resolveWorktreeRoot`), `hooks/lib-worktree-root.sh`, `scripts/cleanup-worktree.sh` | unset | absolute worktree root that wins over both config files; a relative value is ignored |
+| `LGTMGATE_CONFIG_FILE` | `templates/gh-pipeline-status.sh` | `<repo root>/.claude/pipeline.config.json` | the config file the board-status script reads |
+| `LEAD_MERGE_POLL_MAX` | `scripts/lead-merge.sh` | 30 | number of polls while waiting for the checks of the pushed sha |
+| `LEAD_MERGE_POLL_SLEEP` | `scripts/lead-merge.sh` | 10 | seconds between two polls |
+| `PROBE_EVALS_IMAGE` | `scripts/run-probe-evals-docker.sh` | `lgtmgate-probe-evals` | Docker image name |
+| `PROBE_EVALS_MAX_COST_USD` | `scripts/run-probe-evals.sh` | 3 | cost cap passed as `--max-cost-usd` to `claude plugin eval` |
+| `PROBE_EVALS_RESULTS_DIR` | `scripts/run-probe-evals.sh`, `scripts/gate-check.sh` | `<repo>/evals/results` | where eval results are written and read |
+
 <details>
 <summary>Engineering highlights (you can reproduce every number below by running the scripts yourself)</summary>
 
-- 936 offline test cases across 6 suites, no network or mocked API calls: `tests/templates/test-canonical-guards.sh` (24 release invariants), `scripts/run-flow-suite.cjs` (325 pipeline-logic cases), `plugins/backlog/tests/` (503 Python unit tests), `tests/templates/test-blocked-by-check.sh` (9), `tests/hooks/test-Stop-supervise-runs.sh` (17), `tests/hooks/test-deny-destructive-git.sh` (58).
+- 961 offline test cases across 5 suites, no network or mocked API calls: `scripts/run-flow-suite.cjs` (365 pipeline-logic cases), `plugins/backlog/tests/` (512 Python unit tests), `tests/templates/test-blocked-by-check.sh` (9), `tests/hooks/test-Stop-supervise-runs.sh` (17), `tests/hooks/test-deny-destructive-git.sh` (58). `node scripts/count-tests.cjs` prints these counts, the `readme-contract` guard fails when a number here differs, and the Tests badge is produced by the same script on every push to main. The canonical guard net `tests/templates/test-canonical-guards.sh` runs the guards and is not part of this count.
 - An opt-in adversarial plan audit (`planAudit`): a separate agent can challenge Sam's plan before Nick starts coding, capped at a fixed number of rounds so a disagreement can't spawn agents indefinitely.
 - A regression guard based on a SET-DIFF: Morgan captures a baseline from the pre-change branch and diffs the exact test set the change touched, rather than re-running the whole suite on every PR.
 - Every run gets its own git worktree. Theo, Sam, Nick and Morgan work inside that same worktree so plan, code and review sit on the same frozen base, and the pipeline never touches your own working checkout.
@@ -195,6 +234,12 @@ Nothing stack-specific lives in the plugin. Everything project-dependent is read
 | `projectSpecifics` | optional, default absent = off: a folder holding `shared.md`, `<role>.md` and `<role>.*.md` (e.g. `.claude/lgtmgate`), read from the base ref at launch by `scripts/runtime/agent-context.cjs`. The Lead passes the assembler output as the Workflow arg `projectSpecifics`; the engine verifies its digests and inserts each role's text in every prompt of that role, inside a `<project_specifics>` block. A project file does not replace `lgtmgate:<Role>`: it is appended to the role's prompt, the agent files are never copied or edited. `/lgtmgate:context [role]` shows what each agent will receive. |
 | `agentContext` | optional, default absent: `{"*": [paths], "<Role>": [paths]}`, extra files read from the base ref for every role (`*`, sent once, inside the shared block, so shared's recommended 2048 bytes covers them: a longer shared only warns) or for one role. Turns the same injection on with or without the folder. A listed file is plain text and takes no frontmatter; to scope rules to a lane, use a lane file `<role>.<lane>.md` in the specifics folder. |
 | `specifics.acceptOversize` | sizes the owner accepted per role, `{"<Role>": bytes}`, written by `agent-context.cjs --accept-oversize <Role>` into `.claude/pipeline.config.local.json`; the question is asked again above +25 %. |
+| `repo` | optional `owner/repo` of the code repository for cross-repo runs; absent, it is resolved from the working directory |
+| `classifierOutage` | optional `{retries, backoffMs}`: bounded retry of a turn cut off by an auto-mode classifier outage; defaults 1 retry and 15000 ms times the attempt |
+| `commitHygiene` | optional, off by default: `{squashBeforeHandoff, maxCommits}`, `maxCommits` defaults to 3 |
+| `commentHygiene` | optional, off by default: `true` collapses superseded review comments; the decision log keeps the history |
+| `conventionsRule` | retired: ignored, with the trace `conventionsRule-ignored:<path>`; list the file under `agentContext["*"]` instead |
+| `probeRunPath` | optional path of `templates/probe-run.cjs`, used when the `pluginRoot` arg is not passed |
 | `models` | per-role model override `{ scout?, planAudit?, morgan? }`, default `sonnet` for all three; resolution is `arg > config.models > 'sonnet'` (same precedence as `planAudit`); Theo/Nick are not overridable |
 | `stack` | target stack string handed to the plan auditor; empty → inferred from the worktree |
 | `preflight.envNote` | free-form operator note injected verbatim ahead of every preflight check, notably the HARD test-command check (see the trust warning below) |

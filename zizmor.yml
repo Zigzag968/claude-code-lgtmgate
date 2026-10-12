@@ -5,7 +5,7 @@ rules:
   artipacked:
     ignore:
       # guards job checkout: the credential stays persisted; the guards need no push but the cleanup is out of scope of #306.
-      - guards.yml:37
+      - guards.yml:39
       # smoke-install job checkout: same legacy finding, same reason.
       - guards.yml:152
   adhoc-packages:
