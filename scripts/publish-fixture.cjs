@@ -23,16 +23,14 @@
 //      is the status, the reason, the full trace, the ordered agent() call labels, the ordered engine call SITES
 //      (every log(), phase() and agent() call, by line and column of the engine body), the FORM of the rest of the
 //      result (its keys, array lengths, numbers, booleans and nulls exactly; a string only as empty or not) and the
-//      number of log lines. Free text of the result stays
-//      out of the oracle (nothing could be neutralized otherwise). The three replays must agree.
+//      number of log lines. Other free text stays out of it. The three replays must agree.
 //   3. MINIMIZE: every string value of args and calls is replaced by a typed neutral token (zeros for a hash, `1`
 //      for a number, `_` otherwise), one at a time in JSON order, and the replacement is kept only if the outcome
 //      stays identical. Then, for a multi-line string that is still not neutral, each line to `_`. Passes repeat
 //      to a fixpoint (3 at most). PROTECTED_ARGS are never neutralized; nothing else is exempt, a single-word value
 //      included (a private first name or password can equal a literal of the engine file). A weak oracle (status plus trace) silently
 //      drops behaviour (probes became placeholders and the engine took fail-open paths), hence the strict one.
-//      The sites and the ordered labels pin the engine's path: every agent() call resolves to one site (callAgent),
-//      so the labels carry the order of the agents, and the log and phase sites carry the path through the engine.
+//      The sites and the ordered labels pin the engine's path (every agent() call resolves to one site, callAgent).
 //   3b. ENGINE VERSION (#195): the answer of the plugin version probe that names the engine under test (its BUILD version)
 //      is stored as the token `@@ENGINE_VERSION@@` before the baseline, and so is that version in a published
 //      `plugin-version-*` reason: lead-merge bumps the version at every merge, a literal would go red at the next one. The
@@ -46,8 +44,9 @@
 //      protected fields with a path, PROBE / VERIFY lines whose `json=` payload holds a space or a path separator, and
 //      the published expect.reason), then the number of key names and non-string scalars kept as they are (never
 //      neutralized) and the number of entries pruned. The report counts what it flags; it does not judge it.
-// The published `expect` is built from the baseline: status, reason (if any), trace with traceExact, callLabels.
-// Nothing here calls a model, the network or the Claude Code projects directory.
+// The outcome also holds the values of the result keys the capture names in expect.resultIncludes and whether each
+// expect.logsInclude needle appears in a log line (no other expect key is kept). The published `expect` is built from the baseline: status, reason (if any), trace with traceExact, callLabels, plus those two
+// keys (free text, reported by path and length). Nothing here calls a model, the network or the Claude Code projects directory.
 
 const fs = require('fs')
 const os = require('os')
@@ -134,6 +133,11 @@ function loadCapture(file) {
   if (!isObject(c.calls)) refuse('the raw capture has no calls object')
   if (!isObject(c.expect) || typeof c.expect.status !== 'string' || !c.expect.status) refuse('the raw capture has no expect.status')
   if (Object.prototype.hasOwnProperty.call(c.expect, 'throws')) refuse('the raw capture sets expect.throws (an arg-validation refusal has nothing to minimize)')
+  const extraKeys = Object.keys(c.expect).filter((k) => !['status', 'resultIncludes', 'logsInclude'].includes(k))
+  if (extraKeys.length) refuse(`the raw capture has expect key(s) the publication cannot keep: ${extraKeys.join(', ')}`)
+  const { resultIncludes: values, logsInclude: needles } = c.expect
+  if (values !== undefined && (!isObject(values) || !Object.keys(values).length)) refuse('expect.resultIncludes must be a non-empty object')
+  if (needles !== undefined && (!Array.isArray(needles) || !needles.length || needles.some((n) => typeof n !== 'string' || !n))) refuse('expect.logsInclude must be a non-empty array of non-empty strings')
   return c
 }
 
@@ -213,8 +217,9 @@ function onSignal(sig) {
 }
 
 // The comparable outcome of a replay; null when the replay is not a clean run. Status, reason and trace exactly,
-// the ordered agent() labels, the engine call sites, the form of the rest of the result and the number of log lines.
-const oracleOf = (r) => {
+// the ordered agent() labels, the engine call sites, the form of the rest of the result, the number of log lines, and
+// what `keep` (newSession) asserts: result values and log needles.
+const oracleOf = (r, keep) => {
   if (r.error || r.missing.length || !r.result || typeof r.result !== 'object') return null
   const rest = {}
   for (const k of Object.keys(r.result)) if (!['status', 'reason', 'trace'].includes(k)) rest[k] = r.result[k]
@@ -226,6 +231,8 @@ const oracleOf = (r) => {
     r.sites,
     shapeOf(rest),
     r.logs.length,
+    Object.keys(keep.values || {}).sort().map((k) => r.result[k]),
+    keep.needles.map((n) => r.logs.some((l) => l.includes(n))),
   ])
 }
 
@@ -233,7 +240,8 @@ const oracleOf = (r) => {
 function newSession(run, raw, outName) {
   const cand = { name: outName, args: JSON.parse(JSON.stringify(raw.args)), calls: JSON.parse(JSON.stringify(raw.calls)), expect: { status: raw.expect.status } }
   tokenizeVersionProbes(cand.calls, [run.engineVersion])
-  return { run, replays: 0, cand, base: null, coupled: new Set(), journal: null }
+  const keep = { values: raw.expect.resultIncludes ? JSON.parse(JSON.stringify(raw.expect.resultIncludes)) : null, needles: raw.expect.logsInclude ? [...raw.expect.logsInclude] : [] }
+  return { run, keep, replays: 0, cand, base: null, coupled: new Set(), journal: null }
 }
 
 async function replay(session, fx) {
@@ -257,15 +265,24 @@ async function baseline(session, raw) {
   const r1 = await replay(session, session.cand)
   if (r1.error) refuse('baseline replay: the engine threw')
   if (r1.missing.length) refuse(`baseline replay: ${r1.missing.length} unanswered call(s)`)
-  const base = oracleOf(r1)
+  const { keep, run } = session
+  const base = oracleOf(r1, keep)
   if (base === null) refuse('baseline replay: the engine returned no result object')
   for (let index = 0; index < BASELINE_REPLAYS - 1; index++) {
     const rn = await replay(session, session.cand)
-    if (oracleOf(rn) !== base) refuse('baseline replay is not deterministic')
+    if (oracleOf(rn, keep) !== base) refuse('baseline replay is not deterministic')
   }
   if (typeof r1.result.status !== 'string' || r1.result.status !== raw.expect.status) {
     refuse('the recorded expect.status is not reproduced by the replay')
   }
+  for (const k of Object.keys(keep.values || {})) {
+    if (JSON.stringify(r1.result[k]) !== JSON.stringify(keep.values[k])) refuse(`the recorded expect.resultIncludes.${k} is not reproduced by the replay`)
+    if (run.engineVersion && JSON.stringify(keep.values[k]).includes(run.engineVersion)) refuse(`expect.resultIncludes.${k} quotes the engine version (bumped at every merge)`)
+  }
+  keep.needles.forEach((n, index) => {
+    if (!r1.logs.some((l) => l.includes(n))) refuse(`the recorded expect.logsInclude[${index}] is not reproduced by the replay`)
+    if (run.engineVersion && n.includes(run.engineVersion)) refuse(`expect.logsInclude[${index}] quotes the engine version (bumped at every merge)`)
+  })
   const reason = r1.result.reason
   if (reason !== undefined && reason !== null && typeof reason !== 'string') refuse('baseline replay: result.reason is not a string')
   if (r1.sites.some((s) => /^[LPA]\?/.test(s))) refuse('baseline replay: an engine call site could not be resolved')
@@ -336,7 +353,7 @@ function makeMinimizer(session) {
     session.journal = []
     put(parent, key, value)
     const r = await rehash(session.cand)
-    const good = r !== null && oracleOf(r) === session.base
+    const good = r !== null && oracleOf(r, session.keep) === session.base
     if (!good) for (let index = session.journal.length - 1; index >= 0; index--) session.journal[index][0][session.journal[index][1]] = session.journal[index][2]
     session.journal = null
     return good
@@ -376,9 +393,9 @@ async function minimize(session, tryChange) {
 
 // Step 6, first half: drop what the final replay did not consume and build the published `expect`; returns the pruned count.
 async function pruneAndExpect(session) {
-  const { cand, run, base } = session
+  const { cand, run, base, keep } = session
   const fin0 = await replay(session, cand)
-  if (oracleOf(fin0) !== base) refuse('minimization ended on a different outcome (internal)')
+  if (oracleOf(fin0, keep) !== base) refuse('minimization ended on a different outcome (internal)')
   // Whatever the final replay did not consume (a label never asked, the tail of an array) is dropped: it is dead
   // weight whose label can still name a private branch.
   let pruned = 0
@@ -390,7 +407,7 @@ async function pruneAndExpect(session) {
     if (Array.isArray(entry) && used < entry.length) { pruned += entry.length - used; entry.length = used }
   }
   const fin = pruned ? await replay(session, cand) : fin0
-  if (oracleOf(fin) !== base) refuse('pruning the unconsumed entries changed the outcome (internal)')
+  if (oracleOf(fin, keep) !== base) refuse('pruning the unconsumed entries changed the outcome (internal)')
   cand.expect = { status: fin.result.status }
   if (fin.result.reason !== undefined) cand.expect.reason = fin.result.reason
   if (typeof cand.expect.reason === 'string' && cand.expect.reason.startsWith('plugin-version-') && run.engineVersion) {
@@ -399,6 +416,8 @@ async function pruneAndExpect(session) {
   cand.expect.trace = Array.isArray(fin.result.trace) ? fin.result.trace : []
   cand.expect.traceExact = true
   cand.expect.callLabels = fin.calls.map((c) => c.label)
+  if (keep.values) cand.expect.resultIncludes = keep.values
+  if (keep.needles.length) cand.expect.logsInclude = keep.needles
   return pruned
 }
 
@@ -426,7 +445,7 @@ async function redactAndCheck(session, rehash, outName, fp) {
     writeTemporary(fx2)
     const chk = runNode([path.join(__dirname, 'redact-fixture.cjs'), '--check', temporary])
     if (chk.status !== 0) refuse(`redact-fixture --check exited ${chk.status === null ? 'abnormally' : chk.status} on the redacted candidate`)
-    if (oracleOf(settled) !== base) refuse('outcome changed after redaction')
+    if (oracleOf(settled, session.keep) !== base) refuse('outcome changed after redaction')
     const strict = runNode([path.join(__dirname, 'run-offline.cjs'), temporary, '--report-unused', '--fp', fp], { ...process.env, OFFLINE_STRICT: '1' })
     const strictOutput = `${strict.stdout || ''}${strict.stderr || ''}`
     if (strict.status !== 0 || !strictOutput.includes('passed=1 failed=0')) {
@@ -507,6 +526,9 @@ function report(cand, charsBefore, pruned, outPath) {
   if (typeof cand.expect.reason === 'string' && cand.expect.reason !== '') {
     free.push(cand.expect.reason.length)
     out.push(`  expect.reason ${cand.expect.reason.length} free-text`)
+  }
+  for (const [p, n] of [...Object.keys(cand.expect.resultIncludes || {}).map((k) => [`resultIncludes.${k}`, JSON.stringify(cand.expect.resultIncludes[k]).length]), ...(cand.expect.logsInclude || []).map((s, index) => [`logsInclude[${index}]`, s.length])]) {
+    free.push(n); out.push(`  expect.${p} ${n} free-text`)
   }
   out.push(`  expect.trace ${cand.expect.trace.reduce((n, t) => n + String(t).length, 0)}`)
   out.push(`free text: ${free.length} field(s), ${free.reduce((n, c) => n + c, 0)} characters (published as is, read them before publishing)`)
