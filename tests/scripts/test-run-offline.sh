@@ -385,6 +385,33 @@ o1=$(node scripts/run-flow-suite.cjs 2>&1 | (sleep 2; tail -n 1))
 o2=$(OFFLINE_STRICT=1 node scripts/run-offline.cjs --all fixtures 2>&1 | (sleep 2; tail -n 1))
 case "$o1|$o2" in *"[flow-suite] status=test-ok passed="*" failed=0|[offline] status=ok passed="*" failed=0") ok "both runners keep their trailer behind a slow pipe (#241)";; *) bad "trailer lost behind a slow pipe: flow=[$o1] offline=[$o2]";; esac
 
+# ---- function-level fixtures (blocks + cases, #240) ----
+FN=fixtures/smoke/fn-parse-head-ref.json
+cat > "$TMP/mkfn.cjs" <<'JS'
+const fs = require('fs'); const [, , tmp, src] = process.argv
+const base = () => JSON.parse(fs.readFileSync(src, 'utf8'))
+const w = (n, f) => fs.writeFileSync(`${tmp}/${n}`, JSON.stringify(f))
+let f = base(); f.cases[1].expect.returns = 'feat/other'; w('fn-wrong.json', f)
+f = base(); f.cases[0].fn = 'noSuchFn'; w('fn-unknown-fn.json', f)
+f = base(); f.blocks = ['noSuchBlock']; w('fn-no-block.json', f)
+f = base(); f.blocks = ['thrower']; f.cases = [{ fn: 'explode', args: [], expect: { throws: 'boom-inside' } }]; w('fn-throws-ok.json', f)
+f = base(); f.blocks = ['thrower']; f.cases = [{ fn: 'calm', args: [], expect: { throws: 'boom' } }]; w('fn-throws-missing.json', f)
+f = base(); f.calls = {}; w('fn-calls-next.json', f)
+f = base(); f.cases[0].expect = { returns: 'x', throws: 'y' }; w('fn-two-expects.json', f)
+JS
+node "$TMP/mkfn.cjs" "$TMP" "$FN"
+fnrun() { OFFLINE_STRICT=1 node scripts/run-offline.cjs "$@" 2>&1; }
+out=$(fnrun "$FN"); case "$out" in *"status=ok passed=1 failed=0"*) ok "function-level: the committed demo fixture replays green";; *) bad "function-level: demo not green: $out";; esac
+if out=$(fnrun "$TMP/fn-wrong.json"); then bad "function-level: wrong returns exited 0"; else case "$out" in *"case 1: parseHeadReference expected \"feat/other\""*) ok "function-level: a wrong returns fails with the case index";; *) bad "function-level: wrong returns message: $out";; esac; fi
+out=$(fnrun "$TMP/fn-unknown-fn.json"); case "$out" in *"case 0: fn \"noSuchFn\" is not a function"*) ok "function-level: an unknown fn fails";; *) bad "function-level: unknown fn: $out";; esac
+out=$(fnrun "$TMP/fn-no-block.json"); case "$out" in *'block "noSuchBlock"'*) ok "function-level: an absent block name fails naming the block";; *) bad "function-level: absent block: $out";; esac
+printf '// --- thrower:start ---\nfunction explode() { throw new Error("boom-inside") }\nfunction calm() { return 1 }\n// --- thrower:end ---\n' > "$TMP/thrower.js"
+out=$(fnrun "$TMP/fn-throws-ok.json" --fp "$TMP/thrower.js"); case "$out" in *"status=ok passed=1 failed=0"*) ok "function-level: a throws case replays green";; *) bad "function-level: throws case: $out";; esac
+out=$(fnrun "$TMP/fn-throws-missing.json" --fp "$TMP/thrower.js"); case "$out" in *"expected to throw \"boom\""*) ok "function-level: a missing throw fails";; *) bad "function-level: missing throw: $out";; esac
+out=$(fnrun "$TMP/fn-calls-next.json"); o2=$(fnrun "$TMP/fn-two-expects.json"); case "$out|$o2" in *'unknown key "calls"'*"exactly one of returns/throws"*) ok "function-level: an unknown key next to cases and a double expect are refused";; *) bad "function-level: refusals: $out | $o2";; esac
+sed 's/if (isCandidate(s)) return s/return null/' workflows/deliver-pipeline.js > "$TMP/mutant.js"
+if out=$(fnrun "$FN" --fp "$TMP/mutant.js"); then bad "function-level: mutated engine exited 0 under OFFLINE_STRICT"; else case "$out" in *"case 0:"*"failed=1"*) ok "function-level: a mutated engine makes the demo fixture red (exit 1)";; *) bad "function-level: mutant output: $out";; esac; fi
+
 rm -rf "$TMP"
 RESULT=ok; [ "$FAIL" -gt 0 ] && RESULT=fail
 echo "[test-run-offline] status=$RESULT passed=$PASS failed=$FAIL"
