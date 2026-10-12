@@ -35,6 +35,8 @@
 #      scripts/guards.cjs, scripts/audit.cjs, .github/workflows/guards.yml and tests/templates/test-canonical-guards.sh, and of the
 #      `commands` and `oneWayDoorPaths` keys of `.claude/pipeline.config.json`, is printed under one `lead-merge: Guard surface changed`
 #      line when non-empty. Never blocks, no flag.
+#   3d. audit on the merged tree (#526): `GUARDS_ONLY=audit node scripts/guards.cjs` (the entry CI runs) on the tree just merged from
+#      origin/main; refuses before the bump and the push, naming the file and the count over. Engine repo only (needs scripts/guards.cjs).
 #   4. bump from the merged tree: next version over max(branch, origin/main) (semver 2.0.0 precedence: X.Y.Z -> patch+1,
 #      X.Y.Z-beta.N -> X.Y.Z-beta.(N+1)) in .claude-plugin/plugin.json
 #      + BUILD line of workflows/deliver-pipeline.js (cutFrom = origin/main short sha), commit
@@ -332,6 +334,13 @@ if [ -n "$guard_diff" ] || [ -n "$guard_cfg" ]; then
   echo "lead-merge: Guard surface changed (not blocking: these files and config keys decide what the checks accept; review them before the merge lands)"
   [ -n "$guard_cfg" ] && printf '%s\n' "$guard_cfg"
   [ -n "$guard_diff" ] && printf '%s\n' "$guard_diff"
+fi
+
+# --- 3d. audit on the merged tree (#526) ---------------------------------------------------------------------------
+# Two PRs green alone can break a per-file ceiling together (each added a line to a file at the ceiling). Run the audit CI runs, on the tree
+# just built from main and before the bump and the push; engine repo only (a consumer has no scripts/guards.cjs). Never edits the baseline.
+if [ -f scripts/guards.cjs ] && [ -f scripts/audit-baseline.json ]; then
+  audit_out="$(GUARDS_ONLY=audit node scripts/guards.cjs 2>&1)" || { printf '%s\n' "$audit_out" >&2; die "the audit fails on the tree merged from origin/main (lines above: file, rule, count over); fix in the worktree, never raise scripts/audit-baseline.json, commit, re-run. Nothing pushed."; }
 fi
 
 ver_of() { python3 -c "import json,sys; print(json.load(sys.stdin).get('version',''))"; }
