@@ -7851,6 +7851,32 @@ await testCase('T520e PHASE_TITLES holds the five meta.phases titles, in order',
   return eq('titles', line.slice(1), declared) || { ok: true }
 })
 
+// T469 (#469) — recovery after a stuck preflight and the branch of a review-entry `ready`.
+await testCase('T469a preflight fails twice → preflight-stuck carries relaunch', async () => {
+  const r = await run({
+    mode: 'auto',
+    simulate: { sam: 'GO', preflight: [{ pass: false, issues: ['x'] }, { pass: false, issues: ['x'] }] },
+  })
+  const error1 = eq('status', r.status, 'preflight-stuck')
+  const error2 = typeof r.pr === 'number' ? null : { ok: false, msg: `pr must be a number, got ${JSON.stringify(r.pr)}` }
+  const error3 = eq('relaunch', r.relaunch, { entryStage: 'review', prNumber: r.pr, planPath: '.pipeline/plans/issue-1-sam.md' })
+  return error1 || error2 || error3 || { ok: true }
+})
+
+await testCase('T469b review entry → ready reports the verified branch', async () => {
+  const r = await run({ entryStage: 'review', prNumber: 267, simulate: { morgan: [{ verdict: 'LGTM' }] } })
+  return eq('status', r.status, 'ready') || eq('branch', r.branch, 'features/issue-1') || { ok: true }
+})
+
+await testCase('T469c review entry with a reconciled prefix → ready reports the real head', async () => {
+  const r = await run({
+    entryStage: 'review',
+    prNumber: 127,
+    simulate: { branchCheckRaw: 'feat/issue-1', configBranchPrefixRaw: 'feat/', morgan: [{ verdict: 'LGTM' }] },
+  })
+  return eq('status', r.status, 'ready') || eq('branch', r.branch, 'feat/issue-1') || { ok: true }
+})
+
 // T123 (#42) — every test ID is unique across the suite. Must stay the LAST case so `results`
 // holds every other case name. Includes a negative control proving the detector really detects.
 await testCase('T123 test IDs are unique across the suite (no duplicated T<n>)', async () => {

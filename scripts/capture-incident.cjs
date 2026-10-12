@@ -450,7 +450,7 @@ function main() {
   fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 })
   writePrivate(file, `${JSON.stringify(fixture, null, 2)}\n`)
   replay(file)
-  process.stdout.write(`next: scripts/publish-fixture.sh ${file}\n`)
+  process.stdout.write(`next: scripts/publish-fixture.sh ${file} (plugin repository only; a consumer repository does not have this script, the raw capture stays private under .pipeline/captures/)\n`)
   const cached = calls.filter((c) => c.cached).length
   process.stdout.write(`[capture-incident] status=ok out=${file} calls=${calls.length} cached=${cached} version-source=${versionSources.join(',') || 'none'} retries=${retries}\n`)
 }

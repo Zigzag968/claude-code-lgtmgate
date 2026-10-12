@@ -134,7 +134,7 @@ export const meta = {
 // `version`, checked against plugin.json by tests/templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '1.4.0-beta.26', cutFrom: '40ce4db' }
+const BUILD = { plugin: 'lgtmgate', version: '1.4.0-beta.27', cutFrom: 'd98ec15' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -3706,6 +3706,7 @@ let planTargetsChecked = 0  // #103 — count of sanitized targetFiles the probe
 let openSubIssues = null       // lgtmgate#193 — probe result (array of open sub-issue
                                 // numbers as strings), null = probe skipped/failed (fail-open)
 let subIssuesUncovered = []    // lgtmgate#193 — post-gate list, exposed on dev-done finish() for tests
+let verifiedBranch = null      // lgtmgate#469 — PR head the branch guard verified, reported on the review-stage finish()
 
 // Branch-conformance guard (lgtmgate#29) — the dispatch worktree can arrive on a foreign branch
 // (e.g. another orchestrator's scheduled dispatch naming its own `git worktree add -B <prefix>-issue-<N>`), so the pipeline ASSERTS the
@@ -3789,6 +3790,7 @@ const assertBranchConformance = async (pullRequestNumber, nickBranchFallback) =>
       }
     }
   }
+  verifiedBranch = headReference
   return null
 }
 
@@ -4592,7 +4594,7 @@ if (after('review', entryStage)) {
     if (pf2?.pass !== false) return true
 
     log(`Preflight still failing after retry — escalating as preflight-stuck`)
-    return finish(STATUS['preflight-stuck'], { pr, issue, round: currentRound, issues: foldFailedChecks(pf2), trace })
+    return finish(STATUS['preflight-stuck'], { pr, issue, round: currentRound, issues: foldFailedChecks(pf2), relaunch: { entryStage: 'review', prNumber: pr, planPath }, trace })
   }
 
   let previousRoundItems = null
@@ -5075,7 +5077,7 @@ if (after('review', entryStage)) {
   await updateStatus(v.verdict === 'LGTM' ? 'PR Ready' : 'Blocked')
   return finish(v.verdict === 'LGTM' ? STATUS['ready'] : STATUS['escalate'], {
     pr,
-    branch: nick?.branch ?? '<unavailable>',
+    branch: nick?.branch ?? verifiedBranch ?? expectedBranchName,
     rounds: round,
     finalVerdict: v.verdict,
     issue,
