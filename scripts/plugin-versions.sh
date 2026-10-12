@@ -19,10 +19,13 @@
 #   project does not contain the project;
 #   `CONFLICT: both channels enabled in scope=<scope> project=<p>: <m1>, <m2>` when two marketplaces are both enabled for the
 #   same scope and project (the same plugin enabled from two channels);
+#   `MARKETPLACE-CONFLICT: <name> is declared with different sources: <file> (<kind> <value>), ...` when one marketplace name
+#   is declared in two or more of the user, project and local settings files (`extraKnownMarketplaces`) with different `source`
+#   objects (whole-object comparison); one problem per name, whatever the plugin;
 #   `LOADED-CACHE: ... remove the loaded one: claude plugin uninstall <plugin>@<channel> --scope <scope>` (printed, never run).
 # Last line: `plugin-versions: <n> install(s) of <plugin>, target <t>, <k> problem(s)`, or `plugin-versions: no install of
-# <plugin> found`. Read-only: the only external call is `claude plugin list --json`.
-# Exit: 0 clean (or no install), 1 any MISMATCH, CONFLICT or LOADED-CACHE, 2 cannot decide (no target, claude failed, the payload
+# <plugin> found`. Read-only: the only external call is `claude plugin list --json`; the three settings files are read.
+# Exit: 0 clean (or no install), 1 any MISMATCH, CONFLICT, MARKETPLACE-CONFLICT or LOADED-CACHE, 2 cannot decide (no target, claude failed, the payload
 # is not the expected list, the loaded root matches no listed install, the CLI reports a local or project install of this project disabled while that project's
 # .claude/settings.local.json or settings.json enables it: the sandbox hides that file from the CLI, #480): it never reports "all fine" on something it could not read.
 # Updating an install is a user-level action: the command is printed by the runbook (skills/deliver/SKILL.md step 0), never run here.
@@ -104,9 +107,47 @@ for e in data:
     rows.append({"scope": scope, "proj": proj or "-", "market": eid[len(plugin) + 1:], "enabled": enabled, "version": version,
                  "path": ip, "applies": applies and scope in RANK})
 
+def declaration_problems():
+    """One line per marketplace name declared with different sources across the user, project and local settings."""
+    cfg = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(os.path.expanduser("~"), ".claude")
+    files = [os.path.join(cfg, "settings.json"), os.path.join(project, ".claude", "settings.json"),
+             os.path.join(project, ".claude", "settings.local.json")]
+    seen = {}
+    for path in files:
+        try:
+            with open(path) as fh:
+                decl = json.load(fh).get("extraKnownMarketplaces")
+        except (OSError, ValueError, AttributeError):
+            continue
+        if not isinstance(decl, dict):
+            continue
+        for name, val in decl.items():
+            src = val.get("source") if isinstance(val, dict) else None
+            if src is not None:
+                seen.setdefault(name, []).append((path, src))
+    lines = []
+    for name in sorted(seen):
+        decls = seen[name]
+        if len({json.dumps(src, sort_keys=True) for _, src in decls}) < 2:
+            continue
+        def kind(src):
+            if not isinstance(src, dict):
+                return "? %s" % json.dumps(src, sort_keys=True)
+            for k in ("repo", "url", "path"):
+                if k in src:
+                    return "%s %s" % (src.get("source", "?"), src[k])
+            return "%s ?" % src.get("source", "?")
+        lines.append("MARKETPLACE-CONFLICT: %s is declared with different sources: %s. Fix: declare %s once, or give every declaration the same source (edit %s)"
+                     % (name, ", ".join("%s (%s)" % (pth, kind(src)) for pth, src in decls), name, decls[-1][0]))
+    return lines
+
+decl_lines = declaration_problems()
+
 if not rows:
+    for l in decl_lines:
+        print(l)
     print("plugin-versions: no install of %s found" % plugin)
-    sys.exit(0)
+    sys.exit(1 if decl_lines else 0)
 
 def shadow(r):
     best = None
@@ -143,6 +184,9 @@ for (scope, proj) in sorted(groups):
     if len(groups[(scope, proj)]) > 1:
         print("CONFLICT: both channels enabled in scope=%s project=%s: %s" % (scope, proj, ", ".join(sorted(groups[(scope, proj)]))))
         problems += 1
+for l in decl_lines:
+    print(l)
+    problems += 1
 if hit and not any(r in good for r in hit):
     cur = "%s version %s" % (good[0]["scope"], good[0]["version"]) if good else "none enabled"
     for r in hit:
