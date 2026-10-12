@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
 # Tick steps of scripts/lead-merge.sh step 1c (#9, #196). Sourced by it. bash 3.2 safe. Defines functions only.
-#   lm_tick_pick_review <tmpdir>   picks Morgan's latest verdict from <tmpdir>/comments.json into <tmpdir>/review.txt and
+#   lm_tick_pick_review <tmpdir> <pr head sha>   picks Morgan's latest verdict from <tmpdir>/comments.json into <tmpdir>/review.txt and
 #                                  refuses a verdict a push followed
 #   lm_tick_ids <csv> <tmpdir>     ticks the boxes of these ids (pr-body-splice.cjs tick-ids), then lm_tick_write
 #   lm_tick_write <tmpdir>         writes <tmpdir>/newbody.txt when it differs from body.txt, re-reads the body, re-runs the gate
-# shellcheck disable=SC2154  # the globals below are set by the main script
-# They read and set the globals PR, REPO, SCRIPT_DIR, pr_head, body, rc and use die() of the main script.
+# They read and set the globals PR, REPO, SCRIPT_DIR, body, rc and use die() of the main script.
 
 lm_tick_pick_review() {
-  local tick_tmp="$1" pick_rc=0 head_sha head_date verdict_at
+  local tick_tmp="$1" head_sha="$2" pick_rc=0 head_date verdict_at
   PR="$PR" python3 - "$tick_tmp/comments.json" "$tick_tmp/verdict_at.txt" > "$tick_tmp/review.txt" <<'PY' || pick_rc=$?
 import json, os, re, sys
 raw, dec, i, comments = open(sys.argv[1]).read(), json.JSONDecoder(), 0, []
@@ -39,7 +38,6 @@ PY
     *) die "PR #$PR has no Morgan review comment (marker '<!-- pipeline-review-round pr=$PR -->' with a multi-line verdict); nothing ticked, nothing merged" ;;
   esac
   # the PR head must not be newer than the verdict (REST: pulls/<N> head sha -> commits/<sha> committer date)
-  head_sha="$pr_head"
   head_date="$(gh api "repos/$REPO/commits/$head_sha" --jq .commit.committer.date)" || die "cannot read the commit date of $head_sha"
   verdict_at="$(cat "$tick_tmp/verdict_at.txt")"
   [ -n "$head_date" ] && [ -n "$verdict_at" ] || die "tick-from-review: cannot compare the head commit date with the verdict date; nothing ticked"

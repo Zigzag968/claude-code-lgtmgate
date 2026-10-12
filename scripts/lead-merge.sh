@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Lead merge gesture (#74): scripts/lead-merge.sh <pr> [-R owner/repo] [--tick-from-review | --tick-ids <csv>]
+# Lead merge gesture (#74): scripts/lead-merge.sh <pr> [-R owner/repo] [--tick-from-review | --tick-ids <csv>] [--cleanup]
 # Run from a checkout of the PR head branch. Steps, each exit code checked:
 #   1. acceptance checklist via scripts/lib/acceptance-check.sh (same lib as the merge hook):
 #      any `- [ ]` between the acceptance markers, or missing markers, refuses.
@@ -76,9 +76,9 @@
 #   - Stale proofs: refused (`FAIL: tick-from-review: a push followed Morgan's verdict; re-review first`, nothing ticked)
 #     when a marker comment (e.g. a Nick push-note) follows the chosen verdict, or when the PR head commit date
 #     (REST `pulls/<N>` head sha -> `commits/<sha>` committer date) is later than the verdict's `created_at`.
-# Afterwards prints the manual step to sync the local main and, in a plugin repo (a manifest in the merged tree), ONE line naming the
-# merged plugin version and the command that updates the installed plugin (#233: a running session keeps the engine it started with;
-# scripts/plugin-versions.sh lists the installs). The PR itself never bumps: this script does.
+# --cleanup (#168): once the read-back verified the merge, remove the merged worktree via scripts/cleanup-worktree.sh (scripts/lib/post-merge-cleanup.sh);
+#   without the flag one offer line is printed. A cleanup refusal never changes the exit code. Afterwards prints the manual main-sync step and, in a
+#   plugin repo, ONE line naming the merged version and the update command (#233; scripts/plugin-versions.sh lists the installs). This script bumps, never the PR.
 # Env: LEAD_MERGE_POLL_MAX (default 30), LEAD_MERGE_POLL_SLEEP seconds (default 10).
 set -euo pipefail
 
@@ -91,24 +91,27 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/lib/merge-gates.sh"
 # shellcheck source=lib/tick-gates.sh
 . "$SCRIPT_DIR/lib/tick-gates.sh"
+# shellcheck source=lib/post-merge-cleanup.sh
+. "$SCRIPT_DIR/lib/post-merge-cleanup.sh"
 
 MANIFEST=".claude-plugin/plugin.json"
 WORKFLOW="workflows/deliver-pipeline.js"
 
 die() { echo "lead-merge: $*" >&2; exit 1; }
 
-PR=""; REPO=""; TICK=0; TICK_IDS=""
+PR=""; REPO=""; TICK=0; TICK_IDS=""; CLEANUP=0
 while [ $# -gt 0 ]; do
   case "$1" in
     -R|--repo) [ $# -ge 2 ] || die "$1 needs a value"; REPO="$2"; shift 2 ;;
     --tick-from-review) TICK=1; shift ;;
     --tick-ids) [ $# -ge 2 ] || die "$1 needs a value"; TICK_IDS="$2"; shift 2 ;;
+    --cleanup) CLEANUP=1; shift ;;
     -*) die "unknown option: $1" ;;
     *) [ -z "$PR" ] || die "unexpected argument: $1"; PR="$1"; shift ;;
   esac
 done
 [ "$TICK" -eq 0 ] || [ -z "$TICK_IDS" ] || die "--tick-ids and --tick-from-review are exclusive"
-case "$PR" in ''|*[!0-9]*) die "usage: scripts/lead-merge.sh <pr-number> [-R owner/repo] [--tick-from-review | --tick-ids <csv>]" ;; esac
+case "$PR" in ''|*[!0-9]*) die "usage: scripts/lead-merge.sh <pr-number> [-R owner/repo] [--tick-from-review | --tick-ids <csv>] [--cleanup]" ;; esac
 
 # Repo resolution: -R flag, else .claude/pipeline.config.json "repo", else gh repo view.
 if [ -z "$REPO" ] && [ -f .claude/pipeline.config.json ]; then
@@ -165,9 +168,8 @@ if [ "$rc" -ne 0 ]; then
 fi
 
 # --- 1a. review freshness (#157) -------------------------------------------------
-# The latest review verdict must have been made on the PR head as it is NOW, i.e. before this script adds its own
-# merge-from-base and bump commits. Runs before the exceptions, the tick, and every fetch/merge/push. The comments read
-# here are the snapshot the tick step below picks its verdict from.
+# The latest review verdict must name the PR head as it is NOW (before this script adds its own merge-from-base and bump commits); runs before the
+# exceptions, the tick and every fetch/merge/push. The comments read here are the snapshot the tick step picks its verdict from.
 lm_tmp="$(mktemp -d "${TMPDIR:-/tmp}/lead-merge.XXXXXX")"
 gh api "repos/$REPO/issues/$PR/comments" --paginate > "$lm_tmp/comments.json" || die "cannot read the comments of PR #$PR"
 pr_head="$(gh api "repos/$REPO/pulls/$PR" --jq .head.sha)" || die "cannot read the head sha of PR #$PR"
@@ -198,7 +200,7 @@ if { [ "$TICK" -eq 1 ] || [ -n "$TICK_IDS" ]; } && [ "$rc" -eq 1 ]; then
   if [ -n "$TICK_IDS" ]; then
     lm_tick_ids "$TICK_IDS" "$tick_tmp"
   else
-  lm_tick_pick_review "$tick_tmp"
+  lm_tick_pick_review "$tick_tmp" "$pr_head"
   python3 - "$tick_tmp/body.txt" "$tick_tmp/review.txt" > "$tick_tmp/newbody.txt" <<'PY' || die "tick step failed"
 import re, sys
 rows = open(sys.argv[1], newline="").read().split("\n")
@@ -305,9 +307,8 @@ if ! git merge --no-edit origin/main; then
 fi
 
 # --- 3b. project specifics visibility (#265; not blocking) ------------------------------------------------------
-# Every later run reads the specifics from the base, so a PR changing them changes every future prompt: show the diff of
-# .claude/lgtmgate/ and the projectSpecifics / agentContext / baseBranch lines of the config, print it, never refuse, no flag.
-# Only the default folder is judged; a custom projectSpecifics folder shows up through the config-key diff alone.
+# Every later run reads the specifics from the base, so a PR changing them changes every future prompt: print the diff of .claude/lgtmgate/
+# and of the projectSpecifics / agentContext / baseBranch config lines, never refuse, no flag (a custom folder shows through the config-key diff alone).
 spec_diff="$(git diff origin/main...HEAD -- .claude/lgtmgate/ 2>/dev/null || true)"
 spec_cfg="$(git diff -U0 origin/main...HEAD -- .claude/pipeline.config.json 2>/dev/null | grep -E '^[+-][^+-].*(projectSpecifics|agentContext|baseBranch)' || true)"
 if [ -n "$spec_diff" ] || [ -n "$spec_cfg" ]; then
@@ -317,8 +318,7 @@ if [ -n "$spec_diff" ] || [ -n "$spec_cfg" ]; then
 fi
 
 # --- 3c. guard surface visibility (#308; not blocking) ----------------------------------------------------------
-# These files and config keys decide what the checks accept: a PR changing them changes the gate that judged it. Print the diff,
-# never refuse, no flag. A config file missing on either side reads as {} (consumer repos).
+# These files and config keys decide what the checks accept: a PR changing them changes the gate that judged it. Print the diff, never refuse, no flag; a missing config reads as {}.
 guard_diff="$(git diff origin/main...HEAD -- eslint.config.js .ls-lint.yml ruff.toml scripts/guards.cjs scripts/audit.cjs .github/workflows/guards.yml tests/templates/test-canonical-guards.sh 2>/dev/null || true)"
 guard_base_cfg="$(git show origin/main:.claude/pipeline.config.json 2>/dev/null || true)"
 guard_head_cfg="$(git show HEAD:.claude/pipeline.config.json 2>/dev/null || true)"
@@ -371,8 +371,7 @@ PYSEMVER
 }
 
 # --- 4. bump from the merged tree (idempotent; plugin repo only, #145) ----------
-# merged_ver / plugin_name: the version this merge lands and the plugin it belongs to, for the update hint printed at the end (#233);
-# both stay empty in a consumer repo (no manifest), where nothing is printed.
+# merged_ver / plugin_name: the version this merge lands and its plugin, for the update hint at the end (#233); empty in a consumer repo (no manifest).
 merged_ver=""; plugin_name=""
 if [ ! -f "$MANIFEST" ]; then
   echo "lead-merge: no plugin manifest, version bump skipped"
@@ -558,6 +557,7 @@ for issue in $closing_issues; do
     echo "lead-merge: failed to close issue #$issue" >&2; close_failed=1
   fi
 done
+lm_post_merge_cleanup "$CLEANUP" # #168: only here, after the verified read-back; never changes the exit code
 
 echo "lead-merge: PR #$PR merged. Next manual step: in the main checkout run 'git fetch origin && git merge --ff-only origin/main'."
 # #233: the merged engine only runs once the installed plugin is updated and the session restarted (a plugin repo only)

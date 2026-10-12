@@ -48,7 +48,7 @@ case "$1 $2" in
       echo "no required checks reported on the 'feat/x' branch"; exit 1
     fi
     [ "${FAKE_CHECKS_RC:-0}" -eq 0 ] || exit "$FAKE_CHECKS_RC" ;;
-  "pr merge") [ "${FAKE_MERGE_RC:-0}" -eq 0 ] || exit "$FAKE_MERGE_RC" ;;
+  "pr merge") [ -z "${FAKE_DIRTY_FILE:-}" ] || : > "$FAKE_DIRTY_FILE"; [ "${FAKE_MERGE_RC:-0}" -eq 0 ] || exit "$FAKE_MERGE_RC" ;; # FAKE_DIRTY_FILE: a file left untracked by the merge (#168)
   "api repos/o/r/branches/"*) # protection probe (#156); FAKE_PROTECTION = classic (default) | none404 | ruleset | none403 | error | ratelimit
     case "${FAKE_PROTECTION:-classic}" in
       classic) echo '{"strict":true,"contexts":["ci"],"checks":[{"context":"ci","app_id":null}]}' ;;
@@ -64,6 +64,7 @@ case "$1 $2" in
       none403) echo "gh: Upgrade to GitHub Pro or make this repository public to enable this feature. (HTTP 403)" >&2; exit 1 ;;
       *) echo '[]' ;;
     esac ;;
+  "api repos/"*"/pulls?state=all"*) echo "${FAKE_PR_STATE:-MERGED}" ;; # post-merge cleanup lookup (#168): the PR state word of the branch
   "api repos/o/r/commits/"*) echo "${FAKE_HEAD_DATE:-2025-12-31T00:00:00Z}" ;; # --tick-from-review head date (#9)
   "api repos/o/r/pulls/7")
     case "$*" in
@@ -115,7 +116,7 @@ run() { # <dir> <body-file> [checks-rc]; serves a review on the CURRENT head unl
   : > "$d/log"; : > "$d/pushes"; rm -f "$d/log.stale" "$d/log.patch" "$d/log.noreq" "$d/log.pending"; mkdir -p "$d/issues"
   [ -n "${FAKE_STALE:-}" ] && echo "$FAKE_STALE" > "$d/log.stale"
   printf '#!/bin/sh\necho "$1" >> "%s/pushes"\n' "$d" > "$d/origin.git/hooks/update"; chmod +x "$d/origin.git/hooks/update"
-  ( cd "$d/work" && PATH="$BASE/bin:$PATH" FAKE_LOG="$d/log" FAKE_BODY="$2" FAKE_BRANCH=feat/x \
+  ( cd "${RUN_CWD:-$d/work}" && PATH="$BASE/bin:$PATH" FAKE_LOG="$d/log" FAKE_BODY="$2" FAKE_BRANCH=feat/x \
       FAKE_REMOTE="$d/origin.git" FAKE_CHECKS_RC="${3:-0}" FAKE_ISSUES="$d/issues" FAKE_COMMENTS="$d/comments.json" LEAD_MERGE_POLL_SLEEP=0 bash "$SCRIPT" 7 -R o/r $RUN_FLAGS ) > "$d/out" 2>&1
 }
 # push a commit to origin/main from a second clone: main_commit <dir> <bump 0|1> <file> <content>
