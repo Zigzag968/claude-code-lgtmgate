@@ -115,6 +115,12 @@ t "fenced-example: fence never closed after the real block -> allow (the real pa
 t "fenced-example: fence never closed before the real block -> block (it hides the block)" 2 fx-unclosed-before.md "gh pr merge 5 --merge" c-fresh.json head "BLOCKED by pr-acceptance gate"
 t "fenced-example: only a fenced pair, no real block -> block"        2 fx-only.md         "gh pr merge 5 --merge" c-fresh.json head "BLOCKED by pr-acceptance gate"
 t "fenced-example: lead-merge.sh, example before a ticked real block -> allow" 0 fx-before-ok.md "bash scripts/lead-merge.sh 5"
+# NUL byte (#203): the hook captures the body with $(...), which drops a NUL silently, so it reads the body as if the NUL was not there.
+# The fix needs an edit of hooks/block-merge-unchecked.sh (hooks/** one-way door), tracked by #211; this pins today's behaviour, it does not endorse it.
+printf 'Closes #1\n```\n<!-- acceptance:start -->\n- [ ] open\n<!-- acceptance:end -->\n```\0\n<!-- acceptance:start -->\n- [x] ok\n<!-- acceptance:end -->\n' > "$T/nul-body.md"
+LC_ALL=C tr -d '\000' < "$T/nul-body.md" > "$T/nul-body-stripped.md"
+t "nul-body: the hook reads the body without its NUL byte, as it reads the stripped body (residual gap: #211)" 0 nul-body.md "gh pr merge 5 --merge"
+t "nul-body control: the stripped body reads the same way" 0 nul-body-stripped.md "gh pr merge 5 --merge"
 # ambiguous lines (#202)
 t "fenced-example: closing fence followed by a form feed -> block (R1)"       2 amb-r1-ff.md       "gh pr merge 5 --merge"
 t "fenced-example: closing fence followed by a no-break space -> block (R1)"  2 amb-r1-nbsp.md     "gh pr merge 5 --merge"

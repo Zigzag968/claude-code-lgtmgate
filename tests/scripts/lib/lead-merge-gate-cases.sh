@@ -205,6 +205,12 @@ D="$(setup fx-unclosed-after)"; run "$D" "$BASE/fx-unclosed-after.md"; rc=$?
 D="$(setup fx-unclosed-before)"; run "$D" "$BASE/fx-unclosed-before.md"; rc=$?
 [ "$rc" -ne 0 ] && grep -qF 'acceptance markers missing' "$D/out" && grep -qF 'fence' "$D/out" && ! grep -qE 'update-branch|pr merge|pr checks' "$D/log" \
   && ok "fenced-example fence never closed before the real block: refused with the readable reason, nothing bumped" || bad "fenced-example unclosed before (rc=$rc): $(tail -3 "$D/out")"
+# 3d. NUL byte (#203/#211): lead-merge reads the body through a file, so a NUL is seen and refused (`$(...)` dropped it, which let a
+# fence the engine reads differently hide an open block)
+printf 'Closes #1\n```\n<!-- acceptance:start -->\n- [ ] open\n<!-- acceptance:end -->\n```\0\n<!-- acceptance:start -->\n- [x] ok\n<!-- acceptance:end -->\n' > "$BASE/nul-body.md"
+D="$(setup nul-body)"; run "$D" "$BASE/nul-body.md"; rc=$?
+[ "$rc" -ne 0 ] && grep -qi 'NUL' "$D/out" && ! grep -qE 'update-branch|pr merge|pr checks' "$D/log" && [ ! -s "$D/pushes" ] \
+  && ok "nul-body: a body holding a NUL byte is refused naming the NUL, no push/checks/merge" || bad "nul-body (rc=$rc): $(tail -3 "$D/out")"
 # engine parity: the block the lib finds is the one pr-body-splice.cjs replaces (the splice of a sentinel, put back as the lib's block, gives the body again)
 if command -v node >/dev/null 2>&1; then
   # shellcheck source=lib/acceptance-check.sh
