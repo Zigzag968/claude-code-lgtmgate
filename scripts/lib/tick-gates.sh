@@ -43,7 +43,7 @@ PY
   [ -n "$head_date" ] && [ -n "$verdict_at" ] || die "tick-from-review: cannot compare the head commit date with the verdict date; nothing ticked"
   python3 -c 'import sys; sys.exit(0 if sys.argv[1] <= sys.argv[2] else 1)' "$head_date" "$verdict_at" \
     || die "FAIL: tick-from-review: a push followed Morgan's verdict; re-review first"
-  printf '%s\n' "$body" > "$tick_tmp/body.txt"
+  printf '%s\n' "${body-}" > "$tick_tmp/body.txt"
 }
 
 lm_tick_write() {
@@ -52,15 +52,15 @@ lm_tick_write() {
     bash "$SCRIPT_DIR/runtime/pii-guard.sh" check < "$tick_tmp/newbody.txt" > "$tick_tmp/pii.txt" 2>/dev/null || die "tick-from-review: pii-guard refused ($(sed 's/^pii-refused://' "$tick_tmp/pii.txt")); nothing written"
     gh api -X PATCH "repos/$REPO/pulls/$PR" -F "body=@$tick_tmp/newbody.txt" >/dev/null || die "cannot PATCH the PR #$PR body"
   fi
-  body="$(gh pr view "$PR" -R "$REPO" --json body -q .body)" || die "cannot re-read PR #$PR body"
+  acceptance_read_pr_body "$PR" "$REPO" || die "cannot re-read PR #$PR body (or it holds a NUL byte)"
   rc=0
-  printf '%s\n' "$body" | acceptance_check_body || rc=$?
+  printf '%s\n' "${body-}" | acceptance_check_body || rc=$?
   [ "$rc" -eq 0 ] || die "PR #$PR acceptance gate still failing after --tick-from-review (rc=$rc); nothing bumped, nothing merged"
 }
 
 lm_tick_ids() {
   local csv="$1" tick_tmp="$2" ids_rc=0
-  printf '%s\n' "$body" > "$tick_tmp/body.txt"
+  printf '%s\n' "${body-}" > "$tick_tmp/body.txt"
   node "$SCRIPT_DIR/runtime/pr-body-splice.cjs" tick-ids "$tick_tmp/body.txt" "$tick_tmp/newbody.txt" "$csv" || ids_rc=$?
   case "$ids_rc" in
     0) ;;
