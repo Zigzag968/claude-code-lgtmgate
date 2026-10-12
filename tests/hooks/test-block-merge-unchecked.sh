@@ -87,6 +87,8 @@ t "lead-merge.sh -R, open box -> block"   2 open.md  "scripts/lead-merge.sh 5 -R
 t "lead-merge.sh, all checked -> allow"   0 ok.md    "bash scripts/lead-merge.sh 5"
 t "lead-merge.sh --tick-from-review, open box -> allow (script re-checks)" 0 open.md "bash scripts/lead-merge.sh 5 -R o/r --tick-from-review"
 t "tick flag on another command does not unblock gh pr merge" 2 open.md "bash scripts/lead-merge.sh 5 --tick-from-review; gh pr merge 5"
+t "lead-merge.sh --tick-ids 1, open box -> allow (script re-checks)" 0 open.md "bash scripts/lead-merge.sh 5 -R o/r --tick-ids 1"
+t "tick-ids flag on another command does not unblock gh pr merge" 2 open.md "bash scripts/lead-merge.sh 5 --tick-ids 1; gh pr merge 5"
 t "id-format: an open id box blocks gh pr merge" 2 open-id.md "gh pr merge 5 --merge"
 t "id-format: all id boxes checked allows gh pr merge" 0 ok-id.md "gh pr merge 5 --merge"
 t "missing end marker -> block"           2 noend.md "gh pr merge 5"

@@ -41,7 +41,8 @@ with open(sys.argv[1], "w") as f:  # concatenated pages, like gh --paginate
 PY
 }
 tick_body() { printf 'Closes #1\n## Acceptance checklist\n<!-- acceptance:start -->\n%s\n<!-- acceptance:end -->\n' "$1" > "$2"; }
-tick_run() { cp "$2" "$1/body.md"; RUN_FLAGS="${RUN_FLAGS_OVERRIDE---tick-from-review}" run "$1" "$1/body.md"; } # per-run copy: the fake PATCH rewrites it
+# tick_run: per-run copy of the body, the fake PATCH rewrites it
+tick_run() { cp "$2" "$1/body.md"; RUN_FLAGS="${RUN_FLAGS_OVERRIDE---tick-from-review}" run "$1" "$1/body.md"; }
 B1='- [ ] `bash t.sh` exits 0'; B2='- [ ] grep -c foo f.txt prints 1'
 printf '%s\n%s\n%s\n' "$MK" 'Verified, tick pending (permissions).' \
   '- [ ] **`bash t.sh` exits 0** — verified, tick pending (permissions): `bash t.sh` -> exit 0, `PASS 5/5`' > "$BASE/rv1.md"
@@ -88,6 +89,41 @@ D="$(setup tk-stale-note)"; mkc "$D" "$BASE/rv1.md" "push-note: nothing new"; ti
 D="$(setup tk-stale-date)"; mkc "$D" "$BASE/rv1.md"; FAKE_HEAD_DATE="2026-01-03T00:00:00Z" tick_run "$D" "$BASE/tk1.md"; rc=$?
 [ "$rc" -ne 0 ] && [ ! -e "$D/log.patch" ] && ! grep -qE 'pr merge|pr checks' "$D/log" \
   && grep -qF "FAIL: tick-from-review: a push followed Morgan's verdict; re-review first" "$D/out" && ok "head commit newer than the verdict: refused, nothing ticked" || bad "stale date (rc=$rc): $(tail -3 "$D/out")"
+
+# 15g. prose path on an id-format body (the review quotes the box with its id comment, as agents/morgan.md says)
+I1='- [ ] <!-- ac:1 --> `bash t.sh` exits 0'; I2='- [ ] <!-- ac:2 --> grep -c foo f.txt prints 1'; IG='- [ ] <!-- ac:3 --> [human-gate] Alex confirms the UI'
+printf '%s\n%s\n%s\n' "$MK" 'Verified, tick pending (permissions).' \
+  '- [ ] **<!-- ac:1 --> `bash t.sh` exits 0** — verified, tick pending (permissions): `bash t.sh` -> exit 0, `PASS 5/5`' > "$BASE/rvi.md"
+tick_body "$I1" "$BASE/tki1.md"; D="$(setup tk-idprose)"; mkc "$D" "$BASE/rvi.md"; tick_run "$D" "$BASE/tki1.md"; rc=$?
+[ "$rc" -eq 0 ] && grep -q 'pr merge 7 -R o/r --merge' "$D/log" && grep -qF -- '- [x] <!-- ac:1 -->' "$D/log.patch" 2>/dev/null \
+  && ok "tick-from-review: id-format box ticked from the prose line" || bad "id prose (rc=$rc): $(tail -3 "$D/out")"
+
+# 15h. --tick-ids: both boxes ticked by id, one PATCH, before the merge, no suffix
+tick_body "$I1
+$I2" "$BASE/tki2.md"; D="$(setup tk-ids)"; mkc "$D" "$BASE/rv1.md"; RUN_FLAGS_OVERRIDE="--tick-ids 1,2" tick_run "$D" "$BASE/tki2.md"; rc=$?
+[ "$rc" -eq 0 ] && grep -q 'pr merge 7 -R o/r --merge' "$D/log" && grep -qF -- '- [x] <!-- ac:1 --> `bash t.sh` exits 0' "$D/log.patch" \
+  && grep -qF -- '- [x] <!-- ac:2 --> grep -c foo f.txt prints 1' "$D/log.patch" && ! grep -q 'ticked by lead-merge' "$D/log.patch" \
+  && [ "$(grep -c 'pulls/7 -F body' "$D/log")" = 1 ] && ok "tick-ids: both boxes ticked by id, one PATCH, no suffix" || bad "tick-ids (rc=$rc): $(tail -3 "$D/out")"
+[ "$(grep -n 'PATCH repos/o/r/pulls/7' "$D/log" | cut -d: -f1)" -lt "$(grep -n 'pr merge' "$D/log" | cut -d: -f1)" ] && ok "tick-ids happens before the merge" || bad "tick-ids order"
+
+# 15i. --tick-ids 2 leaves box 1 open: the gate still refuses, no merge
+D="$(setup tk-ids-left)"; mkc "$D" "$BASE/rv1.md"; RUN_FLAGS_OVERRIDE="--tick-ids 2" tick_run "$D" "$BASE/tki2.md"; rc=$?
+[ "$rc" -ne 0 ] && ! grep -qE 'pr merge|pr checks' "$D/log" && grep -qF -- '- [ ] <!-- ac:1 -->' "$D/log.patch" \
+  && ok "tick-ids 2: box 1 stays open, merge refused" || bad "ids left (rc=$rc): $(tail -3 "$D/out")"
+
+# 15j. unknown id: refused, no PATCH
+D="$(setup tk-ids-unknown)"; mkc "$D" "$BASE/rv1.md"; RUN_FLAGS_OVERRIDE="--tick-ids 9" tick_run "$D" "$BASE/tki2.md"; rc=$?
+[ "$rc" -ne 0 ] && [ ! -e "$D/log.patch" ] && ! grep -qE 'pr merge|pr checks' "$D/log" && grep -q 'an id has no box' "$D/out" \
+  && ok "tick-ids 9: unknown id refused, no PATCH" || bad "ids unknown (rc=$rc): $(tail -3 "$D/out")"
+
+# 15k. [human-gate] id: refused, no PATCH
+tick_body "$IG" "$BASE/tki3.md"; D="$(setup tk-ids-hg)"; mkc "$D" "$BASE/rv1.md"; RUN_FLAGS_OVERRIDE="--tick-ids 3" tick_run "$D" "$BASE/tki3.md"; rc=$?
+[ "$rc" -ne 0 ] && [ ! -e "$D/log.patch" ] && ! grep -qE 'pr merge|pr checks' "$D/log" && grep -q 'human-gate' "$D/out" \
+  && ok "tick-ids on a human-gate box: refused, no PATCH" || bad "ids hg (rc=$rc): $(tail -3 "$D/out")"
+
+# 15l. both flags together: refused
+D="$(setup tk-both)"; mkc "$D" "$BASE/rv1.md"; RUN_FLAGS_OVERRIDE="--tick-ids 1 --tick-from-review" tick_run "$D" "$BASE/tki2.md"; rc=$?
+[ "$rc" -ne 0 ] && [ ! -e "$D/log.patch" ] && grep -q 'exclusive' "$D/out" && ok "both tick flags: refused" || bad "both flags (rc=$rc): $(tail -3 "$D/out")"
 
 # 16. consumer repo (#145): no plugin manifest in the merged tree -> bump skipped, the rest of the gesture runs
 rm_files() { # <dir> <clone> <branch> <files...>: remove tracked files in a clone and push the branch

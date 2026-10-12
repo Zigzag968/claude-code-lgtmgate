@@ -99,10 +99,12 @@ BAD="$AREA/bad"; mkdir -p "$BAD"; printf 'good :: zzz\n(unclosed\n' > "$BAD/.pii
 out="$(printf 'x\n' | bash "$GUARD" check --dir "$BAD")"; rc=$?
 [ "$rc" = 1 ] && [ "$out" = "pii-refused:line-2-invalid-pattern" ] && ok=1 || ok=0; check "lib: invalid regex fails closed ($out)" "$ok"
 
-# lead-merge.sh checks the tick body before the PATCH
-pl="$(grep -n 'runtime/pii-guard.sh' "$ROOT/scripts/lead-merge.sh" | head -1 | cut -d: -f1)"
-pp="$(grep -n 'api -X PATCH "repos/$REPO/pulls/$PR"' "$ROOT/scripts/lead-merge.sh" | head -1 | cut -d: -f1)"
+# lead-merge.sh checks the tick body before the PATCH (both live in scripts/lib/tick-gates.sh, sourced by lead-merge.sh)
+TG="$ROOT/scripts/lib/tick-gates.sh"
+pl="$(grep -n 'runtime/pii-guard.sh' "$TG" | head -1 | cut -d: -f1)"
+pp="$(grep -n 'api -X PATCH "repos/$REPO/pulls/$PR"' "$TG" | head -1 | cut -d: -f1)"
 [ -n "$pl" ] && [ -n "$pp" ] && [ "$pl" -lt "$pp" ] && ok=1 || ok=0; check "lead-merge.sh calls pii-guard.sh before the tick PATCH (lines $pl < $pp)" "$ok"
+grep -qE '^\. "\$SCRIPT_DIR/lib/tick-gates\.sh"' "$ROOT/scripts/lead-merge.sh" && ok=1 || ok=0; check "lead-merge.sh sources lib/tick-gates.sh" "$ok"
 
 echo "[test-pii-write] status=$([ "$fail" -eq 0 ] && echo ok || echo fail) passed=$pass failed=$fail"
 [ "$fail" -eq 0 ]
