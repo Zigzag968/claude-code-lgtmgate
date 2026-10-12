@@ -41,6 +41,22 @@ increasing offsets). A label repeats only when its `calls` entry is an array. An
 
 - `runs` (see `relaunch/dev-after-plan.json`): at least 2 runs, each with its own `args`, `calls` and `expect` (plus `carry`); no other key on a run (a misspelled one is refused), no top-level `args`/`calls`/`expect`.
 - `carry` on a run: `{ "<arg>": "<field of the previous run's result>" }`, e.g. `"planText": "plan"`; a field the previous run did not return fails the fixture.
+### Function-level fixtures (a bug in one pure engine function)
+
+A bug in a pure function of the engine has no `agent()` call to replay. A function-level fixture replays the function itself, through the same `--fp` swap as any other fixture (so `r2_replay_tip` runs it green on the branch and red on base):
+
+```json
+{ "name": "parse-head-ref-prose", "blocks": ["parseHeadRef"], "cases": [
+  { "fn": "parseHeadReference", "args": ["PR #776 is on branch `feat/issue-760`.", "feat/issue-760"], "expect": { "returns": "feat/issue-760" } },
+  { "fn": "someFn", "args": [1], "expect": { "throws": "substring of the message" } } ] }
+```
+
+- Top-level keys are exactly `name`, `blocks`, `cases`; `calls`/`args`/`expect`/`runs` next to them are refused.
+- `blocks`: a non-empty list of marker names (`// --- <name>:start ---` .. `// --- <name>:end ---`, line-anchored, exactly one pair each). They are concatenated in the listed order (declare dependencies, e.g. `["base64Utf8", "probeCommands"]`) and evaluated once. A block must not use a module-level value outside its markers (the case then fails with the ReferenceError).
+- `cases`: non-empty; each `{ fn, args?, expect }`, `fn` a function of the blocks, `args` an array (default `[]`, deep-cloned per case), `expect` exactly one of `returns` (JSON-equal; a function returning `undefined` is a problem) or `throws` (non-empty substring of the error message). The result is awaited.
+- Red on base: a case returns another value, the function throws or is absent, or the block markers are absent. Limit: a base that lacks the block entirely is red for that reason, not for the behavior.
+- Name an incident fixture `fixtures/incidents/<issue>-*.json` as usual; `smoke/fn-parse-head-ref.json` is the demo.
+
 - `result.trace` holds engine events, not phase names (`probe:lines:haiku`, ...): assert the path through the phases with `phases`.
 
 - `calls` is keyed by the `label` of each `agent()` call. A migrated probe (#82: provision, provision

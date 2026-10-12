@@ -49,6 +49,7 @@
 //                              { "args": {...}, "calls": {...}, "expect": {...}, "carry": { "planText": "plan" } } ] }
 // `carry` = { "<arg>": "<field>" }: arg of run N is set to that top-level field of run N-1's result (the way the Lead hands
 // `plan` back as `planText`); a field the previous run did not return fails the fixture. Nothing else is shared between runs.
+// Function-level format ({ name, blocks, cases }): replays pure engine functions by marker, no agent() calls; see fixtures/README.md.
 // The token `@@ENGINE_VERSION@@` anywhere in a fixture resolves to the engine's BUILD version (refused if it has none).
 // A label absent from `calls` (or an exhausted array) throws with the label and the
 // first 200 chars of the prompt, so the missing entry is obvious. Nothing is defaulted.
@@ -426,8 +427,58 @@ const setCommandHash = (s, h) => s.replace(CMD_RE, `cmd=${h}`)
 async function runOne(fixturePath, fpSourceStripped) {
   const fixture = JSON.parse(fs.readFileSync(fixturePath, 'utf-8'))
   if (!fixture.name) fixture.name = path.basename(fixturePath, '.json')
+  if (fixture.blocks !== undefined || fixture.cases !== undefined) return runFunctions(fixture, fpSourceStripped)
   if (fixture.runs !== undefined) return runChain(fixture, fpSourceStripped)
   return runSingle(fixture, fpSourceStripped)
+}
+
+// Function-level fixture (shape and rules: fixtures/README.md): { name, blocks, cases } replays pure engine functions
+// extracted by their `// --- <name>:start ---` .. `:end ---` markers. Inline on purpose: the merge gate copies this file alone.
+function blockSource(source, name) {
+  const esc = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const starts = source.match(new RegExp(`^// --- ${esc}:start ---.*$`, 'mg')) || []
+  const ends = source.match(new RegExp(`^// --- ${esc}:end ---.*$`, 'mg')) || []
+  if (starts.length !== 1 || ends.length !== 1) throw new Error(`block "${name}": expected exactly one start and one end marker, found ${starts.length} and ${ends.length}`)
+  if (source.indexOf(ends[0]) < source.indexOf(starts[0])) throw new Error(`block "${name}": end marker precedes start marker`)
+  return source.slice(source.indexOf(starts[0]), source.indexOf(ends[0]))
+}
+
+async function runFunctions(fixture, fpSourceStripped) {
+  const problems = []
+  for (const k of Object.keys(fixture)) if (!['name', 'blocks', 'cases'].includes(k)) problems.push(`unknown key "${k}" (allowed: name, blocks, cases)`)
+  const { blocks, cases } = fixture
+  if (!Array.isArray(blocks) || blocks.length === 0 || blocks.some((b) => !isNonEmptyString(b))) problems.push('blocks: must be a non-empty array of block names')
+  if (!Array.isArray(cases) || cases.length === 0) problems.push('cases: must be a non-empty array')
+  let fns = null
+  if (problems.length === 0) {
+    try {
+      const body = blocks.map((b) => blockSource(fpSourceStripped, b)).join('\n')
+      const names = new Set([...body.matchAll(/^(?:async\s+)?function\s+([A-Za-z_$][\w$]*)/gm)].map((m) => m[1]))
+      fns = new Function(`${body}\nreturn { ${[...names].join(', ')} }`)()
+    } catch (error) { problems.push(`blocks: ${error.message}`) }
+  }
+  for (const [index, c] of fns ? cases.entries() : []) {
+    const tag = `case ${index}`
+    const keys = c && c.expect && typeof c.expect === 'object' ? Object.keys(c.expect) : []
+    const unknown = c && typeof c === 'object' ? Object.keys(c).filter((k) => !['fn', 'args', 'expect'].includes(k)) : ['(not an object)']
+    if (unknown.length || keys.length !== 1 || !['returns', 'throws'].includes(keys[0]) || (c.args !== undefined && !Array.isArray(c.args))) {
+      problems.push(`${tag}: needs fn, optional args array and expect with exactly one of returns/throws (unknown: ${unknown.join(', ') || 'none'})`)
+    } else if (typeof fns[c.fn] !== 'function') {
+      problems.push(`${tag}: fn "${c.fn}" is not a function in blocks ${blocks.join(', ')}`)
+    } else {
+      let got
+      let thrown = null
+      try { got = await fns[c.fn](...clone(c.args || [])) } catch (error) { thrown = error }
+      const want = c.expect[keys[0]]
+      if (keys[0] === 'throws') {
+        if (!isNonEmptyString(want)) problems.push(`${tag}: expect.throws must be a non-empty string`)
+        else if (!thrown) problems.push(`${tag}: ${c.fn} expected to throw "${want}", but returned ${JSON.stringify(got)}`)
+        else if (!String(thrown.message).includes(want)) problems.push(`${tag}: ${c.fn} threw "${thrown.message}", expected it to contain "${want}"`)
+      } else if (thrown) problems.push(`${tag}: ${c.fn} threw "${thrown.message}"`)
+      else if (got === undefined || JSON.stringify(got) !== JSON.stringify(want)) problems.push(`${tag}: ${c.fn} expected ${JSON.stringify(want)}, got ${JSON.stringify(got)}`)
+    }
+  }
+  return { fixture, result: { status: 'replayed' }, logs: [], calls: [], problems, unused: [] }
 }
 
 // A multi-run fixture replays its runs in order, each against its own calls and expect, through runSingle. What a later run
