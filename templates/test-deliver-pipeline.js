@@ -5595,6 +5595,36 @@ await testCase('T9036 ACCEPTANCE_PROOF_RULE defined once, interpolated once; ACC
   return (error1 || error2 || error3) ? (error1 || error2 || error3) : { ok: true }
 })
 
+// T531 (#531) — Theo and Sam read the issue body first; Nick and the plan auditor keep the plan as their contract.
+// Source-level: the sentence is defined once and interpolated in the Theo prompt and the Sam prompt only.
+await testCase('T531 ISSUE_BODY_FIRST: defined once, in the Theo prompt and the Sam prompt only', async () => {
+  const source = SUITE_ARGS.fpSource
+  if (!source) {
+    log('SKIP — T531: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const slice = (label, start, end) => {
+    const from = source.indexOf(start)
+    const to = from < 0 ? -1 : source.indexOf(end, from)
+    return from < 0 || to < 0 ? { error: { ok: false, msg: `T531: marker not found for ${label} (${start} .. ${end})` } } : { text: source.slice(from, to) }
+  }
+  const count = (text) => text.split('${ISSUE_BODY_FIRST}').length - 1
+  const theo = slice('Theo prompt', 'Qualify issue #', 'personaFallback: THEO_PERSONA')
+  const sam = slice('Sam prompt', 'const samScoutPrompt =', '// Plan stage')
+  const audit = slice('audit prompt', 'const auditPrompt', 'AXIS 1')
+  const nick = slice('Nick prompt', 'const nickPrompt', 'nickPromptPreview = nickPrompt')
+  const missing = [theo, sam, audit, nick].find((entry) => entry.error)
+  if (missing) return missing.error
+  return eq('ISSUE_BODY_FIRST occurrences (definition + 2 interpolations)', source.split('ISSUE_BODY_FIRST').length - 1, 3) ||
+    eq('interpolations', count(source), 2) ||
+    eq('precedence sentence occurrences', source.split('takes precedence over the brief').length - 1, 1) ||
+    eq('interpolations in the Theo prompt', count(theo.text), 1) ||
+    eq('interpolations in samScoutPrompt', count(sam.text), 1) ||
+    eq('interpolations in auditPrompt', count(audit.text), 0) ||
+    eq('interpolations in nickPrompt', count(nick.text), 0) ||
+    { ok: true }
+})
+
 // T9028 (#28) — when a Sam acceptance item may be tagged human-gate. Source-level: the shared rule constant
 // is defined once and interpolated once, inside samScoutPrompt, and its text asks "act" versus "only confirm".
 await testCase('T9028 HUMAN_GATE_TAG_RULE defined once, interpolated once in samScoutPrompt (#28)', async () => {
