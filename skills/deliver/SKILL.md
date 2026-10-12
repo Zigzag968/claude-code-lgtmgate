@@ -156,6 +156,7 @@ resolved `ready`/`no-go`/`escalate`), do a check-in pass rather than silently ab
   default 30 min; the guard `Stop` hook detects this automatically and re-prompts) -> mark it blocked
   and escalate to the user, never leave it as-is.
 - **Before any decision on an `escalate` or `*-died` status**: `bash "${CLAUDE_PLUGIN_ROOT}/scripts/capture-incident.sh" <runId> <issue> <label>`, run from the repository of the run (the script ships with the plugin, a consumer can capture too; the plugin repository itself uses `scripts/capture-incident.sh`), writes a private raw capture under `.pipeline/captures/` (git-ignored), replays it and prints the next step. Capture first, then decide.
+- **Before dispatching another run**: `bash "${CLAUDE_PLUGIN_ROOT}/scripts/list-active-runs.sh"`, run from the main checkout, prints `active: <N>` and one line per run in flight (plan, dev, review, in-progress) with its idle minutes; read-only, no network. A run that never got past provisioning has no state file and is not listed.
 - The engine writes the run's state file itself (`docs/supervision.md`, "Who writes the state file"), in the main checkout: no Lead action, and a run with no such file has not got past provisioning.
 
 ### R2 fixture rule (`no-fixture`)
