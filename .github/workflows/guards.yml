@@ -91,6 +91,8 @@ jobs:
         run: bash tests/hooks/test-deny-destructive-git.sh
       - name: pii-guard hook regression test
         run: bash tests/hooks/test-pii-guard.sh
+      - name: workflow-args-expand hook regression test
+        run: bash tests/hooks/test-workflow-args-expand.sh
       - name: pii-guard pr-write regression test
         run: bash tests/scripts/test-pii-write.sh
       - name: SubagentStop worktree-cleanup hook regression test

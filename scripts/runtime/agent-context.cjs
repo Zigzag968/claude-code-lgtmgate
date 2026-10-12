@@ -340,9 +340,9 @@ function buildRoleBlocks(context) {
 function assemble(options) {
   const root = options.root
   const sha = options.sha ? resolveSha(root, options.sha) : resolveReference(root, options.ref)
-  const ref = options.sha ? sha : options.ref
+  const reference = options.sha ? sha : options.ref
   const config = readConfig(root, sha)
-  const empty = { ref, refSha: sha, shared: null, roles: {}, files: [], warnings: [] }
+  const empty = { ref: reference, refSha: sha, shared: null, roles: {}, files: [], warnings: [] }
   if (!config.dir && !config.agentContext) return empty
 
   const errs = []
@@ -388,7 +388,7 @@ function assemble(options) {
   const totalBytes = (shared ? shared.bytes : 0) + maxRole
   if (totalBytes > CAP_TOTAL) warnings.push({ kind: 'total-oversize', bytes: totalBytes, recommended: CAP_TOTAL, informational: true, ask: false })
 
-  return { ref, refSha: sha, shared, roles, files: [...info.values()], warnings }
+  return { ref: reference, refSha: sha, shared, roles, files: [...info.values()], warnings }
 }
 
 
@@ -528,7 +528,7 @@ function acceptOversize(payload, role, localFile, root) {
 }
 
 function parseArguments(argv) {
-  let refGiven = false
+  let referenceGiven = false
   const o = { root: process.cwd(), ref: 'origin/main', sha: null, local: null, print: null, accept: null, lane: null }
   for (let index = 0; index < argv.length; index++) {
     const a = argv[index]
@@ -537,14 +537,14 @@ function parseArguments(argv) {
       return argv[++index]
     }
     if (a === '--root') o.root = value()
-    else if (a === '--ref') { o.ref = value(); refGiven = true } else if (a === '--sha') o.sha = value()
+    else if (a === '--ref') { o.ref = value(); referenceGiven = true } else if (a === '--sha') o.sha = value()
     else if (a === '--local') o.local = value()
     else if (a === '--accept-oversize') o.accept = value()
     else if (a === '--lane') o.lane = value()
     else if (a === '--print') o.print = index + 1 < argv.length && !argv[index + 1].startsWith('--') ? argv[++index] : ''
     else throw new Fail(2, [`unknown argument: ${a}`, 'usage: agent-context.cjs [--root <repo>] [--ref origin/<base> | --sha <hex>] [--local <file>] [--print [role|persona] [--lane <name>]] [--accept-oversize <Role>]'])
   }
-  if (o.sha !== null && refGiven) throw new Fail(2, ['--sha and --ref are exclusive'])
+  if (o.sha !== null && referenceGiven) throw new Fail(2, ['--sha and --ref are exclusive'])
   if (!o.local) o.local = nodePath.join(o.root, '.claude', 'pipeline.config.local.json')
   return o
 }

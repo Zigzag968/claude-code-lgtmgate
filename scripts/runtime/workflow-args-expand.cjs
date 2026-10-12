@@ -45,30 +45,30 @@ function targetsEngine(toolInput) {
 
 // -> {args, isString} or null when the args are not an object (nothing to expand).
 function readArguments(toolInput) {
-  let args = toolInput.args
-  const isString = typeof args === 'string'
+  let arguments_ = toolInput.args
+  const isString = typeof arguments_ === 'string'
   if (isString) {
-    try { args = JSON.parse(args) } catch (error) { return REFERENCE_WORDS.test(toolInput.args) ? 'unparseable' : null }
+    try { arguments_ = JSON.parse(arguments_) } catch (error) { return REFERENCE_WORDS.test(toolInput.args) ? 'unparseable' : null }
   }
-  return args && typeof args === 'object' && !Array.isArray(args) ? { args, isString } : null
+  return arguments_ && typeof arguments_ === 'object' && !Array.isArray(arguments_) ? { args: arguments_, isString } : null
 }
 
-function expandConfig(args, projectDirectory) {
-  const ref = args.configRef
-  if (!ref || typeof ref !== 'object' || typeof ref.path !== 'string' || !/^[0-9a-f]{64}$/.test(String(ref.digest64))) throw new Deny('the configuration reference is malformed')
-  if (args.config !== undefined) throw new Deny('args carries both config and configRef')
-  if (!/^[A-Za-z0-9._/-]+$/.test(ref.path) || ref.path.startsWith('/') || ref.path.split('/').includes('..') || !ref.path.endsWith('.json')) throw new Deny('the configuration reference path is not a relative .json path')
+function expandConfig(arguments_, projectDirectory) {
+  const reference = arguments_.configRef
+  if (!reference || typeof reference !== 'object' || typeof reference.path !== 'string' || !/^[0-9a-f]{64}$/.test(String(reference.digest64))) throw new Deny('the configuration reference is malformed')
+  if (arguments_.config !== undefined) throw new Deny('args carries both config and configRef')
+  if (!/^[A-Za-z0-9._/-]+$/.test(reference.path) || reference.path.startsWith('/') || reference.path.split('/').includes('..') || !reference.path.endsWith('.json')) throw new Deny('the configuration reference path is not a relative .json path')
   let bytes
   try {
     const root = fs.realpathSync(projectDirectory)
-    const file = fs.realpathSync(nodePath.resolve(root, ref.path))
+    const file = fs.realpathSync(nodePath.resolve(root, reference.path))
     if (!isInside(root, file)) throw new Deny('the configuration reference path leaves the project')
     bytes = fs.readFileSync(file)
   } catch (error) {
     if (error instanceof Deny) throw error
     throw new Deny('the referenced configuration file cannot be read')
   }
-  if (crypto.createHash('sha256').update(bytes).digest('hex') !== ref.digest64) throw new Deny('the configuration file changed since the reference was printed (digest mismatch)')
+  if (crypto.createHash('sha256').update(bytes).digest('hex') !== reference.digest64) throw new Deny('the configuration file changed since the reference was printed (digest mismatch)')
   let parsed
   try { parsed = JSON.parse(bytes.toString('utf8')) } catch (error) { throw new Deny('the referenced configuration is not valid JSON') }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Deny('the referenced configuration is not a JSON object')
@@ -84,18 +84,18 @@ function sameRepository(worktree, projectDirectory) {
   }
 }
 
-function expandSpecifics(args, projectDirectory, pluginRoot) {
-  const ref = args.projectSpecificsRef
-  if (!ref || typeof ref !== 'object' || !/^[0-9a-f]{40}$/.test(String(ref.refSha)) || !/^[0-9a-f]{12}$/.test(String(ref.fp12))) throw new Deny('the specifics reference is malformed')
-  if (args.projectSpecifics !== undefined) throw new Deny('args carries both projectSpecifics and projectSpecificsRef')
-  const worktree = args.worktreePath || args.wtPath
+function expandSpecifics(arguments_, projectDirectory, pluginRoot) {
+  const reference = arguments_.projectSpecificsRef
+  if (!reference || typeof reference !== 'object' || !/^[0-9a-f]{40}$/.test(String(reference.refSha)) || !/^[0-9a-f]{12}$/.test(String(reference.fp12))) throw new Deny('the specifics reference is malformed')
+  if (arguments_.projectSpecifics !== undefined) throw new Deny('args carries both projectSpecifics and projectSpecificsRef')
+  const worktree = arguments_.worktreePath || arguments_.wtPath
   if (typeof worktree !== 'string' || !nodePath.isAbsolute(worktree) || !fs.existsSync(worktree) || !fs.statSync(worktree).isDirectory()) throw new Deny('the worktree named by the launch is not an existing directory')
   if (!sameRepository(worktree, projectDirectory)) throw new Deny('the worktree is not a worktree of this repository')
   const { execFileSync } = require('child_process')
   let stdout
   try {
     stdout = execFileSync('node', [
-      nodePath.join(pluginRoot, 'scripts', 'runtime', 'agent-context.cjs'), '--root', worktree, '--sha', ref.refSha,
+      nodePath.join(pluginRoot, 'scripts', 'runtime', 'agent-context.cjs'), '--root', worktree, '--sha', reference.refSha,
       '--local', nodePath.join(projectDirectory, '.claude', 'pipeline.config.local.json'),
     ], { encoding: 'utf8', timeout: ASSEMBLER_TIMEOUT_MS, maxBuffer: 16 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] })
   } catch (error) {
@@ -104,21 +104,21 @@ function expandSpecifics(args, projectDirectory, pluginRoot) {
   let payload
   try { payload = JSON.parse(stdout) } catch (error) { throw new Deny('the specifics assembler printed no JSON') }
   const { fingerprint12 } = require('../lib/agent-context-text.cjs')
-  if (fingerprint12(payload) !== ref.fp12) throw new Deny('the specifics fingerprint differs from the reference')
+  if (fingerprint12(payload) !== reference.fp12) throw new Deny('the specifics fingerprint differs from the reference')
   return payload
 }
 
 // The args with the references replaced in place (key order kept); planRef stays.
-function expandedArguments(args, projectDirectory, pluginRoot) {
+function expandedArguments(arguments_, projectDirectory, pluginRoot) {
   const out = {}
-  const hasConfig = args.configRef !== undefined
-  const hasSpecifics = args.projectSpecificsRef !== undefined
-  const config = hasConfig ? expandConfig(args, projectDirectory) : undefined
-  const specifics = hasSpecifics ? expandSpecifics(args, projectDirectory, pluginRoot) : undefined
-  for (const key of Object.keys(args)) {
+  const hasConfig = arguments_.configRef !== undefined
+  const hasSpecifics = arguments_.projectSpecificsRef !== undefined
+  const config = hasConfig ? expandConfig(arguments_, projectDirectory) : undefined
+  const specifics = hasSpecifics ? expandSpecifics(arguments_, projectDirectory, pluginRoot) : undefined
+  for (const key of Object.keys(arguments_)) {
     if (key === 'configRef') out.config = config
     else if (key === 'projectSpecificsRef') out.projectSpecifics = specifics
-    else out[key] = args[key]
+    else out[key] = arguments_[key]
   }
   return out
 }
@@ -135,9 +135,9 @@ function isIgnored(projectDirectory, relative) {
 
 // -> an absolute scriptPath to use instead of `name`/`scriptPath`, or null (the call keeps what it named). Throws Deny
 // when a launch file of that name holds other bytes than expected.
-function contextualScript(toolInput, args, projectDirectory, pluginRoot) {
+function contextualScript(toolInput, arguments_, projectDirectory, pluginRoot) {
   const launch = require('../lib/launch-file.cjs')
-  const issue = Number(args.issue)
+  const issue = Number(arguments_.issue)
   if (toolInput.name === undefined && typeof toolInput.scriptPath !== 'string') return null
   if (!Number.isInteger(issue) || issue < 1) return null
   const given = typeof toolInput.scriptPath === 'string' ? toolInput.scriptPath : nodePath.join(pluginRoot, 'workflows', 'deliver-pipeline.js')
@@ -156,14 +156,14 @@ function contextualScript(toolInput, args, projectDirectory, pluginRoot) {
   return result.path
 }
 
-function advisory(args) {
-  const bytes = typeof args.brief === 'string' ? Buffer.byteLength(args.brief, 'utf8') : 0
+function advisory(arguments_) {
+  const bytes = typeof arguments_.brief === 'string' ? Buffer.byteLength(arguments_.brief, 'utf8') : 0
   if (bytes <= ADVISORY_BRIEF_BYTES) return null
   return `Advisory: the brief is ${bytes} bytes, over ${ADVISORY_BRIEF_BYTES}; every launch and resume re-sends it. Keep it to the issue number and one line: the engine reads the issue itself.`
 }
 
 // -> null (not ours) | {updatedInput, additionalContext?}; throws Deny.
-function decide(input, env) {
+function decide(input, environment) {
   if (!input || typeof input !== 'object') return null
   if (input.tool_name !== undefined && input.tool_name !== 'Workflow') return null
   const toolInput = input.tool_input
@@ -171,13 +171,13 @@ function decide(input, env) {
   const read = readArguments(toolInput)
   if (read === 'unparseable') throw new Deny('args is a string that is not valid JSON')
   if (read === null) return null
-  const { args, isString } = read
-  const referenced = args.projectSpecificsRef !== undefined || args.configRef !== undefined || args.planRef !== undefined
+  const { args: arguments_, isString } = read
+  const referenced = arguments_.projectSpecificsRef !== undefined || arguments_.configRef !== undefined || arguments_.planRef !== undefined
   if (!targetsEngine(toolInput) || !referenced) return null
-  const projectDirectory = env.CLAUDE_PROJECT_DIR || input.cwd
+  const projectDirectory = environment.CLAUDE_PROJECT_DIR || input.cwd
   if (typeof projectDirectory !== 'string' || projectDirectory === '') throw new Deny('the project directory is unknown')
   const pluginRoot = nodePath.resolve(__dirname, '..', '..')
-  const expanded = expandedArguments(args, projectDirectory, pluginRoot)
+  const expanded = expandedArguments(arguments_, projectDirectory, pluginRoot)
   const updated = { ...toolInput, args: isString ? JSON.stringify(expanded) : expanded }
   const script = contextualScript(toolInput, expanded, projectDirectory, pluginRoot)
   if (script !== null) {

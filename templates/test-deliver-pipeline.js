@@ -3204,7 +3204,7 @@ await testCase('T9233d the minPluginVersion check runs before Setup and before e
   if (indexCall < 0) return { ok: false, msg: 'minPluginVersion call site not found in pipeline source' }
   const indexIf = source.indexOf('if (tooOld)', indexCall)
   const body = indexIf < 0 ? '' : source.slice(indexCall, source.indexOf('\n', indexIf))
-  const indexSetup = source.indexOf("phase('Setup')")
+  const indexSetup = source.indexOf("phase(PHASE_TITLES.setup)")
   const indexVersionProbe = source.indexOf("await probe('lines', pluginVersionCommand(")
   const indexProvision = source.indexOf("await probe('provision',")
   const indexProceed = source.indexOf('invalid-proceedThrough: ${JSON.stringify(proceedThrough)}')
@@ -5727,12 +5727,12 @@ await testCase('T130 run identity: first log is deliver #<issue>, Setup phase fi
   const error1 = eq('first meta phase title', firstTitle && firstTitle[1], 'Setup')
   if (error1) return error1
   const indexLog = index('log(`deliver #${issue} — ')
-  const indexSetup = index("phase('Setup')")
+  const indexSetup = index("phase(PHASE_TITLES.setup)")
   const indexRoot = index('log(`worktreeRoot: ')
   const indexRecheck = index("label: 'config-project-recheck'")
   const indexProv = index("label: 'provision'")
-  const indexDiag = index("phase('Diagnose')")
-  const order = [['deliver log', indexLog], ['phase(Setup)', indexSetup], ['worktreeRoot log', indexRoot], ["label: 'config-project-recheck'", indexRecheck], ["label: 'provision'", indexProv], ["phase('Diagnose')", indexDiag]]
+  const indexDiag = index("phase(PHASE_TITLES.diagnose)")
+  const order = [['deliver log', indexLog], ['phase(Setup)', indexSetup], ['worktreeRoot log', indexRoot], ["label: 'config-project-recheck'", indexRecheck], ["label: 'provision'", indexProv], ["phase(PHASE_TITLES.diagnose)", indexDiag]]
   for (const [n, index_] of order) if (index_ < 0) return { ok: false, msg: `${n} not found in pipeline source` }
   for (let k = 1; k < order.length; k++) {
     if (!(order[k - 1][1] < order[k][1])) return { ok: false, msg: `expected ${order[k - 1][0]} before ${order[k][0]}` }
@@ -7777,6 +7777,48 @@ await testCase('T265c validation and digest known answers', async () => {
   const fp = f.specificsFingerprint({ ...good, warnings: [{ kind: 'oversize', role: 'Nick', bytes: 9000, recommended: 6144, accepted: null, ask: true }, { kind: 'empty-ignored', path: 'x' }] }, f.sha256Hex)
   const error8 = (/^specifics@a{12}:[0-9a-f]{12}$/.test(fp.line) && fp.oversize.length === 1 && fp.oversize[0].role === 'Nick') ? null : { ok: false, msg: `fingerprint: ${JSON.stringify(fp)}` }
   return error1 || error2 || error3 || error4 || error5 || error6 || error7 || error8 || { ok: true }
+})
+
+// T520 (#520) — references in the launch. The expansion hook (hooks/workflow-args-expand.sh) turns `projectSpecificsRef` and
+// `configRef` into the full objects before the engine runs; the engine refuses a reference that reaches it unexpanded.
+// SUITE_ARGS.expandedLaunch ({full, expanded, fp12}) is built by scripts/run-flow-suite.cjs from a 4k fixture tree.
+const t520Specifics = { config: { ...CONFIG, projectSpecifics: '.claude/lgtmgate' }, proceedThrough: 'plan', simulate: { sam: 'GO' } }
+const t520Message = (overrides) => run(overrides).then(() => null, (error) => String(error && error.message))
+await testCase('T520a a launch carrying projectSpecificsRef throws before any agent call', async () => {
+  const message = await t520Message({ projectSpecificsRef: { refSha: 'a'.repeat(40), fp12: 'b'.repeat(12) }, simulate: { sam: 'GO' } })
+  if (message === null) return { ok: false, msg: 'the run returned instead of throwing' }
+  return includes('message', message, 'unexpanded-reference') || (message.includes('simulate fixture missing') ? { ok: false, msg: 'an agent was called' } : { ok: true })
+})
+await testCase('T520b an unexpanded configRef with no config throws the reference refusal, not the missing-config one', async () => {
+  const message = await t520Message({ config: undefined, configRef: { path: '.claude/pipeline.config.json', digest64: 'c'.repeat(64) } })
+  if (message === null) return { ok: false, msg: 'the run returned instead of throwing' }
+  if (message.includes('Missing or invalid arg: config')) return { ok: false, msg: `the missing-config refusal came first: ${message.slice(0, 120)}` }
+  return includes('message', message, 'unexpanded-reference') || { ok: true }
+})
+await testCase('T520c the expanded specifics and the full-object launch yield the same specifics line, ending with the reference fingerprint', async () => {
+  const x = SUITE_ARGS.expandedLaunch
+  if (!x) { log('SKIP — T520c: SUITE_ARGS.expandedLaunch absent'); return { ok: true } }
+  const full = await run({ ...t520Specifics, projectSpecifics: x.full })
+  const expanded = await run({ ...t520Specifics, projectSpecifics: x.expanded })
+  const error1 = eq('both plan-ready', [full.status, expanded.status], ['plan-ready', 'plan-ready'])
+  const error2 = eq('same specifics line', expanded.specifics, full.specifics)
+  const error3 = (typeof full.specifics === 'string' && full.specifics.endsWith(`:${x.fp12}`)) ? null : { ok: false, msg: `specifics line ${JSON.stringify(full.specifics)} does not end with :${x.fp12}` }
+  return error1 || error2 || error3 || { ok: true }
+})
+await testCase('T520d a full-object launch still passes', async () => {
+  const x = SUITE_ARGS.expandedLaunch
+  if (!x) { log('SKIP — T520d: SUITE_ARGS.expandedLaunch absent'); return { ok: true } }
+  const r = await run({ ...t520Specifics, projectSpecifics: x.full })
+  return eq('status', r.status, 'plan-ready') || ((/^specifics@[0-9a-f]{12}:[0-9a-f]{12}$/.test(r.specifics)) ? { ok: true } : { ok: false, msg: `specifics line ${JSON.stringify(r.specifics)}` })
+})
+await testCase('T520e PHASE_TITLES holds the five meta.phases titles, in order', async () => {
+  const source = SUITE_ARGS.fpSource
+  if (!source) { log('SKIP — T520e: SUITE_ARGS.fpSource absent'); return { ok: true } }
+  const metaBlock = source.slice(0, source.indexOf('\n}\n'))
+  const declared = [...metaBlock.matchAll(/\{ title: '([^']*)'/g)].map((m) => m[1])
+  const line = /^const PHASE_TITLES = \{ setup: '([^']*)', diagnose: '([^']*)', plan: '([^']*)', dev: '([^']*)', review: '([^']*)' \}$/m.exec(source)
+  if (!line) return { ok: false, msg: 'no PHASE_TITLES line of the expected shape' }
+  return eq('titles', line.slice(1), declared) || { ok: true }
 })
 
 // T123 (#42) — every test ID is unique across the suite. Must stay the LAST case so `results`

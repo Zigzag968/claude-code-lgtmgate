@@ -61,7 +61,8 @@ check "overrides: worktreePath, pluginRoot and sessionRoot are honoured" 'a.work
 
 run --root "$TREE" --stage plan --mode ref
 check "mode ref: ordered keys, references in place of config and projectSpecifics" 'Object.keys(a).slice(0, 8).join() === "issue,brief,worktreePath,mode,pmReview,configRef,configLocal,projectSpecificsRef" && !("config" in a) && !("projectSpecifics" in a)'
-export CFG_SHA="$(node -e 'process.stdout.write(require("crypto").createHash("sha256").update(require("fs").readFileSync(process.argv[1])).digest("hex"))' "$TREE/.claude/pipeline.config.json")"
+CFG_SHA="$(node -e 'process.stdout.write(require("crypto").createHash("sha256").update(require("fs").readFileSync(process.argv[1])).digest("hex"))' "$TREE/.claude/pipeline.config.json")"
+export CFG_SHA
 check "mode ref: configRef names the file and carries its sha256" 'a.configRef.path === ".claude/pipeline.config.json" && a.configRef.digest64 === process.env.CFG_SHA'
 check "mode ref: projectSpecificsRef is the sha and the 12-hex fingerprint" '/^[0-9a-f]{40}$/.test(a.projectSpecificsRef.refSha) && /^[0-9a-f]{12}$/.test(a.projectSpecificsRef.fp12)'
 cp "$TMP/out" "$TMP/ref"

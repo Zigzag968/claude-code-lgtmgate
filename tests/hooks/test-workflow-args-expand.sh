@@ -60,7 +60,7 @@ expect() { # expect <name> <rc> <js>
 expect_deny() { # expect_deny <name> [needle]
   if [ "$RC" = 2 ] && [ "$(jx 'j.hookSpecificOutput.permissionDecision === "deny" && j.hookSpecificOutput.permissionDecisionReason.startsWith("specifics-ref-mismatch:")')" = "true" ] && [ -s "$ERR" ] && { [ -z "${2:-}" ] || grep -qF -- "$2" "$OUT"; }; then pass "$1"; else fail "$1 (rc=$RC out=$(head -c 300 "$OUT"))"; fi
 }
-launch_files() { ls "$1/.pipeline/launch" 2>/dev/null | grep -c '^issue-520-[0-9a-f]\{12\}\.js$'; }
+launch_files() { local n=0 f; for f in "$1"/.pipeline/launch/issue-520-*.js; do [ -e "$f" ] && n=$((n+1)); done; echo "$n"; }
 
 # ---- expansion ---------------------------------------------------------------------------------
 new_tree t1 ignore; T1="$TMP/t1"
@@ -79,7 +79,8 @@ const ok = JSON.stringify(u.projectSpecifics) === assembled && JSON.stringify(u.
   && !("projectSpecificsRef" in u) && !("configRef" in u) && !("permissionDecision" in j.hookSpecificOutput)
   && keys.indexOf("config") < keys.indexOf("configLocal") && keys.indexOf("projectSpecifics") < keys.indexOf("pluginRoot")
 process.exit(ok ? 0 : 1)' "$OUT" "$TMP/assembled.json" "$T1"
-if [ $? -eq 0 ] && [ "$RC" = 0 ]; then PASS=$((PASS+1)); echo "PASS: expand-match (deep-equal to the assembler stdout and the config file, key order kept)"; else fail "expand-match (rc=$RC)"; fi
+NR=$?
+if [ "$NR" -eq 0 ] && [ "$RC" = 0 ]; then PASS=$((PASS+1)); echo "PASS: expand-match (deep-equal to the assembler stdout and the config file, key order kept)"; else fail "expand-match (rc=$RC)"; fi
 
 # a tampered fingerprint, a stale sha, a digest mismatch
 mk_input "$T1" path ref 'a.projectSpecificsRef.fp12 = a.projectSpecificsRef.fp12.replace(/^./, (c) => (c === "0" ? "1" : "0"))'; hook "$T1"
@@ -147,7 +148,8 @@ const inMeta = (k) => k < 12
 const constant = (k) => a[k].startsWith("const PHASE_TITLES = ")
 const ok = changed.length === 8 && changed.every((k) => inMeta(k) || constant(k)) && changed.filter(constant).length === 1
 process.exit(ok ? 0 : 1)' "$ENGINE" "$GEN1"
-if [ $? -eq 0 ]; then pass "launch-diff-only-titles (8 lines: name, description, 5 titles, PHASE_TITLES)"; else fail "launch-diff-only-titles"; fi
+NR=$?
+if [ "$NR" -eq 0 ]; then pass "launch-diff-only-titles (8 lines: name, description, 5 titles, PHASE_TITLES)"; else fail "launch-diff-only-titles"; fi
 hook "$T3"
 SECOND="$(node -e 'const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(j.hookSpecificOutput.updatedInput.scriptPath||"")' "$OUT")"
 if [ "$SECOND" = "$GEN1" ] && [ "$(launch_files "$T3")" = 1 ]; then pass "launch-reuse (second call, same path, one file)"; else fail "launch-reuse ($SECOND vs $GEN1)"; fi
@@ -178,7 +180,7 @@ for (const n of [1, 520, 99999]) {
   const out = retitle(source, n)
   if (out === null) { ok = false; continue }
   const titles = [...out.slice(0, out.indexOf("\n}\n")).matchAll(/\{ title: \x27([^\x27]*)\x27/g)].map((m) => m[1])
-  const dynamic = [`${titles[2]} 2`, `${titles[4]} 99`]
+  const dynamic = [titles[2] + " 2", titles[4] + " 99"]
   if (titles.length !== 5 || [...titles, ...dynamic].some((t) => [...t].length > 16)) ok = false
   for (let a = 0; a < titles.length; a++) for (let b = a + 1; b < titles.length; b++) {
     const [s, l] = titles[a].length <= titles[b].length ? [titles[a], titles[b]] : [titles[b], titles[a]]
@@ -189,7 +191,8 @@ for (const n of [1, 520, 99999]) {
 if (retitle(source, 123456) !== null) ok = false
 if (retitle(source.replace("title: \x27Dev\x27", "title: \x27Develop\x27"), 1) !== null) ok = false
 process.exit(ok ? 0 : 1)' "$ROOT"
-if [ $? -eq 0 ]; then pass "title-cap-and-prefix (idempotent, <= 16 characters, none a prefix; a six-digit issue keeps the plain names)"; else fail "title-cap-and-prefix"; fi
+NR=$?
+if [ "$NR" -eq 0 ]; then pass "title-cap-and-prefix (idempotent, <= 16 characters, none a prefix; a six-digit issue keeps the plain names)"; else fail "title-cap-and-prefix"; fi
 new_tree t5 ignore; T5="$TMP/t5"
 node "$LA" --root "$T5" --ref origin/main --stage plan --mode ref --issue 1234567 --brief x > "$TMP/args.json"
 node -e 'const fs=require("fs");fs.writeFileSync(process.argv[2],JSON.stringify({cwd:process.argv[1],tool_name:"Workflow",tool_input:{name:"lgtmgate:deliver-pipeline",args:JSON.parse(fs.readFileSync(process.argv[3],"utf8"))}}))' "$T5" "$TMP/in.json" "$TMP/args.json"
