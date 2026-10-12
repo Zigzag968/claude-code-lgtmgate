@@ -3392,7 +3392,9 @@ await testCase('T121 nickPrompt includes the raw issue brief alongside the plan 
 const R2_ITEM = 'fixtures/incidents/'
 // #163: the R2 item is engine-repo only (config.engineRepo === true); T76a-c run on an engine config so they keep
 // testing the trigger, T163b pins that a consumer config never carries it.
-const R2_ENGINE_CONFIG = { ...CONFIG, engineRepo: true }
+// #200: the R2 scope is data (config.r2Scope, one definition shared with scripts/lib/merge-gates.sh); the engine config carries it.
+const R2_SCOPE = { issueType: 'bug', paths: ['workflows/'], fixtureDir: 'fixtures/incidents' }
+const R2_ENGINE_CONFIG = { ...CONFIG, engineRepo: true, r2Scope: R2_SCOPE }
 const r2Run = (issueType, targets, config = R2_ENGINE_CONFIG) => run({
   mode: 'auto',
   brief: 'r2-rule-probe',
@@ -4292,7 +4294,7 @@ const t163Block = () => {
   const source = SUITE_ARGS.fpSource
   if (!source) return null
   const block = extractBetween(source, '// --- engineRules:start ---', '// --- engineRules:end ---')
-  return block ? new Function(block + '\nreturn { isEngineRepository, samLayerRule }')() : null
+  return block ? new Function(block + '\nreturn { isEngineRepository, samLayerRule, r2ScopeOf }')() : null
 }
 await testCase('T163a consumer Sam prompt: no engineRepo flag -> neutral PLAN RULE, none of simulate, seam, agent(), fixtures/incidents', async () => {
   const source = SUITE_ARGS.fpSource
@@ -4346,7 +4348,7 @@ await testCase('T163c this repo: engineRepo is true -> Sam keeps the engine laye
   const flag = SUITE_ARGS.repoConfig.engineRepo
   const error0 = eq('repo engineRepo', flag, true)
   if (error0) return error0
-  const r = await r2Run('bug', ['workflows/deliver-pipeline.js'], { ...CONFIG, engineRepo: flag })
+  const r = await r2Run('bug', ['workflows/deliver-pipeline.js'], { ...CONFIG, engineRepo: flag, r2Scope: SUITE_ARGS.repoConfig.r2Scope })
   const p = String(r.nickPromptPreview || '')
   for (const must of ['fixture `fixtures/incidents/', 'no-fixture', 'Refs #']) {
     if (!p.includes(must)) return { ok: false, msg: `this repo's Nick prompt lacks the R2 text ${JSON.stringify(must)}` }
@@ -4364,6 +4366,39 @@ await testCase('T163c this repo: engineRepo is true -> Sam keeps the engine laye
   }
   const uses = source.split('${SAM_LAYER_RULE}').length - 1
   return uses === 1 ? { ok: true } : { ok: false, msg: `SAM_LAYER_RULE interpolated ${uses} time(s) in the Sam prompt, expected 1` }
+})
+
+// #200: the R2 scope is one definition (config.r2Scope). Another scope moves r2Applies; an invalid or missing one switches R2 off.
+// The invalid-shape table is shared BY VALUE with the lead-merge case "r2-replay: engineRepo with an invalid r2Scope" (tests/scripts/lib/lead-merge-r2-replay-cases.sh).
+const R2_INVALID_SCOPES = [
+  ['missing', undefined],
+  ['empty paths', { issueType: 'bug', paths: [], fixtureDir: 'fixtures/incidents' }],
+  ['non-string fixtureDir', { issueType: 'bug', paths: ['workflows/'], fixtureDir: 42 }],
+  ['empty path entry', { issueType: 'bug', paths: [''], fixtureDir: 'fixtures/incidents' }],
+  ['empty issueType', { issueType: '', paths: ['workflows/'], fixtureDir: 'fixtures/incidents' }],
+]
+await testCase('T200a r2Scope moves r2Applies (paths, issueType, fixtureDir); an invalid or missing scope switches R2 off (#200)', async () => {
+  const moved = { ...CONFIG, engineRepo: true, r2Scope: { issueType: 'regression', paths: ['agents/'], fixtureDir: 'fixtures/other' } }
+  const on = String((await r2Run('regression', ['agents/nick.md'], moved)).nickPromptPreview)
+  if (!on.includes('fixture `fixtures/other/')) return { ok: false, msg: `scope moved to agents/ + regression: the item must name fixtures/other/, got ${JSON.stringify(on.slice(0, 80))}` }
+  const wrongPath = r2Absent(String((await r2Run('regression', ['workflows/deliver-pipeline.js'], moved)).nickPromptPreview))
+  if (wrongPath) return wrongPath
+  const wrongType = r2Absent(String((await r2Run('bug', ['agents/nick.md'], moved)).nickPromptPreview))
+  if (wrongType) return wrongType
+  for (const [label, scope] of R2_INVALID_SCOPES) {
+    const config = { ...CONFIG, engineRepo: true, ...(scope === undefined ? {} : { r2Scope: scope }) }
+    const error = r2Absent(String((await r2Run('bug', ['workflows/deliver-pipeline.js'], config)).nickPromptPreview))
+    if (error) return { ok: false, msg: `invalid r2Scope (${label}) must switch R2 off: ${error.msg}` }
+  }
+  const fns = t163Block()
+  if (fns) {
+    for (const [label, scope] of R2_INVALID_SCOPES) {
+      if (fns.r2ScopeOf({ engineRepo: true, ...(scope === undefined ? {} : { r2Scope: scope }) }) !== null) return { ok: false, msg: `r2ScopeOf accepted an invalid scope (${label})` }
+    }
+    if (fns.r2ScopeOf({ r2Scope: R2_SCOPE }) !== null) return { ok: false, msg: 'r2ScopeOf must be null on a consumer (no engineRepo)' }
+    if (JSON.stringify(fns.r2ScopeOf({ engineRepo: true, r2Scope: R2_SCOPE })) !== JSON.stringify(R2_SCOPE)) return { ok: false, msg: 'r2ScopeOf must return the valid scope' }
+  }
+  return { ok: true }
 })
 
 // T98a (#103, advisory default) — a plan target moved upstream → note+trace+return fields carry

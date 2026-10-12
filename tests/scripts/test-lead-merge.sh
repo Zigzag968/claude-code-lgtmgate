@@ -18,6 +18,7 @@ LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" && pwd)"
 . "$LIB/lead-merge-acceptance-lib.sh"
 . "$LIB/lead-merge-gate-cases.sh"
 . "$LIB/lead-merge-release-cases.sh"
+. "$LIB/lead-merge-r2-replay-cases.sh"
 . "$LIB/lead-merge-cleanup-cases.sh"
 
 echo "[lead-merge test] passed=$PASS failed=$FAIL"

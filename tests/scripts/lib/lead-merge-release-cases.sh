@@ -246,7 +246,7 @@ r2_merges() { # <label>
   [ "$rc" -eq 0 ] && grep -q 'pr merge' "$D/log" && ! grep -q 'FAIL: r2-waiver' "$D/out" \
     && ok "r2-waiver: $1" || bad "r2-waiver: $1 (rc=$rc): $(tail -3 "$D/out")"
 }
-R2_ENGINE='{"engineRepo": true}'
+R2_ENGINE='{"engineRepo": true, "r2Scope": {"issueType": "bug", "paths": ["workflows/"], "fixtureDir": "fixtures/incidents"}}'
 R2_EXC="$(printf -- '- [x] exception: R2 fixture waived \xe2\x80\x94 replay needs a recorded run \xe2\x80\x94 #9')"
 r2_prep r2-nofix 'Refs #30' '' 'open type:bug'; r2_main_cfg "$D" "$R2_ENGINE"; r2_branch "$D"; r2_go
 r2_refused "no fixture, no exception: refused"
