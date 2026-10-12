@@ -60,6 +60,13 @@ from the `acceptanceItems` Sam returns, Nick pastes them verbatim and Morgan ret
 (`id`, `proven`, `proof`) per id, repeating the `<!-- ac:N -->` comment wherever he quotes a box. A
 body without ids (opened before this format) still parses.
 
+The rendered line also shows the id as bold text after the comment, `- [ ] <!-- ac:N --> **ac:N** <criterion>`:
+this is the visible id for the human reader (a human gesture names the PR description, section Acceptance
+checklist, item ac:N, as the place to act); hooks and ticks read the comment only. Morgan's posted comment
+never renders a checkbox line: it references boxes by id in plain bullets, ends with the line
+`tick in the PR description, not here`, and a human gate reads `Human gate ac:N: act in the PR description,
+section Acceptance checklist, item ac:N`.
+
 ### Body order (artifact-first)
 The PR body follows a fixed, artifact-first order : `Closes #N` on the first line ->
 `## What this ships` (bullet summary of the diff) -> optional `## <Human> — N gestures`
