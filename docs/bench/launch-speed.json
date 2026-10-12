@@ -1,4 +1,18 @@
 {
-  "fields": ["size", "variant", "rep", "seconds", "outputTokens", "chars", "resume", "dryRun", "firstRunAgentCalls", "agentCalls"],
-  "runs": []
+  "fields": ["size","variant","rep","seconds","outputTokens","chars","resume","dryRun","firstRunAgentCalls","agentCalls"],
+  "runs": [
+    {"size":"4k","variant":"full","rep":1,"seconds":19.6,"outputTokens":3025,"chars":8345,"resume":false,"dryRun":true,"firstRunAgentCalls":0,"agentCalls":0},
+    {"size":"4k","variant":"full","rep":2,"seconds":19.3,"outputTokens":3037,"chars":8345,"resume":false,"dryRun":true,"firstRunAgentCalls":0,"agentCalls":0},
+    {"size":"4k","variant":"full","rep":3,"seconds":19.3,"outputTokens":2982,"chars":8345,"resume":false,"dryRun":true,"firstRunAgentCalls":0,"agentCalls":0},
+    {"size":"4k","variant":"full","rep":4,"seconds":20,"outputTokens":3040,"chars":8345,"resume":false,"dryRun":true,"firstRunAgentCalls":0,"agentCalls":0},
+    {"size":"22k","variant":"full","rep":1,"seconds":47.1,"outputTokens":9500,"chars":27356,"resume":false,"dryRun":true,"firstRunAgentCalls":0,"agentCalls":0},
+    {"size":"22k","variant":"full","rep":2,"seconds":46.4,"outputTokens":9443,"chars":27356,"resume":false,"dryRun":true,"firstRunAgentCalls":0,"agentCalls":0},
+    {"size":"22k","variant":"full","rep":3,"seconds":47.5,"outputTokens":9468,"chars":27356,"resume":false,"dryRun":true,"firstRunAgentCalls":0,"agentCalls":0},
+    {"size":"22k","variant":"full","rep":4,"seconds":46.6,"outputTokens":9448,"chars":27356,"resume":false,"dryRun":true,"firstRunAgentCalls":0,"agentCalls":0},
+    {"size":"22k","variant":"full","rep":5,"seconds":46.7,"outputTokens":9446,"chars":27356,"resume":false,"dryRun":true,"firstRunAgentCalls":0,"agentCalls":0},
+    {"size":"22k","variant":"ref","rep":1,"seconds":4.2,"outputTokens":419,"chars":570,"resume":false,"dryRun":true,"firstRunAgentCalls":0,"agentCalls":0},
+    {"size":"22k","variant":"ref","rep":2,"seconds":4.3,"outputTokens":419,"chars":570,"resume":false,"dryRun":true,"firstRunAgentCalls":0,"agentCalls":0},
+    {"size":"22k","variant":"ref","rep":3,"seconds":4.4,"outputTokens":419,"chars":570,"resume":false,"dryRun":true,"firstRunAgentCalls":0,"agentCalls":0},
+    {"size":"22k","variant":"ref","rep":4,"seconds":5.2,"outputTokens":499,"chars":556,"resume":true,"dryRun":false,"firstRunAgentCalls":3,"agentCalls":0}
+  ]
 }
