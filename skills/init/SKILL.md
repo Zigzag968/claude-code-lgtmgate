@@ -110,6 +110,11 @@ Propose (AskUserQuestion) inserting the snippets to enable pm_review + the accep
 
 If the target files exist: insert the block at the right spot (Edit). Otherwise: offer to create the file from the snippet. **Never overwrite** an existing template without confirmation.
 
+## 3bis. Ignore .pipeline/
+Run `git check-ignore -q .pipeline/x` (one command per Bash call, no `&&`, no pipe). Exit 0: `.pipeline/` is already ignored, do nothing and ask nothing.
+
+Exit 1: append the line `.pipeline/` to the repository `.gitignore` (create the file when absent; when it exists and does not end with a newline, add a leading newline first). Never touch an existing ignore pattern. Tell the owner to commit the change, and why: a repository that does not ignore `.pipeline/` silently loses the fast launches by reference (#520).
+
 ## 4. Settings (reminder)
 Remind the user to enable the plugin in `.claude/settings.json` (or global settings):
 Ask which channel the project runs on (the installed plugin's marketplace name: `claude plugin list`). Never enable both in one scope. Source for both marketplaces: `github` / `Zigzag968/claude-code-lgtmgate`.
@@ -126,4 +131,4 @@ gh project field-create <number> --owner <owner> --name "Pipeline Status" --data
 Then fetch the `optionId`s (via `gh project field-list ... --format json`) and fill in `ghProject.statusOptions` in the config.
 
 ## 6. Final summary
-Show: files copied, config path, CI checks retained, and the next action (`/lgtmgate:deliver <issue> "<brief>"`). If a source template is missing under `${CLAUDE_PLUGIN_ROOT}/templates/`, report it clearly (don't pretend to have copied it).
+Show: files copied, config path, CI checks retained, the `.gitignore` line added (if any), and the next action (`/lgtmgate:deliver <issue> "<brief>"`). If a source template is missing under `${CLAUDE_PLUGIN_ROOT}/templates/`, report it clearly (don't pretend to have copied it).

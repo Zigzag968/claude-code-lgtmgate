@@ -215,6 +215,14 @@ Printed by `scripts/config-check.cjs`; each `warn:` line states its effect and i
 | config unreadable | `check` of `scripts/config-check.cjs` | The file is absent or not a JSON object: the run cannot read its settings | Run `/lgtmgate:init`. |
 | no path | `main` of `scripts/config-check.cjs` | No config path was given | Run `node scripts/config-check.cjs <path to .claude/pipeline.config.json>`. |
 
+## Startup status lines
+
+Printed by `hooks/SessionStart/inject_stub.py` at session start; the guard does not check this section.
+
+| name | raised at | what the user sees | remedy |
+|---|---|---|---|
+| `.pipeline/ not ignored` | `_pipeline_ignore_hint` of `hooks/SessionStart/inject_stub.py` | `- Fast launches by reference are not used: .pipeline/ is not git-ignored in this repository (a missed gain, not an error). Add the line .pipeline/ to .gitignore.` | Add the line `.pipeline/` to the repository `.gitignore` (or run `/lgtmgate:init`), commit and push; nothing is lost but the faster launch. |
+
 ## Prerequisites
 
 | name | raised at | what the user sees | remedy |
