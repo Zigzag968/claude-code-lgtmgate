@@ -51,8 +51,8 @@
       "issues": []
     },
     "probe-123-preflight-dev-r0": {
-      "line": "PROBE name=preflight exit=0 sha=0acd6243a89b98b4bb2d70cb70c8f020921b3ba8feae419783c1e32c54be75dd cmd=bab153ec08c43a81aad6ca5c38feaecaa394a72ec8b8a497a0467981279f563a json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/wt/root/.git/worktrees/issue-123\",\"writable\":true}",
-      "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=0acd6243a89b98b4bb2d70cb70c8f020921b3ba8feae419783c1e32c54be75dd cmd=bab153ec08c43a81aad6ca5c38feaecaa394a72ec8b8a497a0467981279f563a json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/wt/root/.git/worktrees/issue-123\",\"writable\":true}"
+      "line": "PROBE name=preflight exit=0 sha=0acd6243a89b98b4bb2d70cb70c8f020921b3ba8feae419783c1e32c54be75dd cmd=391de8d96a70eb0fd2da844b180a8143e67a32a4cf3f4b6142f8cef1a7915675 json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/wt/root/.git/worktrees/issue-123\",\"writable\":true}",
+      "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=0acd6243a89b98b4bb2d70cb70c8f020921b3ba8feae419783c1e32c54be75dd cmd=391de8d96a70eb0fd2da844b180a8143e67a32a4cf3f4b6142f8cef1a7915675 json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/wt/root/.git/worktrees/issue-123\",\"writable\":true}"
     },
     "nick-issue-123": [
       "Auto mode classifier returned no safety verdict (10 consecutive); ending the turn. Classifier temporarily unavailable.",

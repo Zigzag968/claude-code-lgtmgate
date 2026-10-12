@@ -46,8 +46,8 @@
       "issues": []
     },
     "probe-32-preflight-dev-r0": {
-      "line": "PROBE name=preflight exit=0 sha=4bdeda47f0f6da268b4ba8e6c9859cf4722df806996b568458597946eb068401 cmd=76d73478c4794c22d4766531764b5f69ff07c675ad7024f908607ba35ed449e5 json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/wt/root/.git/worktrees/issue-32\",\"writable\":true}",
-      "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=4bdeda47f0f6da268b4ba8e6c9859cf4722df806996b568458597946eb068401 cmd=76d73478c4794c22d4766531764b5f69ff07c675ad7024f908607ba35ed449e5 json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/wt/root/.git/worktrees/issue-32\",\"writable\":true}"
+      "line": "PROBE name=preflight exit=0 sha=4bdeda47f0f6da268b4ba8e6c9859cf4722df806996b568458597946eb068401 cmd=ddfcf9693ffcf769865c78fa2d6f597c2f3aecc2c4647609c7bc1024edf7e528 json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/wt/root/.git/worktrees/issue-32\",\"writable\":true}",
+      "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=4bdeda47f0f6da268b4ba8e6c9859cf4722df806996b568458597946eb068401 cmd=ddfcf9693ffcf769865c78fa2d6f597c2f3aecc2c4647609c7bc1024edf7e528 json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/wt/root/.git/worktrees/issue-32\",\"writable\":true}"
     },
     "nick-issue-32": {
       "prNumber": 42,
@@ -56,8 +56,8 @@
       "summary": "opened PR #42"
     },
     "probe-32-preflight-branch-r0": {
-      "line": "PROBE name=preflight exit=0 sha=406ca30a9535d79799e921ad32d26944d2f86e9ea34b60d2f2a7a325a421d02f cmd=8b7a17ae3299eef3e6e47fe110e2b52e5cacdd27519440991b958fff7dbce14f json={\"mode\":\"branch\",\"headRef\":\"features/issue-32\",\"branchPrefix\":\"\"}",
-      "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=406ca30a9535d79799e921ad32d26944d2f86e9ea34b60d2f2a7a325a421d02f cmd=8b7a17ae3299eef3e6e47fe110e2b52e5cacdd27519440991b958fff7dbce14f json={\"mode\":\"branch\",\"headRef\":\"features/issue-32\",\"branchPrefix\":\"\"}"
+      "line": "PROBE name=preflight exit=0 sha=406ca30a9535d79799e921ad32d26944d2f86e9ea34b60d2f2a7a325a421d02f cmd=42dd98e7b6e041d9f6fde222d8e3f9f156c282e0b3df0c06f308a29e3889e66c json={\"mode\":\"branch\",\"headRef\":\"features/issue-32\",\"branchPrefix\":\"\"}",
+      "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=406ca30a9535d79799e921ad32d26944d2f86e9ea34b60d2f2a7a325a421d02f cmd=42dd98e7b6e041d9f6fde222d8e3f9f156c282e0b3df0c06f308a29e3889e66c json={\"mode\":\"branch\",\"headRef\":\"features/issue-32\",\"branchPrefix\":\"\"}"
     },
     "probe-32-git-rev-list-count-worktree-behind-42-r0": {
       "line": "PROBE name=git-rev-list-count exit=0 sha=9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa cmd=52a874824e2461a957512d8528b0770f33995362b433810b5e48db6c3916c94a json={\"count\":0}",
