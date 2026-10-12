@@ -143,7 +143,7 @@ function listJson(directory) {
   const out = []
   for (const ent of fs.readdirSync(directory, { withFileTypes: true })) {
     const p = path.join(directory, ent.name)
-    if (ent.isDirectory()) out.push(...listJson(p))
+    if (ent.isDirectory()) { if (ent.name !== 'metrics') out.push(...listJson(p)) } // metrics/: REST payloads for run-metrics.cjs, not replay fixtures
     else if (ent.isFile() && ent.name.endsWith('.json')) out.push(p)
   }
   return out.sort()
