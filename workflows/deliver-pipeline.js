@@ -134,7 +134,7 @@ export const meta = {
 // `version`, checked against plugin.json by tests/templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '1.4.0-beta.8', cutFrom: 'f6bc4dd' }
+const BUILD = { plugin: 'lgtmgate', version: '1.4.0-beta.9', cutFrom: 'ba5c976' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -1258,7 +1258,6 @@ const MORGAN = {
           exists: { type: 'boolean' },
           mtime: { type: 'string' },
           bytes: { type: 'number' },
-          // DEBT(#191): no replayed fixture (the incident journal predates the probe labels and the current engine cannot replay it); proven by flow-suite case T9005
           committedInPr: { type: 'boolean' },
         },
       },
@@ -1724,7 +1723,7 @@ function staleArtifactBlockers(proofs, floorIso, prFiles, worktreeDirectory) {
     if (!Number.isFinite(p.bytes) && p.committedInPr === true) {
       blockers.push({ item, reason: 'artifact-size-missing' }); continue
     }
-    // DEBT(#191): a file committed in the PR has an mtime that predates the PR's last commit by construction, so no-valid-mtime and artifact-stale do not apply to it (no replayed fixture; proven by flow-suite case T9005)
+    // A file committed in the PR has an mtime that predates the PR's last commit by construction, so no-valid-mtime and artifact-stale do not apply to it (fixtures/incidents/5-committed-proof-not-stale.json, flow-suite case T9005)
     // #229: the flag is cross-checked against the PR's changed files (pr-state `files`); a path outside the list is treated as untracked
     if (p.committedInPr === true) {
       if (!Array.isArray(prFiles)) continue
@@ -3559,7 +3558,6 @@ if (entryStage === 'dev' || entryStage === 'review') {
     // (acceptAlreadyDone skips it on a non-finite as-of parse).
     const verdict = acceptAlreadyDone(guard, expectedHead, stamp ? new Date(Number(stamp)).toISOString() : '')
     if (verdict.accepted) {
-      // DEBT(#191): no replayed fixture (the incident journal predates the probe labels); proven by flow-suite case T9031
       const guardDiag = {
         reason: verdict.reason,
         mergedPr: guard.mergedPr ?? null,
@@ -4149,7 +4147,6 @@ if (after('review', entryStage)) {
     if (blockers.length === 0) return await settle(v)
     // #7: an item-less LGTM whose every blocker is a defect of Morgan's OWN proof entry (empty artifact, no reported size, malformed
     // entry, no path, no parsable mtime) is not repairable by a dev round: the Review call sites escalate on the mark.
-    // DEBT(#191): no replayed fixture (the incident journal predates the probe labels and the current engine cannot replay it); proven by flow-suite case T9007
     const ownProofDefect = v.verdict === 'LGTM' && (!Array.isArray(v.items) || v.items.length === 0) &&
       blockers.every((b) => ['artifact-empty', 'artifact-size-missing', 'malformed-proof', 'no-path', 'no-valid-mtime'].includes(b.reason))
     const merged = [...(v.items || [])]
@@ -4315,7 +4312,6 @@ if (after('review', entryStage)) {
   // fresh re-run; a content-only check (the clause above) cannot catch a stale-but-matching
   // artifact. This clause makes freshness/existence itself the proof, machine-re-derived by
   // staleArtifactBlockers() — the workflow overturns an LGTM whose proofs do not hold.
-  // DEBT(#191): no replayed fixture (the incident journal predates the probe labels and the current engine cannot replay it); proven by flow-suite case T9005
   const artifactProofStep =
     `ARTIFACT-PROOF GATE (lane-agnostic): before ticking ANY acceptance box whose text claims a live ` +
     `or replayed run produced an artifact (report, export, render, log, file at a named path), verify ` +
@@ -4685,7 +4681,6 @@ if (after('review', entryStage)) {
   }
 
   // #7: an item-less LGTM whose own artifact proof is unusable (callMorganGuarded marks it): no dev round can repair it.
-  // DEBT(#191): no replayed fixture (the incident journal predates the probe labels and the current engine cannot replay it); proven by flow-suite case T9007
   const escalateArtifactRejected = async (bad, roundNumber) => {
     await updateStatus('Blocked')
     return finish(STATUS['escalate'], { reason: 'artifact-proof-rejected', pr, issue, round: roundNumber, trace, blockers: bad.artifactProofRejected })

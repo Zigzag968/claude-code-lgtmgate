@@ -1,0 +1,123 @@
+{
+  "name": "7-own-artifact-proof-rejected",
+  "note": "Synthetic shape of incident 7 (no raw journal is kept). An item-less LGTM whose own artifact proof is empty escalates artifact-proof-rejected with no dev round.",
+  "args": {
+    "pluginRoot": "_",
+    "issue": 123,
+    "brief": "_",
+    "worktreePath": "_",
+    "config": {},
+    "mode": "semi",
+    "entryStage": "review",
+    "planText": "_\n_\n\n_\n- [ ] <!-- ac:1 --> `ls -l report.txt` shows a file\n",
+    "prNumber": 42
+  },
+  "calls": {
+    "probe-123-lines-plugin-version-r0": {
+      "line": "PROBE name=lines exit=0 sha=dc3e556a33de82f91e3d3c086e61b607988b397e0c834aee0aa7848c6b3354d4 cmd=4ecc52a6072c98feaf1a76e8937f1ee538d8dcf775794e2cca42c443ee2a2818 json={\"lines\":[\"PLUGIN-VERSION:@@ENGINE_VERSION@@\"]}",
+      "verify": "VERIFY ok line=PROBE name=lines exit=0 sha=dc3e556a33de82f91e3d3c086e61b607988b397e0c834aee0aa7848c6b3354d4 cmd=4ecc52a6072c98feaf1a76e8937f1ee538d8dcf775794e2cca42c443ee2a2818 json={\"lines\":[\"PLUGIN-VERSION:@@ENGINE_VERSION@@\"]}"
+    },
+    "probe-123-lines-config-project-recheck-r0": {
+      "line": "PROBE name=lines exit=0 sha=209bf7c018a5733f7991a3cb09f07e5d2bce2233977d4a3c96a19850595b5430 cmd=a8f1675e83c53c6c76fd0e3d6016e032e169160ab5d875e880b78372b42c2e92 json={\"lines\":[]}",
+      "verify": "VERIFY ok line=PROBE name=lines exit=0 sha=209bf7c018a5733f7991a3cb09f07e5d2bce2233977d4a3c96a19850595b5430 cmd=a8f1675e83c53c6c76fd0e3d6016e032e169160ab5d875e880b78372b42c2e92 json={\"lines\":[]}"
+    },
+    "probe-123-provision-provision-r0": {
+      "line": "PROBE name=provision exit=0 sha=df70c44d40d7d0dfa302aadd6fc5a8b3ef14fa8ca16cf9856f73932abae06a33 cmd=5245918d5bf10c9e32a649b29b25f6e8fedfabf868c4db72ad0238e9d6e98078 json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}",
+      "verify": "VERIFY ok line=PROBE name=provision exit=0 sha=df70c44d40d7d0dfa302aadd6fc5a8b3ef14fa8ca16cf9856f73932abae06a33 cmd=5245918d5bf10c9e32a649b29b25f6e8fedfabf868c4db72ad0238e9d6e98078 json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}"
+    },
+    "already-done-check-123": {
+      "isAlreadyDone": false,
+      "isIssueClosed": false,
+      "isMerged": false,
+      "mergedAt": "",
+      "issueState": "_",
+      "issueCreatedAt": "_",
+      "mergedPrClosesIssue": false,
+      "checkFailed": false
+    },
+    "probe-123-pr-write-run-state-review-r0": {
+      "line": "PROBE name=pr-write exit=0 sha=88f2b82c0ca3321187f854a28473fd9c3dc8de9638ad0e324e1f0986507e4526 cmd=b547e8a96599c1d4b3c8383ae2e28f05a5a72145566fbd04316178649412628d json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}",
+      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=88f2b82c0ca3321187f854a28473fd9c3dc8de9638ad0e324e1f0986507e4526 cmd=b547e8a96599c1d4b3c8383ae2e28f05a5a72145566fbd04316178649412628d json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}"
+    },
+    "probe-123-preflight-branch-r0": {
+      "line": "PROBE name=preflight exit=0 sha=4c8e6011d37fc7edec386bff6b0a1952879b6fdda948581d5b81468c9d38a25c cmd=64c124979980933aeae1bd72253ccf05b18fbfc9f9a77e1fc74098856b4dd6ec json={\"mode\":\"branch\",\"headRef\":\"feat/issue-123\",\"branchPrefix\":\"feat/\"}",
+      "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=4c8e6011d37fc7edec386bff6b0a1952879b6fdda948581d5b81468c9d38a25c cmd=64c124979980933aeae1bd72253ccf05b18fbfc9f9a77e1fc74098856b4dd6ec json={\"mode\":\"branch\",\"headRef\":\"feat/issue-123\",\"branchPrefix\":\"feat/\"}"
+    },
+    "probe-123-git-rev-list-count-worktree-behind-42-r0": {
+      "line": "_",
+      "verify": "_"
+    },
+    "preflight-123-42-0": {
+      "pass": true,
+      "issues": [],
+      "failedChecks": [],
+      "testCommandRun": "_"
+    },
+    "probe-123-pr-state-window-start-r0": {
+      "line": "PROBE name=pr-state exit=0 sha=06729375f3252fc4c279f09d67b138e60c0cb104bf8194e051813b7f0f8056a6 cmd=d846a0d41a95f13a93d269640bcda2a8b402b2067273b904d87b849871adf185 json={\"now\":\"2026-10-04T12:00:00Z\",\"headRefName\":\"feat/issue-123\",\"headRefOid\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"bodyDigest\":\"bbbbbbbbbbbb\",\"acceptanceChecked\":[],\"decisionLog\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-10-04T11:00:00Z\",\"commitCount\":1,\"ciState\":\"green\",\"ciChecks\":{},\"reviewCommentIds\":[],\"openIssues\":[],\"openIssuesTruncated\":false,\"files\":[\"report.txt\"]}",
+      "verify": "VERIFY ok line=PROBE name=pr-state exit=0 sha=06729375f3252fc4c279f09d67b138e60c0cb104bf8194e051813b7f0f8056a6 cmd=d846a0d41a95f13a93d269640bcda2a8b402b2067273b904d87b849871adf185 json={\"now\":\"2026-10-04T12:00:00Z\",\"headRefName\":\"feat/issue-123\",\"headRefOid\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"bodyDigest\":\"bbbbbbbbbbbb\",\"acceptanceChecked\":[],\"decisionLog\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-10-04T11:00:00Z\",\"commitCount\":1,\"ciState\":\"green\",\"ciChecks\":{},\"reviewCommentIds\":[],\"openIssues\":[],\"openIssuesTruncated\":false,\"files\":[\"report.txt\"]}"
+    },
+    "morgan-pr-123-42-r0": {
+      "verdict": "LGTM",
+      "ciGreen": true,
+      "items": [],
+      "boxes": [
+        {
+          "id": 1,
+          "proven": true,
+          "proof": "_"
+        }
+      ],
+      "artifactProofs": [
+        {
+          "item": "_",
+          "path": "_",
+          "exists": true,
+          "mtime": "_",
+          "bytes": 0
+        }
+      ]
+    },
+    "probe-123-pr-state-window-end-r0": {
+      "line": "PROBE name=pr-state exit=0 sha=fa81c4ff3396c791c7b014848d6b626267ae7220607376f50922a236c401b922 cmd=dc03cbf0837aacabd63dd8441dd621589cbed7282d90160467b3dfbf22d87782 json={\"now\":\"2026-10-04T12:00:00Z\",\"headRefName\":\"feat/issue-123\",\"headRefOid\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"bodyDigest\":\"bbbbbbbbbbbb\",\"acceptanceChecked\":[],\"decisionLog\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-10-04T11:00:00Z\",\"commitCount\":1,\"ciState\":\"green\",\"ciChecks\":{},\"reviewCommentIds\":[],\"openIssues\":[],\"openIssuesTruncated\":false,\"files\":[\"report.txt\"]}",
+      "verify": "VERIFY ok line=PROBE name=pr-state exit=0 sha=fa81c4ff3396c791c7b014848d6b626267ae7220607376f50922a236c401b922 cmd=dc03cbf0837aacabd63dd8441dd621589cbed7282d90160467b3dfbf22d87782 json={\"now\":\"2026-10-04T12:00:00Z\",\"headRefName\":\"feat/issue-123\",\"headRefOid\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"bodyDigest\":\"bbbbbbbbbbbb\",\"acceptanceChecked\":[],\"decisionLog\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-10-04T11:00:00Z\",\"commitCount\":1,\"ciState\":\"green\",\"ciChecks\":{},\"reviewCommentIds\":[],\"openIssues\":[],\"openIssuesTruncated\":false,\"files\":[\"report.txt\"]}"
+    },
+    "probe-123-pr-write-run-state-escalate-r0": {
+      "line": "PROBE name=pr-write exit=0 sha=b7ada72ac4568831f548b78af5c3ccde01c60664f6ed413920709a34e02a877a cmd=986f0b4ba8d580ee2b65c8e438126f978d1a1e8e93c23bc4476c454ca504cfc4 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}",
+      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=b7ada72ac4568831f548b78af5c3ccde01c60664f6ed413920709a34e02a877a cmd=986f0b4ba8d580ee2b65c8e438126f978d1a1e8e93c23bc4476c454ca504cfc4 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}"
+    }
+  },
+  "expect": {
+    "status": "escalate",
+    "reason": "artifact-proof-rejected",
+    "trace": [
+      "branch-prefix-fallback-default",
+      "probe:lines:haiku",
+      "probe:lines:haiku",
+      "probe:provision:haiku",
+      "probe:pr-write:haiku",
+      "probe:preflight:haiku",
+      "branch-check-reconciled",
+      "probe:git-rev-list-count:haiku",
+      "probe:pr-state:haiku",
+      "probe:pr-state:haiku",
+      "artifact-proof-rejected:artifact-empty",
+      "probe:pr-write:haiku"
+    ],
+    "traceExact": true,
+    "callLabels": [
+      "probe-123-lines-plugin-version-r0",
+      "probe-123-lines-config-project-recheck-r0",
+      "probe-123-provision-provision-r0",
+      "already-done-check-123",
+      "probe-123-pr-write-run-state-review-r0",
+      "probe-123-preflight-branch-r0",
+      "probe-123-git-rev-list-count-worktree-behind-42-r0",
+      "preflight-123-42-0",
+      "probe-123-pr-state-window-start-r0",
+      "morgan-pr-123-42-r0",
+      "probe-123-pr-state-window-end-r0",
+      "probe-123-pr-write-run-state-escalate-r0"
+    ]
+  }
+}
