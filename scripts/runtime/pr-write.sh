@@ -49,7 +49,9 @@
 #       watchdog and the SessionStart stub read. S is lowercase letters and hyphens. The main checkout is the parent of the git
 #       common dir (a worktree's own .pipeline is never scanned); anything else falls back to the worktree. Atomic: temp file then mv.
 #   comment ops: on a thread of >= 100 comments the marker lookup re-reads ALL comments through REST.
-# reasons on failed: bad-args, read-failed, write-failed, splice-failed, no-markers, unknown-id, human-gate-id, stale-read, guard-failed-restored.
+# pii-guard (#167): issue-comment, pr-comment and body-splice (decision-log|acceptance|tick) pipe their text to pii-guard.sh; a match of a
+#   pattern of the repository's .pii-patterns file -> failed/pii-refused:<name>, nothing read from or written to GitHub. No file = no effect.
+# reasons on failed: bad-args, read-failed, write-failed, splice-failed, no-markers, unknown-id, human-gate-id, stale-read, guard-failed-restored, pii-refused:<name>.
 # Requires jq, gh and node (body-splice). bash 3.2 compatible. Never uses rm (the stderr file is overwritten each call).
 
 OP="${1:-}"
@@ -103,10 +105,20 @@ read_failed() { emit failed read-failed "" "$(gh_read_class "$(head -c 4000 "$ER
 
 is_num() { case "$1" in ''|*[!0-9]*) return 1 ;; *) return 0 ;; esac; }
 
+# pii_check <text>: 0 = clean (or no .pii-patterns), 1 = refused (the result line is already emitted; the pattern NAME only).
+pii_check() {
+  local out
+  [ -f "$SD/pii-guard.sh" ] || return 0
+  out="$(printf '%s\n' "$1" | bash "$SD/pii-guard.sh" check 2>/dev/null)" && return 0
+  case "$out" in pii-refused:*) emit failed "$out" ;; *) emit failed "pii-refused:unknown" ;; esac
+  return 1
+}
+
 # comment_op <issue|pr> <number>: shared by issue-comment and pr-comment.
 comment_op() {
   local kind="$1" num="$2" view n file total path all
   if ! is_num "$num" || [ -z "$MARKER" ] || [ -z "$BODY" ]; then emit failed bad-args; return; fi
+  pii_check "$BODY" || return
   view="$(gh "$kind" view "$num" ${REPO:+-R "$REPO"} --json comments 2>"$ERRF")" || { read_failed; return; }
   n="$(printf '%s' "$view" | jq -e --arg m "$MARKER" '.comments | map(select((.body // "") | startswith($m))) | length' 2>/dev/null)" || { emit failed read-failed; return; }
   total="$(printf '%s' "$view" | jq -e '.comments | length' 2>/dev/null)" || { emit failed read-failed; return; }
@@ -191,6 +203,7 @@ body_splice_op() {
   if [ "$MODE" = "tick-ids" ]; then
     if [ -z "$IDS" ]; then emit failed bad-args; return; fi
   elif [ -z "$TEXT" ]; then emit failed bad-args; return; fi
+  if [ "$MODE" != "tick-ids" ]; then pii_check "$TEXT" || return; fi
   case "$IDS$KEEP" in *[!0-9,]*) emit failed bad-args; return ;; esac
   mkdir -p .pipeline
   gh pr view "$PR" ${REPO:+-R "$REPO"} --json body -q .body > ".pipeline/pr-body-$PR.pre.md" 2>"$ERRF" || { read_failed; return; }
