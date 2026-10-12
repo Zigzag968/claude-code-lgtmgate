@@ -17,7 +17,7 @@
   },
   "expect": {
     "status": "escalate",
-    "reason": "plugin-version-skew: the plugin root holds lgtmgate 99.0.0 but this engine is @@ENGINE_VERSION@@; the engine is older than the plugin root: relaunch the workflow at the current version (reload the session, or refresh the local copy of the engine)",
+    "reason": "plugin-version-skew: the plugin root holds lgtmgate 99.0.0 (stable channel) but this engine is @@ENGINE_VERSION@@ (@@ENGINE_CHANNEL@@ channel); the engine is older than the plugin root: relaunch the workflow at the current version (reload the session, or refresh the local copy of the engine); see docs/consumer-reference.md, Run reasons, plugin-version-skew",
     "trace": [
       "branch-prefix-fallback-default",
       "probe:lines:haiku"

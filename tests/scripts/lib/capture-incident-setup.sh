@@ -142,7 +142,7 @@ for (const a of journalOrder) {
 
 const rec = {
   runId, status: 'completed', args: Object.assign({}, smoke.args, { simulate: { x: 1 } }),
-  result: isSkew ? { status: 'escalate', reason: 'plugin-version-skew: the plugin root holds lgtmgate 1.0.0-beta.3 but this engine is ' + ENGINE + '; pass the current plugin root and relaunch' } : { status: 'ready' }, agentCount: progress.length,
+  result: isSkew ? { status: 'escalate', reason: 'plugin-version-skew: the plugin root holds lgtmgate 1.0.0-beta.3 (beta channel) but this engine is ' + ENGINE + ' (' + (ENGINE.includes('-') ? 'beta' : 'stable') + ' channel); pass the current plugin root and relaunch; see docs/consumer-reference.md, Run reasons, plugin-version-skew' } : { status: 'ready' }, agentCount: progress.length,
   workflowProgress: [{ type: 'workflow_phase', title: 'p' }].concat(progress.map((a, i) => ({
     type: 'workflow_agent', index: i, label: a.recLabel || a.label, agentId: a.agentId, state: 'done',
   }))),

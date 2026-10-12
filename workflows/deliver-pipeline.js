@@ -134,7 +134,7 @@ export const meta = {
 // `version`, checked against plugin.json by tests/templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '1.4.0-beta.21', cutFrom: 'c9fd451' }
+const BUILD = { plugin: 'lgtmgate', version: '1.4.0-beta.22', cutFrom: 'eec3b77' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -2694,6 +2694,12 @@ function pluginVersionOrder(a, b) {
   }
   return x.pre.length === y.pre.length ? 0 : x.pre.length < y.pre.length ? -1 : 1
 }
+// Channel INFERRED from the version shape (the engine knows no marketplace): a pre-release tag is `beta`, a plain
+// x.y.z is `stable`, anything pluginVersionOrder cannot parse is `unknown`.
+function pluginVersionChannel(v) {
+  if (pluginVersionOrder(v, v) === null) return 'unknown'
+  return String(v).split('+')[0].includes('-') ? 'beta' : 'stable'
+}
 // -> null when the root holds the engine's version, else { code, reason }; fails closed on anything else.
 // A failure of the PROBE itself (no attestation, an agent type not resolved, a copy that altered the command)
 // says nothing about the manifest: it is the documented `provision-failed` of every probe (code 'provision-failed').
@@ -2712,7 +2718,7 @@ function pluginVersionVerdict({ engineVersion, probeFailed, exit, lines }) {
     const skewRemedy = order === -1 ? remedy
       : order === 1 ? 'the engine is older than the plugin root: relaunch the workflow at the current version (reload the session, or refresh the local copy of the engine)'
         : 'align the plugin root and the engine version, then relaunch'
-    return { code: 'plugin-version-skew', reason: `plugin-version-skew: the plugin root holds lgtmgate ${found} but this engine is ${engineVersion}; ${skewRemedy}` }
+    return { code: 'plugin-version-skew', reason: `plugin-version-skew: the plugin root holds lgtmgate ${found} (${pluginVersionChannel(found)} channel) but this engine is ${engineVersion} (${pluginVersionChannel(engineVersion)} channel); ${skewRemedy}; see docs/consumer-reference.md, Run reasons, plugin-version-skew` }
   }
   const cause = one.startsWith(E) ? one.slice(E.length) : 'no usable answer'
   return { code: 'plugin-version-unreadable', reason: `plugin-version-unreadable: cannot read the version in the plugin root's .claude-plugin/plugin.json (${cause}); engine is ${engineVersion}; ${remedy}` }

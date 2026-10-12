@@ -85,10 +85,9 @@ function stripExports(source) {
   return source.replace(/^export\s+/mg, '')
 }
 
-// `@@ENGINE_VERSION@@` anywhere in a fixture (args, calls, expect) stands for the version of the engine under
-// test (the `version:` of its `const BUILD = { ... }` line, which scripts/lead-merge.sh bumps at every merge), so
-// a fixture that quotes it (the plugin-version probe answer, a reason naming it) survives a bump. A fixture that
-// uses the token against an engine with no BUILD version is refused, never run with the token left in.
+// `@@ENGINE_VERSION@@` anywhere in a fixture (args, calls, expect) stands for the version of the engine under test
+// (the `version:` of its `const BUILD = { ... }` line, bumped by scripts/lead-merge.sh at every merge), so a fixture
+// quoting it survives a bump. Using the token against an engine with no BUILD version is refused, never run as is.
 const ENGINE_VERSION_TOKEN = '@@ENGINE_VERSION@@'
 function engineVersionOf(source) {
   const m = /const BUILD = \{[^}]*\bversion: '([^']+)'/.exec(String(source))
@@ -96,27 +95,28 @@ function engineVersionOf(source) {
 }
 // A version string as the engine writes it in BUILD (semver, optional pre-release).
 const ENGINE_VERSION_RE = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/
-// The engine's own declaration of its version: the run result's `buildStamp` (`BUILD_STAMP` in the workflow,
-// `[pipeline] <plugin>@<version> cutFrom=<sha> workflow=<name>`). Returns the version, or null when the stamp is not a
-// string or does not carry a well-formed version.
+// The engine's own version, from the run result's `buildStamp` (`[pipeline] <plugin>@<version> cutFrom=<sha> workflow=<name>`);
+// null when the stamp is not a string or carries no well-formed version.
 function engineVersionOfStamp(stamp) {
   if (typeof stamp !== 'string') return null
   const m = /^\[pipeline\] [^@\s]+@(\S+)(?: |$)/.exec(stamp)
   return m && ENGINE_VERSION_RE.test(m[1]) ? m[1] : null
 }
+// `@@ENGINE_CHANNEL@@` = the channel inferred from the version's shape (pre-release tag = beta, plain x.y.z = stable), as the engine's pluginVersionChannel does.
+const ENGINE_CHANNEL_TOKEN = '@@ENGINE_CHANNEL@@'
+const channelOfVersion = (v) => (!ENGINE_VERSION_RE.test(String(v)) ? 'unknown' : String(v).includes('-') ? 'beta' : 'stable')
 function withEngineVersion(fixture, version) {
   const raw = JSON.stringify(fixture)
-  if (!raw.includes(ENGINE_VERSION_TOKEN)) return fixture
+  if (!raw.includes(ENGINE_VERSION_TOKEN) && !raw.includes(ENGINE_CHANNEL_TOKEN)) return fixture
   if (!version) throw new Error(`[offline] fixture "${fixture.name}" uses ${ENGINE_VERSION_TOKEN} but the engine under test has no BUILD version`)
-  return JSON.parse(raw.split(ENGINE_VERSION_TOKEN).join(version))
+  return JSON.parse(raw.split(ENGINE_VERSION_TOKEN).join(version).split(ENGINE_CHANNEL_TOKEN).join(channelOfVersion(version)))
 }
 
 // The answer of the plugin version probe (#195) is journaled with the LITERAL engine version, which lead-merge bumps at
-// every merge. A capture or a published fixture therefore stores the token instead, wherever the answer names the engine
-// of the run: `versions` lists the strings that are the run's engine version. Quote-delimited, so `1.0.0-beta.90` is not
-// `1.0.0-beta.9`. Rewrites `line` and `verify` of every `probe-<issue>-lines-plugin-version-r<round>` entry in place;
-// returns the number of strings rewritten. The PROBE `cmd=` hash is the hash of the command, which holds the root path and
-// no version, so it stays valid.
+// every merge. A capture or published fixture stores the token instead, wherever the answer names the run's engine
+// (`versions` lists those strings). Quote-delimited, so `1.0.0-beta.90` is not `1.0.0-beta.9`. Rewrites `line` and `verify`
+// of every `probe-<issue>-lines-plugin-version-r<round>` entry in place; returns the number of strings rewritten. The PROBE
+// `cmd=` hash covers the command (root path, no version), so it stays valid.
 const VERSION_PROBE_LABEL = /^probe-\d+-lines-plugin-version-r\d+$/
 function tokenizeVersionProbes(calls, versions) {
   let n = 0
@@ -589,7 +589,7 @@ async function main() {
 }
 
 // Required by scripts/publish-fixture.cjs; run as a CLI otherwise (spawned or direct use is unchanged).
-module.exports = { commandOfPrompt, firstCommandHash, setCommandHash, stripExports, buildPipelineRunner, replayFixture, engineVersionOf, engineVersionOfStamp, ENGINE_VERSION_RE, tokenizeVersionProbes, ENGINE_VERSION_TOKEN }
+module.exports = { commandOfPrompt, firstCommandHash, setCommandHash, stripExports, buildPipelineRunner, replayFixture, engineVersionOf, engineVersionOfStamp, ENGINE_VERSION_RE, tokenizeVersionProbes, ENGINE_VERSION_TOKEN, ENGINE_CHANNEL_TOKEN, channelOfVersion }
 
 if (require.main === module) {
   main().catch((error) => {

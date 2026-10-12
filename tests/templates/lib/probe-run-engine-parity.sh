@@ -173,7 +173,7 @@ PV_OUT="$(pv_verdict "$PV_ROOTS/old")"
 ok=0
 case "$PV_OUT" in
   *"pv roots"*) ok=0 ;;
-  "plugin-version-skew|"*"0.0.1-old"*"$PV_ENGINE"*"pass the current plugin root and relaunch") ok=1 ;;
+  "plugin-version-skew|"*"0.0.1-old"*"$PV_ENGINE"*"pass the current plugin root and relaunch; see docs/consumer-reference.md, Run reasons, plugin-version-skew") ok=1 ;;
 esac
 check "[195] a root holding another version is a plugin-version-skew naming both versions and the remedy, never the root path" "$ok"
 PV_OUT="$(pv_verdict "$PV_ROOTS/none")"
