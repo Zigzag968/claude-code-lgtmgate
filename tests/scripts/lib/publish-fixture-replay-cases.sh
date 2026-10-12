@@ -182,6 +182,42 @@ cp "$ROOT/fixtures/incidents/151-probe-cmd-mismatch.json" "$REH_DIR/b.json"
 out=$(node scripts/lib/rehash-fixtures.cjs --from workflows/deliver-pipeline.js --fp "$REH_ENG" "$REH_DIR/b.json" 2>&1 | tail -n 1)
 if cmp -s "$REH_DIR/b.json" "$ROOT/fixtures/incidents/151-probe-cmd-mismatch.json"; then ok "rehash: a digest that never hashed a composed command is left untouched"; else bad "rehash uncoupled: out='$out' file changed"; fi
 
+# ---- assertions a capture names are kept (#507) ----------------------------------------------------------
+
+AS_DIR="$(newdir assertions)"
+for v in assert assert-badres assert-badlog assert-badkey assert-empty; do node "$TMP/gen.cjs" "$AS_DIR/$v.json" "$v"; done
+node "$TMP/gen.cjs" "$AS_DIR/123-plain.json" base
+AS_OUT="$AS_DIR/out"; mkdir -p "$AS_OUT"
+pub "$AS_DIR/assert.json" 123-assert --out-dir "$AS_OUT"
+ASP="$AS_OUT/123-assert.json"; AS_STDOUT="$OUT"; AS_RC="$RC"
+as_strict=$(OFFLINE_STRICT=1 node scripts/run-offline.cjs "$ASP" 2>&1 | tail -n 1)
+as_keep=$(jsf "$ASP" 'JSON.stringify([f.expect.resultIncludes, f.expect.logsInclude]) === JSON.stringify([{ branch: f.calls["nick-issue-123"].branch }, ["Diagnosis confirmed: zzlogx9 marker"]]) && f.calls["nick-issue-123"].branch !== "_"' 2>/dev/null)
+if [ "$AS_RC" -eq 0 ] && [ "$as_keep" = "true" ] && printf '%s' "$as_strict" | grep -q 'passed=1 failed=0'; then ok "assertions: the published fixture keeps the named resultIncludes and logsInclude, protects the value, and replays strict"; else bad "assertions keep: rc=$AS_RC keep=$as_keep strict=$as_strict"; fi
+
+AS_ENG1="$AS_DIR/engine-badbranch.js"
+sed "s/branch: nick?.branch ?? '<unavailable>'/branch: 'x'/" "$ROOT/workflows/deliver-pipeline.js" > "$AS_ENG1"
+as_bad=$(node scripts/run-offline.cjs "$ASP" --fp "$AS_ENG1" 2>&1)
+pub "$AS_DIR/123-plain.json" 123-plain --out-dir "$AS_OUT"
+as_plain=$(OFFLINE_STRICT=1 node scripts/run-offline.cjs "$AS_OUT/123-plain.json" --fp "$AS_ENG1" 2>&1 | tail -n 1)
+if printf '%s' "$as_bad" | grep -q 'failed=1' && printf '%s' "$as_bad" | grep -q 'resultIncludes: result.branch' && printf '%s' "$as_plain" | grep -q 'passed=1 failed=0'; then ok "assertions: an engine without the fix fails the published resultIncludes (a plain publication still passes: the defect)"; else bad "assertions resultIncludes: bad=$as_bad plain=$as_plain"; fi
+
+AS_ENG2="$AS_DIR/engine-badlog.js"
+sed "s/Diagnosis confirmed: /Diagnosis ok: /" "$ROOT/workflows/deliver-pipeline.js" > "$AS_ENG2"
+as_badlog=$(node scripts/run-offline.cjs "$ASP" --fp "$AS_ENG2" 2>&1)
+if printf '%s' "$as_badlog" | grep -q 'failed=1' && printf '%s' "$as_badlog" | grep -q 'logs: missing'; then ok "assertions: an engine without the fix fails the published logsInclude"; else bad "assertions logsInclude: $as_badlog"; fi
+
+as_refuse() { # <variant> <stderr needle> <label>
+  local d; d="$(newdir "as-$1")"
+  pub "$AS_DIR/$1.json" 123-r --out-dir "$d"
+  if [ "$RC" -eq 1 ] && [ "$(last_line)" = "[publish-fixture] status=refused" ] && printf '%s' "$ERR" | grep -qF -- "$2" && ! printf '%s' "$ERR" | grep -q -e 'features/other' -e zzabsent -e zzlogx9 && [ -z "$(ls -A "$d")" ]; then ok "assertions: $3"; else bad "assertions refusal $1: rc=$RC err=$ERR left=$(ls -A "$d")"; fi
+}
+as_refuse assert-badres 'expect.resultIncludes.branch' "refuses a resultIncludes the replay does not reproduce, without its value"
+as_refuse assert-badlog 'expect.logsInclude[0]' "refuses a logsInclude needle the replay does not reproduce, without its text"
+as_refuse assert-badkey 'cannot keep: trace' "refuses an expect key it cannot keep"
+as_refuse assert-empty 'expect.logsInclude must be' "refuses an empty logsInclude"
+
+if [ "$AS_RC" -eq 0 ] && printf '%s\n' "$AS_STDOUT" | grep -q 'expect.resultIncludes.branch [0-9]* free-text' && printf '%s\n' "$AS_STDOUT" | grep -q 'expect.logsInclude\[0\] [0-9]* free-text' && ! printf '%s' "$AS_STDOUT" | grep -q zzlogx9; then ok "assertions: the report lists the kept assertions by path and length, never a value"; else bad "assertions report: $AS_STDOUT"; fi
+
 # ---- usage errors (exit 2, before any filesystem access) ----------------------------------------------
 
 pub
