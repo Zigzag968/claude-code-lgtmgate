@@ -443,3 +443,37 @@ elif [ "${LA_PLANTED:-0}" != "1" ]; then
 else
   pass "launch-args-no-content: no content field in the section 4 args block; a planted content field is reported"
 fi
+
+
+# =============================================================================
+# Invariant 38 — standing-rules
+# =============================================================================
+# #530: the three standing Lead rules live in the engine (REQUIREMENT_RULE, ABSENCE_CLAIMS_RULE: one definition and one
+# interpolation each; the proof-log clause folded into the existing proof rule) and in the Sam persona (one line each).
+# FAIL naming the problems. Self-proof: a planted engine copy without the REQUIREMENT_RULE definition must be reported.
+# WORKFLOW_FILE and AGENTS_DIR are overrides for negative runs.
+standing_rules_bad() {
+  local eng="$1" sam="$2" n name key
+  for name in REQUIREMENT_RULE ABSENCE_CLAIMS_RULE; do
+    n=$(grep -o -- "$name" "$eng" | wc -l | tr -d ' ')
+    [ "$n" = "2" ] || echo "$name x$n in engine (want 2)"
+  done
+  n=$(grep -cF 'PROOF LOG RULES:' "$eng")
+  [ "$n" = "1" ] || echo "PROOF LOG RULES: x$n in engine (want 1)"
+  for key in 'REQUIREMENT:' 'ABSENCE CLAIMS:' 'PROOF LOG RULES:'; do
+    n=$(grep -cF "$key" "$sam")
+    [ "$n" = "1" ] || echo "$key x$n in sam.md (want 1)"
+  done
+}
+SR_BAD=$(standing_rules_bad "$WORKFLOW_FILE" "$AGENTS_DIR/sam.md" 2>&1)
+SR_PLANT="$(mktemp "${TMPDIR:-/tmp}/standing-rules-plant.XXXXXX")"
+grep -v '^const REQUIREMENT_RULE = ' "$WORKFLOW_FILE" > "$SR_PLANT" 2>/dev/null
+SR_PLANTED=$(standing_rules_bad "$SR_PLANT" "$AGENTS_DIR/sam.md" | grep -c 'REQUIREMENT_RULE' || true)
+rm -f "$SR_PLANT"
+if [ -n "$SR_BAD" ]; then
+  fail "standing-rules" "$SR_BAD"
+elif [ "${SR_PLANTED:-0}" != "1" ]; then
+  fail "standing-rules" "a planted removal was not reported"
+else
+  pass "standing-rules: each rule defined once and interpolated once in the engine, once in agents/sam.md; a planted removal is reported"
+fi
