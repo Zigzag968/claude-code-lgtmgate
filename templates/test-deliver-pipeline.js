@@ -4022,12 +4022,12 @@ await testCase('T221d no fact, no appended line: no hit and no trigger writes no
     || eq('excluded status', excluded.status, 'plan-ready')
   if (error) return error
   for (const r of [plain, excluded]) {
-    if (String(r.plan).split('\n').some((l) => l.startsWith('design-step:'))) return { ok: false, msg: 'no design-step line expected' }
+    if (String(r.plan).split('\n').some((line) => line.startsWith('design-step:'))) return { ok: false, msg: 'no design-step line expected' }
   }
   for (const planText of ['plan\ntargetFiles: none\n' + T77_CK, 'plan\n' + SIM_DEFAULTS.samAcceptanceChecklist, 'plan\ntargetFiles: hooks/test-a.sh\n' + T77_CK]) {
     const r = await run({ entryStage: 'dev', mode: 'semi', config: T221_CONFIG, planText, simulate: T221_SIM })
-    const e = eq('entry status', r.status, 'ready')
-    if (e) return e
+    const failure = eq('entry status', r.status, 'ready')
+    if (failure) return failure
   }
   return { ok: true }
 })
