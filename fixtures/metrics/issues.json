@@ -1,0 +1,163 @@
+[
+  {
+    "number": 100,
+    "state": "closed",
+    "created_at": "2026-03-01T08:00:00Z",
+    "closed_at": "2026-03-01T11:00:00Z",
+    "body": "synthetic issue"
+  },
+  {
+    "number": 101,
+    "state": "closed",
+    "created_at": "2026-03-01T18:00:00Z",
+    "closed_at": "2026-03-01T22:30:00Z",
+    "body": "synthetic issue"
+  },
+  {
+    "number": 102,
+    "state": "closed",
+    "created_at": "2026-03-02T04:00:00Z",
+    "closed_at": "2026-03-02T10:00:00Z",
+    "body": "synthetic issue"
+  },
+  {
+    "number": 103,
+    "state": "closed",
+    "created_at": "2026-03-02T14:00:00Z",
+    "closed_at": "2026-03-02T21:30:00Z",
+    "body": "synthetic issue"
+  },
+  {
+    "number": 104,
+    "state": "closed",
+    "created_at": "2026-03-03T00:00:00Z",
+    "closed_at": "2026-03-03T09:00:00Z",
+    "body": "synthetic issue"
+  },
+  {
+    "number": 105,
+    "state": "closed",
+    "created_at": "2026-03-03T10:00:00Z",
+    "closed_at": "2026-03-03T20:30:00Z",
+    "body": "synthetic issue"
+  },
+  {
+    "number": 106,
+    "state": "closed",
+    "created_at": "2026-03-03T20:00:00Z",
+    "closed_at": "2026-03-04T08:00:00Z",
+    "body": "synthetic issue"
+  },
+  {
+    "number": 107,
+    "state": "closed",
+    "created_at": "2026-03-04T06:00:00Z",
+    "closed_at": "2026-03-04T19:30:00Z",
+    "body": "synthetic issue"
+  },
+  {
+    "number": 108,
+    "state": "closed",
+    "created_at": "2026-03-04T16:00:00Z",
+    "closed_at": "2026-03-05T07:00:00Z",
+    "body": "synthetic issue"
+  },
+  {
+    "number": 109,
+    "state": "closed",
+    "created_at": "2026-03-05T02:00:00Z",
+    "closed_at": "2026-03-05T18:30:00Z",
+    "body": "synthetic issue"
+  },
+  {
+    "number": 110,
+    "state": "closed",
+    "created_at": "2026-03-05T12:00:00Z",
+    "closed_at": "2026-03-06T06:00:00Z",
+    "body": "synthetic issue"
+  },
+  {
+    "number": 111,
+    "state": "closed",
+    "created_at": "2026-03-05T22:00:00Z",
+    "closed_at": "2026-03-06T17:30:00Z",
+    "body": "synthetic issue"
+  },
+  {
+    "number": 112,
+    "state": "closed",
+    "created_at": "2026-03-06T08:00:00Z",
+    "closed_at": "2026-03-06T17:00:00Z",
+    "body": "synthetic issue"
+  },
+  {
+    "number": 113,
+    "state": "closed",
+    "created_at": "2026-03-06T18:00:00Z",
+    "closed_at": "2026-03-07T06:00:00Z",
+    "body": "synthetic issue"
+  },
+  {
+    "number": 114,
+    "state": "closed",
+    "created_at": "2026-03-07T04:00:00Z",
+    "closed_at": "2026-03-07T19:00:00Z",
+    "body": "synthetic issue"
+  },
+  {
+    "number": 115,
+    "state": "closed",
+    "created_at": "2026-03-07T14:00:00Z",
+    "closed_at": "2026-03-09T00:30:00Z",
+    "body": "synthetic issue"
+  },
+  {
+    "number": 116,
+    "state": "closed",
+    "created_at": "2026-03-08T00:00:00Z",
+    "closed_at": "2026-03-08T07:00:00Z",
+    "body": "synthetic issue"
+  },
+  {
+    "number": 117,
+    "state": "closed",
+    "created_at": "2026-03-08T10:00:00Z",
+    "closed_at": "2026-03-08T19:30:00Z",
+    "body": "synthetic issue"
+  },
+  {
+    "number": 118,
+    "state": "closed",
+    "created_at": "2026-03-08T20:00:00Z",
+    "closed_at": null,
+    "body": "synthetic issue"
+  },
+  {
+    "number": 119,
+    "state": "open",
+    "created_at": "2026-03-09T06:00:00Z",
+    "closed_at": null,
+    "body": "synthetic issue"
+  },
+  {
+    "number": 120,
+    "state": "closed",
+    "created_at": "2026-03-09T16:00:00Z",
+    "closed_at": "2026-03-09T21:00:00Z",
+    "body": "synthetic issue"
+  },
+  {
+    "number": 300,
+    "state": "closed",
+    "created_at": "2026-03-01T09:00:00Z",
+    "closed_at": "2026-03-01T10:00:00Z",
+    "body": "synthetic pr listing",
+    "pull_request": {
+      "url": "x",
+      "html_url": "x",
+      "diff_url": "x",
+      "patch_url": "x",
+      "merged_at": null
+    }
+  }
+]
