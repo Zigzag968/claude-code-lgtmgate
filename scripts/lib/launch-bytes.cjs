@@ -6,14 +6,17 @@
 //
 // Output: six lines, stage plan then review, sizes 4k, 22k, 60k:
 //   LB launch-bytes stage=<s> size=<z> mode=full base=<baseline> branch=<measured> ok|UP
-// UP (branch > base) counts one failure. A baseline number is never raised to turn a run green: the only
+// UP (branch > base) counts one failure. Then, for the launch in mode ref at stage plan (#520), three lines and one:
+//   LB launch-bytes stage=plan size=<z> mode=ref budget=2048 branch=<measured> ok|UP
+//   LB launch-bytes flat spread=<max - min> ok|UP
+// A ref line over the budget and a spread over 64 each count one failure (the FAIL line below it is the same failure, not a second). A baseline number is never raised to turn a run green: the only
 // exception is a `"debt": "DEBT(#N)"` key in the baseline file, which lets the file hold a number larger
 // than origin/main's. When origin/main holds the file, a larger number without that key is a failure
 // (skipped silently when git or the file on origin is absent: the PR that introduces the file).
 //
-// Budget (off by default): LAUNCH_BYTES_BUDGET=on turns on, for stage plan in mode ref only, a ceiling of
-// 2048 bytes per size and a spread of at most 64 bytes between 4k and 60k. Mode full has no budget;
-// #520 lands mode ref and switches this on. Selection is GUARDS_ONLY only; the files measured are the ones
+// Budget (on by default since #520): for stage plan in mode ref only, a ceiling of 2048 bytes per size and a spread of
+// at most 64 bytes between 4k and 60k. LAUNCH_BYTES_BUDGET=off turns it off; any other value, or none, leaves it on.
+// Mode full has no budget. Selection is GUARDS_ONLY only; the files measured are the ones
 // under the root given (a copy under GUARDS_ROOT is what the test mutates).
 // Rule module of scripts/guards.cjs, which cannot grow (MAX_LINES).
 
@@ -33,7 +36,7 @@ function measure(root) {
   const generator = require(path.join(root, 'scripts', 'gen-launch-fixtures.cjs'))
   const launch = require(path.join(root, 'scripts', 'runtime', 'launch-args.cjs'))
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'launch-bytes-'))
-  const result = { plan: {}, review: {} }
+  const result = { plan: {}, review: {}, ref: { plan: {} } }
   try {
     for (const size of SIZES) {
       const tree = path.join(directory, size)
@@ -42,6 +45,8 @@ function measure(root) {
         const arguments_ = launch.build({ root: tree, ref: 'origin/main', stage, mode: 'full', ...FIXED })
         result[stage][size] = Buffer.byteLength(JSON.stringify(arguments_))
       }
+      const reference = launch.build({ root: tree, ref: 'origin/main', stage: 'plan', mode: 'ref', ...FIXED })
+      result.ref.plan[size] = Buffer.byteLength(JSON.stringify(reference))
     }
   } finally {
     fs.rmSync(directory, { recursive: true, force: true })
@@ -50,7 +55,7 @@ function measure(root) {
 }
 
 function budgetProblems(plan, mode, switchValue) {
-  if (switchValue !== 'on' || mode !== 'ref') return []
+  if (switchValue === 'off' || mode !== 'ref') return []
   const out = []
   const values = SIZES.map((z) => plan[z])
   for (const z of SIZES) if (plan[z] > BUDGET_BYTES) out.push(`plan ${z} is ${plan[z]} bytes, over the budget of ${BUDGET_BYTES}`)
@@ -76,6 +81,17 @@ function originBaseline(root) {
   } catch (error) {
     return null
   }
+}
+
+// The mode ref lines of stage plan and the budget failures (each counted once); [] and no line when the switch is off.
+function referenceLines(plan, out) {
+  const problems = budgetProblems(plan, 'ref', process.env.LAUNCH_BYTES_BUDGET)
+  const off = process.env.LAUNCH_BYTES_BUDGET === 'off'
+  for (const z of SIZES) out(`LB launch-bytes stage=plan size=${z} mode=ref budget=${off ? 'off' : BUDGET_BYTES} branch=${plan[z]} ${!off && plan[z] > BUDGET_BYTES ? 'UP' : 'ok'}`)
+  const spread = Math.max(...SIZES.map((z) => plan[z])) - Math.min(...SIZES.map((z) => plan[z]))
+  out(`LB launch-bytes flat spread=${spread} ${!off && spread > BUDGET_SPREAD ? 'UP' : 'ok'}`)
+  for (const message of problems) out(`FAIL: launch-bytes: ${message}`)
+  return problems.length
 }
 
 function run(root, out) {
@@ -110,11 +126,7 @@ function run(root, out) {
       }
     }
   }
-  for (const message of budgetProblems(measured.plan, 'full', process.env.LAUNCH_BYTES_BUDGET)) {
-    out(`FAIL: launch-bytes: ${message}`)
-    failed++
-  }
-  return failed
+  return failed + referenceLines(measured.ref.plan, out)
 }
 
 module.exports = { run, measure, budgetProblems }

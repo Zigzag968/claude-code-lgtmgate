@@ -22,7 +22,10 @@
 //   3. Suite-scope injected globals — `args`, `log`, `workflow`
 //      (`SUITE_ARGS` / `FP_REF` in templates/test-deliver-pipeline.js read `args.fpScriptPath`; the suite
 //      never consumes `agent` or `phase` directly — it drives the pipeline only
-//      through `workflow()`; it also reads `args.phaseTitles`, the recorded phase() sequence).
+//      through `workflow()`; it also reads `args.phaseTitles`, the recorded phase() sequence, and
+//      `args.expandedLaunch` {full, expanded, fp12} (#520): the specifics payload of a 4k fixture tree as launch-args
+//      --mode full prints it, as the expansion hook (scripts/runtime/workflow-args-expand.cjs) rebuilds it from the
+//      --mode ref output, and the fingerprint the reference carried; the suite has no `require`, so this runner builds it).
 //   4. `workflow(ref, args)` resolves `ref.scriptPath` ONLY — a bare-name `ref` is a
 //      HARNESS-SIDE default (see buildWorkflowMock below), never registry resolution.
 //      If a case starts passing a bare name expecting real registry behavior, this
@@ -120,6 +123,26 @@ function buildWorkflowMock(log, phaseTitles) {
   }
 }
 
+// The same 4k project context launched in full and through a reference expanded by the hook (cases T520*).
+function buildExpandedLaunch(fpPath) {
+  const os = require('os')
+  const { makeTree } = require('./gen-launch-fixtures.cjs')
+  const launch = require('./runtime/launch-args.cjs')
+  const { decide } = require('./runtime/workflow-args-expand.cjs')
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'flow-suite-launch-'))
+  try {
+    const tree = path.join(directory, 't')
+    makeTree(tree, '4k')
+    const fixed = { worktreePath: tree, pluginRoot: '/pl', sessionRoot: tree }
+    const full = launch.build({ root: tree, ref: 'origin/main', stage: 'plan', mode: 'full', ...fixed })
+    const reference = launch.build({ root: tree, ref: 'origin/main', stage: 'plan', mode: 'ref', ...fixed })
+    const decided = decide({ cwd: tree, 'tool_name': 'Workflow', 'tool_input': { scriptPath: fpPath, args: reference } }, { CLAUDE_PROJECT_DIR: tree })
+    return { full: full.projectSpecifics, expanded: decided.updatedInput.args.projectSpecifics, fp12: reference.projectSpecificsRef.fp12 }
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true })
+  }
+}
+
 async function main() {
   const { suite, fp } = parseArguments(process.argv.slice(2))
   const suitePath = path.resolve(suite)
@@ -153,7 +176,7 @@ async function main() {
   // engine has no filesystem.
   let repositoryConfig = null
   try { repositoryConfig = JSON.parse(fs.readFileSync(path.resolve('.claude/pipeline.config.json'), 'utf-8')) } catch (_) { repositoryConfig = null }
-  const suiteArguments = { fpScriptPath: fpPath, fpSource: fs.readFileSync(fpPath, 'utf-8'), repoConfig: repositoryConfig, phaseTitles }
+  const suiteArguments = { fpScriptPath: fpPath, fpSource: fs.readFileSync(fpPath, 'utf-8'), repoConfig: repositoryConfig, phaseTitles, expandedLaunch: buildExpandedLaunch(fpPath) }
 
   const suiteFunction = new Function(
     'args', 'log', 'workflow',
