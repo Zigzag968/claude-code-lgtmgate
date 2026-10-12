@@ -104,7 +104,7 @@ The full key-by-key reference, including precedence rules and edge cases, is in 
 
 ## Local overrides and environment variables
 
-- `.claude/pipeline.config.local.json` is a per-machine file, git-ignored and never versioned. Today `worktreeRoot` is the only engine key read from it; `specifics.acceptOversize` is also written there by `scripts/agent-context.cjs --accept-oversize`.
+- `.claude/pipeline.config.local.json` is a per-machine file, git-ignored and never versioned. Today `worktreeRoot` is the only engine key read from it; `specifics.acceptOversize` is also written there by `scripts/runtime/agent-context.cjs --accept-oversize`.
 - Precedence for the worktree root: environment variable, then the local file, then the versioned `.claude/pipeline.config.json`, then the parent directory of the worktree.
 
 | Variable | Read by | Default | Effect |
@@ -239,7 +239,7 @@ Nothing stack-specific lives in the plugin. Everything project-dependent is read
 | `commitHygiene` | optional, off by default: `{squashBeforeHandoff, maxCommits}`, `maxCommits` defaults to 3 |
 | `commentHygiene` | optional, off by default: `true` collapses superseded review comments; the decision log keeps the history |
 | `conventionsRule` | retired: ignored, with the trace `conventionsRule-ignored:<path>`; list the file under `agentContext["*"]` instead |
-| `probeRunPath` | optional path of `templates/probe-run.cjs`, used when the `pluginRoot` arg is not passed |
+| `probeRunPath` | optional path of `scripts/runtime/probe-run.cjs`, used when the `pluginRoot` arg is not passed |
 | `models` | per-role model override `{ scout?, planAudit?, morgan? }`, default `sonnet` for all three; resolution is `arg > config.models > 'sonnet'` (same precedence as `planAudit`); Theo/Nick are not overridable |
 | `stack` | target stack string handed to the plan auditor; empty → inferred from the worktree |
 | `preflight.envNote` | free-form operator note injected verbatim ahead of every preflight check, notably the HARD test-command check (see the trust warning below) |
