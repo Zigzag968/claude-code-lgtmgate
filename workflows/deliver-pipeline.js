@@ -421,6 +421,8 @@ log(`worktreeRoot: ${worktreeRoot ?? '(unresolved)'} (env=${runtimeEnvironment.L
 // derives the repo from the worktree).
 const repository = config.repo || null
 const prFlag = repository ? ` -R ${repository}` : ''
+// Shared sentence for the diagnose and plan prompts: the issue body is the contract, read before the brief.
+const ISSUE_BODY_FIRST = `Read the issue body first: \`gh api repos/${repository || '{owner}/{repo}'}/issues/${issue} --jq .body\` (REST, one call; the repository is config.repo, else gh resolves it from the working directory). The issue body takes precedence over the brief when they differ.`
 // Sandbox-safe push (#108): SSH (port 22 / agent socket) is blocked in the agent sandbox, HTTPS to
 // github.com:443 through the gh credential helper is not. Exact command, also quoted to the Lead
 // by the delivered-no-pr escalation. `repo` absent -> Nick derives the slug from the origin URL.
@@ -3120,6 +3122,7 @@ if (after('plan', entryStage)) {
   diag = await callAgentSafe(
     'theo',
     `Qualify issue #${issue} before Sam plans anything — this gate runs for EVERY nightly-dispatched issue, no exceptions. Brief: ${brief}\n\n` +
+      `${ISSUE_BODY_FIRST}\n` +
       `If this issue claims a root cause or a specific bug behavior: reproduce it for real in worktree "${worktreePath}" (frozen base; never checkout/commit) — ` +
       `a real run/test, never a code-reading guess — and confirm or refute the stated cause.\n` +
       `If this issue is a feature/chore ask with no claimed bug: sanity-check it's justified — not already done/shipped, not solving a problem that doesn't ` +
@@ -3251,6 +3254,7 @@ const samScoutPrompt = ({ fixBlock = '', auditFixBlock = '', reviewFixBlock = ''
       `This is a mandatory section, not optional prose — the human decides the split-or-not call from your answer.`
     : ''
   return `cd into the shared worktree "${worktreePath}" (frozen base; never checkout/commit). Scout and plan issue #${issue}. Brief: ${brief}.${pm ? `\n\nPM framing:\n${JSON.stringify(pm)}` : ''}${diag ? `\n\nConfirmed diagnosis (Theo):\n${diag.evidence}` : ''}\n\n` +
+    `${ISSUE_BODY_FIRST}\n\n` +
     `Write the full plan (including the acceptance checklist) as a Markdown ARTIFACT at "${planPath}" inside the worktree (create the .pipeline/plans/ directory if needed). ` +
     `This artifact is the canonical hand-off Nick and Morgan will consume — make it self-contained. ` +
     `REWRITE IN PLACE — accretion is the defect. On an amendment / re-plan round, OVERWRITE "${planPath}" with the CURRENT plan only: NO before/after or delta tables, NO "AMENDMENT N" headers, NO superseded sections kept "for traceability", NO revision archaeology. ` +
