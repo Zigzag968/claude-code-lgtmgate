@@ -2,20 +2,25 @@
 'use strict'
 
 // Prints the `args` object of the workflow launch (skills/deliver/SKILL.md, section 4) as one minified JSON
-// line, so the maintainers can measure the bytes of a launch (guard `launch-bytes`, docs/bench/launch-speed.md).
-// The Lead still builds the real launch by hand; this script is the deterministic measure of what it pastes.
+// line: the Lead passes it as `args`, and the guard `launch-bytes` measures it (docs/bench/launch-speed.md).
+// Mode full carries the config and the specifics in full; mode ref (#520) carries `configRef` and `projectSpecificsRef`,
+// which the PreToolUse hook hooks/workflow-args-expand.sh expands before the engine reads them.
 // Nothing here reads git for the config (the working-tree file is the one the Lead reads) and no model runs.
 //
 // Usage: node scripts/runtime/launch-args.cjs --root <worktree> --ref origin/<base> --stage plan|dev|review
-//          [--mode full|ref] [--issue N] [--brief text] [--pr N] [--plan-file f]
-// Stdout: JSON.stringify(args) + newline. Key order: issue, brief, worktreePath, mode, pmReview, config, configLocal,
+//          [--mode full|ref] [--issue N] [--brief text] [--pr N] [--plan-file f] [--worktree <path>]
+// Stdout: JSON.stringify(args) + newline. Key order (full): issue, brief, worktreePath, mode, pmReview, config, configLocal,
 //        projectSpecifics (only when the config sets projectSpecifics or agentContext), pluginRoot, sessionRoot;
-//        stage dev|review adds entryStage, review adds prNumber, --plan-file adds planText.
-// Exit:  0 ok · 2 any argument or read error (one line on stderr, stdout empty). `--mode ref` is refused until #520.
+//        (ref): issue, brief, worktreePath, mode, pmReview, configRef {path, digest64}, configLocal, projectSpecificsRef
+//        {refSha, fp12} (same condition), pluginRoot, sessionRoot; stage dev|review adds entryStage, review adds prNumber,
+//        --plan-file adds planText (never behind a reference). --worktree sets worktreePath (default: --root).
+// Exit:  0 ok · 2 any argument or read error (one line on stderr, stdout empty).
 
 const fs = require('fs')
 const nodePath = require('path')
+const crypto = require('crypto')
 const { assemble } = require('./agent-context.cjs')
+const { fingerprint12 } = require('../lib/agent-context-text.cjs')
 
 const DEFAULT_BRIEF = 'implement the issue'
 const STAGES = ['plan', 'dev', 'review']
@@ -41,8 +46,10 @@ function build(options) {
   const root = options.root
   const stage = options.stage || 'plan'
   if (!STAGES.includes(stage)) throw new UsageError(`unknown stage: ${stage}`)
-  if ((options.mode || 'full') !== 'full') throw new UsageError('mode ref is not available until #520')
-  const config = readJson(nodePath.join(root, '.claude', 'pipeline.config.json'), false)
+  const mode = options.mode || 'full'
+  if (!['full', 'ref'].includes(mode)) throw new UsageError(`unknown mode: ${mode}`)
+  const configFile = nodePath.join(root, '.claude', 'pipeline.config.json')
+  const config = readJson(configFile, false)
   const localFile = nodePath.join(root, '.claude', 'pipeline.config.local.json')
   const configLocal = readJson(localFile, true)
   const arguments_ = {
@@ -51,12 +58,15 @@ function build(options) {
     worktreePath: options.worktreePath === undefined ? root : options.worktreePath,
     mode: 'auto',
     pmReview: false,
-    config,
-    configLocal,
   }
+  if (mode === 'ref') {
+    arguments_.configRef = { path: '.claude/pipeline.config.json', digest64: crypto.createHash('sha256').update(fs.readFileSync(configFile)).digest('hex') }
+  } else arguments_.config = config
+  arguments_.configLocal = configLocal
   if (config.projectSpecifics || config.agentContext) {
     const { files, ...wire } = assemble({ root, ref: options.ref || 'origin/main', local: localFile })
-    arguments_.projectSpecifics = wire
+    if (mode === 'ref') arguments_.projectSpecificsRef = { refSha: wire.refSha, fp12: fingerprint12(wire) }
+    else arguments_.projectSpecifics = wire
   }
   arguments_.pluginRoot = options.pluginRoot === undefined ? nodePath.resolve(__dirname, '..', '..') : options.pluginRoot
   arguments_.sessionRoot = options.sessionRoot === undefined ? root : options.sessionRoot
@@ -87,6 +97,7 @@ function parseArguments(argv) {
     else if (a === '--pr') o.pr = number()
     else if (a === '--brief') o.brief = value()
     else if (a === '--plan-file') o.planFile = value()
+    else if (a === '--worktree') o.worktreePath = value()
     else throw new UsageError(`unknown argument: ${a}`)
   }
   return o

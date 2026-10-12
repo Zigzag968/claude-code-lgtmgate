@@ -191,4 +191,13 @@ function digestOf(referenceSha, role, text, lanes) {
   return crypto.createHash('sha256').update(canonicalJson({ refSha: referenceSha, role, text, lanes }), 'utf8').digest('hex')
 }
 
-module.exports = { normalise, trimBlank, stripComments, parseFrontmatter, checkContent, canonicalJson, digestOf }
+// The 12-hex fingerprint of an assembler payload: byte-equal to specificsFingerprint in workflows/deliver-pipeline.js (digests only,
+// never the text). Carried by `projectSpecificsRef` (#520) and checked by the expansion hook against the payload it assembles.
+function fingerprint12(payload) {
+  const roles = {}
+  for (const key of Object.keys(payload.roles)) roles[key] = payload.roles[key].digest
+  const shared = payload.shared ? payload.shared.digest : null
+  return crypto.createHash('sha256').update(canonicalJson({ refSha: payload.refSha, shared, roles }), 'utf8').digest('hex').slice(0, 12)
+}
+
+module.exports = { normalise, trimBlank, stripComments, parseFrontmatter, checkContent, canonicalJson, digestOf, fingerprint12 }

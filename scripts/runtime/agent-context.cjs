@@ -25,7 +25,8 @@
 // again above +25 %), shared 2048 B, per-agent total 8192 B (informational:true, never asks), hard ceiling 65536 B on the raw blobs (exit 4), <= 8 files
 // per source. Digest = sha256(canonical JSON {refSha, role, text, lanes}) (same sha256 as the workflow).
 //
-// Usage: node scripts/runtime/agent-context.cjs [--root <repo>] [--ref origin/<base>] [--local <file>]
+// Usage: node scripts/runtime/agent-context.cjs [--root <repo>] [--ref origin/<base> | --sha <40|64 lower-case hex>] [--local <file>]
+//        --sha reads the config and files at that exact commit (the refSha of a `projectSpecificsRef`, #520); output `ref` is the sha.
 //        node scripts/runtime/agent-context.cjs --print [<role>|<persona>|shared]   (no role = table of bytes/caps/files/digests)
 //        node scripts/runtime/agent-context.cjs --print <Role> --lane <name>        (base + that lane, persona sentence first)
 //        node scripts/runtime/agent-context.cjs --accept-oversize <Role>
@@ -102,6 +103,19 @@ function resolveReference(root, reference) {
     throw new Fail(2, [`bad ref: ${reference} does not resolve to a commit`])
   }
   if (!/^[0-9a-f]{40}([0-9a-f]{24})?$/.test(sha)) throw new Fail(2, [`bad ref: ${reference} resolved to an unexpected value`])
+  return sha
+}
+
+// A commit sha given by the caller (--sha, #520): lower-case hex that resolves to that very commit, never a name.
+function resolveSha(root, given) {
+  if (typeof given !== 'string' || !/^[0-9a-f]{40}([0-9a-f]{24})?$/.test(given)) throw new Fail(2, [`bad sha: ${JSON.stringify(given)} (expected 40 or 64 lower-case hex)`])
+  let sha
+  try {
+    sha = git(root, ['rev-parse', '--verify', '--end-of-options', `${given}^{commit}`]).toString('utf8').trim()
+  } catch (error) {
+    throw new Fail(2, [`bad ref: ${given} does not resolve to a commit`])
+  }
+  if (sha !== given) throw new Fail(2, [`bad ref: ${given} does not resolve to a commit`])
   return sha
 }
 
@@ -325,9 +339,10 @@ function buildRoleBlocks(context) {
 
 function assemble(options) {
   const root = options.root
-  const sha = resolveReference(root, options.ref)
+  const sha = options.sha ? resolveSha(root, options.sha) : resolveReference(root, options.ref)
+  const reference = options.sha ? sha : options.ref
   const config = readConfig(root, sha)
-  const empty = { ref: options.ref, refSha: sha, shared: null, roles: {}, files: [], warnings: [] }
+  const empty = { ref: reference, refSha: sha, shared: null, roles: {}, files: [], warnings: [] }
   if (!config.dir && !config.agentContext) return empty
 
   const errs = []
@@ -373,7 +388,7 @@ function assemble(options) {
   const totalBytes = (shared ? shared.bytes : 0) + maxRole
   if (totalBytes > CAP_TOTAL) warnings.push({ kind: 'total-oversize', bytes: totalBytes, recommended: CAP_TOTAL, informational: true, ask: false })
 
-  return { ref: options.ref, refSha: sha, shared, roles, files: [...info.values()], warnings }
+  return { ref: reference, refSha: sha, shared, roles, files: [...info.values()], warnings }
 }
 
 
@@ -513,7 +528,8 @@ function acceptOversize(payload, role, localFile, root) {
 }
 
 function parseArguments(argv) {
-  const o = { root: process.cwd(), ref: 'origin/main', local: null, print: null, accept: null, lane: null }
+  let referenceGiven = false
+  const o = { root: process.cwd(), ref: 'origin/main', sha: null, local: null, print: null, accept: null, lane: null }
   for (let index = 0; index < argv.length; index++) {
     const a = argv[index]
     const value = () => {
@@ -521,13 +537,14 @@ function parseArguments(argv) {
       return argv[++index]
     }
     if (a === '--root') o.root = value()
-    else if (a === '--ref') o.ref = value()
+    else if (a === '--ref') { o.ref = value(); referenceGiven = true } else if (a === '--sha') o.sha = value()
     else if (a === '--local') o.local = value()
     else if (a === '--accept-oversize') o.accept = value()
     else if (a === '--lane') o.lane = value()
     else if (a === '--print') o.print = index + 1 < argv.length && !argv[index + 1].startsWith('--') ? argv[++index] : ''
-    else throw new Fail(2, [`unknown argument: ${a}`, 'usage: agent-context.cjs [--root <repo>] [--ref origin/<base>] [--local <file>] [--print [role|persona] [--lane <name>]] [--accept-oversize <Role>]'])
+    else throw new Fail(2, [`unknown argument: ${a}`, 'usage: agent-context.cjs [--root <repo>] [--ref origin/<base> | --sha <hex>] [--local <file>] [--print [role|persona] [--lane <name>]] [--accept-oversize <Role>]'])
   }
+  if (o.sha !== null && referenceGiven) throw new Fail(2, ['--sha and --ref are exclusive'])
   if (!o.local) o.local = nodePath.join(o.root, '.claude', 'pipeline.config.local.json')
   return o
 }

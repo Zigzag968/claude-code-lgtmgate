@@ -110,6 +110,23 @@ git -C "$R" checkout -q -- .claude/pipeline.config.json
 run "$R" --ref 'origin/main;touch pwned'
 if [ "$rc" = 2 ] && [ ! -e "$R/pwned" ] && [ ! -e "$ROOT/pwned" ]; then ok "bad-ref-exit2: injection refused, no file created"; else bad "bad-ref-exit2: exit $rc"; fi
 
+# ---- --sha (#520) -----------------------------------------------------------------------------
+R="$TMP/sha"; new_repo "$R"; seal "$R"
+SHA="$(git -C "$R" rev-parse HEAD)"
+run "$R" --ref origin/main; cp "$OUT" "$TMP/by-ref"
+run "$R" --sha "$SHA"
+exit_is "sha-valid: exit 0" 0
+jtrue "sha-valid: ref is the sha and refSha is the sha" "j.ref===\"$SHA\"&&j.refSha===\"$SHA\""
+if node -e 'const a=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));const b=JSON.parse(require("fs").readFileSync(process.argv[2],"utf8"));delete a.ref;delete b.ref;process.exit(JSON.stringify(a)===JSON.stringify(b)?0:1)' "$OUT" "$TMP/by-ref"; then ok "sha-valid: same specifics and digests as --ref at that commit"; else bad "sha-valid: payload differs from --ref"; fi
+run "$R" --sha 0000000000000000000000000000000000000001
+exit_is "sha-unknown: refused, exit 2" 2
+run "$R" --sha "$(printf '%s' "$SHA" | tr 'a-f' 'A-F')"
+exit_is "sha-uppercase: refused, exit 2" 2
+run "$R" --sha "$SHA" --ref origin/main
+exit_is "sha-with-ref: exclusive, exit 2" 2
+run "$R" --sha 'HEAD'
+exit_is "sha-name: a name is not a sha, exit 2" 2
+
 # ---- switch off -------------------------------------------------------------------------------
 R="$TMP/off"; new_repo "$R"; setcfg "$R" '{"baseBranch":"main"}'; seal "$R"
 run "$R"

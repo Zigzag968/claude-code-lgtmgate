@@ -1,11 +1,11 @@
 ## Where the engine is going (6-12 months)
-- One gate to the world: every read or write outside the engine runs through `scripts/runtime/probe-run.cjs`, bar the Lead copy of specifics, checked by digest.
+- One gate to the world: every read or write outside the engine runs through `scripts/runtime/probe-run.cjs`, bar hook-expanded specifics, checked by digest.
 - One state registry: every run outcome is a typed status, and the Lead's table and the hooks are checked against it.
 - The checklist is data: acceptance items carry ids, are rendered and ticked by the engine, proven per id.
 - Repo-neutral: the engine knows no stack, path or rule of its own; each repo's config and docs say what matters there.
 ## Today
 - The Lead runs `/lgtmgate:deliver` (five agents, issue's worktree, one status); consumers get the engine, `agents/`, `skills/`, `hooks/` and init templates.
-- The workflow has no filesystem or shell: it launches agents; git, gh and file reads run as scripts, via a probe or a Lead copy checked by digest.
+- The workflow has no filesystem or shell: it launches agents; git, gh and file reads run as scripts, via a probe or a hook expansion, each checked by digest.
 ## Technical doctrine, ranked (the higher one wins a conflict)
 1. Determinism over judgment: a script does the mechanical work; a model only judges.
 2. Proof over trust: every claim is a command output or an artifact; an engine bug ships with a replayed fixture.

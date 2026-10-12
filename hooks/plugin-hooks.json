@@ -36,6 +36,17 @@
             "description": "Refuse a GitHub write or commit whose text matches a pattern of the repository's .pii-patterns file (no file, no effect)"
           }
         ]
+      },
+      {
+        "matcher": "Workflow",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/workflow-args-expand.sh\"",
+            "timeout": 10,
+            "description": "Expand the projectSpecificsRef and configRef of a deliver-pipeline launch to the full objects (verified by digest) and give a launch by name a copy of the engine titled with the issue number"
+          }
+        ]
       }
     ],
     "PostToolUse": [

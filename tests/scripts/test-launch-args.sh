@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Self-test of scripts/runtime/launch-args.cjs (#527): the args object of a workflow launch, built from a
+# Self-test of scripts/runtime/launch-args.cjs (#527, mode ref #520): the args object of a workflow launch, built from a
 # synthetic git tree made by scripts/gen-launch-fixtures.cjs in $TMPDIR (nothing is committed).
 # Covers the shape of a plan, dev and review launch, the byte-for-byte determinism, the overrides, and the
-# refusals (mode ref until #520, unknown stage or flag, a root that is not a git tree), all exit 2 with empty stdout.
+# mode ref (references instead of the objects, the fingerprint of the specifics) and the refusals (unknown mode, stage or flag,
+# a root that is not a git tree), all exit 2 with empty stdout.
 # bash 3.2 compatible. Trailer: [test-launch-args] status=<ok|fail> passed=<n> failed=<n>
 set -u
 cd "$(dirname "$0")/../.." || exit 1
@@ -58,8 +59,25 @@ const a = build({ root: process.argv[2], stage: "plan", worktreePath: "/wt", plu
 process.stdout.write(JSON.stringify(a) + "\n")' "$LA" "$TREE" >"$TMP/out" 2>"$TMP/err"; RC=$?
 check "overrides: worktreePath, pluginRoot and sessionRoot are honoured" 'a.worktreePath === "/wt" && a.pluginRoot === "/pl" && a.sessionRoot === "/ss"'
 
-refused "mode ref is refused until #520" --root "$TREE" --stage plan --mode ref
-if grep -q 'until #520' "$TMP/err"; then ok "mode ref: the message names #520"; else bad "mode ref: message $(cat "$TMP/err")"; fi
+run --root "$TREE" --stage plan --mode ref
+check "mode ref: ordered keys, references in place of config and projectSpecifics" 'Object.keys(a).slice(0, 8).join() === "issue,brief,worktreePath,mode,pmReview,configRef,configLocal,projectSpecificsRef" && !("config" in a) && !("projectSpecifics" in a)'
+CFG_SHA="$(node -e 'process.stdout.write(require("crypto").createHash("sha256").update(require("fs").readFileSync(process.argv[1])).digest("hex"))' "$TREE/.claude/pipeline.config.json")"
+export CFG_SHA
+check "mode ref: configRef names the file and carries its sha256" 'a.configRef.path === ".claude/pipeline.config.json" && a.configRef.digest64 === process.env.CFG_SHA'
+check "mode ref: projectSpecificsRef is the sha and the 12-hex fingerprint" '/^[0-9a-f]{40}$/.test(a.projectSpecificsRef.refSha) && /^[0-9a-f]{12}$/.test(a.projectSpecificsRef.fp12)'
+cp "$TMP/out" "$TMP/ref"
+run --root "$TREE" --stage plan --mode full
+node -e '
+const full = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))
+const ref = JSON.parse(require("fs").readFileSync(process.argv[2], "utf8"))
+const { fingerprint12 } = require(process.argv[3] + "/scripts/lib/agent-context-text.cjs")
+process.stdout.write(String(fingerprint12(full.projectSpecifics) === ref.projectSpecificsRef.fp12 && full.projectSpecifics.refSha === ref.projectSpecificsRef.refSha))' "$TMP/out" "$TMP/ref" "$ROOT" >"$TMP/same"
+if [ "$(cat "$TMP/same")" = "true" ]; then ok "mode ref: the fingerprint is the one of the full specifics"; else bad "mode ref: fingerprint differs from the full payload"; fi
+run --root "$TREE" --stage plan --mode ref --worktree /somewhere/wt --issue 9
+check "mode ref: --worktree sets worktreePath" 'a.worktreePath === "/somewhere/wt" && a.issue === 9'
+run --root "$TREE" --stage dev --mode ref --plan-file "$TMP/plan.txt"
+check "mode ref: planText stays in full, never behind a reference" 'a.planText === "the plan\n" && a.entryStage === "dev"'
+refused "unknown mode is refused" --root "$TREE" --stage plan --mode bogus
 refused "unknown stage is refused" --root "$TREE" --stage x
 refused "unknown flag is refused" --root "$TREE" --stage plan --bogus
 mkdir -p "$TMP/plain/.claude"
