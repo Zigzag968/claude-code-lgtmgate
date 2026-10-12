@@ -31,9 +31,8 @@ A Lead session older than three days loses the certificate bundle of its sandbox
 
 ## Keepalive
 
-Options weighed in #251; the maintainer has not chosen yet.
+Chosen by the maintainer (#251): no keepalive mechanism is shipped.
 
-- Hook refreshing the access time: not chosen (ships an OS-specific hook to every consumer, fires only while the session has events; unverified that access time protects the file).
-- User-level scheduled task touching the bundle: not chosen (unverified for the same reason).
-- Relocated temp directory: proposed, partly verified (creation only).
-- Restart under three days: proposed, follows from the cause.
+- Restart a Lead session before it reaches three days (see Restart rule).
+- Launch it with the process temp directory on a volume the sweep does not touch (see Launcher recipe).
+- Not chosen: a hook refreshing the access time (an OS-specific hook for every consumer, fires only while the session has events, unverified that access time protects the file); a user-level scheduled task touching the bundle (same unverified assumption).
