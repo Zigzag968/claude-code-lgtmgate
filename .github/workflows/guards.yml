@@ -101,6 +101,8 @@ jobs:
         run: bash tests/scripts/test-run-state.sh
       - name: cleanup-worktree script regression test
         run: bash tests/scripts/test-cleanup-worktree.sh
+      - name: worktree-inventory script regression test
+        run: bash tests/scripts/test-worktree-inventory.sh
       - name: verify-workflow-launch regression test
         run: bash tests/scripts/test-verify-workflow-launch.sh
       - name: Provision worktree guard

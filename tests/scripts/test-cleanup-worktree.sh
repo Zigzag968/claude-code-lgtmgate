@@ -73,7 +73,8 @@ run_script() {
 # --- refusal cases (each leaves the target in place) ------------------------------
 
 mkwt wt-open
-export FAKE_PULLS="$(pulls_json merged)"
+FAKE_PULLS="$(pulls_json merged)"
+export FAKE_PULLS
 
 # outside root
 OUTSIDE="$WORK/outside"
@@ -234,7 +235,10 @@ mkdir -p "$CONSUMER"
 git -C "$CONSUMER" init -q -b main
 git -C "$CONSUMER" commit -q --allow-empty -m init
 git -C "$CONSUMER" worktree add -q -b feat/wt-consumer "$ROOT/wt-consumer" main
-OUT="$(cd "$CONSUMER" && export CLAUDE_PLUGIN_ROOT="$PLUGIN" FAKE_PULLS="$(pulls_json merged)" && bash "$CLAUDE_PLUGIN_ROOT/scripts/cleanup-worktree.sh" "$ROOT/wt-consumer" 2>&1)"; RC=$?
+export CLAUDE_PLUGIN_ROOT="$PLUGIN"
+FAKE_PULLS="$(pulls_json merged)"
+export FAKE_PULLS
+OUT="$(cd "$CONSUMER" && bash "$CLAUDE_PLUGIN_ROOT/scripts/cleanup-worktree.sh" "$ROOT/wt-consumer" 2>&1)"; RC=$?
 printf '%s\n' "$OUT"
 check "consumer layout: script called from the plugin folder removes a merged clean worktree" \
   "$([ "$RC" -eq 0 ] && [ ! -e "$CONSUMER/scripts/cleanup-worktree.sh" ] && [ ! -d "$ROOT/wt-consumer" ] && printf '%s' "$OUT" | grep -q '^REMOVED ' && echo 1 || echo 0)"

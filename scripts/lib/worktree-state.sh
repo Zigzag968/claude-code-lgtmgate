@@ -86,6 +86,7 @@ wt_inflight() {
 wt_classify() {
   local main="$1" wt="$2" branch="$3" base st
   WT_ISSUE=""; WT_PR="-"; WT_TREE=clean; WT_AHEAD=0; WT_RUN=no; WT_CLASS=""
+  export WT_ISSUE WT_PR WT_TREE WT_AHEAD WT_RUN WT_CLASS # the results, read by the sourcing script
   if [ -n "$branch" ]; then WT_ISSUE="$(wt_issue_of "$branch")"; fi
   if [ -n "$(git -C "$wt" status --porcelain 2>/dev/null)" ]; then WT_TREE=dirty; fi
   if [ -z "$branch" ]; then WT_AHEAD="-"; WT_CLASS=detached; return 0; fi
