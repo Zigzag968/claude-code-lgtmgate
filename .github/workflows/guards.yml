@@ -133,6 +133,12 @@ jobs:
         run: bash tests/scripts/test-probe-evals.sh
       - name: gate-check script regression test
         run: bash tests/scripts/test-gate-check.sh
+      - name: eval preflight regression test
+        run: bash tests/scripts/test-eval-preflight.sh
+      - name: eval credential non-exposure test
+        run: bash tests/scripts/test-eval-credential.sh
+      - name: eval container isolation test
+        run: bash tests/scripts/test-eval-isolation.sh
       - name: E2 gate metrics, structural (eval results and canary runs are not in CI)
         run: bash scripts/gate-check.sh e2 --ci
 

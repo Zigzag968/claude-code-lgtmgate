@@ -10,10 +10,12 @@ description: Run or debug the probe evals of issue #81 (`claude plugin eval` on 
 - Keychain item `lgtmgate-eval-token`, holding a token from `claude setup-token`.
   - Create it: `claude setup-token`, then `security add-generic-password -a "$USER" -s lgtmgate-eval-token -T /usr/bin/security -w` (prompts for the token).
   - Over SSH: `security unlock-keychain` first.
-- Never print, echo, log or write the token.
+- Never print, echo, log or write the token, and never export it in the Lead's shell: the wrapper reads the Keychain item itself and hands it to the container environment only.
+- Check the prerequisites in under 10 s: `bash scripts/eval-preflight.sh docker` (names the failing one: docker, daemon, Keychain item).
+- One-time gesture, maintainer-owned (this repo never edits the maintainer's settings): add a permission allow rule for `bash scripts/run-probe-evals-docker.sh` and exclude that command from the Bash sandbox, so the Lead can launch it without ever holding the credential.
 
 ## Run everything (3 cases, 10 runs each, capped at $3 per case)
-- `CLAUDE_CODE_OAUTH_TOKEN="$(security find-generic-password -s lgtmgate-eval-token -w)" bash scripts/run-probe-evals-docker.sh`
+- `bash scripts/run-probe-evals-docker.sh`
 - Optional case names after the script restrict the run, e.g. `... run-probe-evals-docker.sh probe-provision`.
   - A restricted run is gated on its own runs (95 % of 10 per case); only the full 3-case run is the E2 gate.
 - Needs the Bash sandbox disabled when launched from a Claude session (Docker and Keychain).
@@ -33,7 +35,7 @@ description: Run or debug the probe evals of issue #81 (`claude plugin eval` on 
 ## Debug one case
 - Same `docker run` as the script, plus `--runs 1 --keep-temp`, and a mount on `/tmp` to keep the trace:
   - `mkdir -p /tmp/claude/evaltmp-x /tmp/claude/evalres-x`
-  - `CLAUDE_CODE_OAUTH_TOKEN="$(security find-generic-password -s lgtmgate-eval-token -w)" docker run --rm --init --security-opt seccomp=unconfined --security-opt systempaths=unconfined -e CLAUDE_CODE_OAUTH_TOKEN -e EVAL_PLUGIN_ROOT=/workspace -v "$PWD:/workspace" -v /tmp/claude/evaltmp-x:/tmp -v /tmp/claude/evalres-x:/evalres -w /workspace lgtmgate-probe-evals claude plugin eval . --case probe-provision --runs 1 --keep-temp --max-cost-usd 3 --no-publish --allow-tools Bash --ablation none --threshold 0.95 --trust-plugin --output-dir /evalres`
+  - The token is passed only by a Keychain-reading one-liner run by the maintainer (`security find-generic-password -s lgtmgate-eval-token -w` as a prefix assignment of `CLAUDE_CODE_OAUTH_TOKEN`), never by the Lead: `docker run --rm --init --security-opt seccomp=unconfined --security-opt systempaths=unconfined -e CLAUDE_CODE_OAUTH_TOKEN -e EVAL_PLUGIN_ROOT=/workspace -v "$PWD:/workspace" -v /tmp/claude/evaltmp-x:/tmp -v /tmp/claude/evalres-x:/evalres -w /workspace lgtmgate-probe-evals claude plugin eval . --case probe-provision --runs 1 --keep-temp --max-cost-usd 3 --no-publish --allow-tools Bash --ablation none --threshold 0.95 --trust-plugin --output-dir /evalres`
 - Trace: `/tmp/claude/evaltmp-x/claude-eval-*/out/trace.jsonl` (one JSON event per line).
   - First `chmod 700` the `claude-eval-*` dir and its `sealed/` subdir.
   - Read the Bash `tool_result` of the probe agent (the trace carries the subagent's tool calls and results, tagged `parent_tool_use_id`) and the last assistant message.
@@ -49,6 +51,7 @@ description: Run or debug the probe evals of issue #81 (`claude plugin eval` on 
 - `401 Invalid bearer token`: the token was pasted broken across lines. Re-add it to the Keychain on one line.
 - `401 OAuth access token is invalid`: the token was revoked. Run `claude setup-token` and replace the Keychain item.
 - Eval refused on the macOS host (#94308): use the Docker wrapper, never the bare script.
+- `eval-not-runnable` (exit 3) / `eval-preflight: ...`: a host refusal or a missing prerequisite, not a probe result. Follow its `Fix:` line; it never counts toward the gate.
 - `Cannot find module '/scripts/runtime/probe-run.cjs'`: a prompt still uses `$CLAUDE_PLUGIN_ROOT`; use `$EVAL_PLUGIN_ROOT`.
 - The probe agent answers "I need two commands": the prompt gives only the run command; add the `--verify` command.
 - Score meaning: 4 graders weighted 1 each, so 0.25 per grader (agent-dispatched, bash-called, probe-line, verify-ok).

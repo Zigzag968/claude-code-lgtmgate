@@ -8,8 +8,9 @@
 #
 # On macOS, run it in a Linux container instead: `claude plugin eval` refuses to run on the host
 # (Docker Desktop symlinks, anthropics/claude-code#94308) and its Bash sandbox needs bubblewrap + socat.
-#   - claude setup-token ; export CLAUDE_CODE_OAUTH_TOKEN=<token>
-#   - bash scripts/run-probe-evals-docker.sh   (image: .devcontainer/, runs this script inside)
+#   - bash scripts/run-probe-evals-docker.sh   (image: .devcontainer/, runs this script inside; the wrapper
+#     reads the Keychain item itself and runs scripts/eval-preflight.sh)
+#   - On the host this script refuses with `eval-not-runnable` (exit 3) before any eval call or results file.
 #
 # Usage: run-probe-evals.sh [case...]   (default: probe-provision probe-pr-state probe-pr-write)
 # Not in the default set: pr-write-b64 (#212), the copy fidelity of the real tick format (a long --text-b64 token under
@@ -23,7 +24,7 @@
 #
 # Running it on macOS
 #   - Keychain item `lgtmgate-eval-token`, holding a token created with `claude setup-token`.
-#   - One line: CLAUDE_CODE_OAUTH_TOKEN="$(security find-generic-password -s lgtmgate-eval-token -w)" bash scripts/run-probe-evals-docker.sh
+#   - One line: bash scripts/run-probe-evals-docker.sh
 #   - The cost printed is an estimate: it draws on the subscription quota, nothing is billed.
 set -u
 
@@ -34,6 +35,10 @@ cd "$ROOT" || exit 1
 if ! command -v claude >/dev/null 2>&1; then
   echo "run-probe-evals: claude CLI not found on PATH" >&2
   exit 1
+fi
+# A host refusal is "not runnable", never a failed probe run: exit before any eval call or results file.
+if [ "$(uname -s)" = "Darwin" ]; then
+  bash "$SCRIPT_DIR/eval-preflight.sh" host || exit $?
 fi
 
 # Eval runs get an allowlisted env only (EVAL_* passes); the prompts locate the plugin through it.
