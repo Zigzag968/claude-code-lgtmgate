@@ -152,7 +152,7 @@ function shapeOf(v) {
   return ['?', typeof v]
 }
 
-// The fixed words of a PROBE / VERIFY answer line before its `json=` payload (see templates/probe-run.cjs).
+// The fixed words of a PROBE / VERIFY answer line before its `json=` payload (see scripts/runtime/probe-run.cjs).
 const PROBE_ENVELOPE_TOKEN = /^(PROBE|VERIFY|ok|fail|line=PROBE|name=[A-Za-z0-9._-]+|exit=-?\d+|sha=[0-9a-f]+|cmd=[0-9a-f]+|reason=[A-Za-z0-9._-]+)$/
 
 // ---- leaves and neutral tokens -------------------------------------------------------------

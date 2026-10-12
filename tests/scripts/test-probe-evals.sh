@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Offline validator for the probe eval cases (evals/probe-*/, #81). No `claude` call, no network.
 # (a) structure of each case (4 graders), (b) each case's commands really run through
-# templates/probe-run.cjs: the pinned probe-line grader equals the real PROBE line and rejects
+# scripts/runtime/probe-run.cjs: the pinned probe-line grader equals the real PROBE line and rejects
 # corrupted / invented / wrapped variants, the verify-ok grader matches the real --verify output as a
 # tool_result and nothing weaker, (c) the local runner, (d) workflows hold no secret, schedule or eval
 # step, (e) the gate (>= 29/30 FULLY passed runs, counted per run, never the case mean) on fake

@@ -2,7 +2,7 @@
 # pr-write.sh end to end, case (k) (sourced by tests/templates/test-probe-run.sh, never executed).
 # (k) pr-write.sh end to end (#85): a stub gh first on PATH logs every call and serves per-op state. Every op must
 # READ before it writes, skip an already-applied write, and write nothing after a failed read. No network.
-PW="$SCRIPT_DIR/pr-write.sh"
+PW="$ROOT/scripts/runtime/pr-write.sh"
 if command -v jq >/dev/null 2>&1; then
   PWD_="$WORK/pw"; mkdir -p "$PWD_/bin" "$PWD_/wt"
   GHLOG="$PWD_/gh.log"

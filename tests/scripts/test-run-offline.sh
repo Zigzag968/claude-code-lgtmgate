@@ -191,7 +191,7 @@ const crypto = require('crypto')
 const { spawnSync } = require('child_process')
 const { stripExports, buildPipelineRunner, replayFixture } = require(path.resolve('scripts/run-offline.cjs'))
 const run = buildPipelineRunner(stripExports(fs.readFileSync(path.resolve('workflows/deliver-pipeline.js'), 'utf8')))
-const probeRun = path.resolve(process.env.PROBE_RUN_UNDER_TEST || 'templates/probe-run.cjs')
+const probeRun = path.resolve(process.env.PROBE_RUN_UNDER_TEST || 'scripts/runtime/probe-run.cjs')
 const LABEL = 'probe-185-pr-write-acceptance-tick-r0'
 const sha = (t) => crypto.createHash('sha256').update(t).digest('hex')
 const load = () => JSON.parse(fs.readFileSync(process.argv[2], 'utf8'))

@@ -8,5 +8,5 @@ Reproduces the step "Canary re-initialised from scratch" of MAINTAINING.md.
 4. First proof of the candidate, from the plugin checkout, against the clone:
    - `node scripts/template-drift.cjs --root "$TMPDIR/canary"`
    - `node scripts/config-check.cjs "$TMPDIR/canary/.claude/pipeline.config.json"`
-   - `node scripts/agent-context.cjs --root "$TMPDIR/canary"`
+   - `node scripts/runtime/agent-context.cjs --root "$TMPDIR/canary"`
 5. Post the three outputs on the release issue, then start the canary run.

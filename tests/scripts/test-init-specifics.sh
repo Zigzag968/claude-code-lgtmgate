@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Self-test of scripts/init-specifics.cjs (#267, epic #261) and of the init hint of
+# Self-test of scripts/runtime/init-specifics.cjs (#267, epic #261) and of the init hint of
 # hooks/SessionStart/inject_stub.py. Stories US-C1 (init detects, proposes, creates stubs) and
 # US-C8 (the owner's rules survive: init never overwrites, never copies the plugin).
 # Everything runs in $TMPDIR trees built from fixtures/specifics/init-trees/*.txt (one relative path per
@@ -8,7 +8,7 @@
 set -u
 cd "$(dirname "$0")/../.." || exit 1
 ROOT=$(pwd)
-IS="$ROOT/scripts/init-specifics.cjs"
+IS="$ROOT/scripts/runtime/init-specifics.cjs"
 TREES="$ROOT/fixtures/specifics/init-trees"
 PASS=0; FAIL=0
 ok()  { PASS=$((PASS+1)); echo "ok: $1"; }
@@ -85,8 +85,8 @@ if cmp -s "$TMP/proposal" "$ROOT/fixtures/specifics/init-golden/proposal.txt"; t
 # and is not byte-identical to a file under templates/
 if node -e '
 const fs = require("fs"), path = require("path")
-const { STUBS } = require(process.argv[1] + "/scripts/init-specifics.cjs")
-const { checkContent } = require(process.argv[1] + "/scripts/agent-context.cjs")
+const { STUBS } = require(process.argv[1] + "/scripts/runtime/init-specifics.cjs")
+const { checkContent } = require(process.argv[1] + "/scripts/runtime/agent-context.cjs")
 const tpl = []
 const walk = (d) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, e.name); if (e.isDirectory()) walk(p); else tpl.push(fs.readFileSync(p, "utf8")) } }
 walk(path.join(process.argv[1], "templates"))

@@ -9,7 +9,7 @@ const path = require('path')
 const { stripComments } = require('./guards-scan.cjs')
 
 const WORKFLOW = 'workflows/deliver-pipeline.js'
-const ASSEMBLER_FILES = ['scripts/agent-context.cjs', 'scripts/lib/agent-context-text.cjs', 'scripts/lib/agent-context-lanes.cjs']
+const ASSEMBLER_FILES = ['scripts/runtime/agent-context.cjs', 'scripts/lib/agent-context-text.cjs', 'scripts/lib/agent-context-lanes.cjs']
 const REFERENCE_PATH = 'docs/consumer-reference.md'
 
 // Family keys of the baseline and of the extraction, with the `## ` heading of each family in the reference.
@@ -62,7 +62,7 @@ function extractConfig(root) {
   const names = new Set()
   const workflow = stripComments(readText(root, WORKFLOW))
   for (const match of workflow.matchAll(/(?<![.\w])config\??\.([A-Za-z]+)/g)) names.add(match[1])
-  const assembler = stripComments(readText(root, 'scripts/agent-context.cjs'))
+  const assembler = stripComments(readText(root, 'scripts/runtime/agent-context.cjs'))
   const start = assembler.indexOf('function readConfig(')
   if (start >= 0) {
     const body = assembler.slice(start, assembler.indexOf('\n}\n', start))

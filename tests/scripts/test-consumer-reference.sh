@@ -18,7 +18,7 @@ fresh() {
   local scratch="$TMP/$1"
   mkdir -p "$scratch/workflows" "$scratch/scripts/lib" "$scratch/hooks" "$scratch/docs"
   cp "$ROOT/workflows/deliver-pipeline.js" "$scratch/workflows/"
-  cp "$ROOT/scripts/agent-context.cjs" "$scratch/scripts/"
+  cp "$ROOT/scripts/runtime/agent-context.cjs" "$scratch/scripts/"
   cp "$ROOT/scripts/lib/agent-context-text.cjs" "$ROOT/scripts/lib/agent-context-lanes.cjs" "$scratch/scripts/lib/"
   cp "$ROOT"/hooks/*.sh "$scratch/hooks/"
   cp "$ROOT/docs/consumer-reference.md" "$scratch/docs/"

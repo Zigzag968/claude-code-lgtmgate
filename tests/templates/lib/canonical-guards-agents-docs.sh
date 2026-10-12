@@ -9,11 +9,11 @@
 # filter treated that partial page as exhaustive. Fixed by bounding the query with the GitHub
 # search `created:>=<windowStart>` qualifier, so the result set is scoped to the review round's
 # (minutes-to-hours-wide) window instead of the whole open-issue backlog. E2.5 (#84) moved the scan
-# out of the workflow into templates/pr-state.sh (the workflow no longer builds any `gh` command for
+# out of the workflow into scripts/runtime/pr-state.sh (the workflow no longer builds any `gh` command for
 # it); this is a STATIC guard (grep against that script, not a live `gh` call) and stays the durable
 # regression guard. The runtime belt-and-suspenders assertion is the script's own exact-limit check
 # (`openIssuesTruncated`, pr-state.sh), replayed in tests/templates/test-probe-run.sh.
-RWS_FILE="${RWS_FILE:-templates/pr-state.sh}"
+RWS_FILE="${RWS_FILE:-scripts/runtime/pr-state.sh}"
 if [ -f "$RWS_FILE" ]; then
   SCAN_LINE="$(grep -n 'gh issue list --state open' "$RWS_FILE" | head -1)"
   if [ -z "$SCAN_LINE" ]; then
@@ -35,9 +35,9 @@ fi
 # #99: the git-dir write probe ran `touch ... && rm -f ...`; a repo whose settings deny
 # `Bash(rm *)` refused the whole command and the haiku agent answered with prose, escalating
 # the run. The probe must use `unlink`, never an `rm` token. Since #83 the probe lives in
-# templates/preflight.sh (run by probe-run.cjs), no longer in a prompt of the workflow.
+# scripts/runtime/preflight.sh (run by probe-run.cjs), no longer in a prompt of the workflow.
 # Static grep on the probe lines.
-GDP_FILE="${GDP_FILE:-templates/preflight.sh}"
+GDP_FILE="${GDP_FILE:-scripts/runtime/preflight.sh}"
 if [ -f "$GDP_FILE" ]; then
   GDP_LINES="$(grep -n 'pipeline-write-probe' -A1 "$GDP_FILE")"
   if [ -z "$GDP_LINES" ]; then

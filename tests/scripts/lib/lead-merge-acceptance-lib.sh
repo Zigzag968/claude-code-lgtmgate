@@ -2,7 +2,7 @@
 # lib-level cases of the acceptance check (#202), before any lead-merge run (sourced by tests/scripts/test-lead-merge.sh, never executed).
 BASE="$(mktemp -d "${TMPDIR:-/tmp}/lead-merge-test.XXXXXX")"
 # --- 0. lib-level cases (#202), before any lead-merge run ---------------------------------------------------------
-# The gate reads fences and markers byte-wise (LC_ALL=C awk) while the engine (templates/pr-body-splice.cjs) trims Unicode
+# The gate reads fences and markers byte-wise (LC_ALL=C awk) while the engine (scripts/runtime/pr-body-splice.cjs) trims Unicode
 # whitespace. It does not copy every Unicode subtlety: it REFUSES (rc 3, "ambiguous acceptance block", no body content quoted) any
 # body where a line of interest is ambiguous, and it is never more permissive than the engine. ACC_LIB_UNDER_TEST runs these
 # cases against another copy of the lib (mutation checks), ACC_LIB_ONLY=1 stops after this section.
@@ -178,7 +178,7 @@ JS
   cat > "$BASE/cmp.cjs" <<'JS'
 const fs = require("fs")
 const [root, dir, rcs] = process.argv.slice(2)
-const src = fs.readFileSync(root + "/templates/pr-body-splice.cjs", "utf8")
+const src = fs.readFileSync(root + "/scripts/runtime/pr-body-splice.cjs", "utf8")
 const m = src.split("// --- prBodySplice:start ---")[1].split("\n").slice(1).join("\n").split("// --- prBodySplice:end ---")[0]
 const { acceptanceSpan, fenceAfter } = new Function(m + ";return { acceptanceSpan, fenceAfter }")()
 const openRe = /^[ \t\n\v\f\r]*-[ \t\n\v\f\r]*\[ \]/

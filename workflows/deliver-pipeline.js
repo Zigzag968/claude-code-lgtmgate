@@ -37,9 +37,9 @@ export const meta = {
 // | `resumeReason` | optional, null by default. Set by the Lead on an entryStage:'dev' relaunch that follows a status:'escalate', reason:'mergeable-conflicting' result (#170), to thread WHY the resume happens into Nick's prompt (#183) — otherwise Nick reasons only from branch/plan content. Allow-list deliberately narrow (one value today): a branch-mismatch or plan-stale escalate doesn't resolve by relaunching Nick with this same message. |
 // | `dryRun` | if true, validate args and return immediately (no agents spawned) |
 // | `probeOnly` | optional { name, cmd, label, round }: run ONE probe() (probe-run gate, #80) and return status 'dry-run-ok' reason 'probe-only'. Lets a run-offline fixture reach probe() while no engine call site is migrated yet. Not a simulate key. |
-// | `pluginRoot` | optional absolute path of the plugin root (#82). The Lead passes ${CLAUDE_PLUGIN_ROOT} for the plugin component and omits it for a local copy; the probe layer resolves templates/probe-run.cjs from it (the workflow has no filesystem or env), and the provisioning script is read from the same root (templates/provision-worktree.sh, #429). config.probeRunPath wins; fallback <worktreePath>/templates/probe-run.cjs. When the templates come from pluginRoot (no config.probeRunPath), the manifest version of the root must equal this engine's BUILD.version, else the run escalates before provisioning (`plugin-version-skew` / `plugin-version-unreadable`, #195). |
+// | `pluginRoot` | optional absolute path of the plugin root (#82). The Lead passes ${CLAUDE_PLUGIN_ROOT} for the plugin component and omits it for a local copy; the probe layer resolves scripts/runtime/probe-run.cjs from it (the workflow has no filesystem or env), and the provisioning script is read from the same root (templates/provision-worktree.sh, #429). config.probeRunPath wins; fallback <worktreePath>/scripts/runtime/probe-run.cjs. When the templates come from pluginRoot (no config.probeRunPath), the manifest version of the root must equal this engine's BUILD.version, else the run escalates before provisioning (`plugin-version-skew` / `plugin-version-unreadable`, #195). |
 // | `sessionRoot` | optional absolute path of the Lead session's project root (the workflow has no env). When given and not simulate, its git common dir must equal worktreePath's, else the run escalates `session-root-mismatch` before provisioning (#177): agents get the launching session's instruction files. Omitted: the check is skipped with a log line. |
-// | `projectSpecifics` | optional object: the verbatim stdout of `scripts/agent-context.cjs` (skills/deliver/SKILL.md §3bis). Required when `config.projectSpecifics` or `config.agentContext` is set. Absent, malformed or a digest mismatch throws before any agent call; nothing is injected on a refusal. The per-role text is inserted in every prompt of that role; the fingerprint is returned as `specifics` and traced (#265). Lanes (#271): a role block may carry `lanes:[{name, persona?, paths?, hint?, files, text, digest, bytes}]`; each lane digest is verified too; only the lanes chosen for the run are injected (see `lanes`). |
+// | `projectSpecifics` | optional object: the verbatim stdout of `scripts/runtime/agent-context.cjs` (skills/deliver/SKILL.md §3bis). Required when `config.projectSpecifics` or `config.agentContext` is set. Absent, malformed or a digest mismatch throws before any agent call; nothing is injected on a refusal. The per-role text is inserted in every prompt of that role; the fingerprint is returned as `specifics` and traced (#265). Lanes (#271): a role block may carry `lanes:[{name, persona?, paths?, hint?, files, text, digest, bytes}]`; each lane digest is verified too; only the lanes chosen for the run are injected (see `lanes`). |
 // | `lanes` | optional array of lane names: the `lanes` of the previous result, carried by the Lead on every `entryStage` dev\|review relaunch (else the `lanes:` line of `planText` is read). A name that is no lane of `projectSpecifics` throws. A plan run asks Theo for the lanes (only when lane files exist), validates them, adds the lanes whose `paths` hit Sam's `targetFiles` for Nick and Morgan, appends `lanes: a,b` to the plan it returns, and reports `lanes` (and `lanesUnresolved:true` when Theo gave none) on `finish()`. |
 // | `models` | optional per-role model override: { scout?, planAudit?, morgan? }. Resolution order per role is `models.<role> ?? config.models?.<role> ?? 'sonnet'` (same `??` idiom as planAudit above — arg wins per-run over the project default). Default is 'sonnet' for all three roles (lgtmgate#161: the plan-phase loop could spawn up to 4 opus scout attempts per issue with planAudit on, the dominant cost driver); pass e.g. `models: { scout: 'opus' }` per-run when an issue is dense/dangerous enough to warrant it — opus stays fully reachable, just no longer the default. Not a general cost-control knob: Theo and Nick are NOT overridable by this key, always 'sonnet' (out of scope per the issue — their calls are unconditional literals). |
 // | `maxPlanAttempts` | bound on the plan-verification gate loop between Sam and Nick (default 2; mirrors advisory.js's `maxAttempts = 2`). On the maxPlanAttempts-th NOT_CONFORMING verdict, escalate instead of looping again. |
@@ -358,7 +358,7 @@ if (specificsLine) {
   trace.push(specificsLine)
   for (const o of (specificsOversize || [])) {
     trace.push(`specifics-oversize:${o.role}`)
-    log(`specifics: ${o.role} text is ${o.bytes} bytes, above the recommended ${o.recommended} — the owner decides; accept with scripts/agent-context.cjs --accept-oversize ${o.role}`)
+    log(`specifics: ${o.role} text is ${o.bytes} bytes, above the recommended ${o.recommended} — the owner decides; accept with scripts/runtime/agent-context.cjs --accept-oversize ${o.role}`)
   }
 }
 if (auditBudgetOverridden) {
@@ -566,7 +566,7 @@ const reviewerWindowCandidates = (issues, windowStart, windowEnd) =>
   (issues || []).filter(item => item && item.createdAt && item.createdAt >= windowStart && item.createdAt <= windowEnd)
 
 // Decision log — durable counterpart to the comment-collapse pass above. Pure body composer.
-// --- prBodySplice:start --- (pure & self-contained: templates/pr-body-splice.cjs carries a byte-identical copy, parity-tested)
+// --- prBodySplice:start --- (pure & self-contained: scripts/runtime/pr-body-splice.cjs carries a byte-identical copy, parity-tested)
 const DECISION_LOG_START = '<!-- decision-log:start -->'
 const DECISION_LOG_END = '<!-- decision-log:end -->'
 // Line-anchored (column 0 only) so an INDENTED/fenced illustrative copy of the markers — e.g.
@@ -1472,7 +1472,7 @@ function specificsProblem(switchOn, ps, sha) {
   return null
 }
 
-// `In this lane you act as <persona>[, <hint>].`, '' without a persona (same text as scripts/agent-context.cjs laneSentence).
+// `In this lane you act as <persona>[, <hint>].`, '' without a persona (same text as scripts/runtime/agent-context.cjs laneSentence).
 function laneSentence(persona, hint) {
   if (typeof persona !== 'string' || persona === '') return ''
   return typeof hint === 'string' && hint !== '' ? `In this lane you act as ${persona}, ${hint}.` : `In this lane you act as ${persona}.`
@@ -2409,12 +2409,12 @@ async function updateStatus(name) {
 
 // ---------------------------------------------------------------------------
 // Probe-run gate (#80, E2.2; provision migrated by #82) — ONE gate to the world:
-// templates/probe-run.cjs EXECUTES the command and keeps the raw output on disk; the probe agent
+// scripts/runtime/probe-run.cjs EXECUTES the command and keeps the raw output on disk; the probe agent
 // (haiku, Bash only) runs TWO commands and copies their single lines: the `PROBE ` line (run) and
 // the `VERIFY ` line (probe-run.cjs --verify: the stored record's recomputed line must equal an entry
 // of hooks/PostToolUse-probe-attest.sh's attestation). The engine has no filesystem, so verification
 // runs in the script and the engine only compares the verified line with the copied one.
-// PROBES lists the call-site probe names (value = templates/probe-run.cjs:PARSERS key); the flow suite
+// PROBES lists the call-site probe names (value = scripts/runtime/probe-run.cjs:PARSERS key); the flow suite
 // asserts every probe('x') name is registered. PROBES_VERSION is declared near `dryRun`.
 // ---------------------------------------------------------------------------
 const PROBES = {
@@ -2579,10 +2579,10 @@ function base64Utf8(string_) {
 // --- probeCommands:start --- (pure & self-contained — keep extractable by the consuming project's tests)
 // The two commands the probe agent runs, in order (#82). Both start with `cd '<worktreePath>' && node '<script>'`
 // (the attest hook accepts that prefix). The script is config.probeRunPath, else the plugin root's
-// templates/probe-run.cjs (arg pluginRoot), else the worktree's own copy.
+// scripts/runtime/probe-run.cjs (arg pluginRoot), else the worktree's own copy.
 function probeCommands({ wtPath: worktreeDirectory, issue: issueNumber, pluginRoot: pluginRootPath, probeRunPath, name, cmd, label, round, noReuse, expectCmd, cmdB64 }) {
   const q = (x) => `'${String(x).split("'").join("'\\''")}'`
-  const script = probeRunPath ?? (pluginRootPath ? pluginRootPath + '/templates/probe-run.cjs' : worktreeDirectory + '/templates/probe-run.cjs')
+  const script = probeRunPath ?? (pluginRootPath ? pluginRootPath + '/scripts/runtime/probe-run.cjs' : worktreeDirectory + '/scripts/runtime/probe-run.cjs')
   const outDirectory = `${worktreeDirectory}/.pipeline/probes/issue-${issueNumber}`
   const head = `cd ${q(worktreeDirectory)} && node ${q(script)} `
   const common = `--label ${label} --round ${round} --out ${q(outDirectory)} --parser ${name}`
@@ -2754,11 +2754,11 @@ async function probe(name, command, { label, round = 0, onFail, noReuse = false,
   return parsed
 }
 
-// preflightProbe (#83): the pre-Dev / branch-guard reads as ONE probe (templates/preflight.sh, parser
+// preflightProbe (#83): the pre-Dev / branch-guard reads as ONE probe (scripts/runtime/preflight.sh, parser
 // `preflight`). mode 'dev' | 'branch'; returns the parsed object, or null on any failure (fail-open,
 // like the reads it replaces). The script sits next to probe-run.cjs.
 const probeScriptPath = (file) => {
-  const runPath = config.probeRunPath ?? (pluginRoot ? pluginRoot + '/templates/probe-run.cjs' : worktreePath + '/templates/probe-run.cjs')
+  const runPath = config.probeRunPath ?? (pluginRoot ? pluginRoot + '/scripts/runtime/probe-run.cjs' : worktreePath + '/scripts/runtime/probe-run.cjs')
   return runPath.slice(0, runPath.lastIndexOf('/') + 1) + file
 }
 
@@ -2778,7 +2778,7 @@ async function preflightProbe(modeName, label, argv) {
   }
 }
 
-// prWrite (E2.6a, #85): every PR/issue/project WRITE of the review phase as ONE probe (templates/pr-write.sh,
+// prWrite (E2.6a, #85): every PR/issue/project WRITE of the review phase as ONE probe (scripts/runtime/pr-write.sh,
 // parser `pr-write`). The script reads before it writes and never writes after a failed read; a write is
 // never reused from a stored record (noReuse). Returns the parsed {op, result, reason, bytes} or null on any
 // failure (fail-open, like the best-effort sites it replaces: a failed write logs and the run continues).
@@ -3604,7 +3604,7 @@ let subIssuesUncovered = []    // lgtmgate#193 — post-gate list, exposed on de
 // Extracted (lgtmgate#45) so the SAME check runs both on a fresh Dev-phase dispatch AND on an
 // `entryStage:'review'` resume, which otherwise skips the entire Dev block (and therefore this
 // guard) since `after('dev', entryStage)` is false for that entryStage.
-// #239: the cause of a failed PR read as the branch probe names it (templates/gh-read-class.sh), a closed set; anything else is no
+// #239: the cause of a failed PR read as the branch probe names it (scripts/runtime/gh-read-class.sh), a closed set; anything else is no
 // named failure (a missing / garbled answer stays fail-open, as before).
 const PR_READ_CLASSES = ['tls', 'auth', 'rate-limit', 'not-found', 'other']
 const namedReadFailure = (x) => (typeof x === 'string' && PR_READ_CLASSES.includes(x) ? x : null)
@@ -3884,7 +3884,7 @@ if (after('review', entryStage)) {
   // `createdAt`, so it is never a candidate), and the action on a candidate is a single
   // non-destructive comment — no close, no copied title/body — because unattributed issues must
   // never be closed automatically.
-  // PR state reads (E2.5, #84): ONE probe (templates/pr-state.sh, parser `pr-state`, run with noReuse:
+  // PR state reads (E2.5, #84): ONE probe (scripts/runtime/pr-state.sh, parser `pr-state`, run with noReuse:
   // live state) answers every review-phase read of the PR: the wall clock, the head sha and body
   // digest, mergeability, the commit count and last commit date, the un-minimized review comments and
   // (with `since`) the open issues created in the window. The harness bans argless
@@ -3938,7 +3938,7 @@ if (after('review', entryStage)) {
         : (morganIssuesFx?.[round] ?? [])
     } else {
       // lgtmgate#18: the scan is bounded server-side by the `created:>=` qualifier and by the
-      // script's safety limit (templates/pr-state.sh); a result of exactly that limit comes back as
+      // script's safety limit (scripts/runtime/pr-state.sh); a result of exactly that limit comes back as
       // openIssues:null + openIssuesTruncated:true, and a partial list is never treated as exhaustive.
       // A failed probe, a missing window start or a truncated scan skip the pass (fail-open).
       if (!windowStart || !endState || !Array.isArray(endState.openIssues)) {
@@ -4545,7 +4545,7 @@ if (after('review', entryStage)) {
       return
     }
     // issue #87 — the PR body content (routinely 5-30 KB) must NEVER transit through the model's own
-    // chat reply. #85: read, splice, write, re-read, guard and restore run in templates/pr-write.sh
+    // chat reply. #85: read, splice, write, re-read, guard and restore run in scripts/runtime/pr-write.sh
     // (op body-splice); the agent only copies a PROBE line, and the block text is the only content that
     // passes through the probe command.
     const result = await prWrite('body-splice', 'decision-log', r, ['--pr', pr, '--mode', 'decision-log', '--text', composeDecisionLogBlock(decisionLog)])
@@ -4591,7 +4591,7 @@ if (after('review', entryStage)) {
       if (out !== null) prBodyPreview = out
       return out !== null
     }
-    // #85: the chain (read, splice, write, re-read, guard, restore) lives in templates/pr-write.sh; the
+    // #85: the chain (read, splice, write, re-read, guard, restore) lives in scripts/runtime/pr-write.sh; the
     // checklist never transits a model reply, the agent only copies a PROBE line. Never appends: absent
     // markers come back as failed/no-markers.
     const result = await prWrite('body-splice', 'acceptance-sync', r, ['--pr', pr, '--mode', 'acceptance', '--text', list])

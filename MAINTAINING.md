@@ -404,6 +404,6 @@ then `claude plugin install lgtmgate@zigzag-plugins`.
 
 - Before every release candidate, the canary repository is re-initialised from scratch: a fresh clone, no copy of the previous config, `/lgtmgate:init` run in it (commands: `docs/canary-kit.md`).
 - It is then given one path-scoped rule file through a lane (`sam.<lane>.md` with `lane:` and `paths:`) and one listed context file.
-- First proof of the candidate: `scripts/template-drift.cjs`, `scripts/config-check.cjs` and `scripts/agent-context.cjs` are run against it; their outputs are posted before the canary run. The canary run itself follows.
+- First proof of the candidate: `scripts/template-drift.cjs`, `scripts/config-check.cjs` and `scripts/runtime/agent-context.cjs` are run against it; their outputs are posted before the canary run. The canary run itself follows.
 - Cost, stated: one more canary run per candidate. It is the price of the criterion: a canary that passes as `ready` with a hand-kept config says nothing about a consumer that installs from scratch or upgrades.
 - Second consumer: the criterion also needs a complete delivery by two consumers of different stacks, without a gesture from the Lead of this repository.

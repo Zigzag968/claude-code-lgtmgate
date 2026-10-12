@@ -2,7 +2,7 @@
 # probe-run.cjs parsers, e2e, verify mode and preflight.sh cases (a) to (i) (sourced by tests/templates/test-probe-run.sh, never executed).
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../templates" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-PR="$SCRIPT_DIR/probe-run.cjs"
+PR="$ROOT/scripts/runtime/probe-run.cjs"
 HI_SHA=98ea6e4f216f2fb4b69fff9b3a44842c38686ca685f3f55dc48c5d3fb1107be4
 
 # (a) every fixtures/probes/<parser>--<case>.raw through PARSERS deep-equals its .expected
@@ -178,7 +178,7 @@ ok=0; [ "$SOUT" = "VERIFY fail reason=sha-mismatch" ] && ok=1
 check "verify: the latest entry for the call must match (older matching entry is not enough)" "$ok"
 
 # (i) preflight.sh end to end (#83): stub gh first on PATH, temp git repo with a local bare origin. No network.
-PF="$SCRIPT_DIR/preflight.sh"
+PF="$ROOT/scripts/runtime/preflight.sh"
 if command -v jq >/dev/null 2>&1 && command -v git >/dev/null 2>&1; then
   PFD="$WORK/pf"; mkdir -p "$PFD/bin" "$PFD/wt/.claude"
   cat > "$PFD/bin/gh" <<'GHEOF'

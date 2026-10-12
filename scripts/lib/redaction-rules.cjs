@@ -1,7 +1,7 @@
 'use strict'
 
 // The secret-shaped patterns shared by every screen that must never let a credential through:
-// scripts/redact-fixture.cjs (rewrites or refuses) and scripts/agent-context.cjs (refuses). One table,
+// scripts/redact-fixture.cjs (rewrites or refuses) and scripts/runtime/agent-context.cjs (refuses). One table,
 // so the two screens cannot drift. Regexes carry `/g`: use them with `replace`, never with `.test`.
 
 // GitHub tokens (classic, fine-grained, app), API keys (base64url: `_` included)

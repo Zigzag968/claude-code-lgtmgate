@@ -55,7 +55,7 @@ function redactEmails(text, to) {
 }
 
 const RULES = [
-  // GitHub tokens, API keys (shared with scripts/agent-context.cjs: scripts/lib/redaction-rules.cjs)
+  // GitHub tokens, API keys (shared with scripts/runtime/agent-context.cjs: scripts/lib/redaction-rules.cjs)
   ...SECRET_REWRITES,
   // temp directories: the whole path goes (uid, project directory and run id are all session-private);
   // `/var/folders` may carry the `/private` of its real path

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Stand-in for templates/pr-write.sh in the pr-write-b64 eval (no gh, no network): reads the same flags as the
+# Stand-in for scripts/runtime/pr-write.sh in the pr-write-b64 eval (no gh, no network): reads the same flags as the
 # real body-splice tick (--text-b64 <base64 of the block>), decodes the token and prints the one JSON line the
 # pr-write parser reads, with the exact byte count of the decoded block. A copy of the token that lost or
 # changed a character decodes to another size, and the command digest gate refuses it before this runs.

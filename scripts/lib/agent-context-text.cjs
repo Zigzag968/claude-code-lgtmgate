@@ -1,6 +1,6 @@
 'use strict'
 
-// Text rules of scripts/agent-context.cjs, moved out unchanged to keep that file under the line limit: normalisation,
+// Text rules of scripts/runtime/agent-context.cjs, moved out unchanged to keep that file under the line limit: normalisation,
 // frontmatter parsing, the content screen and the digest. Pure functions, no git, no file system.
 
 const crypto = require('crypto')
@@ -121,7 +121,7 @@ const MARKER_RE = /<!--\s*(acceptance:|ac:|pipeline-|decision-log)/i
 const INVISIBLE_RE = /[\u00AD\u180E\u200B-\u200F\u2028-\u202E\u2060-\u206F\uFEFF]|[\u{E0000}-\u{E007F}]/u
 const CONTROL_RE = /[\u0000-\u0008\u000B-\u001F\u007F-\u009F]/
 
-// The fence a line leaves open after `fence` ('' for none): same rule as fenceAfter in templates/pr-body-splice.cjs
+// The fence a line leaves open after `fence` ('' for none): same rule as fenceAfter in scripts/runtime/pr-body-splice.cjs
 // (3+ backticks or tildes, up to 3 spaces of indent, closed by the same character at least as long, alone on its line).
 function fenceAfter(line, fence) {
   const t = line.trimStart()

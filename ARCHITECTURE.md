@@ -1,5 +1,5 @@
 ## Where the engine is going (6-12 months)
-- One gate to the world: every read or write outside the engine runs through `templates/probe-run.cjs`, bar the Lead copy of specifics, checked by digest.
+- One gate to the world: every read or write outside the engine runs through `scripts/runtime/probe-run.cjs`, bar the Lead copy of specifics, checked by digest.
 - One state registry: every run outcome is a typed status, and the Lead's table and the hooks are checked against it.
 - The checklist is data: acceptance items carry ids, are rendered and ticked by the engine, proven per id.
 - Repo-neutral: the engine knows no stack, path or rule of its own; each repo's config and docs say what matters there.

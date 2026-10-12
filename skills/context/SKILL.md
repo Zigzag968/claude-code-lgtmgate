@@ -19,9 +19,9 @@ Work from the project root (`${CLAUDE_PROJECT_DIR}`). The plugin lives under `${
 `$ARGUMENTS` is optional: a role (`Mia`, `Sam`, `Nick`, `Morgan`, `Theo`, `shared`), a lane persona (the one lane file of that persona), or `<Role> --lane <name>` (the role's base plus that lane, persona sentence first).
 
 - No argument:
-  `node ${CLAUDE_PLUGIN_ROOT}/scripts/agent-context.cjs --root "${CLAUDE_PROJECT_DIR}" --ref origin/<baseBranch> --print`
+  `node ${CLAUDE_PLUGIN_ROOT}/scripts/runtime/agent-context.cjs --root "${CLAUDE_PROJECT_DIR}" --ref origin/<baseBranch> --print`
 - With a role:
-  `node ${CLAUDE_PLUGIN_ROOT}/scripts/agent-context.cjs --root "${CLAUDE_PROJECT_DIR}" --ref origin/<baseBranch> --print <role>`
+  `node ${CLAUDE_PLUGIN_ROOT}/scripts/runtime/agent-context.cjs --root "${CLAUDE_PROJECT_DIR}" --ref origin/<baseBranch> --print <role>`
 - With a persona or a lane: the same command with `--print <persona>` or `--print <Role> --lane <name>`.
 
 ## 3. Show the result
