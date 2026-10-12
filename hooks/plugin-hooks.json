@@ -28,6 +28,12 @@
             "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/deny-destructive-git.sh\"",
             "timeout": 10,
             "description": "Deny destructive git ops (clean, reset --hard, checkout -- discard, push --force) for all agent sessions"
+          },
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/pii-guard.sh\"",
+            "timeout": 10,
+            "description": "Refuse a GitHub write or commit whose text matches a pattern of the repository's .pii-patterns file (no file, no effect)"
           }
         ]
       }

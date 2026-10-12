@@ -293,6 +293,8 @@ for i, raw in enumerate(rows):
 sys.stdout.write("\n".join(out))
 PY
   if ! cmp -s "$tick_tmp/body.txt" "$tick_tmp/newbody.txt"; then
+    pii_out="$(bash "$SCRIPT_DIR/runtime/pii-guard.sh" check < "$tick_tmp/newbody.txt" 2>/dev/null)" \
+      || die "tick-from-review: pii-guard refused (${pii_out#pii-refused:}); nothing written"
     gh api -X PATCH "repos/$REPO/pulls/$PR" -F "body=@$tick_tmp/newbody.txt" >/dev/null || die "cannot PATCH the PR #$PR body"
   fi
   body="$(gh pr view "$PR" -R "$REPO" --json body -q .body)" || die "cannot re-read PR #$PR body"

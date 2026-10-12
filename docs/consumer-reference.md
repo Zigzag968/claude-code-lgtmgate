@@ -176,6 +176,7 @@ Reasons the pattern does not reach. Probe failures reach the result as `probeRea
 |---|---|---|---|
 | `block-merge-unchecked.sh: BLOCKED by pr-acceptance gate` | `hooks/block-merge-unchecked.sh` | A `gh pr merge` is refused: the PR acceptance checklist still has unchecked items | Prove and tick every box of the acceptance block, then merge again. |
 | `block-merge-unchecked.sh: BLOCKED by review-stale gate` | `hooks/block-merge-unchecked.sh` | A `gh pr merge` is refused: the PR has no review marker carrying a head sha, or the head moved since the last review | Relaunch the review on the current head (`Workflow` with `entryStage:"review"` and `prNumber`), then merge again. |
+| `pii-guard.sh: BLOCKED by pii-guard gate` | `hooks/pii-guard.sh` | A `gh pr|issue` write, a `gh api` write or a `git commit` is refused: its text (the command plus the files it names) matches a pattern of the repository's `.pii-patterns`; the message names the pattern, never the matched text | Rewrite the text without the data; if the pattern is `line-N-invalid-pattern`, fix that line of `.pii-patterns`. Limits: the hook sees the command text and the files it names, not a message built inside another script; a pattern matches one line at a time; pushed files and diffs are out of scope. |
 
 ## Template drift lines
 
@@ -219,4 +220,6 @@ Printed by `scripts/config-check.cjs`; each `warn:` line states its effect and i
 | name | raised at | what the user sees | remedy |
 |---|---|---|---|
 | `jq` | `hooks/block-merge-unchecked.sh` and `hooks/deny-destructive-git.sh` | `jq is required` and the hook fails closed: a merge or a git command that could not be checked is refused | Install `jq` and make sure it is on `PATH`. |
+| `.pii-patterns` | `scripts/runtime/pii-guard.sh` | Optional file in the repository root (the main checkout, git-ignored): one extended regular expression per line, `label :: regex` to name it, `#` comments; absent means no effect, the plugin ships none | Create it to refuse GitHub writes and commits that carry personal data; an invalid regex refuses every write until fixed. |
+| `pii-refused:<name>` | `scripts/runtime/pr-write.sh` and `scripts/lead-merge.sh` | A comment or a PR body write (and a tick, `verified-untickable` reason) is refused, nothing written: the text matches the pattern `<name>` of `.pii-patterns` | Rewrite the text without the data, then relaunch the review. |
 | `gh` | the engine's GitHub reads and writes | Runs and merges fail on any GitHub call when `gh` is missing or not signed in | Install the GitHub CLI and run `gh auth login` (see the prerequisites in the README). |
