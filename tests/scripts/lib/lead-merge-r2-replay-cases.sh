@@ -57,6 +57,12 @@ rp_case rp-paths "$RP_BROKEN" 0 "$RP_WF" "$(rp_cfg fixtures/incidents '["agents/
 rp_merges "paths moved on origin/main to agents/: a workflows/ change is out of scope"
 rp_case rp-paths-in "$RP_BROKEN" 0 "$RP_WF" "$(rp_cfg fixtures/incidents '["workflows/","agents/"]')" fixtures/elsewhere
 rp_refused "paths hold several entries: workflows/ stays in scope, no fixture, refused" "fixtures/incidents/30-"
+# (g) a function-level fixture (blocks + cases): red on a base whose pure function is mutated, green on the branch
+RP_FNBASE="$BASE/rp-fnbase.js"; sed 's/if (isCandidate(s)) return s/return null/' "$RP_WF" > "$RP_FNBASE"
+rp_case rp-fn-ok "$RP_FNBASE" 1 "$RP_WF" "$RP_CFG" fixtures/incidents "$ROOT/fixtures/smoke/fn-parse-head-ref.json"
+rp_merges "function-level: fixture green on the branch and red on base: merges"
+rp_case rp-fn-both "$RP_WF" 1 "$RP_SAME" "$RP_CFG" fixtures/incidents "$ROOT/fixtures/smoke/fn-parse-head-ref.json"
+rp_refused "function-level: green on both base and branch: refused" "not red on base"
 # (f) engineRepo with an invalid r2Scope fails closed (shape table shared by value with T200a in templates/test-deliver-pipeline.js)
 rp_invalid() { # <label> <config-json>
   r2_prep "rp-bad-$(printf '%s' "$1" | tr -c 'a-zA-Z0-9' '_')" 'Refs #30' '' 'open type:bug'; r2_main_cfg "$D" "$2"; r2_branch "$D" 30-x.json; r2_go
