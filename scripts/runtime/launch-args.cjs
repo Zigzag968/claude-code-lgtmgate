@@ -22,7 +22,7 @@
 const fs = require('fs')
 const nodePath = require('path')
 const crypto = require('crypto')
-const { assemble } = require('./agent-context.cjs')
+const { assemble, localConfigFile } = require('./agent-context.cjs')
 const { fingerprint12 } = require('../lib/agent-context-text.cjs')
 
 const DEFAULT_BRIEF = 'implement the issue'
@@ -65,7 +65,7 @@ function build(options) {
   if (!['full', 'ref'].includes(mode)) throw new UsageError(`unknown mode: ${mode}`)
   const configFile = nodePath.join(root, '.claude', 'pipeline.config.json')
   const config = readJson(configFile, false)
-  const localFile = nodePath.join(root, '.claude', 'pipeline.config.local.json')
+  const localFile = localConfigFile(root)
   const configLocal = readJson(localFile, true)
   const arguments_ = {
     issue: options.issue === undefined ? 1 : options.issue,

@@ -21,7 +21,7 @@
 // and never a role name; the metadata of a (role, lane) pair is read from its first file.
 //
 // Caps: role text recommended 6144 B (warning, exit 0; `--accept-oversize <Role>` records the accepted
-// size in .claude/pipeline.config.local.json, kept out of git by the clone's local exclude file; asked
+// size in .claude/pipeline.config.local.json of the clone's main tree (shared by its worktrees), kept out of git by the clone's local exclude file; asked
 // again above +25 %), shared 2048 B, per-agent total 8192 B (informational:true, never asks), hard ceiling 65536 B on the raw blobs (exit 4), <= 8 files
 // per source. Digest = sha256(canonical JSON {refSha, role, text, lanes}) (same sha256 as the workflow).
 //
@@ -332,6 +332,7 @@ function buildRoleBlocks(context) {
     if (bytes > CAP_ROLE) {
       const a = typeof accepted[role] === 'number' ? accepted[role] : null
       if (a === null || bytes > a * 1.25) warnings.push({ kind: 'oversize', role, bytes, recommended: CAP_ROLE, accepted: a, ask: true })
+      else warnings.push({ kind: 'oversize-accepted', role, bytes, recommended: CAP_ROLE, accepted: a, ask: false })
     }
   }
   return { roles, maxRole }
@@ -485,6 +486,15 @@ function renderPrint(payload, which, laneName) {
   return out.join('\n') + '\n'
 }
 
+function mainTreeRoot(root) { // the clone's main tree (shared by its worktrees); the root when git cannot say
+  try {
+    const common = git(root, ['rev-parse', '--path-format=absolute', '--git-common-dir']).toString('utf8').trim()
+    if (nodePath.basename(common) === '.git') return nodePath.dirname(common)
+  } catch (error) { /* bare or not a repository: fall back to the root */ }
+  return root
+}
+const localConfigFile = (root) => nodePath.join(mainTreeRoot(root), '.claude', 'pipeline.config.local.json')
+
 // Keep the local file out of git through the clone's local exclude file (untracked, shared by every
 // linked worktree): no tracked file changes and the consumer worktree stays clean.
 function keepOutOfGit(root, localFile) {
@@ -523,7 +533,7 @@ function acceptOversize(payload, role, localFile, root) {
   fs.writeFileSync(temporary, JSON.stringify(object, null, 2) + '\n')
   fs.renameSync(temporary, localFile)
   let ignored = null
-  try { ignored = keepOutOfGit(root, localFile) } catch (error) { process.stderr.write(`agent-context: note: ${localFile} could not be kept out of git (${error.message})\n`) }
+  try { ignored = keepOutOfGit([mainTreeRoot(root), root].find((t) => !nodePath.relative(nodePath.resolve(t), nodePath.resolve(localFile)).startsWith('..')) || root, localFile) } catch (error) { process.stderr.write(`agent-context: note: ${localFile} could not be kept out of git (${error.message})\n`) }
   return { accepted: { [role]: b.bytes }, file: localFile, ignored }
 }
 
@@ -545,7 +555,7 @@ function parseArguments(argv) {
     else throw new Fail(2, [`unknown argument: ${a}`, 'usage: agent-context.cjs [--root <repo>] [--ref origin/<base> | --sha <hex>] [--local <file>] [--print [role|persona] [--lane <name>]] [--accept-oversize <Role>]'])
   }
   if (o.sha !== null && referenceGiven) throw new Fail(2, ['--sha and --ref are exclusive'])
-  if (!o.local) o.local = nodePath.join(o.root, '.claude', 'pipeline.config.local.json')
+  if (!o.local) o.local = localConfigFile(o.root)
   return o
 }
 
@@ -585,6 +595,6 @@ function main(argv) {
   }
 }
 
-module.exports = { canonicalJson, normalise, parseFrontmatter, checkContent, validatePath, assemble, digestOf, renderPrint, laneSentence }
+module.exports = { canonicalJson, normalise, parseFrontmatter, checkContent, validatePath, assemble, digestOf, renderPrint, laneSentence, localConfigFile }
 
 if (require.main === module) process.exitCode = main(process.argv.slice(2))
