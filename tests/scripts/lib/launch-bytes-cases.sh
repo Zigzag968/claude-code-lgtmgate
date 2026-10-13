@@ -3,8 +3,8 @@
 # The mutated builder lives only in a temp copy of scripts/ read through GUARDS_ROOT, never in the tracked tree.
 
 LB_RE='^LB launch-bytes stage=(plan|review) size=(4k|22k|60k) mode=full base=[0-9]+ branch=[0-9]+ ok$'
-LB_REF_RE='^LB launch-bytes stage=plan size=(4k|22k|60k) mode=ref budget=2048 branch=[0-9]+ ok$'
-LB_FLAT_RE='^LB launch-bytes flat spread=[0-9]+ ok$'
+LB_REF_RE='^LB launch-bytes stage=(plan|review) size=(4k|22k|60k) mode=ref budget=2048 branch=[0-9]+ ok$'
+LB_FLAT_RE='^LB launch-bytes flat( stage=review)? spread=[0-9]+ ok$'
 # run_lb <root>: sets RC and OUT
 run_lb() { OUT="$(GUARDS_ROOT="$1" GUARDS_ONLY=launch-bytes node "$REPO_ROOT/scripts/guards.cjs" 2>&1)"; RC=$?; }
 # mklb <dir>: a copy of scripts/ (what the check measures) under <dir>
@@ -18,7 +18,7 @@ lb_git() {
 }
 
 run_lb "$REPO_ROOT"
-if [ "$RC" -eq 0 ] && [ "$(echo "$OUT" | grep -cE "$LB_RE")" = "6" ] && [ "$(echo "$OUT" | grep -cE "$LB_REF_RE")" = "3" ] && [ "$(echo "$OUT" | grep -cE "$LB_FLAT_RE")" = "1" ] && [ "$(echo "$OUT" | wc -l | tr -d ' ')" = "10" ]; then ok "launch-bytes: the real tree prints six full lines, three ref lines and the flat line, all ok, and exits 0"; else ko "launch-bytes real (rc=$RC) $OUT"; fi
+if [ "$RC" -eq 0 ] && [ "$(echo "$OUT" | grep -cE "$LB_RE")" = "6" ] && [ "$(echo "$OUT" | grep -cE "$LB_REF_RE")" = "6" ] && [ "$(echo "$OUT" | grep -cE "$LB_FLAT_RE")" = "2" ] && [ "$(echo "$OUT" | wc -l | tr -d ' ')" = "14" ]; then ok "launch-bytes: the real tree prints six full lines, three plan and three review ref lines and the two flat lines, all ok, and exits 0"; else ko "launch-bytes real (rc=$RC) $OUT"; fi
 
 if [ "$(grep -c "'launch-bytes'" scripts/guards.cjs)" -ge 2 ]; then ok "launch-bytes: the check is in the default list and in CHECKS"; else ko "launch-bytes not registered in scripts/guards.cjs"; fi
 
@@ -60,6 +60,6 @@ mklb "$T/lb-ref"
 sed "s/arguments_.sessionRoot = options.sessionRoot === undefined ? root : options.sessionRoot/arguments_.sessionRoot = options.sessionRoot === undefined ? root : options.sessionRoot; if (mode === 'ref') arguments_.brief = 'x'.repeat(3000)/" scripts/runtime/launch-args.cjs > "$T/lb-ref/scripts/runtime/launch-args.cjs"
 if cmp -s scripts/runtime/launch-args.cjs "$T/lb-ref/scripts/runtime/launch-args.cjs"; then ko "launch-bytes: the mutated ref builder copy does not differ"; fi
 run_lb "$T/lb-ref"
-if [ "$RC" -eq 1 ] && [ "$(echo "$OUT" | grep -c 'mode=ref budget=2048 .* UP$')" = "3" ] && [ "$(echo "$OUT" | grep -c '^FAIL: launch-bytes: plan ')" = "3" ]; then ok "launch-bytes: a ref launch over the budget prints UP three times, one FAIL line per size and exits 1"; else ko "launch-bytes ref over (rc=$RC) $OUT"; fi
+if [ "$RC" -eq 1 ] && [ "$(echo "$OUT" | grep -c 'stage=plan .* mode=ref budget=2048 .* UP$')" = "3" ] && [ "$(echo "$OUT" | grep -c '^FAIL: launch-bytes: plan ')" = "3" ]; then ok "launch-bytes: a ref launch over the budget prints UP three times, one FAIL line per size and exits 1"; else ko "launch-bytes ref over (rc=$RC) $OUT"; fi
 OUT="$(LAUNCH_BYTES_BUDGET=off GUARDS_ROOT="$T/lb-ref" GUARDS_ONLY=launch-bytes node "$REPO_ROOT/scripts/guards.cjs" 2>&1)"; RC=$?
 if [ "$RC" -eq 0 ] && ! echo "$OUT" | grep -q ' UP$'; then ok "launch-bytes: LAUNCH_BYTES_BUDGET=off silences the ref budget"; else ko "launch-bytes budget off live (rc=$RC) $OUT"; fi

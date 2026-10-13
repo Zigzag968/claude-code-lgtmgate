@@ -11,7 +11,9 @@
 // Stdin: the hook JSON ({cwd, tool_name, tool_input}). Stdout: nothing for a call that is not this engine's, else
 // {hookSpecificOutput:{hookEventName, updatedInput, additionalContext?}}, never a permission decision except `deny`.
 // A call is ours when it targets this engine (name `lgtmgate:deliver-pipeline`, or a scriptPath named deliver-pipeline.js
-// or issue-<N>-<12 hex>.js) AND args carries projectSpecificsRef, configRef or planRef. planRef is left untouched (#533).
+// or issue-<N>-<12 hex>.js) AND args carries projectSpecificsRef, configRef or planRef. planRef (#533) is kept and gets a
+// `planText` right after it: the bytes of .pipeline/plans/issue-<N>-sam.md under the worktree, read only when their sha256
+// equals planRef.digest (the digest the engine pinned when it returned the plan); every failure is `plan-ref-mismatch`.
 // Exit: 0 ok or not ours · 2 deny (reason on stderr and in the JSON; the reason names no role and no specifics text).
 
 const fs = require('fs')
@@ -24,7 +26,16 @@ const REFERENCE_WORDS = /projectSpecificsRef|configRef|planRef/
 const ADVISORY_BRIEF_BYTES = 700
 const ASSEMBLER_TIMEOUT_MS = 8000
 
-class Deny extends Error {}
+class Deny extends Error {
+  constructor(message, code) {
+    super(message)
+    this.code = code || 'specifics-ref-mismatch'
+  }
+}
+
+class PlanDeny extends Deny {
+  constructor(message) { super(message, 'plan-ref-mismatch') }
+}
 
 function gitOut(directory, arguments_) {
   const { execFileSync } = require('child_process')
@@ -108,17 +119,44 @@ function expandSpecifics(arguments_, projectDirectory, pluginRoot) {
   return payload
 }
 
-// The args with the references replaced in place (key order kept); planRef stays.
+// -> the plan artifact text named by planRef (#533). The reference carries no path: the file is derived from the issue.
+function expandPlan(arguments_, projectDirectory) {
+  const reference = arguments_.planRef
+  if (!reference || typeof reference !== 'object' || Array.isArray(reference) || !Number.isInteger(reference.issue) || reference.issue < 1 || !/^[0-9a-f]{64}$/.test(String(reference.digest))) throw new PlanDeny('the plan reference is malformed')
+  if (arguments_.planText !== undefined) throw new PlanDeny('args carries both planText and planRef')
+  if (reference.issue !== Number(arguments_.issue)) throw new PlanDeny('the plan reference names another issue than the launch')
+  const worktree = arguments_.worktreePath || arguments_.wtPath
+  if (typeof worktree !== 'string' || !nodePath.isAbsolute(worktree) || !fs.existsSync(worktree) || !fs.statSync(worktree).isDirectory()) throw new PlanDeny('the worktree named by the launch is not an existing directory')
+  if (!sameRepository(worktree, projectDirectory)) throw new PlanDeny('the worktree is not a worktree of this repository')
+  let bytes
+  try {
+    const root = fs.realpathSync(worktree)
+    const file = fs.realpathSync(nodePath.join(root, '.pipeline', 'plans', `issue-${reference.issue}-sam.md`))
+    if (!isInside(root, file)) throw new PlanDeny('the plan artifact leaves the worktree')
+    bytes = fs.readFileSync(file)
+  } catch (error) {
+    if (error instanceof Deny) throw error
+    throw new PlanDeny('the plan artifact cannot be read')
+  }
+  if (crypto.createHash('sha256').update(bytes).digest('hex') !== reference.digest) throw new PlanDeny('the plan artifact changed since the reference was returned (digest mismatch)')
+  const text = bytes.toString('utf8')
+  if (!Buffer.from(text, 'utf8').equals(bytes)) throw new PlanDeny('the plan artifact is not valid UTF-8')
+  return text
+}
+
+// The args with the references replaced in place (key order kept); planRef stays, planText follows it.
 function expandedArguments(arguments_, projectDirectory, pluginRoot) {
   const out = {}
   const hasConfig = arguments_.configRef !== undefined
   const hasSpecifics = arguments_.projectSpecificsRef !== undefined
   const config = hasConfig ? expandConfig(arguments_, projectDirectory) : undefined
   const specifics = hasSpecifics ? expandSpecifics(arguments_, projectDirectory, pluginRoot) : undefined
+  const planText = arguments_.planRef !== undefined ? expandPlan(arguments_, projectDirectory) : undefined
   for (const key of Object.keys(arguments_)) {
     if (key === 'configRef') out.config = config
     else if (key === 'projectSpecificsRef') out.projectSpecifics = specifics
     else out[key] = arguments_[key]
+    if (key === 'planRef') out.planText = planText
   }
   return out
 }
@@ -188,8 +226,8 @@ function decide(input, environment) {
   return note === null ? { updatedInput: updated } : { updatedInput: updated, additionalContext: note }
 }
 
-function denyOutput(reason) {
-  const text = `specifics-ref-mismatch: ${reason}. See docs/consumer-reference.md (specifics-ref-mismatch). To launch in full form: node ${nodePath.resolve(__dirname, 'launch-args.cjs')} --mode full ...`
+function denyOutput(reason, code = 'specifics-ref-mismatch') {
+  const text = `${code}: ${reason}. See docs/consumer-reference.md (${code}). To launch in full form: node ${nodePath.resolve(__dirname, 'launch-args.cjs')} --mode full ...`
   process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: text } }) + '\n')
   process.stderr.write(`${text}\n`)
   return 2
@@ -210,7 +248,7 @@ function main() {
     process.stdout.write(JSON.stringify({ hookSpecificOutput: output }) + '\n')
     return 0
   } catch (error) {
-    if (error instanceof Deny) return denyOutput(error.message)
+    if (error instanceof Deny) return denyOutput(error.message, error.code)
     const referenced = REFERENCE_WORDS.test(raw)
     return referenced ? denyOutput('the expansion failed unexpectedly') : 0
   }

@@ -8,12 +8,15 @@
 // Nothing here reads git for the config (the working-tree file is the one the Lead reads) and no model runs.
 //
 // Usage: node scripts/runtime/launch-args.cjs --root <worktree> --ref origin/<base> --stage plan|dev|review
-//          [--mode full|ref] [--issue N] [--brief text] [--pr N] [--plan-file f] [--worktree <path>]
+//          [--mode full|ref] [--issue N] [--brief text] [--pr N] [--plan-file f | --plan-ref '<json>'] [--worktree <path>]
 // Stdout: JSON.stringify(args) + newline. Key order (full): issue, brief, worktreePath, mode, pmReview, config, configLocal,
 //        projectSpecifics (only when the config sets projectSpecifics or agentContext), pluginRoot, sessionRoot;
 //        (ref): issue, brief, worktreePath, mode, pmReview, configRef {path, digest64}, configLocal, projectSpecificsRef
 //        {refSha, fp12} (same condition), pluginRoot, sessionRoot; stage dev|review adds entryStage, review adds prNumber,
-//        --plan-file adds planText (never behind a reference). --worktree sets worktreePath (default: --root).
+//        --plan-file adds planText (the full form); --plan-ref (#533, mode ref, stage dev|review only) adds planRef, the one
+//        a plan-ready, dev-done or needs-revision result returned, copied as is (the hook expands it to planText; the digest
+//        was pinned by the engine, never computed here). Both together, or --plan-ref in mode full, is a usage error.
+//        --worktree sets worktreePath (default: --root).
 // Exit:  0 ok · 2 any argument or read error (one line on stderr, stdout empty).
 
 const fs = require('fs')
@@ -26,6 +29,18 @@ const DEFAULT_BRIEF = 'implement the issue'
 const STAGES = ['plan', 'dev', 'review']
 
 class UsageError extends Error {}
+
+// The shape of a planRef (the engine and the hook check the same; the digest is the engine's, never computed here).
+function checkPlanReference(reference) {
+  const bad = (what) => { throw new UsageError(`--plan-ref: ${what}`) }
+  if (reference === null || typeof reference !== 'object' || Array.isArray(reference)) bad('not a JSON object')
+  if (!Number.isInteger(reference.issue) || reference.issue < 1) bad('issue must be a positive integer')
+  if (typeof reference.digest !== 'string' || !/^[0-9a-f]{64}$/.test(reference.digest)) bad('digest must be 64 lowercase hex characters')
+  if (reference.targets !== undefined && (!Array.isArray(reference.targets) || reference.targets.length > 25 || reference.targets.some((t) => typeof t !== 'string'))) bad('targets must be at most 25 paths')
+  if (reference.designStep !== undefined && reference.designStep !== true) bad('designStep must be true when present')
+  if (reference.lanes !== undefined && (!Array.isArray(reference.lanes) || reference.lanes.some((n) => typeof n !== 'string'))) bad('lanes must be a list of names')
+  return reference
+}
 
 function readJson(file, optional) {
   let text
@@ -72,6 +87,12 @@ function build(options) {
   arguments_.sessionRoot = options.sessionRoot === undefined ? root : options.sessionRoot
   if (stage !== 'plan') arguments_.entryStage = stage
   if (stage === 'review') arguments_.prNumber = options.pr === undefined ? 1 : options.pr
+  if (options.planRef !== undefined) {
+    if (mode !== 'ref') throw new UsageError('--plan-ref needs --mode ref (mode full carries --plan-file)')
+    if (options.planFile !== undefined) throw new UsageError('--plan-file and --plan-ref are exclusive')
+    if (stage === 'plan') throw new UsageError('--plan-ref needs --stage dev or review')
+    arguments_.planRef = checkPlanReference(options.planRef)
+  }
   if (options.planFile !== undefined) arguments_.planText = fs.readFileSync(options.planFile, 'utf8')
   return arguments_
 }
@@ -97,6 +118,9 @@ function parseArguments(argv) {
     else if (a === '--pr') o.pr = number()
     else if (a === '--brief') o.brief = value()
     else if (a === '--plan-file') o.planFile = value()
+    else if (a === '--plan-ref') {
+      try { o.planRef = JSON.parse(value()) } catch (error) { throw new UsageError('--plan-ref: not valid JSON') }
+    }
     else if (a === '--worktree') o.worktreePath = value()
     else throw new UsageError(`unknown argument: ${a}`)
   }
