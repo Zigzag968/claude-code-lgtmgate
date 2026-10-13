@@ -8038,6 +8038,72 @@ await testCase('T533h dev-done and needs-revision carry the planRef: an echoed o
     || { ok: true }
 })
 
+// T545 (#545) — run-state launch arguments. `title`, `parallel` and `decided` are checked by the engine before any agent call
+// (`launch-argument-invalid`); `merged` and `epic` are written by the expansion hook (never typed) and rendered as lines in the
+// Theo, Sam and Nick prompts. The hook side is tested in tests/hooks/test-workflow-args-expand.sh.
+const t545Refusal = async (label, overrides, needle) => {
+  const message = await t520Message(overrides)
+  if (message === null) return { ok: false, msg: `${label}: the run returned instead of throwing` }
+  if (message.includes('simulate fixture missing')) return { ok: false, msg: `${label}: an agent was called` }
+  return includes(label, message, 'launch-argument-invalid') || includes(label, message, needle) || includes(label, message, 'docs/consumer-reference.md (launch-argument-invalid)') || { ok: true }
+}
+const t545Development = { entryStage: 'dev', mode: 'auto', simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] } }
+await testCase('T545a a title of 81 bytes throws launch-argument-invalid naming title, before any agent call; a newline too', async () => {
+  return await t545Refusal('81 bytes', { title: 'x'.repeat(81), simulate: { sam: 'GO' } }, 'title')
+    || await t545Refusal('newline', { title: 'two\nlines', simulate: { sam: 'GO' } }, 'title')
+    || await t545Refusal('multibyte', { title: 'é'.repeat(41), simulate: { sam: 'GO' } }, '82 bytes')
+})
+await testCase('T545b a decided text of 201 bytes throws launch-argument-invalid naming decided, before any agent call', async () => {
+  return await t545Refusal('201 bytes', { decided: 'd'.repeat(201), simulate: { sam: 'GO' } }, 'decided')
+})
+await testCase('T545c eleven numbers in parallel throw launch-argument-invalid, before any agent call', async () => {
+  return await t545Refusal('11 numbers', { parallel: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], simulate: { sam: 'GO' } }, 'parallel')
+})
+await testCase('T545d parallel refuses a non-integer, a duplicate and the run own issue', async () => {
+  return await t545Refusal('non-integer', { parallel: [2.5], simulate: { sam: 'GO' } }, 'not a positive integer')
+    || await t545Refusal('zero', { parallel: [0], simulate: { sam: 'GO' } }, 'not a positive integer')
+    || await t545Refusal('duplicate', { parallel: [2, 2], simulate: { sam: 'GO' } }, 'twice')
+    || await t545Refusal('own issue', { parallel: [BASE.issue], simulate: { sam: 'GO' } }, 'own issue')
+    || await t545Refusal('typed merged that is no list', { merged: 'none', simulate: { sam: 'GO' } }, 'merged')
+})
+await testCase('T545e merged and epic render merged: and epic: in the Nick prompt; a run without them has no such line', async () => {
+  const withState = await run({ ...t545Development, merged: [530, 531, 532], epic: 528 })
+  const without = await run(t545Development)
+  const p = withState.nickPromptPreview
+  return includes('nickPromptPreview', p, 'merged: #530, #531, #532\n')
+    || includes('nickPromptPreview', p, 'epic: #528\n')
+    || (without.nickPromptPreview.includes('merged:') || without.nickPromptPreview.includes('epic:') || without.nickPromptPreview.includes('parallel:') || without.nickPromptPreview.includes('decided:')
+      ? { ok: false, msg: 'a run without run state must carry no run-state line' } : null)
+    || { ok: true }
+})
+await testCase('T545f decided and parallel render in the Nick prompt, and the prompt without them is the prompt with empty values', async () => {
+  const r = await run({ ...t545Development, decided: 'ship the hook side first (comment on #532)', parallel: [546, 547] })
+  const p = r.nickPromptPreview
+  const empty = await run({ ...t545Development, parallel: [] })
+  const plain = await run(t545Development)
+  return includes('nickPromptPreview', p, 'decided: ship the hook side first (comment on #532)\n')
+    || includes('nickPromptPreview', p, 'parallel: #546, #547 (launches in flight next to this one; do not touch their files)\n')
+    || eq('empty parallel leaves the prompt byte-identical', empty.nickPromptPreview, plain.nickPromptPreview)
+    || { ok: true }
+})
+await testCase('T545g the bounds are accepted: an 80-byte title, a 200-byte decided, ten numbers in parallel, twenty merged', async () => {
+  const r = await run({
+    ...t545Development, title: 'é'.repeat(40), decided: 'd'.repeat(200), parallel: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+    merged: Array.from({ length: 20 }, (unused, index) => index + 100), epic: 3,
+  })
+  return eq('status', r.status === 'ready' || r.status === 'dev-done' || r.status === 'plan-ready' ? 'accepted' : r.status, 'accepted') || { ok: true }
+})
+await testCase('T545h the run-state lines are interpolated in the Theo, Sam and Nick prompts, once each', async () => {
+  const source = SUITE_ARGS.fpSource
+  if (!source) {
+    log('SKIP — T545h: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  return eq('interpolations of RUN_STATE_LINES', source.split('${RUN_STATE_LINES}').length - 1, 3)
+    || eq('header rows of the five arguments', source.split('\n').filter((line) => /^\/\/ \| `(title|parallel|decided|merged|epic)` \|/.test(line)).length, 5)
+    || { ok: true }
+})
+
 await testCase('T123 test IDs are unique across the suite (no duplicated T<n>)', async () => {
   const control = eq('negative control', duplicateTestIds(['T1 a', 'T1 b', 'T1a c', 'F2 x']), ['T1'])
   if (control) return control

@@ -14,6 +14,10 @@
 // or issue-<N>-<12 hex>.js) AND args carries projectSpecificsRef, configRef or planRef. planRef (#533) is kept and gets a
 // `planText` right after it: the bytes of .pipeline/plans/issue-<N>-sam.md under the worktree, read only when their sha256
 // equals planRef.digest (the digest the engine pinned when it returned the plan); every failure is `plan-ref-mismatch`.
+// Run state (#545): a launch of the engine that carries `title`, `parallel` or `decided` is also ours. The hook deletes any typed
+// `merged`/`epic`, then writes its own from scripts/runtime/merged-dependencies.cjs (the `depends-on:` issues closed as completed,
+// and the epic parent; fail open: a failure writes no key). `title` goes to the launch file name and description; `parallel` is
+// compared with the active runs as an advisory, never a refusal (two simultaneous launches cannot see each other's state file).
 // Exit: 0 ok or not ours · 2 deny (reason on stderr and in the JSON; the reason names no role and no specifics text).
 
 const fs = require('fs')
@@ -25,6 +29,8 @@ const GENERATED_RE = /^issue-([0-9]+)-([0-9a-f]{12})\.js$/
 const REFERENCE_WORDS = /projectSpecificsRef|configRef|planRef/
 const ADVISORY_BRIEF_BYTES = 700
 const ASSEMBLER_TIMEOUT_MS = 8000
+const DERIVE_TIMEOUT_MS = 8000
+const TITLE_MAX_BYTES = 80
 
 class Deny extends Error {
   constructor(message, code) {
@@ -160,6 +166,85 @@ function expandedArguments(arguments_, projectDirectory, pluginRoot) {
   return out
 }
 
+function utf8Bytes(text) { return Buffer.byteLength(text, 'utf8') }
+
+// #545: `title` is a string of at most 80 bytes with no control character (newline included); otherwise a Deny.
+function validateTitle(arguments_) {
+  const title = arguments_.title
+  if (title === undefined) return undefined
+  if (typeof title !== 'string' || title.trim() === '') throw new Deny('title is not a non-empty string', 'launch-argument-invalid')
+  if (/[\u0000-\u001f\u007f]/.test(title)) throw new Deny('title holds a newline or control character', 'launch-argument-invalid')
+  const bytes = utf8Bytes(title)
+  if (bytes > TITLE_MAX_BYTES) throw new Deny(`title is ${bytes} bytes, over the ${TITLE_MAX_BYTES}-byte bound; shorten the issue title to one line`, 'launch-argument-invalid')
+  return title
+}
+
+// -> 'owner/repo' from the config, else from the origin remote of the worktree (github.com only), else null.
+function repositoryOf(arguments_) {
+  const configured = arguments_.config && typeof arguments_.config === 'object' ? arguments_.config.repo : undefined
+  if (typeof configured === 'string' && /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/.test(configured)) return configured
+  const worktree = arguments_.worktreePath || arguments_.wtPath
+  if (typeof worktree !== 'string' || !nodePath.isAbsolute(worktree) || !fs.existsSync(worktree)) return null
+  try {
+    const remote = gitOut(worktree, ['remote', 'get-url', 'origin'])
+    const found = /github\.com[:/]([A-Za-z0-9._-]+)\/([A-Za-z0-9._-]+?)(?:\.git)?$/.exec(remote)
+    return found ? `${found[1]}/${found[2]}` : null
+  } catch (error) {
+    return null
+  }
+}
+
+// Replaces any typed `merged`/`epic` by the derived ones (none written on any failure). Returns the new object.
+function withDerivedState(expanded, pluginRoot) {
+  const out = { ...expanded }
+  delete out.merged
+  delete out.epic
+  const issue = Number(out.issue)
+  if (!Number.isInteger(issue) || issue < 1) return out
+  const repository = repositoryOf(out)
+  if (repository === null) return out
+  const { execFileSync } = require('child_process')
+  let stdout = ''
+  try {
+    stdout = execFileSync('node', [nodePath.join(pluginRoot, 'scripts', 'runtime', 'merged-dependencies.cjs'), '--issue', String(issue), '--repo', repository], {
+      encoding: 'utf8', timeout: DERIVE_TIMEOUT_MS, stdio: ['ignore', 'pipe', 'ignore'],
+    })
+  } catch (error) {
+    return out
+  }
+  let parsed = null
+  try { parsed = JSON.parse(stdout.trim().split('\n').pop() || '') } catch (error) { return out }
+  if (!parsed || typeof parsed !== 'object') return out
+  if (Array.isArray(parsed.merged) && parsed.merged.length > 0 && parsed.merged.length <= 20 && parsed.merged.every((n) => Number.isInteger(n) && n > 0)) out.merged = parsed.merged
+  if (Number.isInteger(parsed.epic) && parsed.epic > 0) out.epic = parsed.epic
+  return out
+}
+
+// -> a one-line advisory comparing `parallel` with the active runs, or null. Never a refusal.
+function parallelAdvisory(arguments_, projectDirectory, pluginRoot) {
+  if (!Array.isArray(arguments_.parallel)) return null
+  const issue = Number(arguments_.issue)
+  const { execFileSync } = require('child_process')
+  let listing = ''
+  try {
+    listing = execFileSync('bash', [nodePath.join(pluginRoot, 'scripts', 'list-active-runs.sh'), projectDirectory], { encoding: 'utf8', timeout: DERIVE_TIMEOUT_MS, stdio: ['ignore', 'pipe', 'ignore'] })
+  } catch (error) {
+    return null
+  }
+  const active = []
+  for (const line of listing.split('\n')) {
+    const found = /issue-([0-9]+)\.json/.exec(line)
+    if (found && Number(found[1]) !== issue) active.push(Number(found[1]))
+  }
+  const declared = arguments_.parallel.filter((n) => Number.isInteger(n))
+  const missing = declared.filter((n) => !active.includes(n))
+  const unlisted = active.filter((n) => !declared.includes(n))
+  const parts = []
+  if (missing.length > 0) parts.push(`parallel lists ${missing.map((n) => `#${n}`).join(', ')} with no active run (fine if it launches at the same time)`)
+  if (unlisted.length > 0) parts.push(`active runs not listed in parallel: ${unlisted.map((n) => `#${n}`).join(', ')}`)
+  return parts.length === 0 ? null : `Advisory: ${parts.join('; ')}.`
+}
+
 function isIgnored(projectDirectory, relative) {
   const { execFileSync } = require('child_process')
   try {
@@ -172,7 +257,7 @@ function isIgnored(projectDirectory, relative) {
 
 // -> an absolute scriptPath to use instead of `name`/`scriptPath`, or null (the call keeps what it named). Throws Deny
 // when a launch file of that name holds other bytes than expected.
-function contextualScript(toolInput, arguments_, projectDirectory, pluginRoot) {
+function contextualScript(toolInput, arguments_, projectDirectory, pluginRoot, title) {
   const launch = require('../lib/launch-file.cjs')
   const issue = Number(arguments_.issue)
   if (toolInput.name === undefined && typeof toolInput.scriptPath !== 'string') return null
@@ -184,7 +269,7 @@ function contextualScript(toolInput, arguments_, projectDirectory, pluginRoot) {
   if (made && crypto.createHash('sha256').update(source, 'utf8').digest('hex').slice(0, 12) !== made[2]) {
     throw new Deny(`the launch file ${nodePath.basename(given)} was modified after it was written; delete it (scripts/runtime/clean-launch-files.cjs) and launch again`)
   }
-  const expected = launch.retitle(source, issue)
+  const expected = launch.retitle(source, issue, title)
   if (expected === null) return null
   const file = launch.launchPath(projectDirectory, issue, expected)
   if (!isIgnored(projectDirectory, nodePath.relative(projectDirectory, file))) return null
@@ -209,20 +294,22 @@ function decide(input, environment) {
   if (read === 'unparseable') throw new Deny('args is a string that is not valid JSON')
   if (read === null) return null
   const { args: arguments_, isString } = read
-  const referenced = arguments_.projectSpecificsRef !== undefined || arguments_.configRef !== undefined || arguments_.planRef !== undefined
+  const referenced = arguments_.projectSpecificsRef !== undefined || arguments_.configRef !== undefined || arguments_.planRef !== undefined ||
+    arguments_.title !== undefined || arguments_.parallel !== undefined || arguments_.decided !== undefined
   if (!targetsEngine(toolInput) || !referenced) return null
   const projectDirectory = environment.CLAUDE_PROJECT_DIR || input.cwd
   if (typeof projectDirectory !== 'string' || projectDirectory === '') throw new Deny('the project directory is unknown')
   const pluginRoot = nodePath.resolve(__dirname, '..', '..')
-  const expanded = expandedArguments(arguments_, projectDirectory, pluginRoot)
+  const title = validateTitle(arguments_)
+  const expanded = withDerivedState(expandedArguments(arguments_, projectDirectory, pluginRoot), pluginRoot)
   const updated = { ...toolInput, args: isString ? JSON.stringify(expanded) : expanded }
-  const script = contextualScript(toolInput, expanded, projectDirectory, pluginRoot)
+  const script = contextualScript(toolInput, expanded, projectDirectory, pluginRoot, title)
   if (script !== null) {
     delete updated.name
     updated.scriptPath = script
   }
-  const note = advisory(expanded)
-  return note === null ? { updatedInput: updated } : { updatedInput: updated, additionalContext: note }
+  const notes = [advisory(expanded), parallelAdvisory(expanded, projectDirectory, pluginRoot)].filter((n) => n !== null)
+  return notes.length === 0 ? { updatedInput: updated } : { updatedInput: updated, additionalContext: notes.join('\n') }
 }
 
 function denyOutput(reason, code = 'specifics-ref-mismatch') {

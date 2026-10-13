@@ -227,6 +227,55 @@ expect "advisory-over" 0 'typeof j.hookSpecificOutput.additionalContext === "str
 mk_input "$T1" path ref 'a.brief = "x".repeat(700)'; hook "$T1"
 expect "advisory-under" 0 '!("additionalContext" in j.hookSpecificOutput)'
 
+# ---- run state (#545): title, derived merged/epic, parallel advisory -----------------------------------
+expect_deny_code() { # expect_deny_code <name> <code> [needle]
+  if [ "$RC" = 2 ] && [ "$(jx "j.hookSpecificOutput.permissionDecision === 'deny' && j.hookSpecificOutput.permissionDecisionReason.startsWith('$2:') && j.hookSpecificOutput.permissionDecisionReason.includes('docs/consumer-reference.md ($2)')")" = "true" ] && [ -s "$ERR" ] && { [ -z "${3:-}" ] || grep -qF -- "$3" "$OUT"; }; then pass "$1"; else fail "$1 (rc=$RC out=$(head -c 300 "$OUT"))"; fi
+}
+script_of() { node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).hookSpecificOutput.updatedInput.scriptPath || "")' "$OUT"; }
+new_tree rs1 ignore; RS1="$TMP/rs1"
+mk_input "$RS1" name ref 'a.title = "Fast launches"'; hook "$RS1"
+expect "run-state-title-named-launch" 0 'j.hookSpecificOutput.updatedInput.scriptPath.includes("/.pipeline/launch/issue-520-") && !("name" in j.hookSpecificOutput.updatedInput) && j.hookSpecificOutput.updatedInput.args.title === "Fast launches"'
+RS1_FILE="$(script_of)"
+if grep -qF "  name: 'deliver-pipeline #520 Fast launches'," "$RS1_FILE" && grep -qF "  description: '#520 Fast launches: Sam (plan)" "$RS1_FILE"; then pass "run-state-title-in-name-and-description"; else fail "run-state-title-in-name-and-description"; fi
+if [ "$(grep -F '{ title:' "$RS1_FILE" | grep -c 'Fast launches')" = 0 ] && grep -qF "{ title: '#520 Setup'" "$RS1_FILE" && grep -qF "const PHASE_TITLES = { setup: '#520 Setup', diagnose: '#520 Diagnose', plan: '#520 Plan', dev: '#520 Dev', review: '#520 Review' }" "$RS1_FILE"; then pass "run-state-title-phases-number-only"; else fail "run-state-title-phases-number-only"; fi
+mk_input "$RS1" name ref 'a.title = "it'"'"'s a \\ title"'; hook "$RS1"
+RS1_Q="$(script_of)"; cp "$RS1_Q" "$TMP/quote.js"
+if [ -n "$RS1_Q" ] && node --check "$TMP/quote.js" 2>/dev/null; then pass "run-state-title-escapes-quote (valid JS with a quote and a backslash)"; else fail "run-state-title-escapes-quote"; fi
+mk_input "$RS1" name ref 'a.title = "Fast launches"'; hook "$RS1"; FIRST="$(script_of)"
+mk_input "$RS1" path ref 'a.title = "Fast launches"; ti.scriptPath = "'"$FIRST"'"'; hook "$RS1"; SECOND="$(script_of)"
+mk_input "$RS1" path ref 'a.title = "Other words"; ti.scriptPath = "'"$FIRST"'"'; hook "$RS1"; THIRD="$(script_of)"
+mk_input "$RS1" name ref 'a.title = "Other words"'; hook "$RS1"; DIRECT="$(script_of)"
+if [ -n "$FIRST" ] && [ "$FIRST" = "$SECOND" ] && [ -n "$THIRD" ] && [ "$THIRD" != "$FIRST" ] && [ "$THIRD" = "$DIRECT" ] && [ "$RC" = 0 ]; then pass "run-state-title-idempotent (same title keeps the file, another title from a generated file equals a fresh launch)"; else fail "run-state-title-idempotent ($FIRST $SECOND $THIRD $DIRECT)"; fi
+mk_input "$RS1" name ref 'a.title = "x".repeat(81)'; hook "$RS1"
+expect_deny_code "run-state-title-deny-length" "launch-argument-invalid" "81 bytes"
+mk_input "$RS1" name ref 'a.title = "two\nlines"'; hook "$RS1"
+expect_deny_code "run-state-title-deny-newline" "launch-argument-invalid" "newline"
+
+GHBIN="$TMP/ghbin"; mkdir -p "$GHBIN"
+cat > "$GHBIN/gh" <<'STUB'
+#!/usr/bin/env bash
+case "$2" in
+  repos/acme/widgets/issues/520) echo '{"number":520,"state":"open","body":"x\ndepends-on: #530, #531, #532\n"}' ;;
+  repos/acme/widgets/issues/530|repos/acme/widgets/issues/531|repos/acme/widgets/issues/532) echo '{"state":"closed","state_reason":"completed"}' ;;
+  repos/acme/widgets/issues/520/parent) echo '{"number":528}' ;;
+  *) exit 1 ;;
+esac
+STUB
+chmod +x "$GHBIN/gh"
+new_tree rs2 ignore; RS2="$TMP/rs2"; git -C "$RS2" remote add origin https://github.com/acme/widgets.git
+mk_input "$RS2" name ref; PATH="$GHBIN:$PATH" hook "$RS2"
+expect "run-state-merged-derived" 0 'JSON.stringify(j.hookSpecificOutput.updatedInput.args.merged) === "[530,531,532]" && j.hookSpecificOutput.updatedInput.args.epic === 528'
+mk_input "$RS2" name ref 'a.merged = [1, 2]; a.epic = 9'; PATH="$GHBIN:$PATH" hook "$RS2"
+expect "run-state-merged-overwrites-typed" 0 'JSON.stringify(j.hookSpecificOutput.updatedInput.args.merged) === "[530,531,532]" && j.hookSpecificOutput.updatedInput.args.epic === 528'
+mk_input "$RS1" name ref 'a.merged = [1, 2]; a.epic = 9'; PATH="$GHBIN:$PATH" hook "$RS1"
+expect "run-state-merged-typed-dropped-without-repo (no origin, no config.repo: no derived key, the typed ones are gone)" 0 '!("merged" in j.hookSpecificOutput.updatedInput.args) && !("epic" in j.hookSpecificOutput.updatedInput.args)'
+
+mkdir -p "$RS1/.pipeline"; printf '{"status":"dev"}\n' > "$RS1/.pipeline/issue-777.json"
+mk_input "$RS1" name ref 'a.parallel = [888]'; hook "$RS1"
+expect "run-state-parallel-advisory (an active run missing from parallel and a listed number with no active run)" 0 '/#777/.test(j.hookSpecificOutput.additionalContext) && /#888/.test(j.hookSpecificOutput.additionalContext) && !("permissionDecision" in j.hookSpecificOutput)'
+mk_input "$RS1" name ref 'a.parallel = [777]'; hook "$RS1"
+expect "run-state-parallel-consistent-no-advisory" 0 '!("additionalContext" in j.hookSpecificOutput)'
+
 # ---- cleanup -----------------------------------------------------------------------------------------
 C="$TMP/clean"; mkdir -p "$C/.pipeline/launch"
 printf 'a' > "$C/.pipeline/launch/issue-5-aaaaaaaaaaaa.js"; printf 'b' > "$C/.pipeline/launch/issue-6-bbbbbbbbbbbb.js"
