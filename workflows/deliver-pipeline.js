@@ -134,7 +134,7 @@ export const meta = {
 // `version`, checked against plugin.json by tests/templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '1.4.0-beta.24', cutFrom: '3092338' }
+const BUILD = { plugin: 'lgtmgate', version: '1.4.0-beta.29', cutFrom: '8d4eaae' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -421,6 +421,8 @@ log(`worktreeRoot: ${worktreeRoot ?? '(unresolved)'} (env=${runtimeEnvironment.L
 // derives the repo from the worktree).
 const repository = config.repo || null
 const prFlag = repository ? ` -R ${repository}` : ''
+// Shared sentence for the diagnose and plan prompts: the issue body is the contract, read before the brief.
+const ISSUE_BODY_FIRST = `Read the issue body first: \`gh api repos/${repository || '{owner}/{repo}'}/issues/${issue} --jq .body\` (REST, one call; the repository is config.repo, else gh resolves it from the working directory). The issue body takes precedence over the brief when they differ.`
 // Sandbox-safe push (#108): SSH (port 22 / agent socket) is blocked in the agent sandbox, HTTPS to
 // github.com:443 through the gh credential helper is not. Exact command, also quoted to the Lead
 // by the delivered-no-pr escalation. `repo` absent -> Nick derives the slug from the origin URL.
@@ -3120,6 +3122,7 @@ if (after('plan', entryStage)) {
   diag = await callAgentSafe(
     'theo',
     `Qualify issue #${issue} before Sam plans anything — this gate runs for EVERY nightly-dispatched issue, no exceptions. Brief: ${brief}\n\n` +
+      `${ISSUE_BODY_FIRST}\n` +
       `If this issue claims a root cause or a specific bug behavior: reproduce it for real in worktree "${worktreePath}" (frozen base; never checkout/commit) — ` +
       `a real run/test, never a code-reading guess — and confirm or refute the stated cause.\n` +
       `If this issue is a feature/chore ask with no claimed bug: sanity-check it's justified — not already done/shipped, not solving a problem that doesn't ` +
@@ -3223,7 +3226,9 @@ const MORGAN_PRODUCT_DIRECTION = "PRODUCT DIRECTION: signal a conflict with the 
 // R3 (#77): Sam's announcement instruction for the kinds this repo declares (config.oneWayDoorKinds);
 // '' when it declares none, so a consumer Sam is never asked about engine kinds. Pinned by T77g, T77l.
 const SAM_ONE_WAY_DOOR = samOneWayDoorText(config.oneWayDoorKinds)
-const ACCEPTANCE_PROOF_RULE = 'ACCEPTANCE PROOF RULE: (1) every acceptance item is a command you RAN in the provisioned worktree during planning; the plan carries a "Proof log" listing, per item, the command and its real output pasted verbatim (output on the base branch: green for state-preservation checks, red for the stated reason for a check the change must turn green); (2) a command you saw fail for any other reason, or could not run (missing gitignored directory, no network), is rewritten to run in the worktree or dropped, never inscribed as-is and never excused in Risks; (3) an item describes a verifiable state of the repo or branch only: never an external-world state (e.g. "no known advisory for pinned dependency X", a network service, a file present only outside the worktree) and never a negative universal claim ("no known X", "absence of Y") about anything outside the diff; write commands that run as-is from a plain bash script; (4) the one exemption to (1), (2) and (3): a read-only confirmation of an action that was already authorized and executed (a run-status query, a policy read, a log read) is allowed as a normal box although it reads the outside world; its Proof-log entry is its command, with the verbatim output when the action happened before planning and the command can run in the worktree, otherwise the command alone with the words "not runnable at planning"; the item text cites the earlier human decision inline; every other external-world state and every "no known X" claim stays forbidden.'
+const ACCEPTANCE_PROOF_RULE = 'ACCEPTANCE PROOF RULE: (1) every acceptance item is a command you RAN in the provisioned worktree during planning; the plan carries a "Proof log" listing, per item, the command and its real output pasted verbatim (output on the base branch: green for state-preservation checks, red for the stated reason for a check the change must turn green); (2) a command you saw fail for any other reason, or could not run (missing gitignored directory, no network), is rewritten to run in the worktree or dropped, never inscribed as-is and never excused in Risks; (3) an item describes a verifiable state of the repo or branch only: never an external-world state (e.g. "no known advisory for pinned dependency X", a network service, a file present only outside the worktree) and never a negative universal claim ("no known X", "absence of Y") about anything outside the diff; write commands that run as-is from a plain bash script; (4) the one exemption to (1), (2) and (3): a read-only confirmation of an action that was already authorized and executed (a run-status query, a policy read, a log read) is allowed as a normal box although it reads the outside world; its Proof-log entry is its command, with the verbatim output when the action happened before planning and the command can run in the worktree, otherwise the command alone with the words "not runnable at planning"; the item text cites the earlier human decision inline; every other external-world state and every "no known X" claim stays forbidden. PROOF LOG RULES: in the plan\'s proof log, EVERY acceptance item gets its own entry with the COMPLETE command, copied character for character from the issue, followed by its COMPLETE output. Never write `...` or any ellipsis inside a command or a regex, never summarise a command, never write a verdict alone. Never write a `.txt` file inside the worktree: redirect to a path under the temporary directory. Keep the PR body and the plan free of token costs and absolute local paths (quote paths as `<project>` placeholders). For any artifact proof, report `bytes` (from `wc -c`, a number greater than 0), `exists`, `mtime` (ISO-8601 with Z) and `committedInPr`.'
+const REQUIREMENT_RULE = "REQUIREMENT: every proof must be quoted word for word (command + full output). Never paraphrase, abbreviate with '...', or pipe through tail/head except where the acceptance item itself says so."
+const ABSENCE_CLAIMS_RULE = 'ABSENCE CLAIMS: any claim that something outside the diff is absent or needs no change needs the executed command and its COMPLETE verbatim output in the Proof log.'
 // #169: appended to the plan-check and plan-audit proof checks. The script refuses a human-gate item that carries a
 // `command` field (validateAcceptanceItems, structure only); this sentence leaves the text to the model: a command written
 // in a gate item's text, and a gate that restates another item.
@@ -3251,6 +3256,7 @@ const samScoutPrompt = ({ fixBlock = '', auditFixBlock = '', reviewFixBlock = ''
       `This is a mandatory section, not optional prose — the human decides the split-or-not call from your answer.`
     : ''
   return `cd into the shared worktree "${worktreePath}" (frozen base; never checkout/commit). Scout and plan issue #${issue}. Brief: ${brief}.${pm ? `\n\nPM framing:\n${JSON.stringify(pm)}` : ''}${diag ? `\n\nConfirmed diagnosis (Theo):\n${diag.evidence}` : ''}\n\n` +
+    `${ISSUE_BODY_FIRST}\n\n` +
     `Write the full plan (including the acceptance checklist) as a Markdown ARTIFACT at "${planPath}" inside the worktree (create the .pipeline/plans/ directory if needed). ` +
     `This artifact is the canonical hand-off Nick and Morgan will consume — make it self-contained. ` +
     `REWRITE IN PLACE — accretion is the defect. On an amendment / re-plan round, OVERWRITE "${planPath}" with the CURRENT plan only: NO before/after or delta tables, NO "AMENDMENT N" headers, NO superseded sections kept "for traceability", NO revision archaeology. ` +
@@ -3260,6 +3266,8 @@ const samScoutPrompt = ({ fixBlock = '', auditFixBlock = '', reviewFixBlock = ''
     `${SAM_ONE_WAY_DOOR}${SAM_PRODUCT_DIRECTION}` +
     `Author the acceptance checklist against the project specifics (if any): never assert a whole-repo clean state the base branch cannot satisfy. ` +
     `${ACCEPTANCE_PROOF_RULE} ` +
+    `${REQUIREMENT_RULE} ` +
+    `${ABSENCE_CLAIMS_RULE} ` +
     `${HUMAN_GATE_TAG_RULE} ` +
     `${FOLLOWUP_ISSUE_RULE} ` +
     `Then post an INDEX comment on issue #${issue} — never the full plan, whatever its size. The index comment is exactly: ${planMarker} alone on its first line, a condensed summary (~15 lines max), the acceptance checklist VERBATIM, and a pointer to the canonical artifact "${planPath}" in the shared worktree. ` +
@@ -3698,6 +3706,7 @@ let planTargetsChecked = 0  // #103 — count of sanitized targetFiles the probe
 let openSubIssues = null       // lgtmgate#193 — probe result (array of open sub-issue
                                 // numbers as strings), null = probe skipped/failed (fail-open)
 let subIssuesUncovered = []    // lgtmgate#193 — post-gate list, exposed on dev-done finish() for tests
+let verifiedBranch = null      // lgtmgate#469 — PR head the branch guard verified, reported on the review-stage finish()
 
 // Branch-conformance guard (lgtmgate#29) — the dispatch worktree can arrive on a foreign branch
 // (e.g. another orchestrator's scheduled dispatch naming its own `git worktree add -B <prefix>-issue-<N>`), so the pipeline ASSERTS the
@@ -3781,6 +3790,7 @@ const assertBranchConformance = async (pullRequestNumber, nickBranchFallback) =>
       }
     }
   }
+  verifiedBranch = headReference
   return null
 }
 
@@ -4584,7 +4594,7 @@ if (after('review', entryStage)) {
     if (pf2?.pass !== false) return true
 
     log(`Preflight still failing after retry — escalating as preflight-stuck`)
-    return finish(STATUS['preflight-stuck'], { pr, issue, round: currentRound, issues: foldFailedChecks(pf2), trace })
+    return finish(STATUS['preflight-stuck'], { pr, issue, round: currentRound, issues: foldFailedChecks(pf2), relaunch: { entryStage: 'review', prNumber: pr, planPath }, trace })
   }
 
   let previousRoundItems = null
@@ -5067,7 +5077,7 @@ if (after('review', entryStage)) {
   await updateStatus(v.verdict === 'LGTM' ? 'PR Ready' : 'Blocked')
   return finish(v.verdict === 'LGTM' ? STATUS['ready'] : STATUS['escalate'], {
     pr,
-    branch: nick?.branch ?? '<unavailable>',
+    branch: nick?.branch ?? verifiedBranch ?? expectedBranchName,
     rounds: round,
     finalVerdict: v.verdict,
     issue,

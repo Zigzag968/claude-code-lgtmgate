@@ -195,7 +195,7 @@ as_keep=$(jsf "$ASP" 'JSON.stringify([f.expect.resultIncludes, f.expect.logsIncl
 if [ "$AS_RC" -eq 0 ] && [ "$as_keep" = "true" ] && printf '%s' "$as_strict" | grep -q 'passed=1 failed=0'; then ok "assertions: the published fixture keeps the named resultIncludes and logsInclude, protects the value, and replays strict"; else bad "assertions keep: rc=$AS_RC keep=$as_keep strict=$as_strict"; fi
 
 AS_ENG1="$AS_DIR/engine-badbranch.js"
-sed "s/branch: nick?.branch ?? '<unavailable>'/branch: 'x'/" "$ROOT/workflows/deliver-pipeline.js" > "$AS_ENG1"
+sed "s/branch: nick?.branch ?? verifiedBranch ?? expectedBranchName/branch: 'x'/" "$ROOT/workflows/deliver-pipeline.js" > "$AS_ENG1"
 as_bad=$(node scripts/run-offline.cjs "$ASP" --fp "$AS_ENG1" 2>&1)
 pub "$AS_DIR/123-plain.json" 123-plain --out-dir "$AS_OUT"
 as_plain=$(OFFLINE_STRICT=1 node scripts/run-offline.cjs "$AS_OUT/123-plain.json" --fp "$AS_ENG1" 2>&1 | tail -n 1)

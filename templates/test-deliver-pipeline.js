@@ -5595,6 +5595,36 @@ await testCase('T9036 ACCEPTANCE_PROOF_RULE defined once, interpolated once; ACC
   return (error1 || error2 || error3) ? (error1 || error2 || error3) : { ok: true }
 })
 
+// T531 (#531) — Theo and Sam read the issue body first; Nick and the plan auditor keep the plan as their contract.
+// Source-level: the sentence is defined once and interpolated in the Theo prompt and the Sam prompt only.
+await testCase('T531 ISSUE_BODY_FIRST: defined once, in the Theo prompt and the Sam prompt only', async () => {
+  const source = SUITE_ARGS.fpSource
+  if (!source) {
+    log('SKIP — T531: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const slice = (label, start, end) => {
+    const from = source.indexOf(start)
+    const to = from < 0 ? -1 : source.indexOf(end, from)
+    return from < 0 || to < 0 ? { error: { ok: false, msg: `T531: marker not found for ${label} (${start} .. ${end})` } } : { text: source.slice(from, to) }
+  }
+  const count = (text) => text.split('${ISSUE_BODY_FIRST}').length - 1
+  const theo = slice('Theo prompt', 'Qualify issue #', 'personaFallback: THEO_PERSONA')
+  const sam = slice('Sam prompt', 'const samScoutPrompt =', '// Plan stage')
+  const audit = slice('audit prompt', 'const auditPrompt', 'AXIS 1')
+  const nick = slice('Nick prompt', 'const nickPrompt', 'nickPromptPreview = nickPrompt')
+  const missing = [theo, sam, audit, nick].find((entry) => entry.error)
+  if (missing) return missing.error
+  return eq('ISSUE_BODY_FIRST occurrences (definition + 2 interpolations)', source.split('ISSUE_BODY_FIRST').length - 1, 3) ||
+    eq('interpolations', count(source), 2) ||
+    eq('precedence sentence occurrences', source.split('takes precedence over the brief').length - 1, 1) ||
+    eq('interpolations in the Theo prompt', count(theo.text), 1) ||
+    eq('interpolations in samScoutPrompt', count(sam.text), 1) ||
+    eq('interpolations in auditPrompt', count(audit.text), 0) ||
+    eq('interpolations in nickPrompt', count(nick.text), 0) ||
+    { ok: true }
+})
+
 // T9028 (#28) — when a Sam acceptance item may be tagged human-gate. Source-level: the shared rule constant
 // is defined once and interpolated once, inside samScoutPrompt, and its text asks "act" versus "only confirm".
 await testCase('T9028 HUMAN_GATE_TAG_RULE defined once, interpolated once in samScoutPrompt (#28)', async () => {
@@ -7819,6 +7849,32 @@ await testCase('T520e PHASE_TITLES holds the five meta.phases titles, in order',
   const line = /^const PHASE_TITLES = \{ setup: '([^']*)', diagnose: '([^']*)', plan: '([^']*)', dev: '([^']*)', review: '([^']*)' \}$/m.exec(source)
   if (!line) return { ok: false, msg: 'no PHASE_TITLES line of the expected shape' }
   return eq('titles', line.slice(1), declared) || { ok: true }
+})
+
+// T469 (#469) — recovery after a stuck preflight and the branch of a review-entry `ready`.
+await testCase('T469a preflight fails twice → preflight-stuck carries relaunch', async () => {
+  const r = await run({
+    mode: 'auto',
+    simulate: { sam: 'GO', preflight: [{ pass: false, issues: ['x'] }, { pass: false, issues: ['x'] }] },
+  })
+  const error1 = eq('status', r.status, 'preflight-stuck')
+  const error2 = typeof r.pr === 'number' ? null : { ok: false, msg: `pr must be a number, got ${JSON.stringify(r.pr)}` }
+  const error3 = eq('relaunch', r.relaunch, { entryStage: 'review', prNumber: r.pr, planPath: '.pipeline/plans/issue-1-sam.md' })
+  return error1 || error2 || error3 || { ok: true }
+})
+
+await testCase('T469b review entry → ready reports the verified branch', async () => {
+  const r = await run({ entryStage: 'review', prNumber: 267, simulate: { morgan: [{ verdict: 'LGTM' }] } })
+  return eq('status', r.status, 'ready') || eq('branch', r.branch, 'features/issue-1') || { ok: true }
+})
+
+await testCase('T469c review entry with a reconciled prefix → ready reports the real head', async () => {
+  const r = await run({
+    entryStage: 'review',
+    prNumber: 127,
+    simulate: { branchCheckRaw: 'feat/issue-1', configBranchPrefixRaw: 'feat/', morgan: [{ verdict: 'LGTM' }] },
+  })
+  return eq('status', r.status, 'ready') || eq('branch', r.branch, 'feat/issue-1') || { ok: true }
 })
 
 // T123 (#42) — every test ID is unique across the suite. Must stay the LAST case so `results`
