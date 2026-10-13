@@ -52,6 +52,10 @@
     "probe-123-pr-write-run-state-plan-ready-r0": {
       "line": "PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=4e4ca5354e17cf9a0b11596e7ba3f7303954f0bc0d8843ef304683dcea85cff8 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}",
       "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=4e4ca5354e17cf9a0b11596e7ba3f7303954f0bc0d8843ef304683dcea85cff8 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}"
+    },
+    "probe-123-lines-plan-digest-r0": {
+      "line": "PROBE name=lines exit=0 sha=4b0b2f33b20b777393f4cb55ea1d47c45786b52ad36822582a5ed67647e54ed5 cmd=e8eeee695e39d6eac71cde34a44e66125adc717a30a3d70140b786a4f206820e json={\"lines\":[\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]}",
+      "verify": "VERIFY ok line=PROBE name=lines exit=0 sha=4b0b2f33b20b777393f4cb55ea1d47c45786b52ad36822582a5ed67647e54ed5 cmd=e8eeee695e39d6eac71cde34a44e66125adc717a30a3d70140b786a4f206820e json={\"lines\":[\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]}"
     }
   },
   "expect": {

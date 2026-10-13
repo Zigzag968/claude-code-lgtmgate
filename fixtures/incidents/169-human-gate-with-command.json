@@ -87,6 +87,10 @@
     "probe-169-pr-write-run-state-plan-ready-r0": {
       "line": "PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=e90e282b6ae83a32b3878cf380a50447cd5fed33dd92d902624717f59194289c json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}",
       "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=e90e282b6ae83a32b3878cf380a50447cd5fed33dd92d902624717f59194289c json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}"
+    },
+    "probe-169-lines-plan-digest-r0": {
+      "line": "PROBE name=lines exit=0 sha=4b0b2f33b20b777393f4cb55ea1d47c45786b52ad36822582a5ed67647e54ed5 cmd=23d541d1c5e68731692219c6e386c034b81a76f49f9f0bf0388de239db0457e1 json={\"lines\":[\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]}",
+      "verify": "VERIFY ok line=PROBE name=lines exit=0 sha=4b0b2f33b20b777393f4cb55ea1d47c45786b52ad36822582a5ed67647e54ed5 cmd=23d541d1c5e68731692219c6e386c034b81a76f49f9f0bf0388de239db0457e1 json={\"lines\":[\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]}"
     }
   },
   "expect": {
@@ -98,6 +102,7 @@
       "probe:provision-freshness:haiku",
       "probe:pr-write:haiku",
       "acceptance-items-refused:1",
+      "probe:lines:haiku",
       "probe:pr-write:haiku"
     ],
     "logsInclude": [
