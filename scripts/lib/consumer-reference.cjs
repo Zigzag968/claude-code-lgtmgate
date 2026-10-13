@@ -20,6 +20,7 @@ const FAMILIES = [
   ['warnings', 'Assembler warnings'],
   ['reasons', 'Run reasons'],
   ['hooks', 'Hook messages'],
+  ['doctor', 'Doctor findings'],
 ]
 const PREREQUISITES_HEADING = 'Prerequisites'
 
@@ -88,8 +89,13 @@ function extractHooks(root) {
   return sorted(names)
 }
 
+// Doctor findings: the names of the table the doctor itself reads, never a pattern over its source.
+function extractDoctor() {
+  return sorted(new Set(require('./doctor-checks.cjs').FINDING_NAMES))
+}
+
 function extractNames(root) {
-  return { config: extractConfig(root), assembler: extractAssembler(root), warnings: extractWarnings(root), reasons: extractReasons(root), hooks: extractHooks(root) }
+  return { config: extractConfig(root), assembler: extractAssembler(root), warnings: extractWarnings(root), reasons: extractReasons(root), hooks: extractHooks(root), doctor: extractDoctor() }
 }
 
 // Rows of one table: the first code span of the first cell is the name, the fourth cell is the remedy.

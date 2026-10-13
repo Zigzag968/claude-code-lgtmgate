@@ -145,6 +145,8 @@ jobs:
         run: bash tests/scripts/test-tick-equivalence.sh
       - name: plugin-versions script regression test
         run: bash tests/scripts/test-plugin-versions.sh
+      - name: doctor script regression test
+        run: bash tests/scripts/test-doctor.sh
       - name: ca-bundle-check script regression test
         run: bash tests/scripts/test-ca-bundle-check.sh
       - name: consumer-defects script regression test

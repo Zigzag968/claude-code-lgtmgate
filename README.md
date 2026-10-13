@@ -146,7 +146,7 @@ claude plugin marketplace add Zigzag968/claude-code-lgtmgate
 claude plugin install lgtmgate@zigzag-plugins
 ```
 
-Restart the session, then in your target project run `/lgtmgate:init`. It generates `.claude/pipeline.config.json` (your build/test/format commands, base branch, worktree root) and copies in the project-facing machinery. **Commit what it produces.** Then deliver a feature:
+Restart the session, then in your target project run `/lgtmgate:init`. It generates `.claude/pipeline.config.json` (your build/test/format commands, base branch, worktree root) and copies in the project-facing machinery. **Commit what it produces.** Before the first launch, run `/lgtmgate:doctor`: one read-only verdict on the setup (plugin installs, config, certificate bundle, disk space, agents context), with the exact command for each finding. Then deliver a feature:
 
 ```
 /lgtmgate:deliver <issue> "<brief>"
