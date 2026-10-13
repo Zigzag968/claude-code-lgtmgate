@@ -98,6 +98,28 @@ mk_input "$T1" path ref "a.worktreePath = \"$TMP/other\""; hook "$T1"
 expect_deny "deny-foreign-worktree"
 if ! grep -Eq 'Sam|Nick|Morgan|Theo|Mia' "$OUT"; then pass "deny-names-no-role"; else fail "deny-names-no-role"; fi
 
+# ---- planRef (#533): the plan artifact read back, the digest the engine pinned -----------------------------
+expect_plan_deny() { # expect_plan_deny <name> [needle]
+  if [ "$RC" = 2 ] && [ "$(jx 'j.hookSpecificOutput.permissionDecision === "deny" && j.hookSpecificOutput.permissionDecisionReason.startsWith("plan-ref-mismatch:") && j.hookSpecificOutput.permissionDecisionReason.includes("docs/consumer-reference.md (plan-ref-mismatch)")')" = "true" ] && [ -s "$ERR" ] && { [ -z "${2:-}" ] || grep -qF -- "$2" "$OUT"; }; then pass "$1"; else fail "$1 (rc=$RC out=$(head -c 300 "$OUT"))"; fi
+}
+mkdir -p "$T1/.pipeline/plans"; PLAN_FILE="$T1/.pipeline/plans/issue-520-sam.md"
+printf '# Plan\n\n- [ ] <!-- ac:1 --> **ac:1** proof with an accent: caf\xc3\xa9\n- [ ] <!-- ac:2 --> second\n' > "$PLAN_FILE"
+PLAN_DIGEST="$(node -e 'process.stdout.write(require("crypto").createHash("sha256").update(require("fs").readFileSync(process.argv[1])).digest("hex"))' "$PLAN_FILE")"
+mk_input "$T1" path ref "a.entryStage = 'dev'; a.planRef = { issue: 520, digest: '$PLAN_DIGEST', targets: ['a/b.js'], designStep: true, lanes: ['x'] }"; hook "$T1"
+expect "expand-plan-equals-artifact" 0 'j.hookSpecificOutput.updatedInput.args.planText === require("fs").readFileSync("'"$PLAN_FILE"'", "utf8")'
+expect "expand-plan-keeps-planref-and-adds-no-script-line" 0 'JSON.stringify(j.hookSpecificOutput.updatedInput.args.planRef) === JSON.stringify(i.tool_input.args.planRef) && Object.keys(j.hookSpecificOutput.updatedInput.args).indexOf("planText") === Object.keys(j.hookSpecificOutput.updatedInput.args).indexOf("planRef") + 1 && !/^(targetFiles|design-step|lanes):/mi.test(j.hookSpecificOutput.updatedInput.args.planText)'
+printf 'x' >> "$PLAN_FILE"
+hook "$T1"
+expect_plan_deny "deny-plan-ref-mismatch-byte" "plan-ref-mismatch"
+if ! grep -q 'caf' "$OUT"; then pass "deny-plan-names-no-plan-text"; else fail "deny-plan-names-no-plan-text"; fi
+new_tree t6 ignore; T6="$TMP/t6"
+mk_input "$T6" path ref "a.entryStage = 'dev'; a.planRef = { issue: 520, digest: '$PLAN_DIGEST' }"; hook "$T6"
+expect_plan_deny "deny-plan-ref-missing-artifact" "plan-ref-mismatch"
+mk_input "$T1" path ref "a.entryStage = 'dev'; a.planRef = { issue: 521, digest: '$PLAN_DIGEST' }"; hook "$T1"
+expect_plan_deny "deny-plan-ref-issue-mismatch" "plan-ref-mismatch"
+mk_input "$T1" path ref "a.entryStage = 'dev'; a.planText = 'typed'; a.planRef = { issue: 520, digest: '$PLAN_DIGEST' }"; hook "$T1"
+expect_plan_deny "deny-both-plantext-and-planref" "plan-ref-mismatch"
+
 # ---- calls that are not ours ----------------------------------------------------------------------
 mk_input "$T1" path full; hook "$T1"
 if [ "$RC" = 0 ] && [ ! -s "$OUT" ]; then pass "pass-no-reference"; else fail "pass-no-reference (rc=$RC)"; fi

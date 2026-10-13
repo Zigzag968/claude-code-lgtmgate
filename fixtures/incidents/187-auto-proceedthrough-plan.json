@@ -70,6 +70,10 @@
     "probe-187-pr-write-run-state-plan-ready-r0": {
       "line": "PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=0b92966f1134213e6a258cce7b5c3516c6ebc6a44adc8a43f9ea0a4386b002c8 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}",
       "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=0b92966f1134213e6a258cce7b5c3516c6ebc6a44adc8a43f9ea0a4386b002c8 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}"
+    },
+    "probe-187-lines-plan-digest-r0": {
+      "line": "PROBE name=lines exit=0 sha=4404d1779f84640da8cc12956741b1f3dc822de119714dc10643cb25f55649a5 cmd=f76b3a10f69c868597f7bd4724e9fb86095ea9d46b0e01f5908c7eb6c9f917c8 json={\"lines\":[\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]}",
+      "verify": "VERIFY ok line=PROBE name=lines exit=0 sha=4404d1779f84640da8cc12956741b1f3dc822de119714dc10643cb25f55649a5 cmd=f76b3a10f69c868597f7bd4724e9fb86095ea9d46b0e01f5908c7eb6c9f917c8 json={\"lines\":[\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]}"
     }
   },
   "expect": {
@@ -80,6 +84,7 @@
       "probe:provision:haiku",
       "probe:provision-freshness:haiku",
       "probe:pr-write:haiku",
+      "probe:lines:haiku",
       "probe:pr-write:haiku"
     ],
     "callLabels": [
@@ -90,6 +95,7 @@
       "diagnose-issue-187",
       "scout-issue-187-1",
       "plan-check-187-1",
+      "probe-187-lines-plan-digest-r0",
       "probe-187-pr-write-run-state-plan-ready-r0"
     ]
   }
