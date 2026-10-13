@@ -83,6 +83,8 @@ the same turn:
 
 The standing rules (requirement, absence claims, proof log rules) are in the engine and in the Sam persona: do not paste them into `brief`.
 
+Run state is never typed in `brief`: `title`, `parallel` and `decided` carry what only the conversation knows, and the dependencies already merged and the epic parent are computed by the hook from the issue (`merged`, `epic`, written into `args` by `scripts/runtime/merged-dependencies.cjs`; a value typed there is replaced, and none is written when `gh` or the repository is unavailable). They are read in the short form, where the hook runs; the full form gets no derived line.
+
 Same `args` in both cases — only the TARGET changes, per the step 1 resolution:
 ```
 args = {
@@ -99,6 +101,9 @@ args = {
   architectureDecisionApproved: <optional — attests that the architecture-only pass (design-step trigger) already happened and was approved, exempts this launch from proceedThrough:"plan"; also required on an entryStage:"dev"|"review" launch whose planText announces a declared one-way-door kind>,
   projectSpecificsRef: <printed by launch-args.cjs --mode ref, an object {refSha, fp12}; omit when neither config.projectSpecifics nor config.agentContext is set (the full form passes the §3bis stdout as projectSpecifics)>,
   lanes: <optional — the `lanes` array of the previous result, on every entryStage dev|review relaunch (else the `lanes:` line of planText is read); omit on a plan launch>,
+  title: <optional — the issue title shortened to one line of at most 80 bytes; the hook puts it in the launch file name and description, so the run list reads `#<N> <title>`>,
+  parallel: <optional — the issue numbers of the launches in flight next to this one (at most 10, never this issue); the engine tells Theo, Sam and Nick not to touch their files, and the hook compares the list with the active runs as an advisory>,
+  decided: <optional — ONE decision taken in conversation, at most 200 bytes, with its anchor in the issue or a comment>,
   planRef: <optional, entryStage dev|review in the short form — the `planRef` of the latest result that carried one, copied as is with `--plan-ref '<json>'` (#533); the hook expands it to `planText`, the bytes of the plan artifact; instead of `planText`, never with it>,
   pluginRoot: <absolute ${CLAUDE_PLUGIN_ROOT} for the plugin component; for a local copy of the workflow, the absolute root of the checkout that holds scripts/runtime/probe-run.cjs (or set config.probeRunPath); its .claude-plugin/plugin.json version must equal the engine's, so a local copy of the workflow is refreshed together with the plugin (a mismatch escalates before provisioning, #195) — the workflow has no filesystem or env, so this is how the probe layer finds scripts/runtime/probe-run.cjs (config.probeRunPath wins; with neither, the run fails closed with probeReason 'probe-run-not-found')>
   sessionRoot: <absolute project root of THIS session (the directory it was opened in); the workflow has no env, so the Lead passes it; its git common dir must equal the repository of worktreePath, else the run escalates session-root-mismatch before provisioning (#177)>

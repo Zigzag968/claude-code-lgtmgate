@@ -264,7 +264,7 @@ const {
   models = {},
   simulate = null,
   stamp = null,
-  title = undefined,
+  title: titleArgument = undefined,
   parallel = undefined,
   decided = undefined,
   merged: mergedArgument = undefined,
@@ -286,7 +286,7 @@ if (planReferenceArgument !== undefined) {
 const worktreePath = worktreeArgument || legacyWorktreePath
 if (!issue || !brief || !worktreePath) throw new Error('Missing required args: issue, brief, worktreePath')
 // #545 — the run-state launch arguments: shape checked once, before the config check and any agent call.
-const launchArgumentProblem = launchArgumentsProblem({ issue, title, parallel, decided, merged: mergedArgument, epic: epicArgument })
+const launchArgumentProblem = launchArgumentsProblem({ issue, title: titleArgument, parallel, decided, merged: mergedArgument, epic: epicArgument })
 if (launchArgumentProblem) {
   throw new Error(`launch-argument-invalid: ${launchArgumentProblem}; nothing ran. Shorten or fix the value and relaunch; see docs/consumer-reference.md (launch-argument-invalid).`)
 }
