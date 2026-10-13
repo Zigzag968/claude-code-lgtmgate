@@ -21,6 +21,9 @@
 #      BUILD line the bump commit writes is not a change) must add or modify `fixtures/incidents/<N>-*.json` holding valid
 #      JSON, unless a valid `exception:` line (1b) declares the waiver. Every issue found is checked; a gh error reading one
 #      refuses. Otherwise one `FAIL: r2-waiver: <reason>` line and exit before any fetch-merge, bump, push, checks or merge.
+#   1b3. self-reference (#455): a PR whose judged tip (1b) changes scripts/lead-merge.sh or a file of scripts/lib/ must be merged
+#      by the PR's own copy of them (content compared with the running $SCRIPT_DIR); otherwise one `FAIL: self-reference` line
+#      naming the command to run from the PR worktree, and exit before any tick, fetch-merge, bump, push, checks or merge.
 #   2. sync: refuse unless on the PR head branch with a clean tree; fetch the head branch and
 #      fast-forward when the remote is ahead (a previous partial run), refuse when diverged.
 #   3. bring the base in LOCALLY: fetch origin/main, `git merge --no-edit origin/main`. On conflict:
@@ -101,6 +104,7 @@ WORKFLOW="workflows/deliver-pipeline.js"
 
 die() { echo "lead-merge: $*" >&2; exit 1; }
 
+lm_args="$*"
 PR=""; REPO=""; TICK=0; TICK_IDS=""; CLEANUP=0
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -195,6 +199,10 @@ lm_gate_declared_exceptions "$body" "$pr_head"
 # --- 1b2. R2 waivers must be declared (#174) -----------------------------------
 # Rule and scope: scripts/lib/merge-gates.sh (lm_gate_r2_waivers).
 lm_gate_r2_waivers "$body" "$pr_head" "$lm_tmp"
+
+# --- 1b3. self-reference (#455) ---
+# Rule: scripts/lib/merge-gates.sh (lm_gate_self_reference).
+lm_gate_self_reference "$pr_head"
 
 # --- 1c. --tick-from-review (#9) / --tick-ids (#196) ---------------------------
 if { [ "$TICK" -eq 1 ] || [ -n "$TICK_IDS" ]; } && [ "$rc" -eq 1 ]; then
