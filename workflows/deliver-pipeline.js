@@ -2781,10 +2781,11 @@ function minPluginVersionVerdict({ engineVersion, minVersion, plugin }) {
 // on another repository than the Lead session's would run under the wrong rules. A script compares the git common dir
 // of the Lead's session root with the run's worktree; the command prints exactly one line, read by the `lines` probe.
 // #490: templates/session-root.cjs (of the plugin dir) run by path; the worktree is its cwd (`cd '<wt>'` of the probe line).
+// #546: the plugin path comes from the gate (probe-run exports LGTMGATE_TEMPLATES), not from the copy the model types.
 // No model judges. The reason never holds a path (the scrub hook refuses local paths in GitHub text).
-function sessionRootCommand(sessionRootPath, templatesDirectory) {
+function sessionRootCommand(sessionRootPath) {
   const q = (x) => `'${String(x).split("'").join("'\\''")}'`
-  return `node ${q(templatesDirectory + '/session-root.cjs')} ${q(sessionRootPath)}`
+  return `node "$LGTMGATE_TEMPLATES/session-root.cjs" ${q(sessionRootPath)}`
 }
 // -> null when the session root is the repository of the worktree, else { code, reason }; fails closed on anything else.
 function sessionRootVerdict({ probeFailed, exit, lines }) {
@@ -2989,7 +2990,7 @@ if (!simulate && pluginRoot && !config.probeRunPath) {
 // instructions). The Lead passes its session root; same git common dir as the worktree, else escalate before
 // provisioning. A reason on the existing escalate: no new status, agent or seam, no label written.
 if (!simulate && sessionRoot) {
-  const sr = await probe('lines', sessionRootCommand(sessionRoot, config.probeRunPath ? config.probeRunPath.slice(0, config.probeRunPath.lastIndexOf('/')) : pluginRoot ? pluginRoot + '/templates' : worktreePath + '/templates'), { label: 'session-root', noReuse: true, b64: true, onFail: (reason, stderr) => ({ probeFailed: reason, probeStderr: stderr || null }) })
+  const sr = await probe('lines', sessionRootCommand(sessionRoot), { label: 'session-root', noReuse: true, b64: true, onFail: (reason, stderr) => ({ probeFailed: reason, probeStderr: stderr || null }) })
   if (sr.probeFailed === 'agent-death') return finish(STATUS['provision-died'], { issue, trace })
   const srv = sessionRootVerdict({ probeFailed: sr.probeFailed, exit: sr.exit, lines: sr.json && sr.json.lines })
   if (srv && sr.probeFailed) {

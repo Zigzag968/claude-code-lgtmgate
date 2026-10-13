@@ -13,8 +13,8 @@
   },
   "calls": {
     "probe-177-lines-session-root-r0": {
-      "line": "PROBE name=lines exit=0 sha=b03e838dd43d5a01d1eab98cd3e1987c5f231fb4fe3fdd9d17e3f04e58e239e5 cmd=8f1b05c28c637cd5885ca3cfbb926b946ff38e27b2e29d38accc145dd6d2823f json={\"lines\":[\"SESSION-ROOT:differs\"]}",
-      "verify": "VERIFY ok line=PROBE name=lines exit=0 sha=b03e838dd43d5a01d1eab98cd3e1987c5f231fb4fe3fdd9d17e3f04e58e239e5 cmd=8f1b05c28c637cd5885ca3cfbb926b946ff38e27b2e29d38accc145dd6d2823f json={\"lines\":[\"SESSION-ROOT:differs\"]}"
+      "line": "PROBE name=lines exit=0 sha=b03e838dd43d5a01d1eab98cd3e1987c5f231fb4fe3fdd9d17e3f04e58e239e5 cmd=cafd128e4244dc869b2500a199b91f3e69fdd73cd3175db2f9acd7df0e3bdc69 json={\"lines\":[\"SESSION-ROOT:differs\"]}",
+      "verify": "VERIFY ok line=PROBE name=lines exit=0 sha=b03e838dd43d5a01d1eab98cd3e1987c5f231fb4fe3fdd9d17e3f04e58e239e5 cmd=cafd128e4244dc869b2500a199b91f3e69fdd73cd3175db2f9acd7df0e3bdc69 json={\"lines\":[\"SESSION-ROOT:differs\"]}"
     }
   },
   "expect": {

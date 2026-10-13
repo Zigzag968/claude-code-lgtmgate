@@ -33,6 +33,8 @@
 // (both together: usage) and REQUIRES --expect-cmd (without it: usage): the script decodes the token, then the record,
 // the digest gate and the cmd= hash all use the decoded command exactly as with --cmd. A token altered in the copy
 // decodes to another text, fails the digest and runs nothing. Exec mode only (with --verify: usage).
+// The executed command sees LGTMGATE_TEMPLATES (#546): the plugin `templates` directory of this script, so a command
+// never has to carry a plugin path the model would copy.
 // Output (exactly one line, exit 0 whenever it is printed):
 //   PROBE name=<parser> exit=<cmd exit> sha=<sha256 of record.stdout> cmd=<sha256 of the executed --cmd> json=<compact JSON>
 // Exit 2 + usage on stderr for an invalid invocation. No network, nothing read outside --out.
@@ -224,7 +226,7 @@ function cut(buffer) {
 }
 
 function buildRecord({ label, cmd, model }) {
-  const r = spawnSync('sh', ['-c', cmd], { maxBuffer: 256 * 1024 * 1024 })
+  const r = spawnSync('sh', ['-c', cmd], { maxBuffer: 256 * 1024 * 1024, env: Object.assign({}, process.env, { LGTMGATE_TEMPLATES: path.join(__dirname, '..', '..', 'templates') }) })
   const stdoutCut = cut(r.stdout || Buffer.alloc(0))
   const stderrCut = cut(r.stderr || Buffer.alloc(0))
   return {
