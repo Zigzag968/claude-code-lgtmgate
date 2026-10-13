@@ -75,6 +75,8 @@ jobs:
         run: bash tests/scripts/test-launch-args.sh
       - name: context-print self-test
         run: bash tests/scripts/test-context-print.sh
+      - name: context-audit self-test
+        run: bash tests/scripts/test-context-audit.sh
       - name: init-specifics self-test
         run: bash tests/scripts/test-init-specifics.sh
       - name: config-check self-test
