@@ -57,7 +57,7 @@ function cutBytes(text, limit) {
 
 function retitle(source, issue, options) {
   if (typeof source !== 'string' || !Number.isInteger(issue) || issue < 1) return null
-  const given = options || {}
+  const given = typeof options === 'string' ? { title: options } : options || {}
   const line = firstLine(given.brief)
   let name
   if (given.title !== undefined) {

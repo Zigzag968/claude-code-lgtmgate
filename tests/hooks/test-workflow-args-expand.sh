@@ -212,6 +212,8 @@ for (const t of ["Setup", "Diagnose", "Plan", "Dev", "Review"]) legacy = legacy.
 legacy = legacy.replace(/^  name: .*$/m, "  name: \x27deliver-pipeline #9 Old title\x27,")
 if (legacy === retitle(source, 9) || retitle(legacy, 9) !== retitle(source, 9)) ok = false
 if (retitle(source.replace("title: \x27Dev\x27", "title: \x27Develop\x27"), 1) !== null) ok = false
+// a string third argument is the title (same as { title })
+if (retitle(source, 553, "Short title") !== retitle(source, 553, { title: "Short title" }) || !retitle(source, 553, "Short title").includes("\n  name: \x27Short title\x27,\n")) ok = false
 process.exit(ok ? 0 : 1)' "$ROOT"
 NR=$?
 if [ "$NR" -eq 0 ]; then pass "launch-phases-plain (plain titles for any issue number, idempotent, a launch file of the previous shape is normalized)"; else fail "launch-phases-plain"; fi
