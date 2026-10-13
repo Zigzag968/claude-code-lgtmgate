@@ -131,6 +131,8 @@ jobs:
         run: bash scripts/test-headless-run.sh
       - name: canary preflight self-test
         run: bash scripts/test-canary-preflight.sh
+      - name: canary measure self-test
+        run: bash scripts/test-canary-measure.sh
       - name: lead-merge script regression test
         run: bash tests/scripts/test-lead-merge.sh
       - name: marker spelling parity test
