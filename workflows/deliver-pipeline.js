@@ -52,6 +52,11 @@ export const meta = {
 // | `maxPlanAmendRounds` | optional, DEFAULT 0 (issue #97): dark-launch kill-switch for routing a Morgan-classified PLAN defect (as opposed to a code defect) back to Sam for a plan amendment instead of forever re-dispatching Nick against a frozen, unfixable plan. 0 (the shipped default) is SHADOW MODE — Morgan's itemOwners classification is still computed and traced (`plan-route-shadow:<round>`), but every item is still routed to Nick as a code defect, so the off-path behaviour is byte-for-bit identical to before #97. Must be a non-negative integer; a non-integer or negative value throws. Flipped by the human only after observing shadow-mode `trace` evidence that the classification is trustworthy. |
 // | `simulate` | test fixture object; the only key the engine reads is `simulate.probes`, a map keyed by seam name (agent mocks sam/mia/nick/morgan/theo/audit/planCheck/preflight/alreadyDoneCheck, parsed-value probes such as headSha/prBody/mergeState/behindCount, agentTypeUnresolved, branchCheckRaw, ...). When set, no real agent is spawned and the trace is still recorded. The translation from the suite's flat keys to `probes` and every default live in run() of the flow suite (scripts/run-flow-suite.cjs runs it); the engine carries no `??` default on a seam. `simulate.probes[<role>] = 'DIE'` (the literal string) is the plain-death lever for a role, since `null` is nullish. An object value of `sam` is a per-attempt map of partial Sam returns (the plan-verification attempt, or the review round of a plan amendment), keyed like `planCheck`'s (#182). |
 // | `stamp` | optional epoch ms of the run (the harness bans an argless `new Date()`, which breaks resume): read by the already-done guard's future-merged check, the artifact-floor fallback and the preflight probes' `--stamp`; absent -> each degrades gracefully. |
+// | `title` | optional string, at most 80 bytes, no newline (#545): the issue title shortened by the Lead. Read by the expansion hook for the launch file name and description (scripts/lib/launch-file.cjs); the engine only validates it (`launch-argument-invalid`). |
+// | `parallel` | optional array of at most 10 distinct positive integers, never the run's own issue (#545): the launches in flight next to this one. Rendered as `parallel:` in the Theo, Sam and Nick prompts; the hook compares it with the active runs as an advisory. Shape only: a pull request number cannot be told from an issue offline. |
+// | `decided` | optional string, at most 200 bytes, no newline (#545): one decision taken in conversation, with its anchor in the issue or a comment. Rendered as `decided:` in the Theo, Sam and Nick prompts. |
+// | `merged` | HOOK-WRITTEN array of at most 20 issue numbers, never typed (#545): the `depends-on:` issues of the issue body that are closed as completed. The hook (scripts/runtime/merged-dependencies.cjs) deletes a typed value and writes its own; absent in the full form, or when `gh` or the repository is unavailable. Rendered as `merged:`. |
+// | `epic` | HOOK-WRITTEN positive integer, never typed (#545): the parent issue of the run's issue. Same origin and absence as `merged`. Rendered as `epic:`. |
 //
 // config.commitHygiene — OFF by default: { squashBeforeHandoff: bool, maxCommits: int }.
 // squashBeforeHandoff=true makes the pipeline soft-reset a >maxCommits branch to 2-3 logical
@@ -259,6 +264,11 @@ const {
   models = {},
   simulate = null,
   stamp = null,
+  title = undefined,
+  parallel = undefined,
+  decided = undefined,
+  merged: mergedArgument = undefined,
+  epic: epicArgument = undefined,
 } = argumentsIn
 
 // #520 — a reference the expansion hook should have replaced: refuse before anything runs (zero agent call).
@@ -275,6 +285,11 @@ if (planReferenceArgument !== undefined) {
 }
 const worktreePath = worktreeArgument || legacyWorktreePath
 if (!issue || !brief || !worktreePath) throw new Error('Missing required args: issue, brief, worktreePath')
+// #545 — the run-state launch arguments: shape checked once, before the config check and any agent call.
+const launchArgumentProblem = launchArgumentsProblem({ issue, title, parallel, decided, merged: mergedArgument, epic: epicArgument })
+if (launchArgumentProblem) {
+  throw new Error(`launch-argument-invalid: ${launchArgumentProblem}; nothing ran. Shorten or fix the value and relaunch; see docs/consumer-reference.md (launch-argument-invalid).`)
+}
 // #13/#12 — `config` is REQUIRED and must be an object: the workflow sandbox has no filesystem, so
 // an absent config silently ran every default (branchPrefix 'features/', envSymlink 'required',
 // placeholder commands) and surfaced runs later as preflight-stuck / branch-mismatch. Same throw
@@ -434,6 +449,8 @@ const repository = config.repo || null
 const prFlag = repository ? ` -R ${repository}` : ''
 // Shared sentence for the diagnose and plan prompts: the issue body is the contract, read before the brief.
 const ISSUE_BODY_FIRST = `Read the issue body first: \`gh api repos/${repository || '{owner}/{repo}'}/issues/${issue} --jq .body\` (REST, one call; the repository is config.repo, else gh resolves it from the working directory). The issue body takes precedence over the brief when they differ.`
+// #545 — run state the hook derived or the Lead declared (merged dependencies, epic, parallel launches, a decision); '' when none is set, so a prompt without the keys is byte-identical.
+const RUN_STATE_LINES = runStateLines({ merged: mergedArgument, epic: epicArgument, parallel, decided })
 // Sandbox-safe push (#108): SSH (port 22 / agent socket) is blocked in the agent sandbox, HTTPS to
 // github.com:443 through the gh credential helper is not. Exact command, also quoted to the Lead
 // by the delivered-no-pr escalation. `repo` absent -> Nick derives the slug from the origin URL.
@@ -2662,6 +2679,63 @@ function base64Utf8(string_) {
 }
 // --- base64Utf8:end ---
 
+// --- launchArguments:start --- (pure & self-contained, no regex, no module-level const: it is called near the top of the script)
+// #545: the shape of the run-state launch arguments, judged without a model. -> null when well formed, else a one-line problem.
+// Bounds are literals (this runs before the consts below): title 80 bytes, decided 200 bytes, parallel 10 numbers, merged 20.
+function launchArgumentBytes(text) {
+  let bytes = 0
+  for (const ch of text) {
+    const cp = ch.codePointAt(0)
+    bytes += cp < 0x80 ? 1 : cp < 0x800 ? 2 : cp < 0x10000 ? 3 : 4
+  }
+  return bytes
+}
+function launchArgumentHasControl(text) {
+  for (const ch of text) {
+    const cp = ch.codePointAt(0)
+    if (cp < 0x20 || cp === 0x7f) return true
+  }
+  return false
+}
+function launchTextProblem(name, value, maxBytes) {
+  if (typeof value !== 'string' || value.trim() === '') return `${name} is not a non-empty string`
+  if (launchArgumentHasControl(value)) return `${name} holds a newline or control character`
+  const bytes = launchArgumentBytes(value)
+  if (bytes > maxBytes) return `${name} is ${bytes} bytes, over the ${maxBytes}-byte bound`
+  return null
+}
+function launchNumbersProblem(name, value, maxCount, ownIssue) {
+  if (!Array.isArray(value)) return `${name} is not an array`
+  if (value.length > maxCount) return `${name} lists ${value.length} numbers, over the bound of ${maxCount}`
+  const seen = []
+  for (const n of value) {
+    if (!Number.isInteger(n) || n < 1) return `${name} holds ${JSON.stringify(n)}, which is not a positive integer`
+    if (seen.includes(n)) return `${name} lists #${n} twice`
+    if (ownIssue !== null && n === ownIssue) return `${name} lists the run's own issue #${n}`
+    seen.push(n)
+  }
+  return null
+}
+function launchArgumentsProblem({ issue: issueNumber, title: titleValue, parallel: parallelValue, decided: decidedValue, merged: mergedValue, epic: epicValue }) {
+  const own = Number.isInteger(Number(issueNumber)) && Number(issueNumber) >= 1 ? Number(issueNumber) : null
+  if (titleValue !== undefined) { const p = launchTextProblem('title', titleValue, 80); if (p) return p }
+  if (decidedValue !== undefined) { const p = launchTextProblem('decided', decidedValue, 200); if (p) return p }
+  if (parallelValue !== undefined) { const p = launchNumbersProblem('parallel', parallelValue, 10, own); if (p) return p }
+  if (mergedValue !== undefined) { const p = launchNumbersProblem('merged', mergedValue, 20, null); if (p) return p }
+  if (epicValue !== undefined && (!Number.isInteger(epicValue) || epicValue < 1)) return 'epic is not a positive integer'
+  return null
+}
+// Lines the run state adds to the Theo, Sam and Nick prompts (each ends with a newline); '' when nothing is set.
+function runStateLines({ merged: mergedValue, epic: epicValue, parallel: parallelValue, decided: decidedValue }) {
+  let out = ''
+  if (Array.isArray(mergedValue) && mergedValue.length > 0) out += `merged: ${mergedValue.map((n) => `#${n}`).join(', ')}\n`
+  if (epicValue !== undefined) out += `epic: #${epicValue}\n`
+  if (Array.isArray(parallelValue) && parallelValue.length > 0) out += `parallel: ${parallelValue.map((n) => `#${n}`).join(', ')} (launches in flight next to this one; do not touch their files)\n`
+  if (typeof decidedValue === 'string') out += `decided: ${decidedValue}\n`
+  return out
+}
+// --- launchArguments:end ---
+
 // --- probeCommands:start --- (pure & self-contained — keep extractable by the consuming project's tests)
 // The two commands the probe agent runs, in order (#82). Both start with `cd '<worktreePath>' && node '<script>'`
 // (the attest hook accepts that prefix). The script is config.probeRunPath, else the plugin root's
@@ -3183,7 +3257,7 @@ if (after('plan', entryStage)) {
   diag = await callAgentSafe(
     'theo',
     `Qualify issue #${issue} before Sam plans anything — this gate runs for EVERY nightly-dispatched issue, no exceptions. Brief: ${brief}\n\n` +
-      `${ISSUE_BODY_FIRST}\n` +
+      `${ISSUE_BODY_FIRST}\n${RUN_STATE_LINES}` +
       `If this issue claims a root cause or a specific bug behavior: reproduce it for real in worktree "${worktreePath}" (frozen base; never checkout/commit) — ` +
       `a real run/test, never a code-reading guess — and confirm or refute the stated cause.\n` +
       `If this issue is a feature/chore ask with no claimed bug: sanity-check it's justified — not already done/shipped, not solving a problem that doesn't ` +
@@ -3317,7 +3391,7 @@ const samScoutPrompt = ({ fixBlock = '', auditFixBlock = '', reviewFixBlock = ''
       `This is a mandatory section, not optional prose — the human decides the split-or-not call from your answer.`
     : ''
   return `cd into the shared worktree "${worktreePath}" (frozen base; never checkout/commit). Scout and plan issue #${issue}. Brief: ${brief}.${pm ? `\n\nPM framing:\n${JSON.stringify(pm)}` : ''}${diag ? `\n\nConfirmed diagnosis (Theo):\n${diag.evidence}` : ''}\n\n` +
-    `${ISSUE_BODY_FIRST}\n\n` +
+    `${ISSUE_BODY_FIRST}\n${RUN_STATE_LINES}\n` +
     `Write the full plan (including the acceptance checklist) as a Markdown ARTIFACT at "${planPath}" inside the worktree (create the .pipeline/plans/ directory if needed). ` +
     `This artifact is the canonical hand-off Nick and Morgan will consume — make it self-contained. ` +
     `REWRITE IN PLACE — accretion is the defect. On an amendment / re-plan round, OVERWRITE "${planPath}" with the CURRENT plan only: NO before/after or delta tables, NO "AMENDMENT N" headers, NO superseded sections kept "for traceability", NO revision archaeology. ` +
@@ -3961,7 +4035,7 @@ if (after('dev', entryStage)) {
     : ''
   const nickPrompt = (
     `Work in the shared worktree "${worktreePath}" (cd into it; it already exists${worktreeRoot ? `; worktree root: ${worktreeRoot}` : ''}). ` +
-      `Issue #${issue}. Brief: ${brief}. The plan text below is authoritative — do NOT re-read the issue or the plan from GitHub.\n\n` +
+      `Issue #${issue}. Brief: ${brief}. The plan text below is authoritative — do NOT re-read the issue or the plan from GitHub.\n${RUN_STATE_LINES}\n` +
       `${planBlock}\n\n${planFreshnessNote(planStaleFiles, baseBranch)}${resumeReasonNote(resumeReason, prNumber, baseBranch)}` +
       `FIRST, before ANY commit: the worktree may have been dispatched on a foreign branch. ` +
         `Run \`git -C "${worktreePath}" rev-parse --abbrev-ref HEAD\`; if it is not exactly \`${expectedBranchName}\`, ` +
