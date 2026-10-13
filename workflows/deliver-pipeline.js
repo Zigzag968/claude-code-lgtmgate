@@ -240,7 +240,7 @@ const {
   entryStage = 'plan',
   proceedThrough = null,
   planText = null,
-  planRef: planRefArgument = undefined,
+  planRef: planReferenceArgument = undefined,
   dryRun = false,
   probeOnly = null,
   pluginRoot = null,
@@ -262,14 +262,14 @@ const {
 } = argumentsIn
 
 // #520 — a reference the expansion hook should have replaced: refuse before anything runs (zero agent call).
-if (argumentsIn.projectSpecificsRef !== undefined || argumentsIn.configRef !== undefined || (planRefArgument !== undefined && planText === null)) {
+if (argumentsIn.projectSpecificsRef !== undefined || argumentsIn.configRef !== undefined || (planReferenceArgument !== undefined && planText === null)) {
   throw new Error('unexpanded-reference: args still carries projectSpecificsRef, configRef or planRef without planText, so the expansion hook did not run (hooks disabled, plugin older than this engine, or a launch without the hook). Nothing ran. Launch in full form (launch-args.cjs --mode full) or enable the plugin hooks; see docs/consumer-reference.md (unexpanded-reference).')
 }
 // #533 — a planRef came with its expansion: same shape, same issue, and the text must be the bytes the engine pinned.
-if (planRefArgument !== undefined) {
-  const refProblem = planRefProblem(planRefArgument, issue)
-  if (refProblem) throw new Error(`plan-ref-mismatch: ${refProblem}; nothing ran. Relaunch from the planRef of the latest result, or in full form with planText; see docs/consumer-reference.md (plan-ref-mismatch).`)
-  if (sha256Hex(planText) !== planRefArgument.digest) {
+if (planReferenceArgument !== undefined) {
+  const referenceProblem = planReferenceProblem(planReferenceArgument, issue)
+  if (referenceProblem) throw new Error(`plan-ref-mismatch: ${referenceProblem}; nothing ran. Relaunch from the planRef of the latest result, or in full form with planText; see docs/consumer-reference.md (plan-ref-mismatch).`)
+  if (sha256Hex(planText) !== planReferenceArgument.digest) {
     throw new Error('plan-ref-mismatch: planText does not hash to planRef.digest (the plan changed since the reference was returned); nothing ran. Relaunch from the planRef of the latest result, or in full form with planText; see docs/consumer-reference.md (plan-ref-mismatch).')
   }
 }
@@ -1967,14 +1967,20 @@ function doorFactsFromPlanText(planBody) {
   const targets = value === '' || value.toLowerCase() === 'none' ? [] : safePlanTargets(value.split(',').join(' ').split(' '))
   return { targets, designStep }
 }
+// #533: 64 lowercase hex characters, no regex (the ratchet counts them).
+function isHex64(value) {
+  if (typeof value !== 'string' || value.length !== 64) return false
+  for (const c of value) if (!'0123456789abcdef'.includes(c)) return false
+  return true
+}
 // #533: the shape of a planRef, judged without a model (25 = PLAN_TARGETS_CAP, a literal: this runs before that const). -> null when well formed, else the problem. `issue` is the launch's issue.
-function planRefProblem(ref, issueNumber) {
-  if (ref === null || typeof ref !== 'object' || Array.isArray(ref)) return 'planRef is not an object'
-  if (!Number.isInteger(ref.issue) || ref.issue !== Number(issueNumber)) return 'planRef.issue is not the issue of the launch'
-  if (typeof ref.digest !== 'string' || !/^[0-9a-f]{64}$/.test(ref.digest)) return 'planRef.digest is not a lowercase SHA-256'
-  if (ref.targets !== undefined && (!Array.isArray(ref.targets) || ref.targets.length > 25 || ref.targets.some((t) => typeof t !== 'string'))) return 'planRef.targets is not a list of paths'
-  if (ref.designStep !== undefined && ref.designStep !== true) return 'planRef.designStep is not true'
-  if (ref.lanes !== undefined && (!Array.isArray(ref.lanes) || ref.lanes.some((n) => typeof n !== 'string'))) return 'planRef.lanes is not a list of names'
+function planReferenceProblem(reference, issueNumber) {
+  if (reference === null || typeof reference !== 'object' || Array.isArray(reference)) return 'planRef is not an object'
+  if (!Number.isInteger(reference.issue) || reference.issue !== Number(issueNumber)) return 'planRef.issue is not the issue of the launch'
+  if (!isHex64(reference.digest)) return 'planRef.digest is not a lowercase SHA-256'
+  if (reference.targets !== undefined && (!Array.isArray(reference.targets) || reference.targets.length > 25 || reference.targets.some((t) => typeof t !== 'string'))) return 'planRef.targets is not a list of paths'
+  if (reference.designStep !== undefined && reference.designStep !== true) return 'planRef.designStep is not true'
+  if (reference.lanes !== undefined && (!Array.isArray(reference.lanes) || reference.lanes.some((n) => typeof n !== 'string'))) return 'planRef.lanes is not a list of names'
   return null
 }
 // --- oneWayDoor:end ---
@@ -2853,34 +2859,34 @@ async function probe(name, command, { label, round = 0, onFail, noReuse = false,
 // #533: the reference a result hands the Lead so a relaunch never retypes the plan. The digest is read once, by the
 // existing `lines` probe, from the artifact Sam wrote (the bytes the hook will read back); a failed read gives null and
 // the Lead keeps the full `plan` (fail-open, trace plan-ref-unavailable). Under simulate there is no filesystem: the digest
-// is the one of the text in hand. A plan amendment calls resetPlanRef() so the next result carries the new digest.
-let planRefMemo
-let planRefStale = false
-function resetPlanRef() { planRefMemo = undefined; planRefStale = true }
-async function planRefFor(textInHand) {
-  if (planRefMemo !== undefined) return planRefMemo
-  const given = planRefArgument && !planRefStale ? planRefArgument : null
-  if (given) { planRefMemo = given; return given }
+// is the one of the text in hand. A plan amendment calls resetPlanReference() so the next result carries the new digest.
+let planReferenceMemo
+let planReferenceStale = false
+function resetPlanReference() { planReferenceMemo = undefined; planReferenceStale = true }
+async function planReferenceFor(textInHand) {
+  if (planReferenceMemo !== undefined) return planReferenceMemo
+  const given = planReferenceArgument && !planReferenceStale ? planReferenceArgument : null
+  if (given) { planReferenceMemo = given; return given }
   let digest = null
   if (simulate) {
-    if (typeof textInHand !== 'string' || textInHand === '') { planRefMemo = null; return null }
+    if (typeof textInHand !== 'string' || textInHand === '') { planReferenceMemo = null; return null }
     digest = sha256Hex(textInHand)
   } else {
     const js = 'try{console.log(require("crypto").createHash("sha256").update(require("fs").readFileSync(process.argv[1])).digest("hex"))}catch(e){console.log("PLAN-DIGEST-ERROR")}'
     const r = await probe('lines', `node -e ${shellSingleQuote(js)} ${shellSingleQuote(planPath)}`, { label: 'plan-digest', noReuse: true, b64: true, onFail: (reason) => ({ probeFailed: reason }) })
     const line = r && !r.probeFailed && r.json && Array.isArray(r.json.lines) ? String(r.json.lines[0] ?? '').trim() : ''
-    if (/^[0-9a-f]{64}$/.test(line)) digest = line
+    if (isHex64(line)) digest = line
   }
-  if (digest === null) { trace.push('plan-ref-unavailable'); planRefMemo = null; return null }
-  const base = planRefArgument || {}
-  const targets = planRefArgument ? safePlanTargets(base.targets) : safePlanTargets(planTargetsInHand)
-  planRefMemo = {
+  if (digest === null) { trace.push('plan-ref-unavailable'); planReferenceMemo = null; return null }
+  const base = planReferenceArgument || {}
+  const targets = planReferenceArgument ? safePlanTargets(base.targets) : safePlanTargets(planTargetsInHand)
+  planReferenceMemo = {
     issue: Number(issue), digest,
     ...(targets.length > 0 ? { targets } : {}),
-    ...((planRefArgument ? base.designStep === true : designStepOpen) ? { designStep: true } : {}),
+    ...((planReferenceArgument ? base.designStep === true : designStepOpen) ? { designStep: true } : {}),
     ...(lanesDevelopment.length > 0 ? { lanes: lanesDevelopment } : {}),
   }
-  return planRefMemo
+  return planReferenceMemo
 }
 
 // preflightProbe (#83): the pre-Dev / branch-guard reads as ONE probe (scripts/runtime/preflight.sh, parser
@@ -3576,10 +3582,10 @@ if (after('plan', entryStage)) {
 
   if (gate('plan')) {
     planTargetsInHand = sam.targetFiles
-    const planRef = await planRefFor(sam.plan)
+    const planReference = await planReferenceFor(sam.plan)
     return finish(STATUS['plan-ready'], {
     plan: appendDoorFacts(sam.plan, { targets: sam.targetFiles, designStep: designStepOpen }), planPath, issue, trace,
-    ...(planRef ? { planRef } : {}),
+    ...(planReference ? { planRef: planReference } : {}),
     ...(oneWayDoor.kinds.length > 0 ? { oneWayDoorHits: oneWayDoor.kinds } : {}),
     auditVerdict: auditResult?.verdict ?? null,
     auditFindings: auditResult?.findings ?? [],
@@ -3621,7 +3627,7 @@ if (samAcceptanceItems === null && (entryStage === 'dev' || entryStage === 'revi
 // #271 — a resume at entryStage dev/review runs no Theo: the lanes come from the `lanes` arg, else from the `lanes:` line of
 // planText. A name that is no lane found throws; none with lane files present = base only, flagged unresolved.
 if ((entryStage === 'dev' || entryStage === 'review') && (lanesFound.length > 0 || (Array.isArray(lanesArgument) && lanesArgument.length > 0))) {
-  const asked = Array.isArray(lanesArgument) ? lanesArgument : planRefArgument ? (planRefArgument.lanes || []) : lanesFromPlanText(planText)
+  const asked = Array.isArray(lanesArgument) ? lanesArgument : planReferenceArgument ? (planReferenceArgument.lanes || []) : lanesFromPlanText(planText)
   const unknown = asked.filter((n) => !lanesFound.some((l) => l.name === n))
   if (unknown.length > 0) {
     throw new Error(`lanes: ${unknown.join(', ')} is not in the lanes found (${lanesFound.map((l) => l.name).join(', ') || 'none'}); nothing ran`)
@@ -3731,7 +3737,7 @@ if ((entryStage === 'dev' || entryStage === 'review') && !architectureDecisionAp
       reason: `this repo declares one-way-door kinds or paths and the launch at entryStage='${entryStage}' carries no planText, so the door cannot be read: relaunch with planText (the plan, read for its one-way-door line) or with architectureDecisionApproved:true`,
     })
   }
-  const entryFacts = planRefArgument ? { targets: safePlanTargets(planRefArgument.targets), designStep: planRefArgument.designStep === true } : doorFactsFromPlanText(planText)
+  const entryFacts = planReferenceArgument ? { targets: safePlanTargets(planReferenceArgument.targets), designStep: planReferenceArgument.designStep === true } : doorFactsFromPlanText(planText)
   if (entryFacts.designStep) {
     log(`R3 design-step at entryStage='${entryStage}': planText carries the design-step line — architecture decision not approved`)
     trace.push('one-way-door-entry:design-step')
@@ -3983,8 +3989,8 @@ if (after('dev', entryStage)) {
   if (branchGuardResult) { await updateStatus('Blocked'); return finish(STATUS['escalate'], branchGuardResult) }
 
   if (gate('dev')) {
-    const planRef = await planRefFor(samPlan)
-    return finish(STATUS['dev-done'], { pr: nick.prNumber, issue, planStaleFiles, planTargetsChecked, subIssuesUncovered, ...(planRef ? { planRef } : {}), trace })
+    const planReference = await planReferenceFor(samPlan)
+    return finish(STATUS['dev-done'], { pr: nick.prNumber, issue, planStaleFiles, planTargetsChecked, subIssuesUncovered, ...(planReference ? { planRef: planReference } : {}), trace })
   }
 }
 
@@ -4887,8 +4893,8 @@ if (after('review', entryStage)) {
 
   while (v.verdict !== 'LGTM' && round < 3) {
     if (gate('review', v.verdict)) {
-      const planRef = await planRefFor(samPlan)
-      return finish(STATUS['needs-revision'], { round, items: v.items, pr, issue, ...(planRef ? { planRef } : {}), ...(v.tickReason ? { tickReason: v.tickReason } : {}), ...(v.tickDetail ? { tickDetail: v.tickDetail } : {}), trace })
+      const planReference = await planReferenceFor(samPlan)
+      return finish(STATUS['needs-revision'], { round, items: v.items, pr, issue, ...(planReference ? { planRef: planReference } : {}), ...(v.tickReason ? { tickReason: v.tickReason } : {}), ...(v.tickDetail ? { tickDetail: v.tickDetail } : {}), trace })
     }
     previousRoundItems = v.items || []
     round++
@@ -4928,7 +4934,7 @@ if (after('review', entryStage)) {
         return finish(STATUS['no-go'], { reason: samAmend.rationale, plan: samAmend.plan, trace })
       }
       samPlan = appendLanesLine(samAmend.plan, lanesDevelopment)
-      resetPlanRef()
+      resetPlanReference()
       refreshPlanBlock()
       // The amendment renumbers the boxes (an id is a position): the blockers of the rounds before it are not the same
       // boxes as the ones after it, so the history that reviewProgress compares is dropped.

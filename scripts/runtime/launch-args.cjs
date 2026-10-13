@@ -31,15 +31,15 @@ const STAGES = ['plan', 'dev', 'review']
 class UsageError extends Error {}
 
 // The shape of a planRef (the engine and the hook check the same; the digest is the engine's, never computed here).
-function checkPlanRef(ref) {
+function checkPlanReference(reference) {
   const bad = (what) => { throw new UsageError(`--plan-ref: ${what}`) }
-  if (ref === null || typeof ref !== 'object' || Array.isArray(ref)) bad('not a JSON object')
-  if (!Number.isInteger(ref.issue) || ref.issue < 1) bad('issue must be a positive integer')
-  if (typeof ref.digest !== 'string' || !/^[0-9a-f]{64}$/.test(ref.digest)) bad('digest must be 64 lowercase hex characters')
-  if (ref.targets !== undefined && (!Array.isArray(ref.targets) || ref.targets.length > 25 || ref.targets.some((t) => typeof t !== 'string'))) bad('targets must be at most 25 paths')
-  if (ref.designStep !== undefined && ref.designStep !== true) bad('designStep must be true when present')
-  if (ref.lanes !== undefined && (!Array.isArray(ref.lanes) || ref.lanes.some((n) => typeof n !== 'string'))) bad('lanes must be a list of names')
-  return ref
+  if (reference === null || typeof reference !== 'object' || Array.isArray(reference)) bad('not a JSON object')
+  if (!Number.isInteger(reference.issue) || reference.issue < 1) bad('issue must be a positive integer')
+  if (typeof reference.digest !== 'string' || !/^[0-9a-f]{64}$/.test(reference.digest)) bad('digest must be 64 lowercase hex characters')
+  if (reference.targets !== undefined && (!Array.isArray(reference.targets) || reference.targets.length > 25 || reference.targets.some((t) => typeof t !== 'string'))) bad('targets must be at most 25 paths')
+  if (reference.designStep !== undefined && reference.designStep !== true) bad('designStep must be true when present')
+  if (reference.lanes !== undefined && (!Array.isArray(reference.lanes) || reference.lanes.some((n) => typeof n !== 'string'))) bad('lanes must be a list of names')
+  return reference
 }
 
 function readJson(file, optional) {
@@ -91,7 +91,7 @@ function build(options) {
     if (mode !== 'ref') throw new UsageError('--plan-ref needs --mode ref (mode full carries --plan-file)')
     if (options.planFile !== undefined) throw new UsageError('--plan-file and --plan-ref are exclusive')
     if (stage === 'plan') throw new UsageError('--plan-ref needs --stage dev or review')
-    arguments_.planRef = checkPlanRef(options.planRef)
+    arguments_.planRef = checkPlanReference(options.planRef)
   }
   if (options.planFile !== undefined) arguments_.planText = fs.readFileSync(options.planFile, 'utf8')
   return arguments_

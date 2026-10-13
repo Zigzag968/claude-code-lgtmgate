@@ -7888,7 +7888,7 @@ const t533Sha = () => {
   const block = source ? extractBetween(source, '// --- sha256Hex:start ---', '// --- sha256Hex:end ---') : null
   return block ? new Function(block + '\nreturn sha256Hex')() : null
 }
-const t533Ref = (sha, text, extra = {}, issue = 1) => ({ planText: text, planRef: { issue, digest: sha(text), ...extra } })
+const t533Reference = (sha, text, extra = {}, issue = 1) => ({ planText: text, planRef: { issue, digest: sha(text), ...extra } })
 const t533Skip = (id) => { log(`SKIP — ${id}: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)`); return { ok: true } }
 const t533Message = (overrides) => run(overrides).then(() => null, (error) => String(error && error.message))
 await testCase('T533a plan-ready returns a planRef with the digest of the plan in hand, the sanitized targets and designStep; a plan run with no hit and no trigger carries neither', async () => {
@@ -7908,9 +7908,9 @@ await testCase('T533b the relaunch through planRef reads the same plan as the fu
   if (!sha) return t533Skip('T533b')
   const text = t182PlanText()
   const full = await run({ mode: 'semi', entryStage: 'dev', planText: text, simulate: { morgan: [{ verdict: 'LGTM' }] } })
-  const ref = await run({ mode: 'semi', entryStage: 'dev', ...t533Ref(sha, text), simulate: { morgan: [{ verdict: 'LGTM' }] } })
-  return eq('status', ref.status, full.status)
-    || ((ref.nickPromptPreview || '') !== '' && ref.nickPromptPreview === full.nickPromptPreview ? null : { ok: false, msg: 'the Nick prompt differs between the reference and the full form' })
+  const viaReference = await run({ mode: 'semi', entryStage: 'dev', ...t533Reference(sha, text), simulate: { morgan: [{ verdict: 'LGTM' }] } })
+  return eq('status', viaReference.status, full.status)
+    || ((viaReference.nickPromptPreview || '') !== '' && viaReference.nickPromptPreview === full.nickPromptPreview ? null : { ok: false, msg: 'the Nick prompt differs between the reference and the full form' })
     || { ok: true }
 })
 
@@ -7918,7 +7918,7 @@ await testCase('T533c one byte changed in the plan text throws plan-ref-mismatch
   const sha = t533Sha()
   if (!sha) return t533Skip('T533c')
   const text = t182PlanText()
-  const good = t533Ref(sha, text)
+  const good = t533Reference(sha, text)
   const cases = {
     'one byte': { ...good, planText: text + 'x' },
     'other issue': { ...good, planRef: { ...good.planRef, issue: 2 } },
@@ -7945,11 +7945,11 @@ await testCase('T533e the design-step relaunch cases (T208e-h) through planRef: 
   const sha = t533Sha()
   if (!sha) return t533Skip('T533e')
   const sim = { sam: 'GO', morgan: [{ verdict: 'LGTM' }] }
-  const stopped = await run({ entryStage: 'dev', mode: 'semi', config: T77_KCONFIG, ...t533Ref(sha, T208_PLAN), simulate: sim })
-  const approved = await run({ entryStage: 'dev', mode: 'semi', config: T77_KCONFIG, architectureDecisionApproved: true, ...t533Ref(sha, T208_PLAN), simulate: sim })
-  const none = await run({ entryStage: 'dev', mode: 'semi', config: T77_KCONFIG, ...t533Ref(sha, 'one-way-door: none\n' + T77_CK), simulate: sim })
-  const review = await run({ entryStage: 'review', prNumber: 190, mode: 'semi', config: T77_KCONFIG, ...t533Ref(sha, T208_PLAN), simulate: sim })
-  const blank = await run({ entryStage: 'dev', mode: 'auto', config: T77_KCONFIG, ...t533Ref(sha, '  \n '), simulate: sim })
+  const stopped = await run({ entryStage: 'dev', mode: 'semi', config: T77_KCONFIG, ...t533Reference(sha, T208_PLAN), simulate: sim })
+  const approved = await run({ entryStage: 'dev', mode: 'semi', config: T77_KCONFIG, architectureDecisionApproved: true, ...t533Reference(sha, T208_PLAN), simulate: sim })
+  const none = await run({ entryStage: 'dev', mode: 'semi', config: T77_KCONFIG, ...t533Reference(sha, 'one-way-door: none\n' + T77_CK), simulate: sim })
+  const review = await run({ entryStage: 'review', prNumber: 190, mode: 'semi', config: T77_KCONFIG, ...t533Reference(sha, T208_PLAN), simulate: sim })
+  const blank = await run({ entryStage: 'dev', mode: 'auto', config: T77_KCONFIG, ...t533Reference(sha, '  \n '), simulate: sim })
   return eq('stopped', stopped.status, 'design-step-required')
     || eq('oneWayDoorHits', JSON.stringify(stopped.oneWayDoorHits), JSON.stringify(['status']))
     || t208NoDevelopment(stopped)
@@ -7968,14 +7968,14 @@ await testCase('T533f the facts T221b-c read from script-written lines come from
   const noLine = text.split('\n').some((line) => /^(targetFiles: hooks|design-step:|lanes:)/.test(line))
   if (noLine) return { ok: false, msg: 'the artifact text of this case must hold no script-written line' }
   for (const entry of [{ entryStage: 'dev' }, { entryStage: 'review', prNumber: 190 }]) {
-    const byPath = await run({ ...entry, mode: 'semi', config: T221_CONFIG, ...t533Ref(sha, text, { targets: ['hooks/x.sh'] }), simulate: T221_SIM })
+    const byPath = await run({ ...entry, mode: 'semi', config: T221_CONFIG, ...t533Reference(sha, text, { targets: ['hooks/x.sh'] }), simulate: T221_SIM })
     const error = eq(`path status (${entry.entryStage})`, byPath.status, 'design-step-required')
       || eq('oneWayDoorHits', JSON.stringify(byPath.oneWayDoorHits), JSON.stringify(['path']))
       || (String(byPath.reason).includes('hooks/x.sh') ? null : { ok: false, msg: `reason must name hooks/x.sh, got ${JSON.stringify(byPath.reason)}` })
     if (error) return error
-    const byTheo = await run({ ...entry, mode: 'semi', config: T221_CONFIG, ...t533Ref(sha, text, { designStep: true }), simulate: T221_SIM })
-    const approved = await run({ ...entry, mode: 'semi', config: T221_CONFIG, architectureDecisionApproved: true, ...t533Ref(sha, text, { targets: ['hooks/x.sh'], designStep: true }), simulate: T221_SIM })
-    const excluded = await run({ ...entry, mode: 'semi', config: T221_CONFIG, ...t533Ref(sha, text, { targets: ['hooks/test-a.sh', '../etc/passwd'] }), simulate: T221_SIM })
+    const byTheo = await run({ ...entry, mode: 'semi', config: T221_CONFIG, ...t533Reference(sha, text, { designStep: true }), simulate: T221_SIM })
+    const approved = await run({ ...entry, mode: 'semi', config: T221_CONFIG, architectureDecisionApproved: true, ...t533Reference(sha, text, { targets: ['hooks/x.sh'], designStep: true }), simulate: T221_SIM })
+    const excluded = await run({ ...entry, mode: 'semi', config: T221_CONFIG, ...t533Reference(sha, text, { targets: ['hooks/test-a.sh', '../etc/passwd'] }), simulate: T221_SIM })
     const failure = eq(`design-step status (${entry.entryStage})`, byTheo.status, 'design-step-required')
       || ((byTheo.trace || []).includes('one-way-door-entry:design-step') ? null : { ok: false, msg: `trace must carry one-way-door-entry:design-step, got ${JSON.stringify(byTheo.trace)}` })
       || eq('approved', approved.status, 'ready')
@@ -7989,7 +7989,7 @@ await testCase('T533g the acceptance ids (T182e, T182i) survive the reference: t
   const sha = t533Sha()
   if (!sha) return t533Skip('T533g')
   const r = await run({
-    mode: 'auto', entryStage: 'review', prNumber: 190, ...t533Ref(sha, t182PlanText()),
+    mode: 'auto', entryStage: 'review', prNumber: 190, ...t533Reference(sha, t182PlanText()),
     simulate: { morgan: [{ verdict: 'REQUIRED_CHANGES', items: [t182Lines(T182_ITEMS)[1]], boxes: [{ id: 3, proven: true, proof: 'failed=0' }, { id: 1, proven: true, proof: 'p1' }, { id: 2, proven: false, proof: '' }] }] },
   })
   return eq('box ids', (r.boxes || []).map((b) => b.id), [1, 2, 3])
@@ -8001,7 +8001,7 @@ await testCase('T533h dev-done and needs-revision carry the planRef: an echoed o
   const sha = t533Sha()
   if (!sha) return t533Skip('T533h')
   const text = t182PlanText()
-  const given = t533Ref(sha, text, { targets: ['workflows/x.js'], lanes: [] })
+  const given = t533Reference(sha, text, { targets: ['workflows/x.js'], lanes: [] })
   const done = await run({ mode: 'manual', entryStage: 'dev', ...given, proceedThrough: 'dev', simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] } })
   const revise = await run({ mode: 'auto', entryStage: 'dev', proceedThrough: 'dev', ...given, simulate: { sam: 'GO', morgan: [{ verdict: 'REQUIRED_CHANGES', items: ['x'] }, { verdict: 'LGTM' }] } })
   const inProcess = await run({ mode: 'manual', proceedThrough: 'dev', simulate: { sam: 'GO', samPlan: 'plan' + T77_CK, morgan: [{ verdict: 'LGTM' }] } })
