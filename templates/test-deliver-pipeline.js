@@ -2741,7 +2741,7 @@ await testCase('T490a every composed probe b64 value is at most 200 characters (
   const engine = new Function(blocks.join('\n') + '\nreturn { probeCommands, base64Utf8, pluginVersionCommand, sessionRootCommand, sha256Hex }')()
   const plugin = '/opt/tools/plugins/cache/market/lgtmgate/1.3.0-beta.54'   // 55 characters
   const session = '/work/apps/some-long-repository-name/main-checkout'         // 43+ characters
-  const commands = [engine.pluginVersionCommand(plugin), engine.sessionRootCommand(session, plugin + '/templates')]
+  const commands = [engine.pluginVersionCommand(plugin), engine.sessionRootCommand(session)]
   const checks = []
   for (const command of commands) {
     const token = engine.base64Utf8(command)
@@ -2751,6 +2751,29 @@ await testCase('T490a every composed probe b64 value is at most 200 characters (
   }
   checks.push(eq('neither command is an inline program', commands.some((c) => c.includes(' -e ')), false))
   return checks.find(c => c) || { ok: true }
+})
+
+// T546a (#546) — the session-root command no longer carries the plugin path (the gate exports it), so the token the
+// probe agent copies is no longer than the working plugin-version one, with realistic consumer paths.
+await testCase('T546a consumer-path session-root b64 is at most the plugin-version b64 and carries no plugin path (#546)', async () => {
+  const source = SUITE_ARGS.fpSource
+  if (!source) {
+    log('SKIP — T546a: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const blocks = ['base64Utf8', 'pluginVersion', 'sessionRoot'].map((n) => extractBetween(source, `// --- ${n}:start ---`, `// --- ${n}:end ---`))
+  if (blocks.some((b) => !b)) return { ok: false, msg: 'base64Utf8, pluginVersion or sessionRoot block not found in pipeline source' }
+  const engine = new Function(blocks.join('\n') + '\nreturn { base64Utf8, pluginVersionCommand, sessionRootCommand }')()
+  const plugin = '/opt/tools/plugins/cache/some-market/lgtmgate/lgtmgate/1.3.0-beta.54-x'   // about 63 characters
+  const session = '/work/apps/some-consumer-repository/main'                              // about 40 characters
+  const command = engine.sessionRootCommand(session)
+  const token = engine.base64Utf8(command)
+  const reference = engine.base64Utf8(engine.pluginVersionCommand(plugin))
+  return [
+    eq(`b64 of the session-root command (${token.length}) is at most the plugin-version one (${reference.length})`, token.length <= reference.length, true),
+    eq('the command carries no plugin path', command.includes(plugin), false),
+    eq('the command reads the templates directory from the gate', command.includes('$LGTMGATE_TEMPLATES/session-root.cjs'), true),
+  ].find(c => c) || { ok: true }
 })
 
 // T490c (#490) — the probe stderr (expect-cmd-mismatch when the digest guard refused the typed command) reaches the
@@ -2977,7 +3000,7 @@ await testCase('T195d the check runs first, only when the templates come from pl
   const checks = [
     eq('gate precedes the provision probe', indexGate < indexProvision, true),
     eq('gate reads the manifest through probe(lines) with noReuse', body.includes("probe('lines', pluginVersionCommand(pluginRoot), { label: 'plugin-version', noReuse: true, b64: true"), true),
-    eq('the session-root probe is delivered as --cmd-b64 too (#338)', source.includes("probe('lines', sessionRootCommand(sessionRoot, config.probeRunPath ? config.probeRunPath.slice(0, config.probeRunPath.lastIndexOf('/')) : pluginRoot ? pluginRoot + '/templates' : worktreePath + '/templates'), { label: 'session-root', noReuse: true, b64: true"), true),
+    eq('the session-root probe is delivered as --cmd-b64 too (#338)', source.includes("probe('lines', sessionRootCommand(sessionRoot), { label: 'session-root', noReuse: true, b64: true"), true),
     eq('gate escalates on the existing status', body.includes("finish(STATUS['escalate'], { reason: skew.reason"), true),
     eq('the root path travels in its own result field, not in the reason', body.includes("{ reason: skew.reason, issue, pluginRoot, trace }"), true),
     eq('a failure of the probe itself keeps the provision-failed signature', body.includes("reason: 'provision-failed', issue, missing: [], exitCode: null, probeReason: pv.probeFailed, probeStderr: pv.probeStderr || null, probeHint: PROBE_REASON_HINTS[pv.probeFailed]"), true),
@@ -3021,7 +3044,7 @@ await testCase('T177a the verdict on the real command: same repository passes, a
     const real = (sessionRoot, worktreePath) => {
       let out = ''
       let exit = 0
-      try { out = cp.execFileSync('sh', ['-c', sessionRootCommand(sessionRoot, templatesDirectory)], { encoding: 'utf8', cwd: worktreePath }) } catch (error) { exit = error.status || 1 }
+      try { out = cp.execFileSync('sh', ['-c', sessionRootCommand(sessionRoot)], { encoding: 'utf8', cwd: worktreePath, env: { ...process.env, LGTMGATE_TEMPLATES: templatesDirectory } }) } catch (error) { exit = error.status || 1 }
       return { exit, lines: out.split('\n').filter((l) => l !== '') }
     }
     const same = real(repositoryA, worktreeA)
@@ -3067,7 +3090,7 @@ await testCase('T177b the gate runs before provisioning and any agent call, only
     eq('gate follows the plugin-version gate', indexPlugin >= 0 && indexPlugin < indexGate, true),
     eq('gate precedes the provision probe', indexGate < indexProvision, true),
     eq('gate precedes the entryStage re-check', indexRecheck > indexGate, true),
-    eq('gate reads through probe(lines) with noReuse', body.includes("probe('lines', sessionRootCommand(sessionRoot, ") && body.includes("{ label: 'session-root', noReuse: true"), true),
+    eq('gate reads through probe(lines) with noReuse', body.includes("probe('lines', sessionRootCommand(sessionRoot") && body.includes("{ label: 'session-root', noReuse: true"), true),
     eq('gate escalates on the existing status with the verdict reason', body.includes("finish(STATUS['escalate'], { reason: srv.reason"), true),
     eq('gate writes no label and makes no agent call', body.includes('updateStatus') || body.includes('prWrite') || body.includes('agent('), false),
     eq('the reason is named in the source', source.includes("code: 'session-root-mismatch'"), true),

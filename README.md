@@ -110,6 +110,7 @@ The full key-by-key reference, including precedence rules and edge cases, is in 
 | Variable | Read by | Default | Effect |
 |----------|---------|---------|--------|
 | `LGTMGATE_WORKTREE_ROOT` | the engine (`resolveWorktreeRoot`), `hooks/lib-worktree-root.sh`, `scripts/cleanup-worktree.sh` | unset | absolute worktree root that wins over both config files; a relative value is ignored |
+| `LGTMGATE_TEMPLATES` | set by `scripts/runtime/probe-run.cjs` for the command it runs (read by the session-root probe command) | set by the gate | the plugin `templates` directory of the running probe-run, so a probe command carries no plugin path; never set it by hand |
 | `LGTMGATE_CONFIG_FILE` | `templates/gh-pipeline-status.sh` | `<repo root>/.claude/pipeline.config.json` | the config file the board-status script reads |
 | `LEAD_MERGE_POLL_MAX` | `scripts/lead-merge.sh` | 30 | number of polls while waiting for the checks of the pushed sha |
 | `LEAD_MERGE_POLL_SLEEP` | `scripts/lead-merge.sh` | 10 | seconds between two polls |
@@ -120,7 +121,7 @@ The full key-by-key reference, including precedence rules and edge cases, is in 
 <details>
 <summary>Engineering highlights (you can reproduce every number below by running the scripts yourself)</summary>
 
-- 987 offline test cases across 5 suites, no network or mocked API calls: `scripts/run-flow-suite.cjs` (391 pipeline-logic cases), `plugins/backlog/tests/` (512 Python unit tests), `tests/templates/test-blocked-by-check.sh` (9), `tests/hooks/test-Stop-supervise-runs.sh` (17), `tests/hooks/test-deny-destructive-git.sh` (58). `node scripts/count-tests.cjs` prints these counts, the `readme-contract` guard fails when a number here differs, and the Tests badge is produced by the same script on every push to main. The canonical guard net `tests/templates/test-canonical-guards.sh` runs the guards and is not part of this count.
+- 988 offline test cases across 5 suites, no network or mocked API calls: `scripts/run-flow-suite.cjs` (392 pipeline-logic cases), `plugins/backlog/tests/` (512 Python unit tests), `tests/templates/test-blocked-by-check.sh` (9), `tests/hooks/test-Stop-supervise-runs.sh` (17), `tests/hooks/test-deny-destructive-git.sh` (58). `node scripts/count-tests.cjs` prints these counts, the `readme-contract` guard fails when a number here differs, and the Tests badge is produced by the same script on every push to main. The canonical guard net `tests/templates/test-canonical-guards.sh` runs the guards and is not part of this count.
 - An opt-in adversarial plan audit (`planAudit`): a separate agent can challenge Sam's plan before Nick starts coding, capped at a fixed number of rounds so a disagreement can't spawn agents indefinitely.
 - A regression guard based on a SET-DIFF: Morgan captures a baseline from the pre-change branch and diffs the exact test set the change touched, rather than re-running the whole suite on every PR.
 - Every run gets its own git worktree. Theo, Sam, Nick and Morgan work inside that same worktree so plan, code and review sit on the same frozen base, and the pipeline never touches your own working checkout.

@@ -1,0 +1,52 @@
+{
+  "name": "546-session-root-probe-copy-consumer-path",
+  "note": "#546: minimized from the issue's recorded shape (the raw captures are not in the worktree; every absolute path is replaced by a placeholder). On a consumer run (pluginRoot set, no probeRunPath, sessionRoot another directory than the worktree) the probe agent mis-copied the session-root command (it also appended the digest flag to the typed text), probe-run.cjs refused it against --expect-cmd (exit -1, empty-output digest, cmd= the digest of refused:<typed text>, stderr expect-cmd-mismatch), and the fresh-agent retry (#486) failed the same way. The run ends provision-failed with probeReason command-not-run. The avoided-copy change (the command no longer carries the plugin path; the gate exports LGTMGATE_TEMPLATES) is proven by T546a and the [546] probe-run checks, not by this replay.",
+  "args": {
+    "sessionRoot": "/repo/consumer-checkout",
+    "issue": 546,
+    "brief": "a mis-copied session-root probe command on a consumer run must end as command-not-run with the refusal cause in the result",
+    "worktreePath": "/wt/root/issue-546",
+    "pluginRoot": "/plugin",
+    "config": {},
+    "mode": "auto"
+  },
+  "calls": {
+    "probe-546-lines-plugin-version-r0": {
+      "line": "PROBE name=lines exit=0 sha=4b0b2f33b20b777393f4cb55ea1d47c45786b52ad36822582a5ed67647e54ed5 cmd=7880357778fbb84100c0b3af12d7ed192d7bd5ff32aa75e7337521dce2c696d7 json={\"lines\":[\"PLUGIN-VERSION:@@ENGINE_VERSION@@\"]}",
+      "verify": "VERIFY ok line=PROBE name=lines exit=0 sha=4b0b2f33b20b777393f4cb55ea1d47c45786b52ad36822582a5ed67647e54ed5 cmd=7880357778fbb84100c0b3af12d7ed192d7bd5ff32aa75e7337521dce2c696d7 json={\"lines\":[\"PLUGIN-VERSION:@@ENGINE_VERSION@@\"]}"
+    },
+    "probe-546-lines-session-root-r0": [
+      {
+        "line": "PROBE name=lines exit=-1 sha=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 cmd=78c7d1afffd32b4c131608831841053975b4c45c1c88f7d5d4f69e92ffd9553b json={\"lines\":[]}",
+        "verify": "VERIFY ok line=PROBE name=lines exit=-1 sha=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 cmd=78c7d1afffd32b4c131608831841053975b4c45c1c88f7d5d4f69e92ffd9553b json={\"lines\":[]}"
+      },
+      {
+        "line": "PROBE name=lines exit=-1 sha=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 cmd=78c7d1afffd32b4c131608831841053975b4c45c1c88f7d5d4f69e92ffd9553b json={\"lines\":[]}",
+        "verify": "VERIFY ok line=PROBE name=lines exit=-1 sha=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 cmd=78c7d1afffd32b4c131608831841053975b4c45c1c88f7d5d4f69e92ffd9553b json={\"lines\":[]}"
+      }
+    ]
+  },
+  "expect": {
+    "status": "escalate",
+    "reason": "provision-failed",
+    "trace": [
+      "branch-prefix-fallback-default",
+      "probe:lines:haiku",
+      "probe:lines:haiku",
+      "probe:lines:haiku"
+    ],
+    "traceExact": true,
+    "callLabels": [
+      "probe-546-lines-plugin-version-r0",
+      "probe-546-lines-session-root-r0",
+      "probe-546-lines-session-root-r0"
+    ],
+    "logsInclude": [
+      "Session root probe failed (command-not-run) [expect-cmd-mismatch]"
+    ],
+    "resultIncludes": {
+      "probeReason": "command-not-run",
+      "probeStderr": "expect-cmd-mismatch"
+    }
+  }
+}
