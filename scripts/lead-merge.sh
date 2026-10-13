@@ -104,7 +104,7 @@ WORKFLOW="workflows/deliver-pipeline.js"
 
 die() { echo "lead-merge: $*" >&2; exit 1; }
 
-lm_args="$*"
+export LM_ARGS="$*" # original arguments, printed by lm_gate_self_reference
 PR=""; REPO=""; TICK=0; TICK_IDS=""; CLEANUP=0
 while [ $# -gt 0 ]; do
   case "$1" in

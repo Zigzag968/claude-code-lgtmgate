@@ -3,7 +3,7 @@
 # bash 3.2 safe. Defines functions only; no side effect on source.
 #   lm_gate_declared_exceptions   validates the `exception:` lines of the acceptance block; sets the global $exc_lines
 #   lm_gate_r2_waivers            needs $exc_lines (empty: no exception declared); refuses an undeclared R2 waiver
-#   lm_gate_self_reference        refuses when the PR changes scripts/lead-merge.sh or scripts/lib/ and the running copy is not the PR's (needs $lm_args, $SCRIPT_DIR)
+#   lm_gate_self_reference        refuses when the PR changes scripts/lead-merge.sh or scripts/lib/ and the running copy is not the PR's (needs $LM_ARGS, $SCRIPT_DIR)
 # Both take (body, pr_head[, tmp dir]), read the globals PR, REPO, WORKFLOW and use die(), issue_refs() of the main script;
 # lm_gate_declared_exceptions runs first and resets $lm_tips.
 
@@ -73,7 +73,7 @@ EOX
 
 # lm_gate_self_reference <pr_head> (#455): refuses when the PR changes scripts/lead-merge.sh or scripts/lib/ and the copy being run
 # ($SCRIPT_DIR) is not the judged tip's: the merge would apply the old logic to the new state. Content comparison (cmp), not path
-# only, so the run from the PR worktree passes. Needs $lm_args (original arguments); runs before any tick, fetch-merge, bump or push.
+# only, so the run from the PR worktree passes. Needs $LM_ARGS (original arguments); runs before any tick, fetch-merge, bump or push.
 lm_gate_self_reference() {
   lm_sync_head "$1"
   local t p changed bad="" run_file
@@ -92,7 +92,7 @@ lm_gate_self_reference() {
   [ -n "$bad" ] || return 0
   bad="$(printf '%s\n' $bad | sort -u | tr '\n' ' ')"
   echo "FAIL: self-reference: PR #$PR changes ${bad% } and this run executes $SCRIPT_DIR/lead-merge.sh, not the PR's copy (the merge would apply the old logic to the new state, class self-reference, .claude/rules/pr-acceptance.md)" >&2
-  echo "Run the branch's copy from the PR worktree: bash scripts/lead-merge.sh $lm_args" >&2
+  echo "Run the branch's copy from the PR worktree: bash scripts/lead-merge.sh $LM_ARGS" >&2
   die "PR #$PR merge refused (self-reference); nothing ticked, bumped, pushed or merged"
 }
 
