@@ -196,6 +196,40 @@ case "$PV_OUT" in
 esac
 check "[195] a manifest without a version fails closed as plugin-version-unreadable (no-version)" "$ok"
 
+# (f2b) #546: the REAL sessionRootCommand (which reads the plugin templates directory from LGTMGATE_TEMPLATES, exported by
+# the gate) runs through the REAL probe-run.cjs with --cmd-b64 + --expect-cmd, in a throwaway repository and worktree.
+SR_BLK="$(sed -n '/^\/\/ --- sessionRoot:start ---/,/^\/\/ --- sessionRoot:end ---/p;/^\/\/ --- base64Utf8:start ---/,/^\/\/ --- base64Utf8:end ---/p' "$ROOT/workflows/deliver-pipeline.js")"
+SR_DIR="$WORK/sr546"
+mkdir -p "$SR_DIR/a" "$SR_DIR/b"
+for SR_R in a b; do git -C "$SR_DIR/$SR_R" init -q && git -C "$SR_DIR/$SR_R" -c user.email=t@t -c user.name=t commit --allow-empty -q -m init; done
+git -C "$SR_DIR/a" worktree add -q -b feat/x546 "$SR_DIR/wt" >/dev/null 2>&1
+sr_probe() {
+  node -e '
+    const crypto = require("crypto")
+    const { spawnSync } = require("child_process")
+    const [blk, pr, root, wt, out, mode] = process.argv.slice(1)
+    const f = new Function(blk + "\nreturn { sessionRootCommand, base64Utf8 }")()
+    const cmd = f.sessionRootCommand(root)
+    let token = f.base64Utf8(cmd)
+    if (mode === "altered") token = token.slice(0, -4) + (token.slice(-4) === "AAAA" ? "BBBB" : "AAAA")
+    const want = crypto.createHash("sha256").update(cmd).digest("hex")
+    const env = Object.assign({}, process.env); delete env.LGTMGATE_TEMPLATES
+    const r = spawnSync("node", [pr, "--label", "sr", "--round", "0", "--out", out, "--parser", "lines", "--no-reuse", "--expect-cmd", want, "--cmd-b64", token], { encoding: "utf8", cwd: wt, env })
+    const m = /^PROBE name=lines exit=(-?\d+) .* cmd=([0-9a-f]{64}) json=(.*)$/m.exec(r.stdout || "")
+    if (!m) { process.stdout.write("no-probe-line|" + r.stdout + r.stderr); process.exit(0) }
+    process.stdout.write(m[1] + "|" + (m[2] === want ? "cmd-ok" : "cmd-differs") + "|" + (JSON.parse(m[3]).lines || []).join(","))
+  ' "$SR_BLK" "$PR" "$1" "$SR_DIR/wt" "$WORK/sr-out-$2" "$2" 2>/dev/null
+}
+ok=0
+[ -n "$SR_BLK" ] && [ "$(sr_probe "$SR_DIR/a" same)" = "0|cmd-ok|SESSION-ROOT:same" ] && ok=1
+check "[546] the real session-root command through the real probe-run (templates path from the gate): same repository -> SESSION-ROOT:same, exit 0, cmd= is the composed digest" "$ok"
+ok=0
+[ -n "$SR_BLK" ] && [ "$(sr_probe "$SR_DIR/b" differs)" = "0|cmd-ok|SESSION-ROOT:differs" ] && ok=1
+check "[546] the same command with another repository as session root -> SESSION-ROOT:differs" "$ok"
+ok=0
+case "$(sr_probe "$SR_DIR/a" altered)" in "-1|"*) ok=1 ;; esac
+check "[546] a b64 token altered in the copy runs nothing (exit=-1)" "$ok"
+
 # (f3) #338: the plugin-version command reaches the probe as ONE bare base64 token (--cmd-b64), never as nested quoting a
 # model must re-type. The REAL probeCommands + base64Utf8 of the engine build the run line for the REAL pluginVersionCommand of a
 # root carrying a space and a single quote; the line runs through sh against the REAL probe-run.cjs.
