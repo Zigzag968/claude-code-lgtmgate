@@ -78,6 +78,7 @@ def _pr_ready_reminder(project_dir: str) -> str:
 
 
 _CONFIG_CHECK_TIMEOUT = 2
+_GIT_CHECK_IGNORE_TIMEOUT = 2
 
 
 def _config_check(config_path: Path) -> Optional[list]:
@@ -228,6 +229,28 @@ def _specifics_hint(project_dir: str, config_path: Path) -> str:
         return ""
 
 
+def _pipeline_ignore_hint(project_dir: str) -> str:
+    """
+    One line when git reports `.pipeline/` as not ignored (check-ignore exit 1):
+    launching by reference then silently falls back. Silent outside a git
+    repository (exit 128), without git, on timeout. Writes nothing. MUST NEVER
+    raise: any failure means "no hint".
+    """
+    try:
+        res = subprocess.run(
+            ["git", "-C", project_dir, "check-ignore", "-q", ".pipeline/x"],
+            capture_output=True, timeout=_GIT_CHECK_IGNORE_TIMEOUT,
+        )
+        if res.returncode != 1:
+            return ""
+        return (
+            "- Fast launches by reference are not used: .pipeline/ is not git-ignored in this "
+            "repository (a missed gain, not an error). Add the line .pipeline/ to .gitignore."
+        )
+    except Exception:
+        return ""
+
+
 _LANE_ROLES = ("mia", "sam", "nick", "morgan", "theo")
 _LANE_READ_BYTES = 65536
 
@@ -344,6 +367,9 @@ def build_stub() -> str:
         if hint:
             lines.append(hint)
         lines.extend(_lanes_hints(project_dir, config_path))
+        hint = _pipeline_ignore_hint(project_dir)
+        if hint:
+            lines.append(hint)
     else:
         lines.append(
             "- **No `.claude/pipeline.config.json` detected** in this project. "
