@@ -184,7 +184,7 @@ STUB
   chmod +x "$HA_DIR/bin/claude"
   HA_SH="/bin/bash"
   [ -x "$HA_SH" ] || HA_SH="bash"
-  PATH="$HA_DIR/bin:$PATH" "$HA_SH" "$HEADLESS" --out "$HA_DIR/out.json" </dev/null > "$HA_DIR/log" 2>&1
+  PATH="$HA_DIR/bin:$PATH" "$HA_SH" "$HEADLESS" --max-turns 3 --max-budget-usd 1 --out "$HA_DIR/out.json" </dev/null > "$HA_DIR/log" 2>&1
   if grep -q 'unbound variable' "$HA_DIR/log"; then
     HA_DETAIL="$(grep -m1 'unbound variable' "$HA_DIR/log")"
     fail "headless-empty-argv" "$HEADLESS aborted with 'unbound variable' on a no-plugin-dir invocation: $HA_DETAIL"
