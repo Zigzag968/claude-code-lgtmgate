@@ -387,6 +387,25 @@ class TestPromotion(PromotionBase):
             (view,) = self.views(runner)
             self.assertNotIn("body", view[view.index("--json") + 1].split(","))
 
+    def test_refused_promotion_with_a_blocked_by_added_in_the_same_call(self):
+        issues = [self.candidate(), _support.issue(9, "type:feature", state="OPEN")]
+        rc, out, runner = self.run_set(PROMOTE + ["--blocked-by", "9", "--apply"], issues=issues)
+        self.assertEqual(rc, 1, out)
+        self.assertIn("open-blocker:9", out)
+        self.assertEqual(runner.writes(), [])
+        self.assertEqual(runner.dep_writes(), [])
+        self.assertFalse(self.journal_path().exists())
+
+    def test_promotion_with_a_closed_blocker_added_in_the_same_call_is_allowed(self):
+        issues = [self.candidate(), _support.issue(9, "type:feature", state="CLOSED")]
+        rc, out, runner = self.run_set(PROMOTE + ["--blocked-by", "9", "--apply"], issues=issues)
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(
+            runner.writes(),
+            [edit_argv(1, "--add-label", ["exec:agent", "status:ready"]), edit_argv(1, "--remove-label", ["status:inbox"])],
+        )
+        self.assertEqual(len(runner.dep_writes()), 1)
+
     def test_refused_promotion_whose_only_checkbox_is_in_a_code_fence(self):
         issue = self.candidate(body="## Acceptance\n```\n- [ ] not a real item\n```\n")
         rc, out, runner = self.run_set(PROMOTE + ["--apply"], issues=[issue])
