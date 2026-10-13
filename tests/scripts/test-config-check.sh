@@ -175,6 +175,30 @@ mkdir -p "$MAIN/.git/worktrees/nocommon"
 hook "$WT" "$CR"
 if [ "$G1" -eq 0 ] && [ "$G2" -eq 1 ] && [ "$hrc" -eq 0 ] && grep -q 'WARNING' "$TMP/hook.json" && grep -q 'pipeline ready to use' "$TMP/hook.json"; then ok "H10 hook stays fail-open on a malformed .git file or missing commondir"; else bad "H10 G1=$G1 G2=$G2 hrc=$hrc"; fi
 
+# H11-H14: .pipeline/ ignore hint (temporary git repository, never the real one)
+PYBIN="$(command -v python3)"
+GP="$TMP/gitproj"; mkdir -p "$GP/.claude"
+: > "$GP/.env"
+printf '{"minPluginVersion":"1.3.0","projectSpecifics":".claude/lgtmgate"}' > "$GP/.claude/pipeline.config.json"
+GIT_CONFIG_GLOBAL=/dev/null git init -q "$GP"
+GIT_CONFIG_GLOBAL=/dev/null hook "$GP" "$ROOT"
+if [ "$hrc" -eq 0 ] && grep -qF 'Fast launches by reference are not used' "$TMP/hook.json" && grep -qF '.pipeline/' "$TMP/hook.json"; then ok "H11 hook hints when .pipeline/ is not ignored"; else bad "H11 rc=$hrc $(cat "$TMP/hook.json")"; fi
+
+printf '.pipeline/\n' > "$GP/.gitignore"
+GIT_CONFIG_GLOBAL=/dev/null hook "$GP" "$ROOT"
+if [ "$hrc" -eq 0 ] && ! grep -qF 'Fast launches by reference are not used' "$TMP/hook.json" && grep -q 'pipeline ready to use' "$TMP/hook.json"; then ok "H12 hook is quiet when .pipeline/ is ignored"; else bad "H12 rc=$hrc $(cat "$TMP/hook.json")"; fi
+
+NG="$TMP/nogit"; mkdir -p "$NG/.claude"
+: > "$NG/.env"
+printf '{"minPluginVersion":"1.3.0","projectSpecifics":".claude/lgtmgate"}' > "$NG/.claude/pipeline.config.json"
+GIT_CEILING_DIRECTORIES="$TMP" hook "$NG" "$ROOT"
+if [ "$hrc" -eq 0 ] && ! grep -qF 'Fast launches by reference are not used' "$TMP/hook.json" && grep -q 'pipeline ready to use' "$TMP/hook.json"; then ok "H13 hook is quiet outside a git repository"; else bad "H13 rc=$hrc $(cat "$TMP/hook.json")"; fi
+
+rm -f "$GP/.gitignore"
+mkdir -p "$TMP/nogit-bin"
+CLAUDE_PLUGIN_ROOT="$ROOT" CLAUDE_PROJECT_DIR="$GP" PATH="$TMP/nogit-bin" "$PYBIN" "$ROOT/hooks/SessionStart/inject_stub.py" > "$TMP/hook.json" 2>/dev/null; hrc=$?
+if [ "$hrc" -eq 0 ] && ! grep -qF 'Fast launches by reference are not used' "$TMP/hook.json" && grep -q 'pipeline ready to use' "$TMP/hook.json"; then ok "H14 hook is quiet when git is missing"; else bad "H14 rc=$hrc $(cat "$TMP/hook.json")"; fi
+
 RESULT=ok; [ "$FAIL" -eq 0 ] || RESULT=fail
 echo "[test-config-check] status=${RESULT} passed=${PASS} failed=${FAIL}"
 [ "$FAIL" -eq 0 ]
