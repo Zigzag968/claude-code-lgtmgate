@@ -102,6 +102,16 @@ node -e 'const fs=require("fs");const p=process.argv[1];const t=fs.readFileSync(
 run c12
 if [ "$rc" -ne 0 ] && has "Assembler warnings 'ghost-warning' has a row but the code no longer emits it"; then ok "12 a stale warning row fails"; else bad "12 rc=$rc $(cat "$TMP/out")"; fi
 
+# 13 a doctor finding row deleted
+fresh c13; drop_row c13 low-disk-space; run c13
+if [ "$rc" -ne 0 ] && has "FAIL: consumer-reference: Doctor findings 'low-disk-space' has no row and is not in the baseline"; then ok "13 a deleted doctor row fails and is named"; else bad "13 rc=$rc $(cat "$TMP/out")"; fi
+
+# 14 a doctor row for a finding the code does not emit
+fresh c14
+node -e 'const fs=require("fs");const p=process.argv[1];const t=fs.readFileSync(p,"utf8");fs.writeFileSync(p,t.replace("## Startup status lines","| `ghost-finding` | nowhere | nothing | nothing to do |\n\n## Startup status lines"))' "$TMP/c14/docs/consumer-reference.md"
+run c14
+if [ "$rc" -ne 0 ] && has "Doctor findings 'ghost-finding' has a row but the code no longer emits it"; then ok "14 a stale doctor row fails"; else bad "14 rc=$rc $(cat "$TMP/out")"; fi
+
 if [ "$FAIL" -eq 0 ]; then status=ok; else status=fail; fi
 echo "[test-consumer-reference] status=$status passed=$PASS failed=$FAIL"
 [ "$FAIL" -eq 0 ]
