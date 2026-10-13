@@ -107,7 +107,6 @@ function expandSpecifics(arguments_, projectDirectory, pluginRoot) {
   try {
     stdout = execFileSync('node', [
       nodePath.join(pluginRoot, 'scripts', 'runtime', 'agent-context.cjs'), '--root', worktree, '--sha', reference.refSha,
-      '--local', nodePath.join(projectDirectory, '.claude', 'pipeline.config.local.json'),
     ], { encoding: 'utf8', timeout: ASSEMBLER_TIMEOUT_MS, maxBuffer: 16 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] })
   } catch (error) {
     throw new Deny('the specifics could not be assembled at the referenced commit (stale commit, refused file or timeout)')
