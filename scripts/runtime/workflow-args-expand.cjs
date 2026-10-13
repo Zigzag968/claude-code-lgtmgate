@@ -4,7 +4,7 @@
 // PreToolUse(Workflow) expansion (#520, epic #528): the Lead passes `projectSpecificsRef {refSha, fp12}` and
 // `configRef {path, digest64}` instead of retyping the whole objects; this script verifies them, expands them to the
 // full objects through `hookSpecificOutput.updatedInput`, and (for a launch of this engine) swaps the engine for a copy
-// whose progress titles carry the issue number (scripts/lib/launch-file.cjs, under .pipeline/launch/).
+// whose workflow name is the issue title and whose description carries the issue number (scripts/lib/launch-file.cjs, under .pipeline/launch/).
 // Deterministic: git and the assembler run here, no model, nothing is asked. Scope of integrity: copy fidelity (the
 // objects the engine reads are the ones the references name), not adversarial integrity.
 //
@@ -269,7 +269,7 @@ function contextualScript(toolInput, arguments_, projectDirectory, pluginRoot, t
   if (made && crypto.createHash('sha256').update(source, 'utf8').digest('hex').slice(0, 12) !== made[2]) {
     throw new Deny(`the launch file ${nodePath.basename(given)} was modified after it was written; delete it (scripts/runtime/clean-launch-files.cjs) and launch again`)
   }
-  const expected = launch.retitle(source, issue, title)
+  const expected = launch.retitle(source, issue, { title, brief: arguments_.brief, pr: Number(arguments_.prNumber) })
   if (expected === null) return null
   const file = launch.launchPath(projectDirectory, issue, expected)
   if (!isIgnored(projectDirectory, nodePath.relative(projectDirectory, file))) return null

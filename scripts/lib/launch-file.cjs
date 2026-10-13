@@ -1,24 +1,26 @@
 'use strict'
 
-// The launch file of a run (#520): a copy of workflows/deliver-pipeline.js whose `meta` literal and `PHASE_TITLES` line
-// carry the issue number (`#<N> Setup` ... `#<N> Review`), so the progress view of two runs is told apart by its titles.
+// The launch file of a run (#520, #553): a copy of workflows/deliver-pipeline.js whose `meta` literal differs from the engine so
+// the run list tells two runs apart: the workflow name is the short issue title and the description reads `#<N>` (plus
+// ` PR #<P>` when known) and the first line of the brief. Phase titles stay plain (`Setup` ... `Review`).
 // Written by hooks/workflow-args-expand.sh under <project>/.pipeline/launch/ (gitignored). Pure functions plus one atomic write.
 //
-// retitle(source, issue, title?) -> the expected bytes, or null when the source does not have the exact shape (then nothing is
-// written and the launch keeps the plugin's own engine). Idempotent: retitle(retitle(x, n, t), n, t) === retitle(x, n, t).
-// With a `title` (#545) the workflow name reads `deliver-pipeline #<N> <title>` and the description `#<N> <title>: <base>`; the
-// phase titles keep carrying the number only. Without one the bytes are what #520 wrote.
+// retitle(source, issue, options?) -> the expected bytes, or null when the source does not have the exact shape (then nothing is
+// written and the launch keeps the plugin's own engine). options = { title, brief, pr }, all optional. The name is `title`, else
+// `#<N> <first brief line>`, else `#<N>`; computed from the inputs only, so retitle is idempotent and also normalizes a launch
+// file of the previous shape (numbered phase titles).
 
 const fs = require('fs')
 const crypto = require('crypto')
 const nodePath = require('path')
 
 const BASE_TITLES = ['Setup', 'Diagnose', 'Plan', 'Dev', 'Review']
-const PHASE_TITLE_CAP = 16 // scripts/guards.cjs checkPhaseTitles
+const NAME_BYTES = 80
+const DESCRIPTION_CHARS = 120
 const DIRECTORY = nodePath.join('.pipeline', 'launch')
 
 const TITLE_RE = /(\{ title: ')(?:#\d+ )?([^']*)(')/g
-const NAME_RE = /^(  name: ')deliver-pipeline(?: #(\d+)(?: ((?:[^'\\\n]|\\.)*))?)?(',)$/m
+const NAME_RE = /^(  name: ')((?:[^'\\\n]|\\.)*)(',)$/m
 const DESCRIPTION_RE = /^(  description: ')(.*)(',)$/m
 const CONSTANT_RE = /^const PHASE_TITLES = \{ setup: '(?:#\d+ )?Setup', diagnose: '(?:#\d+ )?Diagnose', plan: '(?:#\d+ )?Plan', dev: '(?:#\d+ )?Dev', review: '(?:#\d+ )?Review' \}$/gm
 
@@ -35,10 +37,39 @@ function escapeTitle(title) {
   return title.split('\\').join('\\\\').split("'").join("\\'")
 }
 
-function retitle(source, issue, title) {
+// First line of a brief, control characters to spaces, trimmed. '' when nothing is left.
+function firstLine(brief) {
+  if (typeof brief !== 'string') return ''
+  return brief.split('\n')[0].replace(/[\u0000-\u001f\u007f]/g, ' ').trim()
+}
+
+function cutBytes(text, limit) {
+  let out = ''
+  let used = 0
+  for (const character of text) {
+    const size = Buffer.byteLength(character, 'utf8')
+    if (used + size > limit) break
+    out += character
+    used += size
+  }
+  return out.trim()
+}
+
+function retitle(source, issue, options) {
   if (typeof source !== 'string' || !Number.isInteger(issue) || issue < 1) return null
-  const escaped = title === undefined ? '' : escapeTitle(title)
-  if (escaped === null) return null
+  const given = options || {}
+  const line = firstLine(given.brief)
+  let name
+  if (given.title !== undefined) {
+    name = escapeTitle(given.title)
+    if (name === null) return null
+  } else {
+    name = escapeTitle(cutBytes(`#${issue}${line === '' ? '' : ` ${line}`}`, NAME_BYTES))
+    if (name === null) return null
+  }
+  const pr = Number.isInteger(given.pr) && given.pr >= 1 ? ` PR #${given.pr}` : ''
+  const short = escapeTitle([...line].slice(0, DESCRIPTION_CHARS).join('').trim())
+  const description = `#${issue}${pr}${short === null ? '' : `: ${short}`}`
   const bounds = metaBounds(source)
   if (!bounds) return null
   const meta = source.slice(bounds.start, bounds.end)
@@ -46,19 +77,11 @@ function retitle(source, issue, title) {
   if (found.length !== BASE_TITLES.length || found.some((t, index) => t !== BASE_TITLES[index])) return null
   if ((source.match(CONSTANT_RE) || []).length !== 1) return null
   if (!NAME_RE.test(meta) || !DESCRIPTION_RE.test(meta)) return null
-  const titled = BASE_TITLES.map((t) => `#${issue} ${t}`)
-  const worst = Math.max(...titled.map((t) => [...t].length), [...`#${issue} Review 99`].length)
-  if (worst > PHASE_TITLE_CAP) return null
-  let next = meta.replace(TITLE_RE, (all, open, phase, close) => `${open}#${issue} ${phase}${close}`)
-  const name = NAME_RE.exec(next)
-  const previous = name[2] === undefined ? '' : name[3] === undefined ? `#${name[2]} ` : `#${name[2]} ${name[3]}: `
-  next = next.replace(NAME_RE, (all, open, number, held, close) => `${open}deliver-pipeline #${issue}${escaped === '' ? '' : ` ${escaped}`}${close}`)
-  next = next.replace(DESCRIPTION_RE, (all, open, text, close) => {
-    const base = previous !== '' && text.startsWith(previous) ? text.slice(previous.length) : text.replace(/^#\d+ /, '')
-    return `${open}#${issue} ${escaped === '' ? '' : `${escaped}: `}${base}${close}`
-  })
-  const line = `const PHASE_TITLES = { setup: '#${issue} Setup', diagnose: '#${issue} Diagnose', plan: '#${issue} Plan', dev: '#${issue} Dev', review: '#${issue} Review' }`
-  return next + source.slice(bounds.end).replace(CONSTANT_RE, () => line)
+  let next = meta.replace(TITLE_RE, (all, open, phase, close) => `${open}${phase}${close}`)
+  next = next.replace(NAME_RE, (all, open, held, close) => `${open}${name}${close}`)
+  next = next.replace(DESCRIPTION_RE, (all, open, text, close) => `${open}${description}${close}`)
+  const constant = `const PHASE_TITLES = { ${BASE_TITLES.map((t) => `${t.toLowerCase()}: '${t}'`).join(', ')} }`
+  return next + source.slice(bounds.end).replace(CONSTANT_RE, () => constant)
 }
 
 function launchPath(projectDirectory, issue, bytes) {
@@ -80,4 +103,4 @@ function ensureLaunchFile(projectDirectory, issue, bytes) {
   return { path: file }
 }
 
-module.exports = { retitle, launchPath, ensureLaunchFile, DIRECTORY, PHASE_TITLE_CAP }
+module.exports = { retitle, launchPath, ensureLaunchFile, DIRECTORY }
