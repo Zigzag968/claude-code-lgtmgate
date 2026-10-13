@@ -310,6 +310,14 @@ R6="$TMP/acc6"; new_repo "$R6"; padfile "$R6/docs/extra-nick.md" 7000; printf '.
 run "$R6" --accept-oversize Nick
 EXCL6="$(git -C "$R6" rev-parse --path-format=absolute --git-path info/exclude)"
 if [ "$rc" = 0 ] && ! grep -qF 'pipeline.config.local.json' "$EXCL6" && [ "$(git -C "$R6" status --porcelain | wc -l | tr -d ' ')" = 0 ]; then ok "accept-oversize-already-ignored: no exclude line added"; else bad "accept-oversize-already-ignored: rc=$rc excl=$(tr '\n' '~' < "$EXCL6") status=$(git -C "$R6" status --porcelain | tr '\n' '~')"; fi
+R8="$TMP/acc8"; new_repo "$R8"; padfile "$R8/docs/extra-nick.md" 7000; seal "$R8"; run "$R8" --accept-oversize Nick; git -C "$R8" worktree add -q "$TMP/acc8-wt" -b side8
+run "$TMP/acc8-wt"
+jtrue "accept-oversize-shared-tree: a worktree reads the accept made in the main tree" '!j.warnings.some(w=>w.kind==="oversize")&&j.warnings.some(w=>w.kind==="oversize-accepted"&&w.role==="Nick")'
+R9="$TMP/acc9"; new_repo "$R9"; padfile "$R9/docs/extra-nick.md" 7000; seal "$R9"; git -C "$R9" worktree add -q "$TMP/acc9-wt" -b side9
+run "$TMP/acc9-wt" --accept-oversize Nick
+if [ "$rc" = 0 ] && [ -f "$R9/.claude/pipeline.config.local.json" ] && [ ! -e "$TMP/acc9-wt/.claude/pipeline.config.local.json" ] && [ -z "$(git -C "$TMP/acc9-wt" status --porcelain)" ] && [ -z "$(git -C "$R9" status --porcelain)" ]; then ok "accept-oversize-shared-tree: an accept made in a linked worktree is stored in the main tree and the worktree stays clean"; else bad "accept-oversize-shared-tree: rc=$rc $(git -C "$TMP/acc9-wt" status --porcelain | head -c 200)"; fi
+run "$R9"
+jtrue "accept-oversize-trace: an accepted overrun yields oversize-accepted ask:false" 'j.warnings.some(w=>w.kind==="oversize-accepted"&&w.role==="Nick"&&w.ask===false&&w.recommended===6144&&typeof w.accepted==="number")&&!j.warnings.some(w=>w.kind==="oversize")'
 # the total warning is informational and never asks
 R7="$TMP/tot"; new_repo "$R7"; padfile "$R7/docs/extra-nick.md" 8300; seal "$R7"
 run "$R7"

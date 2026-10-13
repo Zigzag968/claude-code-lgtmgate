@@ -7829,7 +7829,9 @@ await testCase('T265c validation and digest known answers', async () => {
   const error7 = starts('unknown role', p(true, unknown), 'malformed')
   const fp = f.specificsFingerprint({ ...good, warnings: [{ kind: 'oversize', role: 'Nick', bytes: 9000, recommended: 6144, accepted: null, ask: true }, { kind: 'empty-ignored', path: 'x' }] }, f.sha256Hex)
   const error8 = (/^specifics@a{12}:[0-9a-f]{12}$/.test(fp.line) && fp.oversize.length === 1 && fp.oversize[0].role === 'Nick') ? null : { ok: false, msg: `fingerprint: ${JSON.stringify(fp)}` }
-  return error1 || error2 || error3 || error4 || error5 || error6 || error7 || error8 || { ok: true }
+  const fpAccepted = f.specificsFingerprint({ ...good, warnings: [{ kind: 'oversize-accepted', role: 'Nick', bytes: 7000, recommended: 6144, accepted: 6800, ask: false }] }, f.sha256Hex)
+  const error9 = (fpAccepted.accepted.length === 1 && fpAccepted.accepted[0].role === 'Nick' && fpAccepted.accepted[0].accepted === 6800 && fpAccepted.oversize.length === 0) ? null : { ok: false, msg: `accepted fingerprint: ${JSON.stringify(fpAccepted)}` }
+  return error1 || error2 || error3 || error4 || error5 || error6 || error7 || error8 || error9 || { ok: true }
 })
 
 // T520 (#520) — references in the launch. The expansion hook (hooks/workflow-args-expand.sh) turns `projectSpecificsRef` and

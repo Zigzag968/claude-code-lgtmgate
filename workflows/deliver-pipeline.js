@@ -135,7 +135,7 @@ export const meta = {
 // `version`, checked against plugin.json by tests/templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '1.4.0-beta.34', cutFrom: '499580e' }
+const BUILD = { plugin: 'lgtmgate', version: '1.4.0-beta.35', cutFrom: '48fe53d' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -163,6 +163,7 @@ let boxesMapped = null
 let specificsPayload = null
 let specificsLine = null
 let specificsOversize = null
+let specificsAccepted = null
 // #271: the lanes of the project specifics: found in the verified payload, chosen by Theo (lanesSam), complemented by Sam's
 // targetFiles for Nick and Morgan (lanesDev), reported on finish(); declared before `const finish` like specificsPayload.
 let lanesFound = []
@@ -295,6 +296,7 @@ if (projectSpecifics !== undefined && projectSpecifics !== null) {
   specificsPayload = projectSpecifics
   specificsLine = fp.line
   specificsOversize = fp.oversize.length > 0 ? fp.oversize : null
+  specificsAccepted = fp.accepted.length > 0 ? fp.accepted : null
   lanesFound = specificsLanesFound(projectSpecifics)
 }
 if (lanesArgument !== undefined && lanesArgument !== null && (!Array.isArray(lanesArgument) || lanesArgument.some((n) => typeof n !== 'string'))) {
@@ -383,6 +385,10 @@ if (specificsLine) {
   for (const o of (specificsOversize || [])) {
     trace.push(`specifics-oversize:${o.role}`)
     log(`specifics: ${o.role} text is ${o.bytes} bytes, above the recommended ${o.recommended} — the owner decides; accept with scripts/runtime/agent-context.cjs --accept-oversize ${o.role}`)
+  }
+  for (const o of (specificsAccepted || [])) {
+    trace.push(`specifics-oversize-accepted:${o.role}`)
+    log(`specifics: ${o.role} text is ${o.bytes} bytes, above the recommended ${o.recommended}, accepted at ${o.accepted}; asked again above +25 %`)
   }
 }
 if (auditBudgetOverridden) {
@@ -1609,7 +1615,11 @@ function specificsFingerprint(ps, sha) {
   for (const w of ws) {
     if (w && w.kind === 'oversize' && w.ask === true) oversize.push({ role: w.role, bytes: w.bytes, recommended: w.recommended })
   }
-  return { line: `specifics@${ps.refSha.slice(0, 12)}:${h}`, oversize }
+  const accepted = []
+  for (const w of ws) {
+    if (w && w.kind === 'oversize-accepted') accepted.push({ role: w.role, bytes: w.bytes, recommended: w.recommended, accepted: w.accepted })
+  }
+  return { line: `specifics@${ps.refSha.slice(0, 12)}:${h}`, oversize, accepted }
 }
 
 // Order: persona (fallback retry only), specifics, task, output mandate.
