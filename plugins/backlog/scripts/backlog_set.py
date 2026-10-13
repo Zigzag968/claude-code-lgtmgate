@@ -14,8 +14,9 @@ validates, and the journal line of the intent could be written BEFORE the write 
 There is no snapshot and no digest for a single issue.
 
 Promotion: adding `status:ready` or an agent executor is refused unless the repo opted in with
-`promotion: checked` AND the deterministic check of `backlog_promote.py` passes on the fresh read. The executor
-flag `nightly` is never set by this command.
+`promotion: checked` AND the deterministic check of `backlog_promote.py` passes on the fresh read. A dependency
+added by `--blocked-by` in the same call counts as a blocker: an open one refuses the promotion before any write.
+The executor flag `nightly` is never set by this command.
 
 This module never builds the write chokepoint itself and spawns nothing: the write goes through
 `backlog_apply.execute_set`. A capped axis (`priority` by default) needs a real open-issue count, fetched only
@@ -136,7 +137,7 @@ def _target_labels(issue: dict, requested) -> Tuple[frozenset, frozenset]:
     return before, frozenset(after)
 
 
-def _check_labels(args, cfg, gh, issue, live_labels, requested, before, after, reason):
+def _check_labels(args, cfg, gh, issue, live_labels, requested, before, after, reason, add_links=()):
     """Validate the label change; returns (exit code or None to go on, promotion verdict or None)."""
     added_capped = sorted((after - before) & set(cfg.caps))
     open_issues: List[dict] = []
@@ -166,6 +167,14 @@ def _check_labels(args, cfg, gh, issue, live_labels, requested, before, after, r
         facts["blockers"], "ok" if verdict.ok else "refused"))
     if not verdict.ok:
         return _refuse("promotion: %s" % ",".join(printable(code) for code in verdict.codes)), None
+    for number in add_links:
+        try:
+            blocker = gh.fetch_issue(number)
+        except (RuntimeError, ValueError, KeyError, TypeError, OSError, json.JSONDecodeError) as exc:
+            print("[%s] error: %s" % (TAG, printable(exc)))
+            return 1, None
+        if is_open(blocker):
+            return _refuse("promotion: open-blocker:%d" % number), None
     return None, verdict
 
 
@@ -233,7 +242,8 @@ def main(argv: List[str], cfg, gh=None, apply_runner=None) -> int:
     reason = printable(args.reason).strip()[:MAX_REASON] or "set"
     verdict = None
     if labels_change:
-        rc, verdict = _check_labels(args, cfg, gh, issue, live_labels, requested, before, after, reason)
+        rc, verdict = _check_labels(args, cfg, gh, issue, live_labels, requested, before, after, reason,
+                                   add_links)
         if rc is not None:
             return rc
     for number in add_links:
