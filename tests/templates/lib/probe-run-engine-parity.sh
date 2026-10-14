@@ -33,19 +33,19 @@ PF307="$ROOT/scripts/runtime/preflight.sh"
 if command -v jq >/dev/null 2>&1 && [ -x "$ROOT/node_modules/.bin/ls-lint" ] && [ -f "$ROOT/.ls-lint.yml" ]; then
   W307="$WORK/layout307"; mkdir -p "$W307"
   cp "$ROOT/.ls-lint.yml" "$W307/.ls-lint.yml"; ln -sfn "$ROOT/node_modules" "$W307/node_modules"
-  OUT="$(bash "$PF307" dev --wt "$W307" --engine true --targets 'scripts/BadName.cjs templates/ok-name.sh')"
+  OUT="$(bash "$PF307" dev --worktree "$W307" --engine true --targets 'scripts/BadName.cjs templates/ok-name.sh')"
   ok=0
   [ "$(printf '%s' "$OUT" | jq -r '.layout.verdict')" = "NOT_CONFORMING" ] && printf '%s' "$OUT" | jq -r '.layout.issues[]' | grep -q 'scripts/BadName.cjs failed for.*kebabcase' && ok=1
   check "[307] preflight.sh dev --engine true: a non-conforming planned path -> layout NOT_CONFORMING quoting the rule" "$ok"
-  OUT="$(bash "$PF307" dev --wt "$W307" --engine true --targets 'templates/ok-name.sh')"
+  OUT="$(bash "$PF307" dev --worktree "$W307" --engine true --targets 'templates/ok-name.sh')"
   ok=0
   [ "$(printf '%s' "$OUT" | jq -c '.layout')" = '{"verdict":"CONFORMING","issues":[]}' ] && ok=1
   check "[307] preflight.sh dev --engine true: a conforming planned path -> layout CONFORMING, no issue" "$ok"
-  OUT="$(bash "$PF307" dev --wt "$W307" --engine true --targets 'scripts/provision-worktree.sh templates/provision-worktree.sh')"
+  OUT="$(bash "$PF307" dev --worktree "$W307" --engine true --targets 'scripts/provision-worktree.sh templates/provision-worktree.sh')"
   ok=0
   [ "$(printf '%s' "$OUT" | jq -c '.layout')" = '{"verdict":"CONFORMING","issues":[]}' ] && ok=1
   check "[344] preflight.sh dev --engine true: the renamed provisioning script paths -> layout CONFORMING" "$ok"
-  OUT="$(bash "$PF307" dev --wt "$W307" --targets 'scripts/BadName.cjs')"
+  OUT="$(bash "$PF307" dev --worktree "$W307" --targets 'scripts/BadName.cjs')"
   ok=0
   [ "$(printf '%s' "$OUT" | jq -c '.layout')" = "null" ] && [ "$(printf '%s\n' "$OUT" | wc -l | tr -d ' ')" = "1" ] && ok=1
   check "[307] preflight.sh dev without --engine: layout null, still exactly one line" "$ok"
@@ -244,7 +244,7 @@ pb_line() {
     const f = new Function(blk + "\n" + pv + "\nreturn { probeCommands, base64Utf8, pluginVersionCommand }")()
     const cmd = f.pluginVersionCommand(root)
     const want = crypto.createHash("sha256").update(cmd).digest("hex")
-    const o = { wtPath: wt, issue: 338, probeRunPath: pr, name: "lines", cmd, label: "pb", round: 0, noReuse: true, expectCmd: want }
+    const o = { worktreePath: wt, issue: 338, probeRunPath: pr, name: "lines", cmd, label: "pb", round: 0, noReuse: true, expectCmd: want }
     if (mode === "b64") o.cmdB64 = f.base64Utf8(cmd)
     process.stdout.write(f.probeCommands(o).run)
   ' "$PB_BLK" "$PV_BLK" "$PR" "$1" "$PB_WT" "$2" 2>/dev/null

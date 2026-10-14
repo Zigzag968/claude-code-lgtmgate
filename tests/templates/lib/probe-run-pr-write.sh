@@ -39,7 +39,7 @@ GHEOF
   # run_pw <op> args... : runs pr-write.sh against the stub, fresh log; prints the single stdout line
   run_pw() {
     : > "$GHLOG"
-    PATH="$PWD_/bin:$PATH" GHLOG="$GHLOG" GH_BODY_FILE="$PWD_/body.md" bash "$PW" "$@" --wt "$PWD_/wt" --repo o/r
+    PATH="$PWD_/bin:$PATH" GHLOG="$GHLOG" GH_BODY_FILE="$PWD_/body.md" bash "$PW" "$@" --worktree "$PWD_/wt" --repo o/r
   }
   first_line() { awk -v p="$1" 'index($0, p) { print NR; exit }' "$GHLOG"; }
   # read_first <read pattern> <write pattern>: both calls logged, the read strictly before the write
@@ -128,16 +128,6 @@ text")"
   OUT="$(run_pw body-splice --pr 9 --mode decision-log --text "$DL")"
   ok=0; [ "$(res "$OUT")" = "written/-" ] && [ "$(read_first 'pr view' 'pr edit')" = 1 ] && grep -q -- '- round 0 — LGTM' "$PWD_/body.md" && ok=1
   check "pr-write.sh body-splice: read-before-write (body read, spliced, then edit)" "$ok"
-  # old and new spelling of the worktree flag: same result line, same resulting body (#337)
-  printf '%s\n' "$PRE_BODY" > "$PWD_/body.md"
-  : > "$GHLOG"
-  OUT_OLD="$(PATH="$PWD_/bin:$PATH" GHLOG="$GHLOG" GH_BODY_FILE="$PWD_/body.md" bash "$PW" body-splice --pr 9 --mode decision-log --text "$DL" --wt "$PWD_/wt" --repo o/r)"
-  BODY_OLD="$(cat "$PWD_/body.md")"
-  printf '%s\n' "$PRE_BODY" > "$PWD_/body.md"
-  : > "$GHLOG"
-  OUT_NEW="$(PATH="$PWD_/bin:$PATH" GHLOG="$GHLOG" GH_BODY_FILE="$PWD_/body.md" bash "$PW" body-splice --pr 9 --mode decision-log --text "$DL" --worktree "$PWD_/wt" --repo o/r)"
-  ok=0; [ "$(res "$OUT_NEW")" = "written/-" ] && [ "$OUT_OLD" = "$OUT_NEW" ] && [ "$BODY_OLD" = "$(cat "$PWD_/body.md")" ] && ok=1
-  check "[worktree-flag] pr-write.sh: old and new spelling give the same result line and the same body" "$ok"
   OUT="$(run_pw body-splice --pr 9 --mode decision-log --text "$DL")"
   ok=0; [ "$(res "$OUT")" = "skipped/unchanged" ] && [ "$(no_call 'pr edit')" = 1 ] && ok=1
   check "pr-write.sh body-splice: skips when already applied (spliced body unchanged)" "$ok"
@@ -408,8 +398,8 @@ EOF
 - [ ] <!-- ac:2 --> [human-gate] second
 - [ ] <!-- ac:3 --> third, stale wording'
   cp "$PWD_/body.md" "$PWD_/body.before"
-  TD_COMPOSED="bash '$PW' body-splice --pr 9 --mode tick --text '$TD_TXT' --ids 1,3 --keep 2 --wt '$PWD_/wt' --repo o/r"
-  TD_TYPED="bash '$PW' body-splice --pr 9 --mode tick --text '$TD_FLOW' --ids 1,3 --keep 2 --wt '$PWD_/wt' --repo o/r"
+  TD_COMPOSED="bash '$PW' body-splice --pr 9 --mode tick --text '$TD_TXT' --ids 1,3 --keep 2 --worktree '$PWD_/wt' --repo o/r"
+  TD_TYPED="bash '$PW' body-splice --pr 9 --mode tick --text '$TD_FLOW' --ids 1,3 --keep 2 --worktree '$PWD_/wt' --repo o/r"
   : > "$GHLOG"
   TD_LINE="$(td_pr --label tdf --round 0 --out "$TD_OUT" --parser pr-write --no-reuse --expect-cmd "$(td_sha "$TD_COMPOSED")" --cmd "$TD_TYPED")"
   ok=0
@@ -445,7 +435,7 @@ BLKEOF
 - [ ] <!-- ac:2 --> [human-gate] stale two
 - [ ] <!-- ac:3 --> stale three
 - [ ] <!-- ac:4 --> stale four'
-  TD_REAL="bash '$PW' body-splice --pr 9 --mode tick --text-b64 '$TD_B64' --ids 1,3 --keep 2 --wt '$PWD_/wt' --repo o/r"
+  TD_REAL="bash '$PW' body-splice --pr 9 --mode tick --text-b64 '$TD_B64' --ids 1,3 --keep 2 --worktree '$PWD_/wt' --repo o/r"
   TD_LINE="$(td_pr --label tdb --round 0 --out "$TD_OUT" --parser pr-write --no-reuse --expect-cmd "$(td_sha "$TD_REAL")" --cmd "$TD_REAL")"
   TD_PARSED="$(printf '%s\n' "$TD_LINE" | node -e '
     const { PARSERS } = require(process.argv[1])

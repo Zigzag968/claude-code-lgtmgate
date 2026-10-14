@@ -15,7 +15,6 @@
 #
 # Usage:
 #   bash pr-write.sh <op> [--worktree DIR] [--repo OWNER/REPO] <op args>
-# The abbreviated old spelling of the worktree flag is still accepted.
 #
 # Ops:
 #   issue-comment --number N --marker M --body B
@@ -60,7 +59,7 @@ OP="${1:-}"
 WORKTREE=""; REPO=""; PR=""; NUMBER=""; MARKER=""; BODY=""; ID=""; ISSUE=""; PROJECT_NUMBER=""; PID=""; FID=""; OID=""; MODE=""; TEXT=""; TEXT_B64=""; EXPECT=""; IDS=""; KEEP=""; RSTATUS=""
 while [ $# -gt 0 ]; do
   case "$1" in
-    --wt|--worktree) WORKTREE="${2:-}" ;;
+    --worktree) WORKTREE="${2:-}" ;;
     --repo) REPO="${2:-}" ;;
     --pr) PR="${2:-}" ;;
     --number) NUMBER="${2:-}" ;;

@@ -8,7 +8,6 @@
 # Usage:
 #   bash preflight.sh dev    --worktree DIR --issue N --base BRANCH [--repo OWNER/REPO] [--targets 'a b c'] [--engine true] [--stamp S]
 #   bash preflight.sh branch --worktree DIR [--pr N] [--repo OWNER/REPO] [--stamp S]
-# The abbreviated old spelling of the worktree flag is still accepted.
 # --stamp is ignored: it only makes the command text differ per launch (probe-run record reuse).
 #
 # dev    -> {"mode":"dev","planStale":[..]|null,"openSubIssues":["12",..]|null,"gitDir":"<abs>"|null,"writable":true|false|null,
@@ -27,7 +26,7 @@ MODE="${1:-}"
 WORKTREE=""; ISSUE=""; BASE=""; REPO=""; TARGETS=""; PR=""; ENGINE=""
 while [ $# -gt 0 ]; do
   case "$1" in
-    --wt|--worktree) WORKTREE="${2:-}" ;;
+    --worktree) WORKTREE="${2:-}" ;;
     --issue) ISSUE="${2:-}" ;;
     --base) BASE="${2:-}" ;;
     --repo) REPO="${2:-}" ;;

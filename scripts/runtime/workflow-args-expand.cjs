@@ -105,7 +105,7 @@ function expandSpecifics(arguments_, projectDirectory, pluginRoot) {
   const reference = arguments_.projectSpecificsRef
   if (!reference || typeof reference !== 'object' || !/^[0-9a-f]{40}$/.test(String(reference.refSha)) || !/^[0-9a-f]{12}$/.test(String(reference.fp12))) throw new Deny('the specifics reference is malformed')
   if (arguments_.projectSpecifics !== undefined) throw new Deny('args carries both projectSpecifics and projectSpecificsRef')
-  const worktree = arguments_.worktreePath || arguments_.wtPath
+  const worktree = arguments_.worktreePath
   if (typeof worktree !== 'string' || !nodePath.isAbsolute(worktree) || !fs.existsSync(worktree) || !fs.statSync(worktree).isDirectory()) throw new Deny('the worktree named by the launch is not an existing directory')
   if (!sameRepository(worktree, projectDirectory)) throw new Deny('the worktree is not a worktree of this repository')
   const { execFileSync } = require('child_process')
@@ -130,7 +130,7 @@ function expandPlan(arguments_, projectDirectory) {
   if (!reference || typeof reference !== 'object' || Array.isArray(reference) || !Number.isInteger(reference.issue) || reference.issue < 1 || !/^[0-9a-f]{64}$/.test(String(reference.digest))) throw new PlanDeny('the plan reference is malformed')
   if (arguments_.planText !== undefined) throw new PlanDeny('args carries both planText and planRef')
   if (reference.issue !== Number(arguments_.issue)) throw new PlanDeny('the plan reference names another issue than the launch')
-  const worktree = arguments_.worktreePath || arguments_.wtPath
+  const worktree = arguments_.worktreePath
   if (typeof worktree !== 'string' || !nodePath.isAbsolute(worktree) || !fs.existsSync(worktree) || !fs.statSync(worktree).isDirectory()) throw new PlanDeny('the worktree named by the launch is not an existing directory')
   if (!sameRepository(worktree, projectDirectory)) throw new PlanDeny('the worktree is not a worktree of this repository')
   let bytes
@@ -183,7 +183,7 @@ function validateTitle(arguments_) {
 function repositoryOf(arguments_) {
   const configured = arguments_.config && typeof arguments_.config === 'object' ? arguments_.config.repo : undefined
   if (typeof configured === 'string' && /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/.test(configured)) return configured
-  const worktree = arguments_.worktreePath || arguments_.wtPath
+  const worktree = arguments_.worktreePath
   if (typeof worktree !== 'string' || !nodePath.isAbsolute(worktree) || !fs.existsSync(worktree)) return null
   try {
     const remote = gitOut(worktree, ['remote', 'get-url', 'origin'])

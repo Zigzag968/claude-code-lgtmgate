@@ -193,27 +193,23 @@ GHEOF
   chmod +x "$PFD/bin/gh"
   echo '{"branchPrefix":"feat/"}' > "$PFD/wt/.claude/pipeline.config.json"
 
-  OUT="$(PATH="$PFD/bin:$PATH" bash "$PF" branch --wt "$PFD/wt" --pr 7 --repo o/r --stamp 1)"
+  OUT="$(PATH="$PFD/bin:$PATH" bash "$PF" branch --worktree "$PFD/wt" --pr 7 --repo o/r --stamp 1)"
   ok=0; [ "$OUT" = '{"mode":"branch","headRef":"feat/issue-83","branchPrefix":"feat/"}' ] && ok=1
   check "preflight.sh branch: head ref and branch prefix in one JSON line" "$ok"
 
-  OUT="$(GH_FAIL=1 PATH="$PFD/bin:$PATH" bash "$PF" branch --wt "$PFD/nowt" --pr 7)"; RC=$?
+  OUT="$(GH_FAIL=1 PATH="$PFD/bin:$PATH" bash "$PF" branch --worktree "$PFD/nowt" --pr 7)"; RC=$?
   ok=0; [ "$RC" -eq 0 ] && [ "$OUT" = '{"mode":"branch","headRef":null,"branchPrefix":null}' ] && ok=1
   check "preflight.sh branch: failing gh and missing config -> nulls, exit 0, one line" "$ok"
 
   # [239] a failing head-ref read names its cause (closed set), the config read is kept, no raw stderr text leaves the script
-  OUT="$(GH_FAIL=1 GH_ERR='Post "https://api.github.com/graphql": tls: failed to verify certificate: x509: certificate signed by unknown authority' PATH="$PFD/bin:$PATH" bash "$PF" branch --wt "$PFD/wt" --pr 7 --repo o/r)"; RC=$?
+  OUT="$(GH_FAIL=1 GH_ERR='Post "https://api.github.com/graphql": tls: failed to verify certificate: x509: certificate signed by unknown authority' PATH="$PFD/bin:$PATH" bash "$PF" branch --worktree "$PFD/wt" --pr 7 --repo o/r)"; RC=$?
   ok=0; [ "$RC" -eq 0 ] && [ "$OUT" = '{"mode":"branch","headRef":null,"branchPrefix":"feat/","readFailed":"tls"}' ] && ok=1
   check "[239] preflight.sh branch: a failing PR read names its cause as readFailed (tls), branchPrefix kept, no stderr text" "$ok"
 
   echo '{}' > "$PFD/wt/.claude/pipeline.config.json"
-  OUT="$(PATH="$PFD/bin:$PATH" bash "$PF" branch --wt "$PFD/wt" --pr '')"
+  OUT="$(PATH="$PFD/bin:$PATH" bash "$PF" branch --worktree "$PFD/wt" --pr '')"
   ok=0; [ "$OUT" = '{"mode":"branch","headRef":null,"branchPrefix":""}' ] && ok=1
   check "preflight.sh branch: no PR number, key absent -> headRef null, branchPrefix empty string" "$ok"
-  OUT="$(PATH="$PFD/bin:$PATH" bash "$PF" branch --wt "$PFD/wt" --pr 7 --repo o/r --stamp 1)"
-  OUT_NEW="$(PATH="$PFD/bin:$PATH" bash "$PF" branch --worktree "$PFD/wt" --pr 7 --repo o/r --stamp 1)"
-  ok=0; [ -n "$OUT_NEW" ] && [ "$OUT" = "$OUT_NEW" ] && ok=1
-  check "[worktree-flag] preflight.sh: old and new spelling give the same output" "$ok"
 
 
   # dev: temp repo, local bare origin with one target changed upstream
@@ -226,7 +222,7 @@ GHEOF
   echo a2 > "$PFD/repo/a.txt"; git -C "$PFD/repo" commit -q -am upstream; git -C "$PFD/repo" push -q origin main 2>/dev/null
   git -C "$PFD/repo" reset -q --hard HEAD~1 2>/dev/null
 
-  OUT="$(PATH="$PFD/bin:$PATH" GH_TOTAL=0 bash "$PF" dev --wt "$PFD/repo" --issue 83 --base main --repo o/r --targets 'a.txt b.txt')"
+  OUT="$(PATH="$PFD/bin:$PATH" GH_TOTAL=0 bash "$PF" dev --worktree "$PFD/repo" --issue 83 --base main --repo o/r --targets 'a.txt b.txt')"
   ok=0
   [ "$(printf '%s' "$OUT" | jq -c '[.mode, .planStale, .openSubIssues, .writable]')" = '["dev",["a.txt"],[],true]' ] && ok=1
   check "preflight.sh dev: changed plan target listed, sub-issues total 0 -> [], git dir writable" "$ok"
@@ -234,12 +230,12 @@ GHEOF
   [ "$(printf '%s' "$OUT" | jq -r '.gitDir')" = "$(git -C "$PFD/repo" rev-parse --absolute-git-dir)" ] && ok=1
   check "preflight.sh dev: gitDir is the absolute git dir of the worktree" "$ok"
 
-  OUT="$(PATH="$PFD/bin:$PATH" GH_TOTAL=2 bash "$PF" dev --wt "$PFD/repo" --issue 83 --base main --repo o/r --targets '')"
+  OUT="$(PATH="$PFD/bin:$PATH" GH_TOTAL=2 bash "$PF" dev --worktree "$PFD/repo" --issue 83 --base main --repo o/r --targets '')"
   ok=0
   [ "$(printf '%s' "$OUT" | jq -c '[.planStale, .openSubIssues]')" = '[null,["12","15"]]' ] && ok=1
   check "preflight.sh dev: empty targets -> planStale null, open sub-issues listed" "$ok"
 
-  OUT="$(GH_FAIL=1 PATH="$PFD/bin:$PATH" bash "$PF" dev --wt "$PFD/repo" --issue 83 --base main --repo o/r --targets 'a.txt')"
+  OUT="$(GH_FAIL=1 PATH="$PFD/bin:$PATH" bash "$PF" dev --worktree "$PFD/repo" --issue 83 --base main --repo o/r --targets 'a.txt')"
   ok=0
   [ "$(printf '%s' "$OUT" | jq -c '.openSubIssues')" = "null" ] && [ "$(printf '%s\n' "$OUT" | wc -l | tr -d ' ')" = "1" ] && ok=1
   check "preflight.sh dev: failing gh -> openSubIssues null, still exactly one line" "$ok"
