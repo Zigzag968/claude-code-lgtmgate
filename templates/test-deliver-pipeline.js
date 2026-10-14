@@ -5701,6 +5701,31 @@ await testCase('T9028b human-gate definition and proof exemption agree across th
   return bad.length ? { ok: false, msg: bad.map((b) => b.msg.slice(0, 90)).join(' | ') } : { ok: true }
 })
 
+// T479b (#479) — the consumer-rule item rule is defined once and interpolated twice (Sam's prompt and the plan-check
+// item (5) line); the plan check is told to return the rewritten item; the summary/pointer refusal names the `plan`
+// field and no longer sends the planner to the artifact. Source-level.
+await testCase('T479b READ_ONLY_CONFIRMATION_RULE is shared by Sam and the plan check; the pointer refusal names the plan field (#479)', async () => {
+  const source = SUITE_ARGS.fpSource
+  if (!source) {
+    log('SKIP — T479b: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const from = source.indexOf('const samScoutPrompt =')
+  const to = from < 0 ? -1 : source.indexOf('// Plan stage', from)
+  const scout = from < 0 || to < 0 ? '' : source.slice(from, to)
+  const planCheck = source.split('\n').find((l) => l.includes('(5) ACCEPTANCE PROOF CHECK')) || ''
+  const checks = [
+    eq('occurrences (definition + 2 interpolations)', source.split('READ_ONLY_CONFIRMATION_RULE').length - 1, 3),
+    includes('interpolated inside samScoutPrompt', scout, '${READ_ONLY_CONFIRMATION_RULE}'),
+    includes('interpolated on the (5) line', planCheck, '${READ_ONLY_CONFIRMATION_RULE}'),
+    includes('plan check returns the rewritten item', planCheck, 'put the REWRITTEN item'),
+    eq('old remedy "Write this line in the artifact" occurrences', source.split('Write this line in the artifact').length - 1, 0),
+    includes('pointer refusal names the plan field', source, 'is a summary/pointer, not the full plan'),
+  ]
+  const bad = checks.filter((c) => c)
+  return bad.length ? { ok: false, msg: bad.map((b) => b.msg.slice(0, 90)).join(' | ') } : { ok: true }
+})
+
 // T9029 (#29) — Sam reuses an existing follow-up issue of the parent instead of filing a duplicate on relaunch.
 // Source-level: the shared rule constant is defined once, interpolated once inside samScoutPrompt, names the
 // sub_issues listing and carries the hidden marker key exactly once in the engine (the persona side is pinned
@@ -5964,6 +5989,30 @@ await testCase('T182c a human-gate item carrying a command is refused NOT_CONFOR
   const error6 = eq('command in the text, amended: status', r3.status, 'plan-ready')
   const error7 = eq('command in the text, amended: no script refusal', t182Refusals(r3), [])
   return error1 || error2 || error3 || error4 || error5 || error6 || error7 || { ok: true }
+})
+
+// T479a (#479) — a read-only confirmation item (one a consumer rule requires) written without its inline citation is
+// refused once by the plan check, which hands back the rewritten item, and Sam repairs it in the first amendment round.
+// The bound stays: two refusals still escalate plan-not-conforming. A summary/pointer plan is refused twice with a
+// remedy that names the `plan` field, not the artifact.
+await testCase('T479a a read-only confirmation item without the inline citation is refused once and repaired in the first amendment round', async () => {
+  const command = 'gh api repos/o/r/issues/1/parent'
+  const bare = { text: 'the parent epic relation of the issue is set', humanGate: false, command }
+  const cited = { text: 'the parent epic relation of the issue is set (per the repository rule that orders it, issue comment 1)', humanGate: false, command }
+  const rewritten = `item 4: rewrite as "${cited.text}" with command ${command}`
+  const refused = { 1: { verdict: 'NOT_CONFORMING', issues: [rewritten] }, 2: { verdict: 'CONFORMING' } }
+  const r1 = await run({ mode: 'semi', simulate: { sam: { 1: t182Sam([...T182_ITEMS, bare]), 2: t182Sam([...T182_ITEMS, cited]) }, planCheck: refused } })
+  const error1 = eq('repaired: status', r1.status, 'plan-ready')
+  const refusedTwice = { 1: { verdict: 'NOT_CONFORMING', issues: [rewritten] }, 2: { verdict: 'NOT_CONFORMING', issues: [rewritten] } }
+  const r2 = await run({ mode: 'semi', simulate: { sam: { 1: t182Sam([...T182_ITEMS, bare]), 2: t182Sam([...T182_ITEMS, bare]) }, planCheck: refusedTwice } })
+  const error2 = eq('bound kept: status', r2.status, 'escalate')
+  const error3 = eq('bound kept: reason', r2.reason, 'plan-not-conforming')
+  const error4 = eq('bound kept: the issues are the plan check\'s', r2.planCheckIssues, [rewritten])
+  const summary = { plan: '## Plan\nsummary only, see the artifact\ntargetFiles: none\n', acceptanceItems: T182_ITEMS }
+  const r3 = await run({ mode: 'semi', simulate: { sam: { 1: summary, 2: summary }, planCheck: T182_CONFORMING } })
+  const error5 = eq('summary plan: status', r3.status, 'escalate')
+  const error6 = includes('summary plan: the remedy names the plan field', String((r3.planCheckIssues || [])[0]), '`plan` field')
+  return error1 || error2 || error3 || error4 || error5 || error6 || { ok: true }
 })
 
 // T182d (#182) — a genuine human gate (a judgement, no command) passes the plan gate untouched, and the block the
