@@ -5162,6 +5162,63 @@ await testCase('T114 plan owner with empty proof → falls back to code-defect (
   return (error1 || error2) ? (error1 || error2) : { ok: true }
 })
 
+// T559a (#559) — the plan-amendment lever, replayed offline: a checklist-wording-defect verdict with a proof (review
+// round 2: simulate.probes.sam is keyed by round, and key 1 is the plan attempt itself), at maxPlanAmendRounds 1, routes to Sam (plan-amend-round), skips Nick (nick-skipped-plan-only) and syncs the amended
+// checklist into the PR body (observed through prBodyPreview: the simulated sync path pushes no trace entry).
+await testCase('T559a plan-defect verdict at maxPlanAmendRounds 1 → Sam amends, Nick skipped, amended checklist in the PR body', async () => {
+  const items = T182_ITEMS.map((item) => ({ ...item, humanGate: false }))
+  const amendedText = '`node scripts/guards.cjs > /dev/null; echo "exit=$?"` prints `exit=0`'
+  const amended = items.map((item, index) => (index === 0 ? { ...item, text: amendedText } : item))
+  const wording = t182Lines(items)[0]
+  const r = await run({
+    mode: 'auto',
+    maxPlanAmendRounds: 1,
+    simulate: {
+      sam: { 1: t182Sam(items), 2: t182Sam(amended) },
+      samAcceptanceChecklist: '',
+      prBody: 'Closes #559\n\n<!-- acceptance:start -->\n' + t182Lines(items).join('\n') + '\n<!-- acceptance:end -->\n',
+      morgan: [
+        { verdict: 'REQUIRED_CHANGES', items: ['fix the null guard'] },
+        { verdict: 'REQUIRED_CHANGES', items: [wording], itemOwners: [{ item: wording, itemOwner: 'checklist-wording-defect', proof: 'the command prints 1, the item says 0' }] },
+        { verdict: 'LGTM', boxes: [{ id: 1, proven: true, proof: 'p1' }, { id: 2, proven: true, proof: 'p2' }, { id: 3, proven: true, proof: 'p3' }] },
+      ],
+    },
+  })
+  const preview = String(r.prBodyPreview ?? '')
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = includes('trace', r.trace || [], 'plan-amend-round:2')
+  const error3 = includes('trace', r.trace || [], 'nick-skipped-plan-only:2')
+  const error4 = preview.includes(amendedText) ? null : { ok: false, msg: `prBodyPreview lacks the amended item 1: ${JSON.stringify(preview)}` }
+  const error5 = preview.includes(items[0].text) ? { ok: false, msg: `prBodyPreview still carries the old item 1: ${JSON.stringify(preview)}` } : null
+  return error1 || error2 || error3 || error4 || error5 || { ok: true }
+})
+
+// T559b (#559) — an unmet CODE criterion (itemOwner code-defect, proof present) gets no plan routing under an active
+// lever: Nick fixes the code, the checklist in the PR body stays untouched.
+await testCase('T559b code-defect verdict at maxPlanAmendRounds 1 → no plan routing, checklist untouched', async () => {
+  const items = T182_ITEMS.map((item) => ({ ...item, humanGate: false }))
+  const wording = t182Lines(items)[0]
+  const r = await run({
+    mode: 'auto',
+    maxPlanAmendRounds: 1,
+    simulate: {
+      sam: { 1: t182Sam(items) },
+      samAcceptanceChecklist: '',
+      prBody: 'Closes #559\n\n<!-- acceptance:start -->\n' + t182Lines(items).join('\n') + '\n<!-- acceptance:end -->\n',
+      morgan: [
+        { verdict: 'REQUIRED_CHANGES', items: [wording], itemOwners: [{ item: wording, itemOwner: 'code-defect', proof: 'the command prints 1, the item says 0' }] },
+        { verdict: 'LGTM', boxes: [{ id: 1, proven: true, proof: 'p1' }, { id: 2, proven: true, proof: 'p2' }, { id: 3, proven: true, proof: 'p3' }] },
+      ],
+    },
+  })
+  const error1 = eq('status', r.status, 'ready')
+  const bad = (r.trace || []).find((t) => /^(plan-amend-round|plan-route-shadow|nick-skipped-plan-only)/.test(String(t)))
+  const error2 = bad ? { ok: false, msg: `trace: unexpected routing entry ${JSON.stringify(bad)}` } : null
+  const preview = String(r.prBodyPreview ?? '')
+  const error3 = preview.includes(items[0].text) ? null : { ok: false, msg: `prBodyPreview lost the original item 1: ${JSON.stringify(preview)}` }
+  return error1 || error2 || error3 || { ok: true }
+})
+
 // T115 — maxPlanAmendRounds validation mirrors T70d's pattern: an invalid value throws under
 // dryRun (zero agent spawns), message names the arg.
 await testCase('T115 maxPlanAmendRounds:-1 → throws under dryRun (zero agent spawns)', async () => {
