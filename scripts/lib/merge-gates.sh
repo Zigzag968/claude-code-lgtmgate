@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Merge gates 1b (declared exceptions, #122) and 1b2 (R2 waivers, #174) of scripts/lead-merge.sh. Sourced by it.
+# Merge gates 1b (declared exceptions, #122), 1b2 (R2 waivers, #174) and 1b3 (self-reference, #455) of scripts/lead-merge.sh. Sourced by it.
 # bash 3.2 safe. Defines functions only; no side effect on source.
 #   lm_gate_declared_exceptions   validates the `exception:` lines of the acceptance block; sets the global $exc_lines
 #   lm_gate_r2_waivers            needs $exc_lines (empty: no exception declared); refuses an undeclared R2 waiver
+#   lm_gate_self_reference        refuses when the PR changes scripts/lead-merge.sh or scripts/lib/ and the running copy is not the PR's (needs $LM_ARGS, $SCRIPT_DIR)
 # Both take (body, pr_head[, tmp dir]), read the globals PR, REPO, WORKFLOW and use die(), issue_refs() of the main script;
 # lm_gate_declared_exceptions runs first and resets $lm_tips.
 
@@ -68,6 +69,31 @@ for line in sys.stdin.read().splitlines():
 $exc_lines
 EOX
   fi
+}
+
+# lm_gate_self_reference <pr_head> (#455): refuses when the PR changes scripts/lead-merge.sh or scripts/lib/ and the copy being run
+# ($SCRIPT_DIR) is not the judged tip's: the merge would apply the old logic to the new state. Content comparison (cmp), not path
+# only, so the run from the PR worktree passes. Needs $LM_ARGS (original arguments); runs before any tick, fetch-merge, bump or push.
+lm_gate_self_reference() {
+  lm_sync_head "$1"
+  local t p changed bad="" run_file
+  for t in $lm_tips; do
+    changed="$(git diff --name-only --no-renames "origin/main...$t" -- scripts/lead-merge.sh scripts/lib)" \
+      || die "cannot diff the PR against origin/main (self-reference check)"
+    for p in $changed; do
+      run_file="$SCRIPT_DIR/${p#scripts/}"
+      if git cat-file -e "$t:$p" 2>/dev/null; then
+        git show "$t:$p" | cmp -s - "$run_file" 2>/dev/null || bad="$bad $p"
+      else
+        [ ! -e "$run_file" ] || bad="$bad $p"
+      fi
+    done
+  done
+  [ -n "$bad" ] || return 0
+  bad="$(printf '%s\n' $bad | sort -u | tr '\n' ' ')"
+  echo "FAIL: self-reference: PR #$PR changes ${bad% } and this run executes $SCRIPT_DIR/lead-merge.sh, not the PR's copy (the merge would apply the old logic to the new state, class self-reference, .claude/rules/pr-acceptance.md)" >&2
+  echo "Run the branch's copy from the PR worktree: bash scripts/lead-merge.sh $LM_ARGS" >&2
+  die "PR #$PR merge refused (self-reference); nothing ticked, bumped, pushed or merged"
 }
 
 # R2 scope = engine repo (`engineRepo: true` in .claude/pipeline.config.json ON origin/main, never the PR's own copy, so a PR
