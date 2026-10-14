@@ -1300,7 +1300,8 @@ const MORGAN = {
         'VERBATIM checklist line; mtime MUST include an explicit UTC \'Z\' or numeric timezone ' +
         'offset (e.g. `date -u +%Y-%m-%dT%H:%M:%SZ`) — a bare timestamp without Z/offset is rejected. ' +
         'committedInPr is optional and true only when the path is content of the PR head (it appears in ' +
-        '`git diff --name-only origin/<base>...HEAD`). bytes (from `wc -c`) is expected on every entry; a committed entry without it is rejected.',
+        '`git diff --name-only origin/<base>...HEAD`). contentFresh is optional and true only for a probe-eval summary ' +
+        'whose `node scripts/eval-digest.cjs --check <path>` printed `fresh`. bytes (from `wc -c`) is expected on every entry; a committed or contentFresh entry without it is rejected.',
       items: {
         type: 'object',
         properties: {
@@ -1310,6 +1311,7 @@ const MORGAN = {
           mtime: { type: 'string' },
           bytes: { type: 'number' },
           committedInPr: { type: 'boolean' },
+          contentFresh: { type: 'boolean' },
         },
       },
     },
@@ -1751,6 +1753,8 @@ function reconcileStaleProjectConfig(rawJson) {
 // FIRST-matching-reason order below. Pure: no I/O, no closure over simulate/config/trace.
 // Exception: a proof with committedInPr === true (file is content of the PR head) skips the mtime checks, provided the PR's
 // changed-file list (prFiles, #229) contains its path; without a list (older script, truncated, unreadable) the flag is trusted.
+// Exception (#454): a proof with contentFresh === true (probe-eval summary whose content digest Morgan checked with scripts/eval-digest.cjs)
+// skips the mtime checks: a merge of the base branch makes a newer head without touching the evaluated content. Path, existence and size still apply.
 function staleArtifactBlockers(proofs, floorIso, prFiles, worktreeDirectory) {
   if (!Array.isArray(proofs) || proofs.length === 0) return []
   // Accepts an explicit UTC 'Z' or a numeric offset: Morgan stats artifacts on the local
@@ -1775,7 +1779,7 @@ function staleArtifactBlockers(proofs, floorIso, prFiles, worktreeDirectory) {
     if (Number.isFinite(p.bytes) && p.bytes <= 0) {
       blockers.push({ item, reason: 'artifact-empty' }); continue
     }
-    if (!Number.isFinite(p.bytes) && p.committedInPr === true) {
+    if (!Number.isFinite(p.bytes) && (p.committedInPr === true || p.contentFresh === true)) {
       blockers.push({ item, reason: 'artifact-size-missing' }); continue
     }
     // A file committed in the PR has an mtime that predates the PR's last commit by construction, so no-valid-mtime and artifact-stale do not apply to it (fixtures/incidents/5-committed-proof-not-stale.json, flow-suite case T9005)
@@ -1787,6 +1791,7 @@ function staleArtifactBlockers(proofs, floorIso, prFiles, worktreeDirectory) {
       while (relativePath.startsWith('./')) relativePath = relativePath.slice(2)
       if (prFiles.includes(relativePath)) continue
     }
+    if (p.contentFresh === true) continue
     const mtime = typeof p.mtime === 'string' ? p.mtime : ''
     if (!ISO.test(mtime)) {
       blockers.push({ item, reason: 'no-valid-mtime' }); continue
@@ -4577,6 +4582,10 @@ if (after('review', entryStage)) {
     `on its \`artifactProofs\` entry: such a file exists before the latest commit, so its mtime legitimately ` +
     `predates it and is not judged (path, existence and non-empty size still are). Leave the field out for any ` +
     `artifact a run produced that the PR does not commit: those keep the mtime rule above. ` +
+    `CONTENT-FRESH EXCEPTION: for a probe-eval summary (\`eval-summary.json\` / \`docs/gate/e2-eval.json\`) run ` +
+    `\`node "${worktreePath}/scripts/eval-digest.cjs" --check <path>\`, cite its output, and set \`contentFresh: true\` only when it ` +
+    `printed \`fresh\`; the mtime is then not judged (a merge of the base branch cannot make a summary stale, a change under ` +
+    `evals/ templates/ hooks/ agents/ scripts/ does). `+
     `The workflow re-derives this from \`artifactProofs\` and ` +
     `will overturn an LGTM whose proofs do not hold. `
 

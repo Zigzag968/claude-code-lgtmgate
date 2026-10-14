@@ -159,6 +159,8 @@ jobs:
         run: bash tests/scripts/test-probe-evals.sh
       - name: gate-check script regression test
         run: bash tests/scripts/test-gate-check.sh
+      - name: eval freshness regression test
+        run: bash tests/scripts/test-eval-freshness.sh
       - name: eval preflight regression test
         run: bash tests/scripts/test-eval-preflight.sh
       - name: eval credential non-exposure test

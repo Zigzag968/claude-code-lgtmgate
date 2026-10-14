@@ -22,6 +22,11 @@
 # is NOT the gate: its exit code is only printed. A stale results file is deleted before each case, so a
 # run that dies early cannot be gated on an older pass.
 #
+# Summary (#454): after the gate, the run writes $RESULTS_DIR/eval-summary.json = the content digest of
+# evals/ templates/ hooks/ agents/ scripts/ (scripts/eval-digest.cjs), the gate verdict and its last line;
+# nothing is written when the tree changed during the run. The Lead publishes it by copying it to
+# docs/gate/e2-eval.json (committed), which scripts/gate-check.sh reads from any checkout.
+#
 # Running it on macOS
 #   - Keychain item `lgtmgate-eval-token`, holding a token created with `claude setup-token`.
 #   - One line: bash scripts/run-probe-evals-docker.sh
@@ -47,6 +52,7 @@ MAX_COST="${PROBE_EVALS_MAX_COST_USD:-3}"
 RESULTS_DIR="${PROBE_EVALS_RESULTS_DIR:-$ROOT/evals/results}"
 
 [ "$#" -gt 0 ] || set -- probe-provision probe-pr-state probe-pr-write
+before="$(node "$SCRIPT_DIR/eval-digest.cjs" --root "$ROOT" 2>/dev/null)"
 for c in "$@"; do
   rm -f "$RESULTS_DIR/$c/aggregate-result.json" || { echo "run-probe-evals: cannot clear the previous results of $c" >&2; exit 1; }
   # --threshold 0.95 is a per-case MEAN check, kept only as a quick signal: the gate below decides.
@@ -56,5 +62,18 @@ for c in "$@"; do
   echo "== $c: claude exit=$rc (informational, the gate below decides)"
 done
 
-bash "$SCRIPT_DIR/probe-eval-gate.sh" "$RESULTS_DIR" "$@"
-exit $?
+gate_out="$(bash "$SCRIPT_DIR/probe-eval-gate.sh" "$RESULTS_DIR" "$@" 2>&1)"
+rc=$?
+printf '%s\n' "$gate_out"
+
+# Summary (#454): record the digest of the tree the eval ran on, so freshness is judged by content.
+after="$(node "$SCRIPT_DIR/eval-digest.cjs" --root "$ROOT" 2>/dev/null)"
+if [ -n "$before" ] && [ "$before" = "$after" ]; then
+  verdict=FAIL; [ "$rc" -eq 0 ] && verdict=PASS
+  last_line="$(printf '%s\n' "$gate_out" | tail -n 1)"
+  node "$SCRIPT_DIR/eval-digest.cjs" --root "$ROOT" --write "$RESULTS_DIR/eval-summary.json" --gate "$verdict" --line "$last_line" \
+    || echo "run-probe-evals: warning: could not write $RESULTS_DIR/eval-summary.json" >&2
+else
+  echo "run-probe-evals: tree changed during the run, no summary written" >&2
+fi
+exit "$rc"

@@ -14,6 +14,11 @@
 #              SAME line, neither with flags, so a generic or weakened grader fails; (b) scripts/probe-eval-gate.sh
 #              on evals/results (>= 29/30 fully passed runs). tests/scripts/test-probe-evals.sh proves the pinned line
 #              equals the real one by running the case; (a) is the offline contract of the grader text.
+#              (c) #454: with no results dir, the committed docs/gate/e2-eval.json (copy of the eval-summary.json
+#              that scripts/run-probe-evals.sh writes) is the evidence when its content digest
+#              (scripts/eval-digest.cjs, evals/ templates/ hooks/ agents/ scripts/) equals this checkout's and its
+#              gate is PASS. Stale: FAIL, SKIP with --ci. Malformed: FAIL. A results dir holding an
+#              eval-summary.json whose digest differs is FAIL (stale results).
 #   canary     docs/gate/e2-canary.json lists >= 2 distinct canary runs (distinct `pr`), each ending `ready`
 #              or `merged`, each with no non-terminal `.pipeline/*.json` state left. Record format, numbers
 #              are those of the canary repository:
@@ -42,6 +47,7 @@ E2_INCIDENTS="10 14 27 32 40"
 INFLIGHT="in-progress plan dev review"   # the in-flight whitelist of hooks/Stop-supervise-runs.sh
 CANARY_NEED=2
 CANARY_RECORD="docs/gate/e2-canary.json"
+EVAL_RECORD="docs/gate/e2-eval.json"
 
 usage() { echo "usage: gate-check.sh e2 [--ci]" >&2; exit 2; }
 [ "${1:-}" = "e2" ] || usage
@@ -163,7 +169,7 @@ metric_incidents() {
 }
 
 metric_eval() {
-  local pins prc results out rc
+  local pins prc results out rc chk crc rec_gate rec_line
   pins="$(node -e "$(pins_js)" "$ROOT/evals" 2>&1)"
   prc=$?
   if [ "$prc" -ne 0 ]; then
@@ -172,6 +178,29 @@ metric_eval() {
   fi
   results="${PROBE_EVALS_RESULTS_DIR:-$ROOT/evals/results}"
   if [ ! -d "$results" ]; then
+    # No local results: the committed summary (#454) is the evidence, judged by content digest.
+    if [ -f "$ROOT/$EVAL_RECORD" ]; then
+      chk="$(node "$SCRIPT_DIR/eval-digest.cjs" --root "$ROOT" --check "$ROOT/$EVAL_RECORD" 2>&1)"
+      crc=$?
+      rec_gate="$(node -e "try{const j=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'));console.log(String(j.gate)+'\t'+String(j.line||''))}catch(e){console.log('?\t')}" "$ROOT/$EVAL_RECORD")"
+      rec_line="${rec_gate#*$'\t'}"; rec_gate="${rec_gate%%$'\t'*}"
+      case "$crc" in
+        0)
+          if [ "$rec_gate" = "PASS" ]; then
+            emit PASS eval "$pins; recorded summary $EVAL_RECORD ($rec_line), $(oneline "$chk")"
+          else
+            emit FAIL eval "$pins; recorded summary $EVAL_RECORD has gate $rec_gate ($rec_line)"
+          fi ;;
+        1)
+          if [ "$CI_MODE" -eq 1 ]; then
+            emit SKIP eval "$pins; recorded summary $EVAL_RECORD is stale ($(oneline "$chk")), re-run scripts/run-probe-evals-docker.sh; not required with --ci"
+          else
+            emit FAIL eval "$pins; recorded summary $EVAL_RECORD is stale ($(oneline "$chk")): re-run scripts/run-probe-evals-docker.sh"
+          fi ;;
+        *) emit FAIL eval "$pins; recorded summary $EVAL_RECORD malformed: $(oneline "$chk")" ;;
+      esac
+      return
+    fi
     if [ "$CI_MODE" -eq 1 ]; then
       emit SKIP eval "$pins; no results dir (git-ignored, written by scripts/run-probe-evals.sh), not required with --ci"
     else
@@ -181,6 +210,15 @@ metric_eval() {
   fi
   out="$(bash "$SCRIPT_DIR/probe-eval-gate.sh" "$results" 2>&1)"
   rc=$?
+  if [ -f "$results/eval-summary.json" ]; then
+    chk="$(node "$SCRIPT_DIR/eval-digest.cjs" --root "$ROOT" --check "$results/eval-summary.json" 2>&1)"
+    crc=$?
+    if [ "$crc" -ne 0 ]; then
+      emit FAIL eval "$pins; results are stale: $(oneline "$chk")"
+      return
+    fi
+    out="$out; summary fresh"
+  fi
   if [ "$rc" -eq 0 ]; then emit PASS eval "$pins; $(oneline "$out")"; else emit FAIL eval "$pins; $(oneline "$out")"; fi
 }
 
