@@ -217,6 +217,29 @@ if (retitle(source, 553, "Short title") !== retitle(source, 553, { title: "Short
 process.exit(ok ? 0 : 1)' "$ROOT"
 NR=$?
 if [ "$NR" -eq 0 ]; then pass "launch-phases-plain (plain titles for any issue number, idempotent, a launch file of the previous shape is normalized)"; else fail "launch-phases-plain"; fi
+node -e '
+const fs = require("fs")
+const { retitle } = require(process.argv[1] + "/scripts/lib/launch-file.cjs")
+const source = fs.readFileSync(process.argv[1] + "/workflows/deliver-pipeline.js", "utf8")
+let ok = true
+const descOf = (out) => { const m = out.match(/^  description: \x27(.*)\x27,$/m); return m ? m[1] : "" }
+const brief = "Issue 455: lead-merge must refuse or switch to the branch copy when the PR changes scripts/lead-merge.sh; issue body is the source of truth."
+const out = retitle(source, 455, { brief })
+const d = descOf(out)
+const rest = d.slice("#455: ".length)
+if (!d.startsWith("#455: lead-merge must refuse") || d.includes("Issue 455") || !d.endsWith("…")) ok = false
+if ([...rest].length > 120) ok = false
+const body = rest.slice(0, -1)
+const words = brief.replace(/^Issue 455: /, "")
+if (!words.startsWith(body) || !/\s/.test(words.charAt(body.length)) ) ok = false
+for (const b of ["#455: short brief", "Issue 455 - short brief"]) if (descOf(retitle(source, 455, { brief: b })) !== "#455: short brief") ok = false
+if (descOf(retitle(source, 520, { brief: "implement the issue" })) !== "#520: implement the issue") ok = false
+const longToken = descOf(retitle(source, 455, { brief: "x".repeat(200) }))
+if (!longToken.endsWith("…") || [...longToken.slice("#455: ".length)].length > 120) ok = false
+if (retitle(out, 455, { brief }) !== out) ok = false
+process.exit(ok ? 0 : 1)' "$ROOT"
+NR=$?
+if [ "$NR" -eq 0 ]; then pass "launch-description-clean (issue prefix dropped, long line cut at a word boundary with an ellipsis, short brief unchanged)"; else fail "launch-description-clean"; fi
 new_tree t5 ignore; T5="$TMP/t5"
 node "$LA" --root "$T5" --ref origin/main --stage plan --mode ref --issue 1234567 --brief x > "$TMP/args.json"
 node -e 'const fs=require("fs");fs.writeFileSync(process.argv[2],JSON.stringify({cwd:process.argv[1],tool_name:"Workflow",tool_input:{name:"lgtmgate:deliver-pipeline",args:JSON.parse(fs.readFileSync(process.argv[3],"utf8"))}}))' "$T5" "$TMP/in.json" "$TMP/args.json"
