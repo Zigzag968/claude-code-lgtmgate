@@ -9,6 +9,7 @@
 //
 // Usage: node scripts/runtime/launch-args.cjs --root <worktree> --ref origin/<base> --stage plan|dev|review
 //          [--mode full|ref] [--issue N] [--brief text] [--pr N] [--plan-file f | --plan-ref '<json>'] [--worktree <path>]
+//          [--session-root <abs>] (required in mode ref)
 // Stdout: JSON.stringify(args) + newline. Key order (full): issue, brief, worktreePath, mode, pmReview, config, configLocal,
 //        projectSpecifics (only when the config sets projectSpecifics or agentContext), pluginRoot, sessionRoot;
 //        (ref): issue, brief, worktreePath, mode, pmReview, configRef {path, digest64}, configLocal, projectSpecificsRef
@@ -17,6 +18,7 @@
 //        a plan-ready, dev-done or needs-revision result returned, copied as is (the hook expands it to planText; the digest
 //        was pinned by the engine, never computed here). Both together, or --plan-ref in mode full, is a usage error.
 //        --worktree sets worktreePath (default: --root).
+//        sessionRoot is the --session-root value (the directory the Lead's session was opened in); it defaults to --root in mode full only.
 // Exit:  0 ok · 2 any argument or read error (one line on stderr, stdout empty).
 
 const fs = require('fs')
@@ -84,6 +86,10 @@ function build(options) {
     else arguments_.projectSpecifics = wire
   }
   arguments_.pluginRoot = options.pluginRoot === undefined ? nodePath.resolve(__dirname, '..', '..') : options.pluginRoot
+  if (mode === 'ref') {
+    if (options.sessionRoot === undefined) throw new UsageError('--session-root is required with --mode ref: the directory this session was opened in (see docs/consumer-reference.md, entry --session-root)')
+    if (!nodePath.isAbsolute(options.sessionRoot)) throw new UsageError('--session-root must be an absolute path (see docs/consumer-reference.md, entry --session-root)')
+  }
   arguments_.sessionRoot = options.sessionRoot === undefined ? root : options.sessionRoot
   if (stage !== 'plan') arguments_.entryStage = stage
   if (stage === 'review') arguments_.prNumber = options.pr === undefined ? 1 : options.pr
@@ -122,6 +128,7 @@ function parseArguments(argv) {
       try { o.planRef = JSON.parse(value()) } catch (error) { throw new UsageError('--plan-ref: not valid JSON') }
     }
     else if (a === '--worktree') o.worktreePath = value()
+    else if (a === '--session-root') o.sessionRoot = value()
     else throw new UsageError(`unknown argument: ${a}`)
   }
   return o
