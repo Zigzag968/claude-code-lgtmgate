@@ -1,0 +1,141 @@
+{
+  "name": "454-content-fresh-proof",
+  "note": "Synthetic shape of issue 454 (no raw journal is kept). A probe-eval summary whose content digest is fresh (contentFresh) is not overturned as artifact-stale even when its mtime is old or unparseable; flow-suite case T9005g keeps the rejecting cases.",
+  "args": {
+    "pluginRoot": "_",
+    "issue": 123,
+    "brief": "_",
+    "worktreePath": "/wt/root/issue-123",
+    "config": {},
+    "mode": "semi",
+    "entryStage": "review",
+    "planText": "_\n_\n\n_\n- [ ] <!-- ac:1 --> `ls -l report.txt` shows a file\n",
+    "prNumber": 42
+  },
+  "calls": {
+    "probe-123-lines-plugin-version-r0": {
+      "line": "PROBE name=lines exit=0 sha=dc3e556a33de82f91e3d3c086e61b607988b397e0c834aee0aa7848c6b3354d4 cmd=4ecc52a6072c98feaf1a76e8937f1ee538d8dcf775794e2cca42c443ee2a2818 json={\"lines\":[\"PLUGIN-VERSION:@@ENGINE_VERSION@@\"]}",
+      "verify": "VERIFY ok line=PROBE name=lines exit=0 sha=dc3e556a33de82f91e3d3c086e61b607988b397e0c834aee0aa7848c6b3354d4 cmd=4ecc52a6072c98feaf1a76e8937f1ee538d8dcf775794e2cca42c443ee2a2818 json={\"lines\":[\"PLUGIN-VERSION:@@ENGINE_VERSION@@\"]}"
+    },
+    "probe-123-lines-config-project-recheck-r0": {
+      "line": "PROBE name=lines exit=0 sha=209bf7c018a5733f7991a3cb09f07e5d2bce2233977d4a3c96a19850595b5430 cmd=c5c02b6f6ba24a10fca25807cc8074aaf1416abf9363a69e1e7c13f8f206e222 json={\"lines\":[]}",
+      "verify": "VERIFY ok line=PROBE name=lines exit=0 sha=209bf7c018a5733f7991a3cb09f07e5d2bce2233977d4a3c96a19850595b5430 cmd=c5c02b6f6ba24a10fca25807cc8074aaf1416abf9363a69e1e7c13f8f206e222 json={\"lines\":[]}"
+    },
+    "probe-123-provision-provision-r0": {
+      "line": "PROBE name=provision exit=0 sha=df70c44d40d7d0dfa302aadd6fc5a8b3ef14fa8ca16cf9856f73932abae06a33 cmd=c3a94540fd88abd8933ff82a7e2b7911a1a794173cda599b5a5de31e35ef9bb2 json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}",
+      "verify": "VERIFY ok line=PROBE name=provision exit=0 sha=df70c44d40d7d0dfa302aadd6fc5a8b3ef14fa8ca16cf9856f73932abae06a33 cmd=c3a94540fd88abd8933ff82a7e2b7911a1a794173cda599b5a5de31e35ef9bb2 json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}"
+    },
+    "already-done-check-123": {
+      "isAlreadyDone": false,
+      "isIssueClosed": false,
+      "isMerged": false,
+      "mergedAt": "",
+      "issueState": "_",
+      "issueCreatedAt": "_",
+      "mergedPrClosesIssue": false,
+      "checkFailed": false
+    },
+    "probe-123-pr-write-run-state-review-r0": {
+      "line": "PROBE name=pr-write exit=0 sha=88f2b82c0ca3321187f854a28473fd9c3dc8de9638ad0e324e1f0986507e4526 cmd=8012a10553209881d771abc26dba60d247070b6b3fefd898934b6346b2e3af92 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}",
+      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=88f2b82c0ca3321187f854a28473fd9c3dc8de9638ad0e324e1f0986507e4526 cmd=8012a10553209881d771abc26dba60d247070b6b3fefd898934b6346b2e3af92 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}"
+    },
+    "probe-123-preflight-branch-r0": {
+      "line": "PROBE name=preflight exit=0 sha=4c8e6011d37fc7edec386bff6b0a1952879b6fdda948581d5b81468c9d38a25c cmd=6091f888e87a76b21bdd6acdffb84bf864cccff37a37cdd5ee4eb2cce47f0315 json={\"mode\":\"branch\",\"headRef\":\"feat/issue-123\",\"branchPrefix\":\"feat/\"}",
+      "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=4c8e6011d37fc7edec386bff6b0a1952879b6fdda948581d5b81468c9d38a25c cmd=6091f888e87a76b21bdd6acdffb84bf864cccff37a37cdd5ee4eb2cce47f0315 json={\"mode\":\"branch\",\"headRef\":\"feat/issue-123\",\"branchPrefix\":\"feat/\"}"
+    },
+    "probe-123-git-rev-list-count-worktree-behind-42-r0": {
+      "line": "PROBE name=git-rev-list-count exit=0 sha=b2a3f297f6c0e5cffebeb9ce3c42f49e905d537abd4f7225609db8864c78ce1b cmd=d1ca345e79cacf118e64a5df40a87ec31be05bea90c48c93931f5e6436b558e0 json={\"count\":0}",
+      "verify": "VERIFY ok line=PROBE name=git-rev-list-count exit=0 sha=b2a3f297f6c0e5cffebeb9ce3c42f49e905d537abd4f7225609db8864c78ce1b cmd=d1ca345e79cacf118e64a5df40a87ec31be05bea90c48c93931f5e6436b558e0 json={\"count\":0}"
+    },
+    "preflight-123-42-0": {
+      "pass": true,
+      "issues": [],
+      "failedChecks": [],
+      "testCommandRun": "_"
+    },
+    "probe-123-pr-state-window-start-r0": {
+      "line": "PROBE name=pr-state exit=0 sha=06729375f3252fc4c279f09d67b138e60c0cb104bf8194e051813b7f0f8056a6 cmd=135ceb5cc0710f635277c8f5f27694718403cdcb6c3cc0d6f68511529e9556fa json={\"now\":\"2026-10-04T12:00:00Z\",\"headRefName\":\"feat/issue-123\",\"headRefOid\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"bodyDigest\":\"bbbbbbbbbbbb\",\"acceptanceChecked\":[],\"decisionLog\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-10-04T11:00:00Z\",\"commitCount\":1,\"ciState\":\"green\",\"ciChecks\":{},\"reviewCommentIds\":[],\"openIssues\":[],\"openIssuesTruncated\":false,\"files\":[\"report.txt\"]}",
+      "verify": "VERIFY ok line=PROBE name=pr-state exit=0 sha=06729375f3252fc4c279f09d67b138e60c0cb104bf8194e051813b7f0f8056a6 cmd=135ceb5cc0710f635277c8f5f27694718403cdcb6c3cc0d6f68511529e9556fa json={\"now\":\"2026-10-04T12:00:00Z\",\"headRefName\":\"feat/issue-123\",\"headRefOid\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"bodyDigest\":\"bbbbbbbbbbbb\",\"acceptanceChecked\":[],\"decisionLog\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-10-04T11:00:00Z\",\"commitCount\":1,\"ciState\":\"green\",\"ciChecks\":{},\"reviewCommentIds\":[],\"openIssues\":[],\"openIssuesTruncated\":false,\"files\":[\"report.txt\"]}"
+    },
+    "morgan-pr-123-42-r0": {
+      "verdict": "LGTM",
+      "ciGreen": true,
+      "items": [],
+      "boxes": [
+        {
+          "id": 1,
+          "proven": true,
+          "proof": "_"
+        }
+      ],
+      "artifactProofs": [
+        {
+          "item": "_",
+          "path": "/wt/root/issue-123/docs/gate/e2-eval.json",
+          "exists": true,
+          "mtime": "_",
+          "bytes": 4096,
+          "contentFresh": true
+        }
+      ]
+    },
+    "probe-123-pr-state-window-end-r0": {
+      "line": "PROBE name=pr-state exit=0 sha=fa81c4ff3396c791c7b014848d6b626267ae7220607376f50922a236c401b922 cmd=bdc29d6c6d54b980f6b277a1782872b7bb0ddf8d88cbd6ea21649656375ec419 json={\"now\":\"2026-10-04T12:00:00Z\",\"headRefName\":\"feat/issue-123\",\"headRefOid\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"bodyDigest\":\"bbbbbbbbbbbb\",\"acceptanceChecked\":[],\"decisionLog\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-10-04T11:00:00Z\",\"commitCount\":1,\"ciState\":\"green\",\"ciChecks\":{},\"reviewCommentIds\":[],\"openIssues\":[],\"openIssuesTruncated\":false,\"files\":[\"report.txt\"]}",
+      "verify": "VERIFY ok line=PROBE name=pr-state exit=0 sha=fa81c4ff3396c791c7b014848d6b626267ae7220607376f50922a236c401b922 cmd=bdc29d6c6d54b980f6b277a1782872b7bb0ddf8d88cbd6ea21649656375ec419 json={\"now\":\"2026-10-04T12:00:00Z\",\"headRefName\":\"feat/issue-123\",\"headRefOid\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"bodyDigest\":\"bbbbbbbbbbbb\",\"acceptanceChecked\":[],\"decisionLog\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-10-04T11:00:00Z\",\"commitCount\":1,\"ciState\":\"green\",\"ciChecks\":{},\"reviewCommentIds\":[],\"openIssues\":[],\"openIssuesTruncated\":false,\"files\":[\"report.txt\"]}"
+    },
+    "probe-123-pr-write-acceptance-tick-r0": {
+      "line": "PROBE name=pr-write exit=0 sha=3542b704bcd74c91400dc5e7bce6632cc4d0eb535f5fc036af079bd3bd239bc0 cmd=c4e340e40c8718f6478f53cb5514706d05bba894532624b5a9459153fcb6a1f8 json={\"op\":\"body-splice\",\"result\":\"written\",\"reason\":null,\"bytes\":1234}",
+      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=3542b704bcd74c91400dc5e7bce6632cc4d0eb535f5fc036af079bd3bd239bc0 cmd=c4e340e40c8718f6478f53cb5514706d05bba894532624b5a9459153fcb6a1f8 json={\"op\":\"body-splice\",\"result\":\"written\",\"reason\":null,\"bytes\":1234}"
+    },
+    "probe-123-pr-write-decision-log-r0": {
+      "line": "PROBE name=pr-write exit=0 sha=44ff0cfe4edce95b160606ceee14f4f5e0ec326f19f0fb0e7eb0405e02922849 cmd=87aa5992662a633b86d7b22e3622da3a6b5c5468428d5890eaff3013bf8f503c json={\"op\":\"body-splice\",\"result\":\"written\",\"reason\":null,\"bytes\":1234}",
+      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=44ff0cfe4edce95b160606ceee14f4f5e0ec326f19f0fb0e7eb0405e02922849 cmd=87aa5992662a633b86d7b22e3622da3a6b5c5468428d5890eaff3013bf8f503c json={\"op\":\"body-splice\",\"result\":\"written\",\"reason\":null,\"bytes\":1234}"
+    },
+    "probe-123-pr-state-merge-r0": {
+      "line": "PROBE name=pr-state exit=0 sha=958a48d1d1cee3ec14bd90a65d95e2345da97491d55e6b76a2f6db933f74437f cmd=135ceb5cc0710f635277c8f5f27694718403cdcb6c3cc0d6f68511529e9556fa json={\"now\":\"2026-10-04T12:00:00Z\",\"headRefName\":\"feat/issue-123\",\"headRefOid\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"bodyDigest\":\"bbbbbbbbbbbb\",\"acceptanceChecked\":[],\"decisionLog\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-10-04T11:00:00Z\",\"commitCount\":1,\"ciState\":\"green\",\"ciChecks\":{},\"reviewCommentIds\":[],\"openIssues\":[],\"openIssuesTruncated\":false,\"files\":[\"report.txt\"]}",
+      "verify": "VERIFY ok line=PROBE name=pr-state exit=0 sha=958a48d1d1cee3ec14bd90a65d95e2345da97491d55e6b76a2f6db933f74437f cmd=135ceb5cc0710f635277c8f5f27694718403cdcb6c3cc0d6f68511529e9556fa json={\"now\":\"2026-10-04T12:00:00Z\",\"headRefName\":\"feat/issue-123\",\"headRefOid\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"bodyDigest\":\"bbbbbbbbbbbb\",\"acceptanceChecked\":[],\"decisionLog\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-10-04T11:00:00Z\",\"commitCount\":1,\"ciState\":\"green\",\"ciChecks\":{},\"reviewCommentIds\":[],\"openIssues\":[],\"openIssuesTruncated\":false,\"files\":[\"report.txt\"]}"
+    },
+    "probe-123-pr-write-run-state-ready-r0": {
+      "line": "PROBE name=pr-write exit=0 sha=2a2c0dc0f60f6562aea6d5b8ed16cb437ea5d65c8f41bc0667a07b1e49e814d8 cmd=844700eebb6faf4c060106ef864a9a2e3f6af3aa7c188a01bc4cfe352e0ea076 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}",
+      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=2a2c0dc0f60f6562aea6d5b8ed16cb437ea5d65c8f41bc0667a07b1e49e814d8 cmd=844700eebb6faf4c060106ef864a9a2e3f6af3aa7c188a01bc4cfe352e0ea076 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}"
+    }
+  },
+  "expect": {
+    "status": "ready",
+    "trace": [
+      "branch-prefix-fallback-default",
+      "probe:lines:haiku",
+      "probe:lines:haiku",
+      "probe:provision:haiku",
+      "probe:pr-write:haiku",
+      "probe:preflight:haiku",
+      "branch-check-reconciled",
+      "probe:git-rev-list-count:haiku",
+      "probe:pr-state:haiku",
+      "probe:pr-state:haiku",
+      "probe:pr-write:haiku",
+      "acceptance-ticked:round=0,n=1",
+      "probe:pr-write:haiku",
+      "probe:pr-state:haiku",
+      "probe:pr-write:haiku"
+    ],
+    "traceExact": true,
+    "callLabels": [
+      "probe-123-lines-plugin-version-r0",
+      "probe-123-lines-config-project-recheck-r0",
+      "probe-123-provision-provision-r0",
+      "already-done-check-123",
+      "probe-123-pr-write-run-state-review-r0",
+      "probe-123-preflight-branch-r0",
+      "probe-123-git-rev-list-count-worktree-behind-42-r0",
+      "preflight-123-42-0",
+      "probe-123-pr-state-window-start-r0",
+      "morgan-pr-123-42-r0",
+      "probe-123-pr-state-window-end-r0",
+      "probe-123-pr-write-acceptance-tick-r0",
+      "probe-123-pr-write-decision-log-r0",
+      "probe-123-pr-state-merge-r0",
+      "probe-123-pr-write-run-state-ready-r0"
+    ]
+  }
+}

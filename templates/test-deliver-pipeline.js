@@ -1860,6 +1860,44 @@ await testCase('T9005f a committedInPr proof without a finite size is rejected a
     || { ok: true }
 })
 
+// T9005g (#454) — a probe-eval summary whose content digest Morgan checked (`contentFresh: true`) skips the mtime
+// rules (a merge of the base branch makes a newer head without touching the evaluated content). Only a boolean true
+// counts; path, existence and size still apply.
+await testCase('T9005g a contentFresh proof skips the mtime checks; unflagged, non-boolean, absent and sizeless ones do not (#454)', async () => {
+  const old = { item: ARTIFACT_PROOF_ITEM, path: ARTIFACT_PROOF_PATH, exists: true, mtime: '2026-08-03T12:50:44Z', bytes: 4096 }
+  const semi = (artifactProofs) => run({ mode: 'semi', proceedThrough: 'dev', simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM', artifactProofs }], artifactFloor: ARTIFACT_FLOOR } })
+  const auto = (artifactProofs) => run({ mode: 'auto', simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM', artifactProofs }], artifactFloor: ARTIFACT_FLOOR } })
+  const rejected = (r) => (r.trace || []).some((t) => typeof t === 'string' && t.startsWith('artifact-proof-rejected'))
+  const a = await auto([{ ...old, contentFresh: true }])
+  const a1 = eq('contentFresh+old mtime: status', a.status, 'ready')
+  const a2 = rejected(a) ? { ok: false, msg: 'contentFresh+old mtime: no artifact-proof-rejected entry expected' } : null
+  const b = await auto([{ ...old, contentFresh: true, mtime: 'yesterday' }])
+  const b1 = eq('contentFresh+bad mtime: status', b.status, 'ready')
+  const c = await semi([{ ...old }])
+  const c1 = eq('no flag: status', c.status, 'needs-revision')
+  const c2 = includes('no flag: trace', c.trace || [], 'artifact-proof-rejected:artifact-stale')
+  const d = await semi([{ ...old, contentFresh: 'true' }])
+  const d1 = eq('string flag: status', d.status, 'needs-revision')
+  const d2 = includes('string flag: trace', d.trace || [], 'artifact-proof-rejected:artifact-stale')
+  const missing = await semi([{ ...old, contentFresh: true, exists: false }])
+  const error1 = eq('contentFresh+absent: status', missing.status, 'needs-revision')
+  const error2 = includes('contentFresh+absent: trace', missing.trace || [], 'artifact-proof-rejected:artifact-absent')
+  const noBytes = { ...old, contentFresh: true }
+  delete noBytes.bytes
+  const f = await auto([noBytes])
+  const f1 = includes('contentFresh+no bytes: trace', f.trace || [], 'artifact-proof-rejected:artifact-size-missing')
+  let g1 = null, g2 = null
+  const source = SUITE_ARGS.fpSource
+  if (source) {
+    const index = source.indexOf('artifactProofs: {')
+    const schema = index < 0 ? '' : source.slice(index, source.indexOf('itemOwners: {', index))
+    const step = source.slice(source.indexOf('const artifactProofStep ='), source.indexOf('// Worktree freshness probe'))
+    g1 = includes('schema field', schema, "contentFresh: { type: 'boolean' }")
+    g2 = includes('prompt clause names the command', step, 'eval-digest.cjs')
+  }
+  return a1 || a2 || b1 || c1 || c2 || d1 || d2 || error1 || error2 || f1 || g1 || g2 || { ok: true }
+})
+
 // T9005e (#229) — committedInPr is cross-checked against the PR's changed files (pr-state `files`): a flagged path
 // outside the list is treated as untracked (mtime rules apply again); no list (older script, truncated) keeps today's behaviour.
 await testCase("T9005e a committedInPr proof must appear in the PR's changed files (#229)", async () => {

@@ -26,6 +26,8 @@ description: Run or debug the probe evals of issue #81 (`claude plugin eval` on 
 - Gate: at least 29 of the 30 runs (3 cases x 10) FULLY passed, i.e. score 1.00 on all 4 graders; every case must have its 10 runs.
 - `scripts/run-probe-evals.sh` ends with `scripts/probe-eval-gate.sh`, which prints `<case>: <k>/<n> runs fully passed` per case, then `gate: <K>/<N> fully passed runs (need >= 29/30) -> PASS|FAIL`, and exits non-zero on FAIL or on a missing or unreadable `evals/results/<case>/aggregate-result.json`.
 - A case mean of 0.95 is NOT enough: two runs at 0.75 (a corrupted PROBE line each) average 0.95 and pass `claude plugin eval --threshold 0.95`, yet only 28/30 runs fully passed. The `claude exit=` line the runner prints comes from that mean threshold and is informational.
+- The run also writes `evals/results/eval-summary.json`: the content digest of `evals/ templates/ hooks/ agents/ scripts/` plus the gate verdict. Nothing is written when the tree changed during the run.
+- To share the result across checkouts, the Lead copies it to `docs/gate/e2-eval.json` and commits it; `scripts/gate-check.sh e2` reads it when there is no local results dir. `node scripts/eval-digest.cjs --check <file>` prints `fresh` or `stale` (a merge of the base branch that touches none of those paths keeps it fresh).
 - Re-check a past run without paying: `bash scripts/probe-eval-gate.sh evals/results` (results are local, git-ignored).
 - The runner deletes each case's previous `aggregate-result.json` first, so an aborted run cannot be gated on an older pass.
 

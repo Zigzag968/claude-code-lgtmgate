@@ -280,11 +280,19 @@ set_fake 10x1 0
 runner_run "$WORK/rr-pass"
 ok=0; [ "$GRC" -eq 0 ] && has '== probe-pr-state: claude exit=0' && has 'gate: 30/30 fully passed runs (need >= 29/30) -> PASS' && ok=1
 check "run-probe-evals.sh: 30/30 fully passed runs -> exit 0" "$ok"
+want_digest="$(node "$ROOT/scripts/eval-digest.cjs" --root "$ROOT")"
+sum_digest="$(node -p "require('$WORK/rr-pass/eval-summary.json').digest" 2>/dev/null)"
+sum_gate="$(node -p "require('$WORK/rr-pass/eval-summary.json').gate" 2>/dev/null)"
+ok=0; [ -n "$sum_digest" ] && [ "$sum_digest" = "$want_digest" ] && [ "$sum_gate" = "PASS" ] && ok=1
+check "run-probe-evals.sh: a passing run writes eval-summary.json recording the tree digest" "$ok"
 
 set_fake 8x1,2x0.75 0
 runner_run "$WORK/rr-fail"
 ok=0; [ "$GRC" -ne 0 ] && has 'probe-pr-state: 8/10 runs fully passed' && has '-> FAIL' && ok=1
 check "run-probe-evals.sh: 28/30 fully passed runs, claude exit 0 -> non-zero exit" "$ok"
+sum_gate="$(node -p "require('$WORK/rr-fail/eval-summary.json').gate" 2>/dev/null)"
+ok=0; [ "$sum_gate" = "FAIL" ] && ok=1
+check "run-probe-evals.sh: a failing run records gate FAIL in eval-summary.json" "$ok"
 
 # claude's own exit code (its --threshold is a case-mean check) is informational: the run count decides
 set_fake 9x1,1x0.5 1
