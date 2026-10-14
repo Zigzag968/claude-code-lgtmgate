@@ -51,6 +51,7 @@ const { execFileSync } = require('child_process')
 const { normalise, trimBlank, stripComments, parseFrontmatter, checkContent, canonicalJson, digestOf } = require('../lib/agent-context-text.cjs')
 const { ownsName, warningLines, folderWarnings, classifyLanes, laneSentence } = require('../lib/agent-context-lanes.cjs')
 const { hintLines } = require('../lib/agent-context-hints.cjs')
+const { isInitStub } = require('./init-specifics.cjs')
 
 const ROLES = ['Mia', 'Sam', 'Nick', 'Morgan', 'Theo']
 const CAP_ROLE = 6144
@@ -280,7 +281,7 @@ function processFile(root, f, errs) {
   if (bad) return null
   const body = trimBlank(fm.body)
   const empty = stripComments(body).trim() === ''
-  return { body, meta: fm.meta, empty }
+  return { body, meta: fm.meta, empty, stub: empty && isInitStub(f.path, text) }
 }
 
 // The per-role blocks: base text (the files that belong to no lane), the lanes kept apart, digests, bytes, and the oversize
@@ -363,7 +364,7 @@ function assemble(options) {
   for (const f of files.values()) {
     const d = done.get(f.path)
     info.set(f.path, { path: f.path, oid: f.oid, bytes: f.bytes, roles: [], ...(d.empty ? { empty: true } : {}) })
-    if (d.empty) warnings.push({ kind: 'empty-ignored', path: f.path })
+    if (d.empty && !d.stub) warnings.push({ kind: 'empty-ignored', path: f.path })
   }
 
   if (sharedPath && done.get(sharedPath).meta) warnings.push({ kind: 'frontmatter-on-shared-file', path: sharedPath })
@@ -391,7 +392,6 @@ function assemble(options) {
 
   return { ref: reference, refSha: sha, shared, roles, files: [...info.values()], warnings }
 }
-
 
 // ---- output ------------------------------------------------------------------------------------
 

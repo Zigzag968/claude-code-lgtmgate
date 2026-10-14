@@ -370,6 +370,14 @@ function main(argv) {
   }
 }
 
-module.exports = { STUBS, ROLE_FILES, laneStub, detect, propose, writeStubs }
+// True when text is byte-equal to what init writes for relativePath (an unmodified stub).
+function isInitStub(relativePath, text) {
+  const name = nodePath.basename(relativePath, '.md')
+  if (Object.prototype.hasOwnProperty.call(STUBS, name)) return STUBS[name] === text
+  const m = /^(sam|nick|morgan)\.([a-z0-9-]{1,24})$/.exec(name)
+  return m !== null && LANE_ROLES.includes(m[1]) && laneStub(m[1], m[2]) === text
+}
+
+module.exports = { STUBS, ROLE_FILES, laneStub, isInitStub, detect, propose, writeStubs }
 
 if (require.main === module) process.exitCode = main(process.argv.slice(2))

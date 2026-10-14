@@ -140,6 +140,18 @@ verdicts_and_gestures a
 node "$PLUGIN/scripts/runtime/agent-context.cjs" --root "$A" > "$TMP/a.ac" 2> "$TMP/a.acerr" < /dev/null; RC=$?
 if [ "$RC" = 0 ] && ! grep -q 'hint:' "$TMP/a.acerr"; then ok "a-assembler: exit 0 and no refusal on the stubs init left"; else bad "a-assembler: exit $RC: $(head -c 300 "$TMP/a.acerr")"; fi
 no_question a "$TMP/a.report" "$TMP/a.acerr"
+if ! grep -q 'empty-ignored' "$TMP/a.acerr" && node -e 'process.exit(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).warnings.filter((w)=>w.kind==="empty-ignored").length===0?0:1)' "$TMP/a.ac"; then ok "a-stub-silent: the untouched init stubs raise no empty-ignored warning"; else bad "a-stub-silent: $(grep 'empty-ignored' "$TMP/a.acerr" | head -n 2)"; fi
+
+# a role file the owner emptied by hand still warns, with its remedy; the other stubs stay silent
+A2=$(consumer a2)
+cp -R "$A/.claude/lgtmgate" "$A2/.claude/lgtmgate"
+cp "$A/.claude/pipeline.config.json" "$A2/.claude/pipeline.config.json"
+: > "$A2/.claude/lgtmgate/mia.md"
+seal "$A2"
+node "$PLUGIN/scripts/runtime/agent-context.cjs" --root "$A2" > "$TMP/a2.ac" 2> "$TMP/a2.acerr" < /dev/null; RC2=$?
+N_EMPTY=$(grep -c 'empty-ignored' "$TMP/a2.acerr")
+N_MIA=$(grep -c 'agent-context: warning: .claude/lgtmgate/mia.md: empty-ignored. ' "$TMP/a2.acerr")
+if [ "$RC2" = 0 ] && [ "$N_EMPTY" = 1 ] && [ "$N_MIA" = 1 ] && grep 'mia.md: empty-ignored' "$TMP/a2.acerr" | grep -q 'write the rules in it or delete it'; then ok "a-emptied-warns: a hand-emptied mia.md warns once with its remedy, the other stubs stay silent, exit 0"; else bad "a-emptied-warns: rc=$RC2 empty=$N_EMPTY mia=$N_MIA: $(head -c 400 "$TMP/a2.acerr")"; fi
 
 # ---- state (b)
 report b "$B"
