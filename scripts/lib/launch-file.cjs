@@ -2,7 +2,8 @@
 
 // The launch file of a run (#520, #553): a copy of workflows/deliver-pipeline.js whose `meta` literal differs from the engine so
 // the run list tells two runs apart: the workflow name is the short issue title and the description reads `#<N>` (plus
-// ` PR #<P>` when known) and the first line of the brief. Phase titles stay plain (`Setup` ... `Review`).
+// ` PR #<P>` when known) and the first line of the brief (a leading `Issue <n>:` / `#<n>:` is dropped, a long line is cut at a
+// word boundary with an ellipsis). Phase titles stay plain (`Setup` ... `Review`).
 // Written by hooks/workflow-args-expand.sh under <project>/.pipeline/launch/ (gitignored). Pure functions plus one atomic write.
 //
 // retitle(source, issue, options?) -> the expected bytes, or null when the source does not have the exact shape (then nothing is
@@ -37,10 +38,23 @@ function escapeTitle(title) {
   return title.split('\\').join('\\\\').split("'").join("\\'")
 }
 
-// First line of a brief, control characters to spaces, trimmed. '' when nothing is left.
+const PREFIX_RE = /^(?:issue\s+#?\d+|#\d+)\s*[:.–—-]\s*/i
+
+// First line of a brief, control characters to spaces, trimmed, one leading `Issue <n>:` / `#<n>:` prefix dropped (the
+// description adds `#<N>` itself). '' when nothing is left.
 function firstLine(brief) {
   if (typeof brief !== 'string') return ''
-  return brief.split('\n')[0].replace(/[\u0000-\u001f\u007f]/g, ' ').trim()
+  return brief.split('\n')[0].replace(/[\u0000-\u001f\u007f]/g, ' ').trim().replace(PREFIX_RE, '').trim()
+}
+
+// At most `limit` code points; a longer text is cut back to the last whole word and ends with an ellipsis.
+function cutWords(text, limit) {
+  const chars = [...text]
+  if (chars.length <= limit) return text
+  const head = chars.slice(0, limit - 1).join('')
+  const space = head.search(/\s\S*$/)
+  const cut = space > 0 ? head.slice(0, space) : head
+  return `${cut.replace(/[\s,;:.–—-]+$/, '')}…`
 }
 
 function cutBytes(text, limit) {
@@ -68,7 +82,7 @@ function retitle(source, issue, options) {
     if (name === null) return null
   }
   const pr = Number.isInteger(given.pr) && given.pr >= 1 ? ` PR #${given.pr}` : ''
-  const short = escapeTitle([...line].slice(0, DESCRIPTION_CHARS).join('').trim())
+  const short = escapeTitle(cutWords(line, DESCRIPTION_CHARS))
   const description = `#${issue}${pr}${short === null ? '' : `: ${short}`}`
   const bounds = metaBounds(source)
   if (!bounds) return null
