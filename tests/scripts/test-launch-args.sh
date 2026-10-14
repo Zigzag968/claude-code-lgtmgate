@@ -59,7 +59,9 @@ const a = build({ root: process.argv[2], stage: "plan", worktreePath: "/wt", plu
 process.stdout.write(JSON.stringify(a) + "\n")' "$LA" "$TREE" >"$TMP/out" 2>"$TMP/err"; RC=$?
 check "overrides: worktreePath, pluginRoot and sessionRoot are honoured" 'a.worktreePath === "/wt" && a.pluginRoot === "/pl" && a.sessionRoot === "/ss"'
 
-run --root "$TREE" --stage plan --mode ref
+SESSION="$TMP/session"; export SESSION
+run --root "$TREE" --stage plan --mode ref --session-root "$SESSION"
+check "mode ref: --session-root is printed verbatim, not derived from --root" 'a.sessionRoot === process.env.SESSION && a.sessionRoot !== a.worktreePath'
 check "mode ref: ordered keys, references in place of config and projectSpecifics" 'Object.keys(a).slice(0, 8).join() === "issue,brief,worktreePath,mode,pmReview,configRef,configLocal,projectSpecificsRef" && !("config" in a) && !("projectSpecifics" in a)'
 CFG_SHA="$(node -e 'process.stdout.write(require("crypto").createHash("sha256").update(require("fs").readFileSync(process.argv[1])).digest("hex"))' "$TREE/.claude/pipeline.config.json")"
 export CFG_SHA
@@ -73,10 +75,15 @@ const ref = JSON.parse(require("fs").readFileSync(process.argv[2], "utf8"))
 const { fingerprint12 } = require(process.argv[3] + "/scripts/lib/agent-context-text.cjs")
 process.stdout.write(String(fingerprint12(full.projectSpecifics) === ref.projectSpecificsRef.fp12 && full.projectSpecifics.refSha === ref.projectSpecificsRef.refSha))' "$TMP/out" "$TMP/ref" "$ROOT" >"$TMP/same"
 if [ "$(cat "$TMP/same")" = "true" ]; then ok "mode ref: the fingerprint is the one of the full specifics"; else bad "mode ref: fingerprint differs from the full payload"; fi
-run --root "$TREE" --stage plan --mode ref --worktree /somewhere/wt --issue 9
+run --root "$TREE" --stage plan --mode ref --session-root "$SESSION" --worktree /somewhere/wt --issue 9
 check "mode ref: --worktree sets worktreePath" 'a.worktreePath === "/somewhere/wt" && a.issue === 9'
-run --root "$TREE" --stage dev --mode ref --plan-file "$TMP/plan.txt"
+run --root "$TREE" --stage dev --mode ref --session-root "$SESSION" --plan-file "$TMP/plan.txt"
 check "mode ref: planText stays in full, never behind a reference" 'a.planText === "the plan\n" && a.entryStage === "dev"'
+run --root "$TREE" --stage plan --mode full
+check "mode full: sessionRoot still defaults to --root without the flag" 'a.sessionRoot === a.worktreePath'
+refused "mode ref without --session-root is refused" --root "$TREE" --stage plan --mode ref
+if grep -q 'entry --session-root)$' "$TMP/err"; then ok "mode ref without --session-root: the message ends with the pointer"; else bad "mode ref without --session-root: no pointer at the end of the message"; fi
+refused "mode ref with a relative --session-root is refused" --root "$TREE" --stage plan --mode ref --session-root rel/dir
 refused "unknown mode is refused" --root "$TREE" --stage plan --mode bogus
 refused "unknown stage is refused" --root "$TREE" --stage x
 refused "unknown flag is refused" --root "$TREE" --stage plan --bogus

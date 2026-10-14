@@ -27,7 +27,7 @@ new_tree() {
 }
 # mk_input <tree> <kind: name|path|resume> <mode: ref|full> [extra-js]: writes $TMP/in.json for the tree
 mk_input() {
-  node "$LA" --root "$1" --ref origin/main --stage plan --mode "$3" --issue 520 --brief "implement the issue" > "$TMP/args.json" || exit 1
+  node "$LA" --root "$1" --session-root "$1" --ref origin/main --stage plan --mode "$3" --issue 520 --brief "implement the issue" > "$TMP/args.json" || exit 1
   node -e '
 const fs = require("fs")
 const [tree, kind, engine, file] = process.argv.slice(1, 5)
@@ -241,7 +241,7 @@ process.exit(ok ? 0 : 1)' "$ROOT"
 NR=$?
 if [ "$NR" -eq 0 ]; then pass "launch-description-clean (issue prefix dropped, long line cut at a word boundary with an ellipsis, short brief unchanged)"; else fail "launch-description-clean"; fi
 new_tree t5 ignore; T5="$TMP/t5"
-node "$LA" --root "$T5" --ref origin/main --stage plan --mode ref --issue 1234567 --brief x > "$TMP/args.json"
+node "$LA" --root "$T5" --session-root "$T5" --ref origin/main --stage plan --mode ref --issue 1234567 --brief x > "$TMP/args.json"
 node -e 'const fs=require("fs");fs.writeFileSync(process.argv[2],JSON.stringify({cwd:process.argv[1],tool_name:"Workflow",tool_input:{name:"lgtmgate:deliver-pipeline",args:JSON.parse(fs.readFileSync(process.argv[3],"utf8"))}}))' "$T5" "$TMP/in.json" "$TMP/args.json"
 hook "$T5"
 expect "seven-digit-issue-launches" 0 '/\/\.pipeline\/launch\/issue-1234567-/.test(j.hookSpecificOutput.updatedInput.scriptPath) && !("name" in j.hookSpecificOutput.updatedInput) && "config" in j.hookSpecificOutput.updatedInput.args'
