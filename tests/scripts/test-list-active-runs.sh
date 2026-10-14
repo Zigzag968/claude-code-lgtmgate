@@ -109,5 +109,15 @@ check "read-only: files, mtimes, contents unchanged, no sidecar" eq "$before" "$
 check "whitelist alternation present in script" grep -q 'in-progress|plan|dev|review' "$SCRIPT"
 check "whitelist alternation present in hook" grep -q 'in-progress|plan|dev|review' "$HOOK"
 
+# 9. a run marked abandoned is not active; an unmarked sibling still is (issue #571)
+fx="$(new_fixture)"
+write_state "$fx/.pipeline/gone.json" '{"status": "review"}'
+bash "$REPO_DIR/scripts/abandon-run.sh" "$fx/.pipeline/gone.json" >/dev/null 2>&1
+out="$(bash "$SCRIPT" "$fx")"
+check "abandoned review run -> active: 0" eq "$out" "active: 0"
+write_state "$fx/.pipeline/live.json" '{"status": "review"}'
+out="$(bash "$SCRIPT" "$fx")"
+check "unmarked sibling still counted -> active: 1" eq "$(printf '%s\n' "$out" | head -1)" "active: 1"
+
 echo "$pass_count/$total PASS"
 [ "$fail_count" -eq 0 ]
