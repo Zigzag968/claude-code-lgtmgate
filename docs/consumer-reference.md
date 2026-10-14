@@ -96,7 +96,7 @@ The assembler prints these on stderr as `agent-context: warning: <path>: <rule>.
 | `no-role-match` | `folderWarnings` of `scripts/lib/agent-context-lanes.cjs` | A file of the specifics folder on the base ref matches no `<role>.md`, `<role>.<lane>.md` or `shared.md` (a capital letter, another extension, a name that is not a role): it is ignored | Rename it after a role in lowercase, or list it in `agentContext`. |
 | `frontmatter-on-shared-file` | `assemble` of `scripts/runtime/agent-context.cjs` | `shared.md` opens with a frontmatter block: its keys are discarded | Remove the frontmatter from `shared.md`. |
 | `lane-captured-from-other-role` | `classifyLanes` of `scripts/lib/agent-context-lanes.cjs` | A file without frontmatter, such as `nick.ios.md`, joins the `ios` lane that only another role (`sam.ios.md`) declares | Give the file its own `lane:` frontmatter, or rename it so its second segment is not that lane. |
-| `empty-ignored` | `assemble` of `scripts/runtime/agent-context.cjs` | A file holds only comments or blank lines once its frontmatter is removed: it adds nothing | Write the rules in it or delete it. |
+| `empty-ignored` | `assemble` of `scripts/runtime/agent-context.cjs` | A file holds only comments or blank lines once its frontmatter is removed: it adds nothing (an unmodified init stub is not reported) | Write the rules in it or delete it. |
 
 ## Run reasons
 
