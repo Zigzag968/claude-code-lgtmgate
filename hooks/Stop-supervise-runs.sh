@@ -27,6 +27,10 @@
 # that SAME run to at most once per threshold window, so an already-flagged
 # stale run doesn't re-block every single turn.
 #
+# Owner escape hatch: an `.abandoned` sidecar (written by scripts/abandon-run.sh,
+# never by this hook) makes the hook skip that run entirely. Nothing is deleted;
+# remove the sidecar to report the run again.
+#
 # Optional field: "runId" (top-level, string, e.g. "wf_<hex>-<hex>"). When a
 # whitelisted in-flight state file carries it, the hook opportunistically
 # resolves that run's `Workflow` transcript dir under
@@ -54,6 +58,7 @@ CLAUDE_PROJECTS_DIR="${CLAUDE_PROJECTS_DIR:-$HOME/.claude/projects}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VERIFY_SCRIPT="$SCRIPT_DIR/../scripts/verify-workflow-launch.sh"
 [ -x "$VERIFY_SCRIPT" ] || VERIFY_SCRIPT=""
+ABANDON_CMD="$SCRIPT_DIR/../scripts/abandon-run.sh"
 
 # Nothing to supervise if the project doesn't use the .pipeline/ convention.
 [ -d "$PIPELINE_DIR" ] || exit 0
@@ -116,6 +121,9 @@ while IFS= read -r -d '' state_file; do
     *) continue ;;  # terminal, awaiting-human, not a state file, or unrecognized — never stale
   esac
 
+  # A run the owner marked with scripts/abandon-run.sh is skipped entirely (staleness AND contamination).
+  [ -e "${state_file}.abandoned" ] && continue
+
   rel_path="${state_file#"$PROJECT_DIR"/}"
 
   # --- opportunistic contamination check (issue #269) — gated by the SAME
@@ -165,7 +173,7 @@ done < <(find "$PIPELINE_DIR" -type f -name '*.json' -print0 2>/dev/null)
 [ "$any_fresh_nudge" -eq 1 ] || [ "$any_fresh_contam" -eq 1 ] || exit 0  # everything currently flagged was already nudged recently
 
 msg=""
-[ -z "$stale_lines" ] || msg="${msg}Pipeline run(s) in flight with no activity (threshold ${STALE_MINUTES}m):\n${stale_lines}Do a guard round: resume if resumable / block / escalate.\n"
+[ -z "$stale_lines" ] || msg="${msg}Pipeline run(s) in flight with no activity (threshold ${STALE_MINUTES}m):\n${stale_lines}Do a guard round: resume if resumable / block / escalate.\nA run left on purpose: bash ${ABANDON_CMD} <state-file> (writes <state-file>.abandoned, deletes nothing; remove that file to report the run again).\n"
 [ -z "$contam_lines" ] || msg="${msg}Contamination detected (harness stale-message-injection, cf anthropics/claude-code#96640) on:\n${contam_lines}Do NOT trust the result of the affected agent without manual re-verification.\n"
 printf '%b' "$msg" >&2
 exit 2

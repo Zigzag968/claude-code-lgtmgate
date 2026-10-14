@@ -42,6 +42,11 @@ run(s) in flight with no activity... Do a guard round: resume if resumable / blo
 An anti-spam sidecar (`<state-file>.nudged`) rate-limits re-nudging the **same** run to at most
 once per threshold window.
 
+A run left on purpose: `bash scripts/abandon-run.sh <state-file>` writes `<state-file>.abandoned`;
+the hook (and `scripts/list-active-runs.sh`) then skips that run. Nothing is deleted or edited;
+`rm <state-file>.abandoned` reports the run again. Unrelated to the `abandoned` status of the
+cross-repo `blockedBy` check.
+
 The mechanism is the floor; the doctrine is the why. `SessionStart`'s injected stub and
 `/lgtmgate:deliver`'s runbook both carry the same bounded supervision doctrine (alive -> don't
 touch; resumable -> resume, 2-3 attempts max, never loop; silent past the threshold -> block and

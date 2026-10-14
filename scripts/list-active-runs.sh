@@ -8,6 +8,8 @@
 # the in-flight whitelist of hooks/Stop-supervise-runs.sh (the same `case "$status"` alternation:
 # in-progress|plan|dev|review). Any other status (terminal, parked, typo, absent) is not active.
 #
+# A run marked by abandon-run.sh (a `<state-file>.abandoned` sidecar) is not active.
+#
 # Output: `active: <N>` then one line per active run, sorted by path:
 #   <path relative to dir>  status=<s>  idle=<N>m
 # A missing .pipeline directory prints `active: 0`. Always exits 0.
@@ -36,6 +38,7 @@ if [ -d "$PIPELINE_DIR" ]; then
       in-progress|plan|dev|review) ;;
       *) continue ;;
     esac
+    [ -e "${state_file}.abandoned" ] && continue
     mtime="$(file_mtime "$state_file")"
     idle=0
     if [ -n "${mtime:-}" ]; then

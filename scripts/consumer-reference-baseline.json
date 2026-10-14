@@ -23,7 +23,6 @@
   "reasons": [],
   "hooks": [
     "Stop-supervise-runs.sh: Contamination detected",
-    "Stop-supervise-runs.sh: Pipeline run(s) in flight with no activity",
     "SubagentStop-probe.sh: probe",
     "SubagentStop-worktree-cleanup.sh: WARNING",
     "block-merge-unchecked.sh: BLOCKED",

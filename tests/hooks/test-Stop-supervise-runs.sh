@@ -206,6 +206,59 @@ backdate_mtime "$state17" 0
 write_transcript "$fixture17" "sess17" "wf_case17-ccc" 1 1 1 >/dev/null
 assert_exit "merged + valid runId + contaminated transcript stays silent" 0 "$(run_hook "$fixture17")"
 
+# --- cases 18-23: owner escape hatch scripts/abandon-run.sh (issue #571) ---
+
+ABANDON="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/scripts/abandon-run.sh"
+
+# case 18: unmarked review run, idle 45m -> 2 (control)
+fixture18="$(new_fixture)"
+state18="$(write_state "$fixture18" "run.json" '{"status":"review"}')"
+backdate_mtime "$state18" $((45 * 60))
+assert_exit "unmarked review idle 45m" 2 "$(run_hook "$fixture18")"
+
+# case 19: abandon-run.sh exits 0 and writes the sidecar
+fixture19="$(new_fixture)"
+state19="$(write_state "$fixture19" "run.json" '{"status":"review"}')"
+backdate_mtime "$state19" $((45 * 60))
+cksum19="$(cksum < "$state19")"
+bash "$ABANDON" "$state19" >/dev/null 2>&1
+rc19=$?
+sidecar19=1; [ -f "${state19}.abandoned" ] && sidecar19=0
+assert_exit "abandon-run.sh exit 0, abandoned sidecar written" 0 "$((rc19 + sidecar19))"
+
+# case 20: the state file is kept byte for byte
+same20=1; [ -f "$state19" ] && [ "$(cksum < "$state19")" = "$cksum19" ] && same20=0
+assert_exit "abandoned marking keeps the state file unchanged" 0 "$same20"
+
+# case 21: marked run, idle 3944m, no .nudged yet -> 0
+fixture21="$(new_fixture)"
+state21="$(write_state "$fixture21" "run.json" '{"status":"review"}')"
+backdate_mtime "$state21" $((3944 * 60))
+bash "$ABANDON" "$state21" >/dev/null 2>&1
+assert_exit "abandoned review idle 3944m" 0 "$(run_hook "$fixture21")"
+
+# case 22: one marked, one unmarked, both stale -> 2, stderr names only the unmarked one
+fixture22="$(new_fixture)"
+marked22="$(write_state "$fixture22" "marked-run.json" '{"status":"review"}')"
+other22="$(write_state "$fixture22" "other-run.json" '{"status":"dev"}')"
+backdate_mtime "$marked22" $((45 * 60))
+backdate_mtime "$other22" $((45 * 60))
+bash "$ABANDON" "$marked22" >/dev/null 2>&1
+err22="$(CLAUDE_PROJECT_DIR="$fixture22" CLAUDE_PROJECTS_DIR="$fixture22/projects" bash "$HOOK" 2>&1 >/dev/null)"
+rc22=$?
+names22=1
+case "$err22" in
+  *"other-run.json (status=dev"*) case "$err22" in *"marked-run.json ("*) ;; *) names22=0 ;; esac ;;
+esac
+assert_exit "abandoned sibling skipped, unmarked sibling reported" 0 "$(( (rc22 == 2 ? 0 : 1) + names22 ))"
+
+# case 23: abandon-run.sh on a missing path -> exit 1, nothing written
+fixture23="$(new_fixture)"
+bash "$ABANDON" "$fixture23/.pipeline/nope.json" >/dev/null 2>&1
+rc23=$?
+none23=1; [ ! -e "$fixture23/.pipeline/nope.json.abandoned" ] && none23=0
+assert_exit "abandon-run.sh missing file refused, no abandoned sidecar" 1 "$((rc23 + none23))"
+
 # --- summary -------------------------------------------------------------
 
 echo "${pass_count}/${total} PASS"
