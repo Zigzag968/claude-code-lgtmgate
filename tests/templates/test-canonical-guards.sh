@@ -78,14 +78,8 @@ NO_PRIVATE_REFS_PATTERNS=(
   '/Volumes/[A-Za-z0-9_-]+'                     # absolute machine path (this machine's disk layout)
   '/Users/[A-Za-z0-9._-]+'                      # absolute machine path with a real username
   '/home/[A-Za-z0-9._-]+'                       # absolute machine path with a real username (Linux)
-  'nightly-state'                               # nightly-dispatch state-blob marker (can carry wtPath/local paths)
-  'wtPath":"'                                   # worktree-path key ALREADY SERIALIZED with a value (a pasted-in
-                                                 # state/log blob, e.g. '<!-- nightly-state:v1 ... wtPath":"/Volumes/..." -->')
-                                                 # — deliberately NOT bare `wtPath`, which is this repo's own,
-                                                 # completely legitimate, pervasive variable name (verified this run:
-                                                 # a bare-`wtPath` motif hits 60+ sites in workflows/deliver-pipeline.js
-                                                 # alone, all of them the parameter/variable itself, zero leaks)
-  'worktreePath":"'                            # the current spelling of that key, same reasoning (the old spelling stays refused: #452 removes it)
+  'nightly-state'                               # nightly-dispatch state-blob marker (can carry local paths)
+  'worktreePath":"'                            # worktree-path key already serialized with a value (a pasted-in state/log blob), not the bare name
   'nightly-issue-'                              # nightly-dispatch state-blob marker
 )
 NO_PRIVATE_REFS_ALLOW=(
@@ -100,7 +94,6 @@ NO_PRIVATE_REFS_ALLOW=(
   ''
   '/Users/(you|dev)([^A-Za-z0-9._-]|$)'         # documented generic placeholders, not real usernames
   '/home/user([^A-Za-z0-9._-]|$)'               # documented CI placeholder, not a real username
-  ''
   ''
   ''
   "branchCheckRaw: 'nightly-issue-1'"           # reviewed repo-local test fixture (this repo's own nightly-branch

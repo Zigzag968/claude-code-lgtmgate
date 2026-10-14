@@ -165,9 +165,9 @@ else
 fi
 
 # ---- #337: rehash-fixtures re-records the probe digests after an engine change ---------------------------
-# The variant engine composes the old abbreviated worktree flag, so every probe command that carries it hashes differently.
+# The variant engine composes another spelling of the worktree flag, so every probe command that carries it hashes differently.
 REH_ENG="$TMP/engine-short-flag.js"
-sed "s/'--worktree'/'--wt'/g" "$ROOT/workflows/deliver-pipeline.js" > "$REH_ENG"
+sed "s/'--worktree'/'--worktree-dir'/g" "$ROOT/workflows/deliver-pipeline.js" > "$REH_ENG"
 REH_DIR="$(newdir rehash)"
 cp "$ROOT/fixtures/smoke/ci-required-failing.json" "$REH_DIR/a.json"
 cp "$ROOT/fixtures/smoke/ci-required-failing.json" "$TMP/rehash-orig.json"

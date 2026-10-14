@@ -27,9 +27,9 @@ case "$out" in *"unanswered call"*"probe-123-pr-state-merge-r0"*) ok "missing la
 out=$(OFFLINE_STRICT=1 node scripts/run-offline.cjs "$TMP/wrong-status.json" >/dev/null 2>&1; echo $?)
 [ "$out" = "1" ] && ok "OFFLINE_STRICT=1 exits 1 on failure" || bad "OFFLINE_STRICT exit code: $out"
 
-printf '{"name":"r","args":{"wtPath": "/Users/dev/wt"},"calls":{"a":"cd \\"/Users/dev\\" && x\\nPROVISION-EXIT:0\\n"},"expect":{"status":"x"}}\n' > "$TMP/redact.json"
+printf '{"name":"r","args":{"worktreePath": "/Users/dev/wt"},"calls":{"a":"cd \\"/Users/dev\\" && x\\nPROVISION-EXIT:0\\n"},"expect":{"status":"x"}}\n' > "$TMP/redact.json"
 node scripts/redact-fixture.cjs "$TMP/redact.json" >/dev/null
-out=$(node -e 'const f=require(process.argv[1]);process.stdout.write(f.calls.a+"|"+f.args.wtPath)' "$TMP/redact.json")
+out=$(node -e 'const f=require(process.argv[1]);process.stdout.write(f.calls.a+"|"+f.args.worktreePath)' "$TMP/redact.json")
 case "$out" in 'cd "/Users/you" && x'$'\n''PROVISION-EXIT:0'$'\n''|/Users/you/wt') ok "redaction keeps JSON escapes and uses the invariant-safe home path";; *) bad "redaction output: $out";; esac
 
 python3 - "$TMP" <<'PY'
@@ -172,7 +172,7 @@ const src = fs.readFileSync(path.resolve('workflows/deliver-pipeline.js'), 'utf8
 const between = (a, b) => { const i = src.indexOf(a), j = src.indexOf(b); return src.slice(i, j) }
 const f = new Function(between('// --- probeCommands:start ---', '// --- probeCommands:end ---') + '\n' + between('// --- base64Utf8:start ---', '// --- base64Utf8:end ---') + '\nreturn { probeCommands, base64Utf8 }')()
 const cmd = "echo 'hi' && printf '%s' \"x y\""
-const base = { wtPath: '/wt/i', issue: 1, pluginRoot: '/p', name: 'lines', cmd, label: 'l', round: 0, expectCmd: 'a'.repeat(64) }
+const base = { worktreePath: '/wt/i', issue: 1, pluginRoot: '/p', name: 'lines', cmd, label: 'l', round: 0, expectCmd: 'a'.repeat(64) }
 const wrap = (run) => `1. ${run}\n2. cd verify`
 const viaB64 = commandOfPrompt(wrap(f.probeCommands({ ...base, cmdB64: f.base64Utf8(cmd) }).run))
 const viaQuoted = commandOfPrompt(wrap(f.probeCommands({ ...base }).run))

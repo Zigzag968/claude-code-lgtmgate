@@ -251,12 +251,12 @@ done
 # =============================================================================
 # Invariant 11 — worktree-root-resolver
 # =============================================================================
-# #100/#61: resolveWorktreeRoot({env, configLocal, config, wtPath}) — layered, machine-free
-# resolution. Base body ported verbatim from an internal reference implementation (env > config > wtPath's
+# #100/#61: resolveWorktreeRoot({env, configLocal, config, worktreePath}) — layered, machine-free
+# resolution. Base body ported verbatim from an internal reference implementation (env > config > worktreePath's
 # parent) so consumer projects can delete their repo-local pipeline copy without silently regressing the
 # de-machined worktreeRoot; #61 adds the configLocal layer (gitignored, Lead-read
 # .claude/pipeline.config.local.json) between env and the versioned config default, and requires
-# the winning candidate to be an ABSOLUTE path (a relative/blank winner falls through to wtPath's
+# the winning candidate to be an ABSOLUTE path (a relative/blank winner falls through to worktreePath's
 # parent instead of leaking a relative root into agent briefs). Extracts the sentinel-delimited
 # resolver window from $WORKFLOW_FILE (same python3-regex technique as invariants 2/4), asserts
 # wiring (call site + the Dev-stage `worktree root: ${worktreeRoot}` interpolation) and purity (no
@@ -273,8 +273,8 @@ print(m.group(0) if m else '')
 " 2>/dev/null)"
   if [ -z "$WRR_WINDOW" ]; then
     fail "worktree-root-resolver" "sentinel window resolveWorktreeRoot:start/:end not found in $WORKFLOW_FILE"
-  elif ! grep -q 'const worktreeRoot = resolveWorktreeRoot({ env: runtimeEnvironment, configLocal, config, wtPath: worktreePath })' "$WORKFLOW_FILE"; then
-    fail "worktree-root-resolver" "call site 'const worktreeRoot = resolveWorktreeRoot({ env: runtimeEnvironment, configLocal, config, wtPath: worktreePath })' missing in $WORKFLOW_FILE"
+  elif ! grep -q 'const worktreeRoot = resolveWorktreeRoot({ env: runtimeEnvironment, configLocal, config, worktreePath: worktreePath })' "$WORKFLOW_FILE"; then
+    fail "worktree-root-resolver" "call site 'const worktreeRoot = resolveWorktreeRoot({ env: runtimeEnvironment, configLocal, config, worktreePath: worktreePath })' missing in $WORKFLOW_FILE"
   elif ! grep -q 'worktree root: ${worktreeRoot}' "$WORKFLOW_FILE"; then
     fail "worktree-root-resolver" "Dev-stage interpolation 'worktree root: \${worktreeRoot}' missing in $WORKFLOW_FILE"
   elif echo "$WRR_WINDOW" | grep -qE 'require\(|readFileSync|import fs|__dirname'; then
@@ -297,18 +297,18 @@ print(m.group(0) if m else '')
         ['configLocal empty falls to config pin', null,           {worktreeRoot: ''},              {worktreeRoot: '/pinned'},       '/a/b/c', '/pinned'],
         ['configLocal missing falls to config pin', null,         {},                              {worktreeRoot: '/pinned'},       '/a/b/c', '/pinned'],
         ['config empty string falls through',    null,            {},                              {worktreeRoot: ''},              '/a/b/c', '/a/b'],
-        ['missing key falls to wtPath parent',   null,            {},                              {},                              '/a/b/c', '/a/b'],
-        ['relative config falls to wtPath parent', null,          {},                              {worktreeRoot: '../worktrees/repo'}, '/a/b/c', '/a/b'],
+        ['missing key falls to worktreePath parent',   null,            {},                              {},                              '/a/b/c', '/a/b'],
+        ['relative config falls to worktreePath parent', null,          {},                              {worktreeRoot: '../worktrees/repo'}, '/a/b/c', '/a/b'],
         ['filesystem-root edge',                 null,            {},                              {},                              '/onlyroot', '/'],
         ['config w/o worktreeRoot key',          null,            {},                              {baseBranch: 'develop'},         '/x/y/proj-issue-763', '/x/y'],
         ['a real-world case',                    null,            {},                              {},                              '/Users/dev/Worktrees/my-project/issue-799', '/Users/dev/Worktrees/my-project'],
         ['this run own real case',               null,            {},                              {},                              repoRoot, repoRootParent],
       ]
       const failures = []
-      for (const [name, env, configLocal, config, wtPath, expected] of cases) {
+      for (const [name, env, configLocal, config, worktreePath, expected] of cases) {
         if (env === null) delete process.env.LGTMGATE_WORKTREE_ROOT
         else process.env.LGTMGATE_WORKTREE_ROOT = env
-        const got = resolveWorktreeRoot({ env: process.env, configLocal, config, wtPath })
+        const got = resolveWorktreeRoot({ env: process.env, configLocal, config, worktreePath })
         if (got !== expected) failures.push(name + ': expected ' + JSON.stringify(expected) + ', got ' + JSON.stringify(got))
         delete process.env.LGTMGATE_WORKTREE_ROOT
       }
@@ -317,7 +317,7 @@ print(m.group(0) if m else '')
     rm -rf "$WRR_DIR"
     case "$WRR_OUT" in
       OK)
-        pass "worktree-root-resolver: sentinel body verbatim (no require/readFileSync/import fs/__dirname), call site + Dev-stage interpolation wired, 13/13 resolution-order cases pass (env wins/trimmed/blank, configLocal layer, config pin, empty-string/missing-key/relative fallthrough, wtPath-parent, filesystem-root edge, a real-world case, this run's own real case)"
+        pass "worktree-root-resolver: sentinel body verbatim (no require/readFileSync/import fs/__dirname), call site + Dev-stage interpolation wired, 13/13 resolution-order cases pass (env wins/trimmed/blank, configLocal layer, config pin, empty-string/missing-key/relative fallthrough, worktreePath-parent, filesystem-root edge, a real-world case, this run's own real case)"
         ;;
       FAIL:*)
         fail "worktree-root-resolver" "${WRR_OUT#FAIL:}"

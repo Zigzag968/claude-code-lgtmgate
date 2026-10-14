@@ -1,7 +1,7 @@
 ---
 type: regex
 target: last_message
-pattern: '^\s*PROBE name=pr-write exit=0 sha=ddf9ebb84945d5b33e38a553d87b65badd98870cbbec4afad14ec38c7e3527ea cmd=234325b46b44270eea6726c16b0e3ac76a171a133f6a2ce479d722b22214f804 json=\{"op":"body-splice","result":"written","reason":null,"bytes":2440\}\s*$'
+pattern: '^\s*PROBE name=pr-write exit=0 sha=ddf9ebb84945d5b33e38a553d87b65badd98870cbbec4afad14ec38c7e3527ea cmd=230821c1163f5e3e8cccd445e952499e842d791a8da1925faace926310763b07 json=\{"op":"body-splice","result":"written","reason":null,"bytes":2440\}\s*$'
 ---
 
 The final message must be exactly the PROBE line the script printed, and nothing else.

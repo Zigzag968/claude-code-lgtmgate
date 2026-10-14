@@ -8,7 +8,6 @@
 #
 # Usage:
 #   bash pr-state.sh --pr N [--worktree DIR] [--repo OWNER/REPO] [--since ISO]
-# The abbreviated old spelling of the worktree flag is still accepted.
 #
 # -> {"now":"<ISO>","headRefName":..,"headRefOid":..,"bodyDigest":"<12 hex>","acceptanceChecked":[N,..]|null,"acceptanceOpen":N|null,
 #     "decisionLog":["- round N — ..",..]|null,"mergeable":..,"mergeStateStatus":..,"lastCommitDate":..,"commitCount":N,"ciState":"green|failing|pending|none"|null,"ciChecks":{"<check name>":"green|failing|pending"}|null,"reviewCommentIds":["<id>",..],"files":["<path>",..]|null,
@@ -49,7 +48,7 @@ PR=""; WORKTREE=""; REPO=""; SINCE=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --pr) PR="${2:-}" ;;
-    --wt|--worktree) WORKTREE="${2:-}" ;;
+    --worktree) WORKTREE="${2:-}" ;;
     --repo) REPO="${2:-}" ;;
     --since) SINCE="${2:-}" ;;
     *) ;;

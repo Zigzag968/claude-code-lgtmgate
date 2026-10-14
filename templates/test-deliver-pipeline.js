@@ -2518,7 +2518,7 @@ await testCase('T272 probeCommands() extracted from source markers (#82)', async
   const block = extractBetween(source, '// --- probeCommands:start ---', '// --- probeCommands:end ---')
   if (!block) return { ok: false, msg: 'probeCommands:start/:end markers not found in pipeline source' }
   const pc = new Function(block + '\nreturn probeCommands')()
-  const base = { wtPath: '/wt/issue-7', issue: 7, name: 'provision', cmd: "echo 'hi'", label: 'provision', round: 0 }
+  const base = { worktreePath: '/wt/issue-7', issue: 7, name: 'provision', cmd: "echo 'hi'", label: 'provision', round: 0 }
   const withRoot = pc({ ...base, pluginRoot: '/plug' })
   const configWins = pc({ ...base, pluginRoot: '/plug', probeRunPath: '/cfg/probe-run.cjs' })
   const fallback = pc({ ...base })
@@ -2743,7 +2743,7 @@ await testCase('T485a composed plugin-version probe command does not end with th
   const engine485 = new Function([probeBlock, base64Block, versionBlock, digestBlock].join('\n') + '\nreturn { probeCommands, base64Utf8, pluginVersionCommand, sha256Hex }')()
   const command485 = engine485.pluginVersionCommand('/plug')
   const token485 = engine485.base64Utf8(command485)
-  const line485 = engine485.probeCommands({ wtPath: '/wt/issue-7', issue: 7, pluginRoot: '/plug', name: 'plugin-version', cmd: command485, label: 'plugin-version', round: 0, expectCmd: engine485.sha256Hex(command485), cmdB64: token485 }).run
+  const line485 = engine485.probeCommands({ worktreePath: '/wt/issue-7', issue: 7, pluginRoot: '/plug', name: 'plugin-version', cmd: command485, label: 'plugin-version', round: 0, expectCmd: engine485.sha256Hex(command485), cmdB64: token485 }).run
   const checks = [
     eq('the token is in the line', line485.includes(` --cmd-b64 ${token485} `), true),
     eq('the line does not end with the token', line485.endsWith(token485), false),
@@ -2783,7 +2783,7 @@ await testCase('T490a every composed probe b64 value is at most 200 characters (
   const checks = []
   for (const command of commands) {
     const token = engine.base64Utf8(command)
-    const line = engine.probeCommands({ wtPath: '/work/worktrees/some-repository/issue-490', issue: 490, pluginRoot: plugin, name: 'lines', cmd: command, label: 'x', round: 0, noReuse: true, expectCmd: engine.sha256Hex(command), cmdB64: token }).run
+    const line = engine.probeCommands({ worktreePath: '/work/worktrees/some-repository/issue-490', issue: 490, pluginRoot: plugin, name: 'lines', cmd: command, label: 'x', round: 0, noReuse: true, expectCmd: engine.sha256Hex(command), cmdB64: token }).run
     checks.push(eq(`b64 of ${command.slice(0, 40)}... is at most 200 characters (got ${token.length})`, token.length <= 200, true))
     checks.push(eq('the run line ends with --model haiku', line.endsWith(' --model haiku'), true))
   }
@@ -4963,27 +4963,6 @@ await testCase('T429f provision command with a plugin root names the plugin scri
 })
 
 
-await testCase('T337a the old args key alone still launches: same status and same provision command as the new key (#337)', async () => {
-  const options = { mode: 'auto', config: { ...CONFIG, provision: { extraLinks: T429_LINK } }, simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] } }
-  const viaNew = await run({ worktreePath: '/wt', ...options })
-  const viaOld = await run({ worktreePath: undefined, wtPath: '/wt', ...options })
-  const failure = [
-    eq('the new key reaches the provision command', viaNew.provisionCmdPreview.includes('/wt/scripts/provision-worktree.sh'), true),
-    eq('same status', viaOld.status, viaNew.status),
-    eq('same provision command', viaOld.provisionCmdPreview, viaNew.provisionCmdPreview),
-  ].find(Boolean)
-  return failure ? failure : { ok: true }
-})
-
-await testCase('T337b both args keys given: the new key wins (#337)', async () => {
-  const options = { mode: 'auto', config: { ...CONFIG, provision: { extraLinks: T429_LINK } }, simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] } }
-  const both = await run({ worktreePath: '/wt', wtPath: '/other', ...options })
-  const failure = [
-    eq('the new key is used', both.provisionCmdPreview.includes('/wt/scripts/provision-worktree.sh'), true),
-    eq('the old key is ignored', both.provisionCmdPreview.includes('/other/'), false),
-  ].find(Boolean)
-  return failure ? failure : { ok: true }
-})
 // ---------------------------------------------------------------------------
 // #97 — no-op gate widened to SHA+body; review-loop plan/code blocker routing
 // (T23b lives next to T23 above; T109-T115 below)

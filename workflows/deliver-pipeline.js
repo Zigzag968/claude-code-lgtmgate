@@ -22,7 +22,6 @@ export const meta = {
 // | `issue` | GitHub issue number (required) |
 // | `brief` | one-line description of the change (required) |
 // | `worktreePath` | shared worktree absolute path (required) |
-// | `wtPath` | old spelling of `worktreePath`, still accepted; `worktreePath` wins when both are given; removed in #452 |
 // | `config` | REQUIRED object: the parsed `.claude/pipeline.config.json`, supplied by the Lead. Absent or not an object (e.g. a JSON string) -> throws before any agent call (#13, #12). Project-specific configuration (stack-agnostic; see pipeline.config.template.json): `{ ghProject, baseBranch, branchPrefix, worktreeRoot, commands:{build,test,format}, ciChecks:[], regressionGuard:{testGlob,testFnPattern,baselineCmd}, provision:{extraLinks:[{src,dst}]}, preflight:{canonicalStringBan:[]}, commitHygiene:{squashBeforeHandoff,maxCommits}, commentHygiene:bool, oneWayDoorPaths:[] (optional; R3 path globs/prefixes, default none; see oneWayDoorSignals), oneWayDoorKinds:[] (optional; R3 kinds among status\|agent\|hook\|seam, default none), engineRepo:true (optional; marks the repo that IS this plugin: engine-only rules, default absent = consumer; see engineRules), r2Scope:{issueType,paths:[],fixtureDir} (optional, engine repo only: the one definition of the R2 scope, shared with the merge gate; see r2ScopeOf), minPluginVersion:'x.y.z[-pre.N]' (optional, off by default; the oldest engine version this repo accepts: an engine below it escalates `plugin-version-too-old` before anything runs, #233; an unusable value throws), repo:'owner/repo' }` — repo: code repo for cross-repo runs; absent -> cwd-resolved. worktreeRoot resolution order: LGTMGATE_WORKTREE_ROOT env var -> configLocal.worktreeRoot -> config.worktreeRoot -> worktreePath's parent dir (see resolveWorktreeRoot below). |
 // | `configLocal` | parsed `.claude/pipeline.config.local.json`, supplied by the Lead (the workflow sandbox has no filesystem — see resolveWorktreeRoot below); only `worktreeRoot` is read today (#61). Gitignored, machine-local, never versioned. Absent/garbage -> {}. |
 // | `pmReview` | run Mia before Sam (default false) |
@@ -237,7 +236,7 @@ const argumentsIn = (typeof args === 'string' ? JSON.parse(args) : args) || {}
 // The removed scout arg: refuse it before anything else (zero agent call), with the remedy in the message.
 if (argumentsIn.scoutAgent !== undefined) throw new Error('removed: declare lanes with a `lane:` frontmatter in `.claude/lgtmgate/<role>.<lane>.md`; start a fresh run at the wanted entryStage')
 const {
-  issue, brief, pmReview = false, issueType = null, worktreePath: worktreeArgument, wtPath: legacyWorktreePath,
+  issue, brief, pmReview = false, issueType = null, worktreePath,
   config,
   configLocal = {},
   prNumber = null,
@@ -284,7 +283,6 @@ if (planReferenceArgument !== undefined) {
     throw new Error('plan-ref-mismatch: planText does not hash to planRef.digest (the plan changed since the reference was returned); nothing ran. Relaunch from the planRef of the latest result, or in full form with planText; see docs/consumer-reference.md (plan-ref-mismatch).')
   }
 }
-const worktreePath = worktreeArgument || legacyWorktreePath
 if (!issue || !brief || !worktreePath) throw new Error('Missing required args: issue, brief, worktreePath')
 // #545 — the run-state launch arguments: shape checked once, before the config check and any agent call.
 const launchArgumentProblem = launchArgumentsProblem({ issue, title: titleArgument, parallel, decided, merged: mergedArgument, epic: epicArgument })
@@ -445,7 +443,7 @@ if (branchPrefixArgumentIgnored) {
 const runtimeEnvironment = simulate
   ? (simulate.probes?.env || {})
   : ((typeof process !== 'undefined' && process && process.env) ? process.env : {})
-const worktreeRoot = resolveWorktreeRoot({ env: runtimeEnvironment, configLocal, config, wtPath: worktreePath })
+const worktreeRoot = resolveWorktreeRoot({ env: runtimeEnvironment, configLocal, config, worktreePath })
 log(`worktreeRoot: ${worktreeRoot ?? '(unresolved)'} (env=${runtimeEnvironment.LGTMGATE_WORKTREE_ROOT ? 'set' : 'unset'}, local=${configLocal.worktreeRoot ? 'set' : 'unset'}, config=${config.worktreeRoot ? 'set' : 'unset'})`)
 // Code repo "owner/repo" for cross-repo runs: scopes the gh calls (guard, PR-create,
 // checks, no-op gate) to the code repo instead of relying on the invoking cwd. Absent ->
@@ -1812,7 +1810,7 @@ function staleArtifactBlockers(proofs, floorIso, prFiles, worktreeDirectory) {
 // `<worktreeRoot>/<slug>` by construction (skills/deliver/SKILL.md:35) — so the brief
 // never carries a relative root. No candidate and no absolute worktreePath -> null, which is
 // exactly the pre-#61 `config.worktreeRoot || null` behaviour (clause omitted).
-function resolveWorktreeRoot({ env: environment = {}, configLocal: localConfig = {}, config: primaryConfig = {}, wtPath: worktreeDirectory = '' }) {
+function resolveWorktreeRoot({ env: environment = {}, configLocal: localConfig = {}, config: primaryConfig = {}, worktreePath: worktreeDirectory = '' }) {
   const pick = (v) => (typeof v === 'string' && v.trim() ? v.trim() : null)
   const strip = (p) => (p.length > 1 ? p.replace(/\/+$/, '') : p)
   const abs = (v) => (v && v.startsWith('/') ? strip(v) : null)
@@ -2755,7 +2753,7 @@ function runStateLines({ merged: mergedValue, epic: epicValue, parallel: paralle
 // The two commands the probe agent runs, in order (#82). Both start with `cd '<worktreePath>' && node '<script>'`
 // (the attest hook accepts that prefix). The script is config.probeRunPath, else the plugin root's
 // scripts/runtime/probe-run.cjs (arg pluginRoot), else the worktree's own copy.
-function probeCommands({ wtPath: worktreeDirectory, issue: issueNumber, pluginRoot: pluginRootPath, probeRunPath, name, cmd, label, round, noReuse, expectCmd, cmdB64 }) {
+function probeCommands({ worktreePath: worktreeDirectory, issue: issueNumber, pluginRoot: pluginRootPath, probeRunPath, name, cmd, label, round, noReuse, expectCmd, cmdB64 }) {
   const q = (x) => `'${String(x).split("'").join("'\\''")}'`
   const script = probeRunPath ?? (pluginRootPath ? pluginRootPath + '/scripts/runtime/probe-run.cjs' : worktreeDirectory + '/scripts/runtime/probe-run.cjs')
   const outDirectory = `${worktreeDirectory}/.pipeline/probes/issue-${issueNumber}`
@@ -2906,7 +2904,7 @@ async function probe(name, command, { label, round = 0, onFail, noReuse = false,
   const want = sha256Hex(command)
   // gateCmd (#212, writes): the script refuses to run a copy of the command that does not hash to `want`
   // b64 (#338): the command travels as one bare base64 token (digest-gated), never as nested quoting a model must re-type
-  const cmds = probeCommands({ wtPath: worktreePath, issue, pluginRoot, probeRunPath: config.probeRunPath, name, cmd: command, label, round, noReuse, expectCmd: gateCommand || b64 ? want : undefined, cmdB64: b64 ? base64Utf8(command) : undefined })
+  const cmds = probeCommands({ worktreePath, issue, pluginRoot, probeRunPath: config.probeRunPath, name, cmd: command, label, round, noReuse, expectCmd: gateCommand || b64 ? want : undefined, cmdB64: b64 ? base64Utf8(command) : undefined })
   const prompt =
     `Run EXACTLY these two commands once each, in this order, from the worktree "${worktreePath}", without editing or re-quoting them. Each command is one line and nothing follows its last character:\n\n` +
     `1. ${cmds.run}\n2. ${cmds.verify}\n\n` +
@@ -3088,7 +3086,7 @@ if (!simulate && sessionRoot) {
   }
   if (srv) {
     log(`Session root check failed — ${srv.reason}`)
-    return finish(STATUS['escalate'], { reason: srv.reason, issue, sessionRoot, wtPath: worktreePath, trace })
+    return finish(STATUS['escalate'], { reason: srv.reason, issue, sessionRoot, worktreePath, trace })
   }
   log("Session root: same repository as the run's worktree")
 } else if (!simulate) {
@@ -3248,7 +3246,7 @@ if (entryStage === 'plan') {
     log(`Provision-freshness: worktree is ${provisionBehind} commit(s) behind origin/${baseBranch} at dispatch (own commits: ${ownCommits ?? 'unknown'}) — escalating before any planning spend; run: ${mergeCommand}`)
     trace.push(`provision-stale:${provisionBehind}`)
     await updateStatus('Blocked')
-    return finish(STATUS['escalate'], { reason: 'provision-stale', issue, behind: provisionBehind, ownCommits, mergeCommand, baseBranch, wtPath: worktreePath, trace })
+    return finish(STATUS['escalate'], { reason: 'provision-stale', issue, behind: provisionBehind, ownCommits, mergeCommand, baseBranch, worktreePath, trace })
   }
 }
 
@@ -4036,7 +4034,7 @@ if (after('dev', entryStage)) {
     trace.push(`worktree-git-dir-not-writable:${gitDirectoryProbe.gitDir || 'unknown'}`)
     log(`Worktree write-access preflight: git-dir "${gitDirectoryProbe.gitDir}" is not writable — escalating before Nick spawn`)
     await updateStatus('Blocked')
-    return finish(STATUS['escalate'], { reason: 'worktree-git-dir-not-writable', gitDir: gitDirectoryProbe.gitDir, issue, wtPath: worktreePath, trace })
+    return finish(STATUS['escalate'], { reason: 'worktree-git-dir-not-writable', gitDir: gitDirectoryProbe.gitDir, issue, worktreePath, trace })
   }
 
   const epicReference = subGate.blocked ? `(see #${issue})` : 'Closes #' + issue

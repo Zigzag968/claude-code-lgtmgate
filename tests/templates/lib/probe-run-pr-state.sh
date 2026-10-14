@@ -73,7 +73,7 @@ esac
 GHEOF
   chmod +x "$PSD/bin/gh"
 
-  OUT="$(PATH="$PSD/bin:$PATH" bash "$PS" --pr 7 --wt "$PSD/wt" --repo o/r)"; RC=$?
+  OUT="$(PATH="$PSD/bin:$PATH" bash "$PS" --pr 7 --worktree "$PSD/wt" --repo o/r)"; RC=$?
   ok=0
   [ "$RC" -eq 0 ] && [ "$(printf '%s\n' "$OUT" | wc -l | tr -d ' ')" = "1" ] && ok=1
   check "pr-state.sh: exit 0 and exactly one line" "$ok"
@@ -90,23 +90,20 @@ GHEOF
   [ "$(printf '%s' "$OUT" | jq -c '[.openIssues, .openIssuesTruncated]')" = '[null,false]' ] && ok=1
   check "pr-state.sh: openIssues is null without --since" "$ok"
 
-  OUT2="$(PATH="$PSD/bin:$PATH" bash "$PS" --pr 7 --wt "$PSD/wt" --repo o/r --since 2026-01-01T00:00:00Z)"
+  OUT2="$(PATH="$PSD/bin:$PATH" bash "$PS" --pr 7 --worktree "$PSD/wt" --repo o/r --since 2026-01-01T00:00:00Z)"
   ok=0
   [ "$(printf '%s' "$OUT2" | jq -c '[(.openIssues | map(.number)), .openIssuesTruncated]')" = '[[90,91],false]' ] && ok=1
   check "pr-state.sh: --since lists the open issues created in the window (number, createdAt, url only)" "$ok"
-  OUT_NEW="$(PATH="$PSD/bin:$PATH" bash "$PS" --pr 7 --worktree "$PSD/wt" --repo o/r)"
-  ok=0; [ -n "$OUT_NEW" ] && [ "$(printf '%s' "$OUT" | jq -cS 'del(.now)')" = "$(printf '%s' "$OUT_NEW" | jq -cS 'del(.now)')" ] && ok=1
-  check "[worktree-flag] pr-state.sh: old and new spelling give the same JSON (bar the clock)" "$ok"
   ok=0
   [ "$(printf '%s' "$OUT" | jq -r .bodyDigest)" = "$(printf '%s' "$OUT2" | jq -r .bodyDigest)" ] && ok=1
   check "pr-state.sh: bodyDigest is stable for an unchanged body" "$ok"
 
-  OUT3="$(GH_MANY=1 PATH="$PSD/bin:$PATH" bash "$PS" --pr 7 --wt "$PSD/wt" --since 2026-01-01T00:00:00Z)"
+  OUT3="$(GH_MANY=1 PATH="$PSD/bin:$PATH" bash "$PS" --pr 7 --worktree "$PSD/wt" --since 2026-01-01T00:00:00Z)"
   ok=0
   [ "$(printf '%s' "$OUT3" | jq -c '[.openIssues, .openIssuesTruncated]')" = '[null,true]' ] && ok=1
   check "pr-state.sh: exactly the scan limit (1000) issues -> openIssues null, openIssuesTruncated true" "$ok"
 
-  OUT4="$(GH_FAIL=1 PATH="$PSD/bin:$PATH" bash "$PS" --pr 7 --wt "$PSD/wt" --since 2026-01-01T00:00:00Z)"; RC=$?
+  OUT4="$(GH_FAIL=1 PATH="$PSD/bin:$PATH" bash "$PS" --pr 7 --worktree "$PSD/wt" --since 2026-01-01T00:00:00Z)"; RC=$?
   ok=0
   [ "$RC" -eq 0 ] && [ "$(printf '%s\n' "$OUT4" | wc -l | tr -d ' ')" = "1" ] \
     && [ "$(printf '%s' "$OUT4" | jq -c '[.headRefOid, .bodyDigest, .commitCount, .reviewCommentIds, .openIssues]')" = '[null,null,null,null,null]' ] \
@@ -117,7 +114,7 @@ GHEOF
   ok=0
   [ "$(printf '%s' "$OUT" | jq -c '.files')" = '["a.md","dir/b.md"]' ] && ok=1
   check "pr-state.sh: files lists the changed paths (one gh call)" "$ok"
-  OUT9="$(GH_FILES=many PATH="$PSD/bin:$PATH" bash "$PS" --pr 7 --wt "$PSD/wt" --repo o/r)"
+  OUT9="$(GH_FILES=many PATH="$PSD/bin:$PATH" bash "$PS" --pr 7 --worktree "$PSD/wt" --repo o/r)"
   ok=0
   [ "$(printf '%s' "$OUT9" | jq -c '.files')" = 'null' ] && ok=1
   check "pr-state.sh: 100 files (the gh cap) -> files null" "$ok"
@@ -152,7 +149,7 @@ GHEOF
 - [x] <!-- ac:9 --> an example
 <!-- acceptance:end -->
 ```'
-  OUT6="$(GH_ACC="$ACC_BODY" PATH="$PSD/bin:$PATH" bash "$PS" --pr 7 --wt "$PSD/wt" --repo o/r)"
+  OUT6="$(GH_ACC="$ACC_BODY" PATH="$PSD/bin:$PATH" bash "$PS" --pr 7 --worktree "$PSD/wt" --repo o/r)"
   ok=0
   [ "$(printf '%s' "$OUT6" | jq -c '.acceptanceChecked')" = '[1,3]' ] && ok=1
   check "[183] pr-state.sh: acceptanceChecked lists the ticked ids of the real block, ascending, not the fenced example's" "$ok"
@@ -170,7 +167,7 @@ GHEOF
 
   # [405] acceptanceOpen: the open boxes of the real block (id-less ones included; ticked lines and the fenced example not)
   ok=0
-  OUT10="$(GH_ACC="$(printf 'x\n<!-- acceptance:start -->\n- [ ] first\n- [ ] second\n- [x] done\n<!-- acceptance:end -->')" PATH="$PSD/bin:$PATH" bash "$PS" --pr 7 --wt "$PSD/wt" --repo o/r)"
+  OUT10="$(GH_ACC="$(printf 'x\n<!-- acceptance:start -->\n- [ ] first\n- [ ] second\n- [x] done\n<!-- acceptance:end -->')" PATH="$PSD/bin:$PATH" bash "$PS" --pr 7 --worktree "$PSD/wt" --repo o/r)"
   [ "$(printf '%s' "$OUT6" | jq -c '.acceptanceOpen')" = '1' ] && [ "$(printf '%s' "$OUT10" | jq -c '.acceptanceOpen')" = '2' ] && ok=1
   check "[405] pr-state.sh: acceptanceOpen counts the open boxes of the real block (id-less included, ticked and fenced not)" "$ok"
   ok=0
@@ -189,7 +186,7 @@ GHEOF
   check "[405] pr-state parser keeps acceptanceOpen (an integer >= 0), drops the key otherwise" "$ok"
 
   # [184] ciState: the state of every check on the head, derived from the statusCheckRollup of the same gh call
-  ci_of() { PATH="$PSD/bin:$PATH" GH_CI="$1" bash "$PS" --pr 7 --wt "$PSD/wt" --repo o/r | jq -r '.ciState'; }
+  ci_of() { PATH="$PSD/bin:$PATH" GH_CI="$1" bash "$PS" --pr 7 --worktree "$PSD/wt" --repo o/r | jq -r '.ciState'; }
   ok=0
   [ "$(printf '%s' "$OUT" | jq -r '.ciState')" = 'green' ] \
     && [ "$(ci_of failing)" = 'failing' ] && [ "$(ci_of pending)" = 'pending' ] && [ "$(ci_of none)" = 'none' ] \
@@ -209,7 +206,7 @@ GHEOF
   check "[184] pr-state parser keeps ciState from {green,failing,pending,none}, else null" "$ok"
   # [184] ciChecks: the per-check map {name: green|failing|pending} from the SAME per-entry classification (CheckRun .name,
   # StatusContext .context; SKIPPED/NEUTRAL green; two entries of one (name, workflowName): the LATEST by startedAt wins; two workflows: the worst of the two); null when the rollup is absent
-  cc_of() { PATH="$PSD/bin:$PATH" GH_CI="$1" bash "$PS" --pr 7 --wt "$PSD/wt" --repo o/r | jq -cS '.ciChecks'; }
+  cc_of() { PATH="$PSD/bin:$PATH" GH_CI="$1" bash "$PS" --pr 7 --worktree "$PSD/wt" --repo o/r | jq -cS '.ciChecks'; }
   ok=0
   [ "$(printf '%s' "$OUT" | jq -cS '.ciChecks')" = '{"extra":"green","guards":"green"}' ] \
     && [ "$(cc_of mixed)" = '{"CodeQL":"pending","dup":"green","guards":"green","legacy/ci":"failing","legacy/wait":"pending","neutral":"green"}' ] \
@@ -251,7 +248,7 @@ GHEOF
 - round 0 — REQUIRED_CHANGES (1 blocker)
 - round 1 — LGTM
 <!-- decision-log:end -->'
-  OUT7="$(GH_ACC="$DL_BODY" PATH="$PSD/bin:$PATH" bash "$PS" --pr 7 --wt "$PSD/wt" --repo o/r)"
+  OUT7="$(GH_ACC="$DL_BODY" PATH="$PSD/bin:$PATH" bash "$PS" --pr 7 --worktree "$PSD/wt" --repo o/r)"
   ok=0
   [ "$(printf '%s' "$OUT7" | jq -c '.decisionLog')" = '["- round 0 — REQUIRED_CHANGES (1 blocker)","- round 1 — LGTM"]' ] \
     && [ "$(printf '%s' "$OUT" | jq -c '.decisionLog')" = '[]' ] \
@@ -293,13 +290,13 @@ GHEOF
     && [ "$(grep -c 'decision-log:start' "$WORK/dl3-out.md")" = "1" ] && [ "$(grep -c 'decision-log:end' "$WORK/dl3-out.md")" = "1" ] \
     && cmp -s "$WORK/dl3-out.md" "$WORK/dl3-want.md" && ok=1
   check "[164] pr-body-splice.cjs: 3 decision-log blocks (indented end markers) -> entries lists every round in order; splice leaves one pair, the text outside byte-identical" "$ok"
-  OUT8="$(GH_ACC="$(cat "$WORK/dl3-pre.md")" PATH="$PSD/bin:$PATH" bash "$PS" --pr 7 --wt "$PSD/wt" --repo o/r)"
+  OUT8="$(GH_ACC="$(cat "$WORK/dl3-pre.md")" PATH="$PSD/bin:$PATH" bash "$PS" --pr 7 --worktree "$PSD/wt" --repo o/r)"
   ok=0
   [ "$(printf '%s' "$OUT8" | jq -c '.decisionLog')" = '["- round 0 — a","- round 1 — b","- round 2 — c"]' ] && ok=1
   check "[164] pr-state.sh: decisionLog lists the rounds of ALL the decision-log blocks of the body, in body order" "$ok"
 
   ok=0
-  out5="$(PATH="$PSD/bin:$PATH" bash "$PS" --pr 7 --wt "$PSD/wt" --repo o/r | node -e '
+  out5="$(PATH="$PSD/bin:$PATH" bash "$PS" --pr 7 --worktree "$PSD/wt" --repo o/r | node -e '
     const { PARSERS } = require(process.argv[1])
     const v = PARSERS["pr-state"](require("fs").readFileSync(0, "utf8"), "", 0)
     process.stdout.write(v.error ? "ERR" : v.headRefOid + ":" + v.commitCount)
