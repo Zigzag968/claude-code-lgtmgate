@@ -86,7 +86,10 @@ cp "$PLUGIN/templates/blocked-by-check.sh" "$A/.claude/scripts/blocked-by-check.
 cp "$PLUGIN/templates/provision-worktree.sh" "$A/scripts/provision-worktree.sh"
 node "$PLUGIN/scripts/runtime/init-specifics.cjs" --root "$A" > /dev/null
 VERSION=$(node -p 'require(process.argv[1]).version' "$PLUGIN/.claude-plugin/plugin.json")
-printf '{"baseBranch":"main","projectSpecifics":".claude/lgtmgate","minPluginVersion":"%s","agentContext":{"*":[]},"preflight":{"envSymlink":"ignore"}}\n' "$VERSION" > "$A/.claude/pipeline.config.json"
+# the config is the template with baseBranch set, then the keys init-specifics.cjs --config writes (#481): no hand-written copy of them
+node -e 'const fs=require("fs");const c=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));c.baseBranch="main";fs.writeFileSync(process.argv[2],JSON.stringify(c,null,2)+"\n")' "$PLUGIN/templates/pipeline.config.template.json" "$A/.claude/pipeline.config.json"
+node "$PLUGIN/scripts/runtime/init-specifics.cjs" --root "$A" --config > /dev/null
+if [ "$(node -p 'const c=require(process.argv[1]);c.projectSpecifics+"|"+c.minPluginVersion' "$A/.claude/pipeline.config.json")" = ".claude/lgtmgate|$VERSION" ]; then ok "init-config-keys: init leaves projectSpecifics and minPluginVersion=$VERSION in the config"; else bad "init-config-keys: $(cat "$A/.claude/pipeline.config.json")"; fi
 seal "$A"
 
 # state (b): what the previous release left

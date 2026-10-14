@@ -8,12 +8,15 @@
 // Stubs are pointers: one HTML comment each, the owner completes them in their own words. Nothing is copied
 // from the plugin (a copy drifts from the plugin, the owner's rules must survive plugin updates).
 //
+//        --lanes entries: 'ios' writes the three roles, 'ios:sam' writes that role only (sam|nick|morgan) (#481)
+//        node scripts/runtime/init-specifics.cjs [--root <repo>] --config [--plugin-version <x.y.z>]   set projectSpecifics and minPluginVersion when absent or empty (#481)
 // Usage: node scripts/runtime/init-specifics.cjs [--root <repo>]                           create the missing stubs
 //        node scripts/runtime/init-specifics.cjs [--root <repo>] --detect                  what the repo already holds (JSON)
 //        node scripts/runtime/init-specifics.cjs [--root <repo>] --propose [--plugin-version <x.y.z>] [--lanes a,b]   readable proposal, writes nothing
 //        node scripts/runtime/init-specifics.cjs [--root <repo>] --lanes ios,web          create only sam|nick|morgan.<lane>.md (#271)
 // Stdout (write mode): one JSON line {"created":[...],"kept":[...]} (relative paths, fixed role order; lane files after the role files).
-// Exit:  0 ok · 2 usage (a lane name outside [a-z0-9-]{1,24} included) or a folder that cannot be created.
+// Exit:  0 ok · 2 usage (a lane name outside [a-z0-9-]{1,24} or a role outside sam|nick|morgan included), an absent or non-object config
+//        for --config (file untouched), or a folder that cannot be created.
 // Writes only inside <root>/.claude/lgtmgate/, only a file that does not exist (open flag wx): an existing
 // path (file, symlink, directory) is kept and never opened.
 // Lead allow rule: Bash(node */scripts/runtime/init-specifics.cjs:*)
@@ -236,14 +239,12 @@ function propose(root, versionToWrite, lanes = []) {
     else if (entry.pristine) lines.push(`  keep ${entry.path} (stub unchanged)`)
     else lines.push(`  keep ${entry.path} (edited by the owner, never touched)`)
   }
-  for (const l of lanes) {
-    for (const r of LANE_ROLES) {
-      const p = `${DIR}/${r}.${l}.md`
-      const f = d.laneFiles.find((x) => x.path === p)
-      if (!f) lines.push(`  create ${p}`)
-      else if (f.pristine) lines.push(`  keep ${p} (stub unchanged)`)
-      else lines.push(`  keep ${p} (edited by the owner, never touched)`)
-    }
+  for (const [l, r] of lanes) {
+    const p = `${DIR}/${r}.${l}.md`
+    const f = d.laneFiles.find((x) => x.path === p)
+    if (!f) lines.push(`  create ${p}`)
+    else if (f.pristine) lines.push(`  keep ${p} (stub unchanged)`)
+    else lines.push(`  keep ${p} (edited by the owner, never touched)`)
   }
   const owned = [...d.rules.map((r) => r.path), ...d.existing.filter((entry) => entry.present && !entry.pristine).map((entry) => entry.path), ...d.laneFiles.filter((f) => !f.pristine).map((f) => f.path)]
   const refused = screenRefusals(root, owned)
@@ -268,7 +269,7 @@ function writeStubs(root, lanes = []) {
   const kept = []
   // With --lanes only the lane files are written (the role stubs come from the plain run); the plain run writes the role stubs.
   const targets = lanes.length > 0 ? [] : ROLE_FILES.map((r) => [`${DIR}/${r}.md`, STUBS[r]])
-  for (const l of lanes) for (const r of LANE_ROLES) targets.push([`${DIR}/${r}.${l}.md`, laneStub(r, l)])
+  for (const [l, r] of lanes) targets.push([`${DIR}/${r}.${l}.md`, laneStub(r, l)])
   for (const [relative, body] of targets) {
     let fd
     try {
@@ -293,7 +294,42 @@ function pluginVersion() {
   }
 }
 
-const USAGE = 'usage: init-specifics.cjs [--root <repo>] [--detect | --propose [--plugin-version <x.y.z>]] [--lanes a,b]'
+// #481: sets the two recommended keys of the owner's config when absent or empty; a present value is never touched.
+function setConfigKeys(root, version) {
+  const file = nodePath.join(root, '.claude', 'pipeline.config.json')
+  let config
+  try {
+    config = JSON.parse(fs.readFileSync(file, 'utf8'))
+  } catch (error) {
+    throw new Error('--config needs a readable .claude/pipeline.config.json holding JSON')
+  }
+  if (config === null || typeof config !== 'object' || Array.isArray(config)) throw new Error('--config needs a pipeline.config.json holding a JSON object')
+  const set = []
+  const kept = []
+  for (const [key, value] of [['projectSpecifics', DIR], ['minPluginVersion', version]]) {
+    if (config[key] === undefined || config[key] === '') { config[key] = value; set.push(key) } else kept.push(key)
+  }
+  if (set.length > 0) fs.writeFileSync(file, JSON.stringify(config, null, 2) + '\n')
+  return { set, kept }
+}
+
+// A --lanes entry is 'lane' (the three roles) or 'lane:role' (that role only); deduplicated on the (lane, role) pair.
+function expandLanes(entries) {
+  const pairs = []
+  for (const entry of entries) {
+    const parts = entry.split(':')
+    if (parts.length > 2) throw new Error('bad lane entry (expected lane or lane:role)')
+    const [lane, role] = parts
+    if (!LANE_NAME_RE.test(lane)) throw new Error('bad lane name (expected [a-z0-9-], 1 to 24 characters)')
+    if (role !== undefined && !LANE_ROLES.includes(role)) throw new Error(`bad lane role (expected ${LANE_ROLES.join('|')})`)
+    for (const r of role === undefined ? LANE_ROLES : [role]) {
+      if (!pairs.some(([l, x]) => l === lane && x === r)) pairs.push([lane, r])
+    }
+  }
+  return pairs
+}
+
+const USAGE = 'usage: init-specifics.cjs [--root <repo>] [--detect | --propose [--plugin-version <x.y.z>] | --config [--plugin-version <x.y.z>]] [--lanes a,b | a:sam,b:nick]'
 
 function main(argv) {
   const o = { root: process.cwd(), mode: 'write', version: null, lanes: [] }
@@ -309,11 +345,9 @@ function main(argv) {
       else if (a === '--propose') o.mode = 'propose'
       else if (a === '--plugin-version') o.version = value()
       else if (a === '--lanes') {
-        const names = value().split(',')
-        const badName = names.find((n) => !LANE_NAME_RE.test(n))
-        if (badName !== undefined) throw new Error('bad lane name (expected [a-z0-9-], 1 to 24 characters)')
-        o.lanes = names.filter((n, position) => names.indexOf(n) === position)
+        o.lanes = expandLanes(value().split(','))
       }
+      else if (a === '--config') o.mode = 'config'
       else throw new Error(`unknown argument: ${a}`)
     } catch (error) {
       process.stderr.write(`init-specifics: ${error.message}\n${USAGE}\n`)
@@ -326,6 +360,7 @@ function main(argv) {
   }
   try {
     if (o.mode === 'detect') process.stdout.write(JSON.stringify(detect(o.root)) + '\n')
+    else if (o.mode === 'config') process.stdout.write(JSON.stringify(setConfigKeys(o.root, o.version || pluginVersion())) + '\n')
     else if (o.mode === 'propose') process.stdout.write(propose(o.root, o.version || pluginVersion(), o.lanes))
     else process.stdout.write(JSON.stringify(writeStubs(o.root, o.lanes)) + '\n')
     return 0
