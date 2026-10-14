@@ -8,6 +8,7 @@
 # own commits on a re-run, head moved between the check and the sync, --tick-from-review on a stale review),
 # prerelease versions (1.0.0-beta.N: next merge bumps the counter, a hand bump above main is kept, non-semver refused),
 # audit collision (#526: two sides green alone break a ceiling merged; refused before the push, naming the file and the count).
+# self-reference (#455: a PR changing scripts/lead-merge.sh or scripts/lib/ is refused unless the branch's own copy runs; branch copy and unrelated PR merge).
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -22,6 +23,7 @@ LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" && pwd)"
 . "$LIB/lead-merge-r2-replay-cases.sh"
 . "$LIB/lead-merge-cleanup-cases.sh"
 . "$LIB/lead-merge-audit-cases.sh"
+. "$LIB/lead-merge-selfref-cases.sh"
 
 echo "[lead-merge test] passed=$PASS failed=$FAIL"
 [ "$FAIL" -eq 0 ]
