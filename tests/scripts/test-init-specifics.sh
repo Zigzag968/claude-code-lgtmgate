@@ -146,6 +146,42 @@ if [ "$rc1" = 2 ] && [ "$rc2" = 2 ]; then ok "lanes-bad-name-exit2"; else bad "l
 node "$IS" --root "$D" --detect > "$TMP/det" 2>/dev/null
 if [ "$(jx "$TMP/det" 'j.laneFiles.length')" = 6 ] && [ "$(jx "$TMP/det" 'j.laneFiles.filter(f=>f.pristine).length')" = 5 ] && [ "$(jx "$TMP/det" 'j.laneFiles.find(f=>f.path.endsWith("sam.ios.md")).pristine')" = false ]; then ok "lanes-stub-pristine: --detect tells a pristine lane stub from an edited one"; else bad "lanes-stub-pristine: $(head -c 300 "$TMP/det")"; fi
 
+# ---- lane roles (#481): lane:role writes that role only, a bare lane the three roles
+D=$(tree -)
+node "$IS" --root "$D" --lanes src:sam > "$TMP/r1" 2>/dev/null; rc=$?
+if [ "$rc" = 0 ] && [ "$(ls "$D/.claude/lgtmgate" | tr '\n' ' ')" = "sam.src.md " ]; then ok "lanes-role-one: src:sam writes sam.src.md only"; else bad "lanes-role-one: rc=$rc $(ls "$D/.claude/lgtmgate")"; fi
+D=$(tree -)
+node "$IS" --root "$D" --lanes src > /dev/null 2>&1
+if [ "$(ls "$D/.claude/lgtmgate" | tr '\n' ' ')" = "morgan.src.md nick.src.md sam.src.md " ]; then ok "lanes-role-bare-three: src writes the three roles"; else bad "lanes-role-bare-three: $(ls "$D/.claude/lgtmgate")"; fi
+D=$(tree -)
+node "$IS" --root "$D" --lanes src:sam,src:nick,src:sam > "$TMP/r3" 2>/dev/null
+if [ "$(jx "$TMP/r3" 'j.created.length')" = 2 ] && [ ! -e "$D/.claude/lgtmgate/morgan.src.md" ]; then ok "lanes-role-pairs-dedup: src:sam,src:nick,src:sam writes two files"; else bad "lanes-role-pairs-dedup: $(head -c 200 "$TMP/r3")"; fi
+node "$IS" --root "$D" --lanes src:theo > /dev/null 2>&1; rc1=$?
+node "$IS" --root "$D" --lanes 'src:' > /dev/null 2>&1; rc2=$?
+node "$IS" --root "$D" --lanes 'src:sam:x' > /dev/null 2>&1; rc3=$?
+if [ "$rc1" = 2 ] && [ "$rc2" = 2 ] && [ "$rc3" = 2 ]; then ok "lanes-role-bad-exit2: unknown, empty and extra role segments exit 2"; else bad "lanes-role-bad-exit2: $rc1 $rc2 $rc3"; fi
+D=$(tree -)
+node "$IS" --root "$D" --propose --lanes src:sam > "$TMP/r5" 2>/dev/null
+if [ "$(grep -c 'create .claude/lgtmgate/.*\.src\.md' "$TMP/r5")" = 1 ] && grep -q 'create .claude/lgtmgate/sam.src.md' "$TMP/r5"; then ok "lanes-role-propose: --propose lists one lane create line"; else bad "lanes-role-propose"; fi
+
+# ---- config keys (#481): --config sets projectSpecifics and minPluginVersion when absent or empty
+D=$(tree -); mkdir -p "$D/.claude"
+printf '{"baseBranch":"main","projectSpecifics":""}\n' > "$D/.claude/pipeline.config.json"
+node "$IS" --root "$D" --config --plugin-version 9.8.7 > "$TMP/c1" 2>/dev/null; rc=$?
+if [ "$rc" = 0 ] && [ "$(jx "$D/.claude/pipeline.config.json" 'j.projectSpecifics')" = ".claude/lgtmgate" ] && [ "$(jx "$D/.claude/pipeline.config.json" 'j.minPluginVersion')" = "9.8.7" ] && [ "$(jx "$D/.claude/pipeline.config.json" 'j.baseBranch')" = "main" ] && [ "$(jx "$TMP/c1" 'j.set.length')" = 2 ]; then ok "config-keys-set: absent and empty keys are set, other keys kept"; else bad "config-keys-set: rc=$rc $(cat "$D/.claude/pipeline.config.json")"; fi
+shasum -a 256 "$D/.claude/pipeline.config.json" > "$TMP/c1s"
+node "$IS" --root "$D" --config --plugin-version 9.8.7 > "$TMP/c2" 2>/dev/null
+shasum -a 256 "$D/.claude/pipeline.config.json" > "$TMP/c2s"
+if cmp -s "$TMP/c1s" "$TMP/c2s" && [ "$(jx "$TMP/c2" 'j.set.length')" = 0 ] && [ "$(jx "$TMP/c2" 'j.kept.length')" = 2 ]; then ok "config-keys-relaunch-0-writes: a second run writes nothing"; else bad "config-keys-relaunch-0-writes"; fi
+printf '{"projectSpecifics":"custom","minPluginVersion":"99.0.0"}\n' > "$D/.claude/pipeline.config.json"
+node "$IS" --root "$D" --config --plugin-version 1.0.0 > /dev/null 2>&1
+if [ "$(jx "$D/.claude/pipeline.config.json" 'j.minPluginVersion')" = "99.0.0" ] && [ "$(jx "$D/.claude/pipeline.config.json" 'j.projectSpecifics')" = "custom" ]; then ok "config-keys-present-kept: a present value is never lowered or replaced"; else bad "config-keys-present-kept"; fi
+E=$(tree -)
+node "$IS" --root "$E" --config > /dev/null 2>"$TMP/c4"; rc=$?
+mkdir -p "$E/.claude"; printf '[1]\n' > "$E/.claude/pipeline.config.json"
+node "$IS" --root "$E" --config > /dev/null 2>&1; rc2=$?
+if [ "$rc" = 2 ] && [ "$rc2" = 2 ] && [ ! -e "$E/.claude/lgtmgate" ] && [ "$(cat "$E/.claude/pipeline.config.json")" = "[1]" ]; then ok "config-keys-absent-or-bad-exit2: no config or a non-object exits 2 and writes nothing"; else bad "config-keys-absent-or-bad-exit2: $rc $rc2"; fi
+
 # inject-stub-lane: the SessionStart hook reads the lane files
 L=$(tree -); mkdir -p "$L/.claude/lgtmgate"
 printf '{"projectSpecifics":".claude/lgtmgate"}\n' > "$L/.claude/pipeline.config.json"
