@@ -2,7 +2,7 @@
 'use strict'
 
 // Launch facts (#581): three Setup checks whose answer cannot change during a run are computed by the expansion hook
-// (scripts/runtime/workflow-arguments_-expand.cjs) instead of a probe agent copying a command line. Each fact is
+// (scripts/runtime/workflow-args-expand.cjs) instead of a probe agent copying a command line. Each fact is
 // {for, exit, lines}: `for` is the sha256 of a binding string (the check name plus the paths it was computed for), so the
 // engine uses a fact only for the launch it was computed for and probes otherwise. `exit` and `lines` are what the same
 // script prints when the probe would run it. Fail open: any spawn failure, unreadable file or non-absolute path leaves the
