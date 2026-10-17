@@ -1,0 +1,92 @@
+{
+  "args": {
+    "pluginRoot": "/plugin",
+    "issue": 123,
+    "brief": "fix slugify accents",
+    "worktreePath": "/wt/root/issue-123",
+    "config": {},
+    "mode": "manual",
+    "entryStage": "dev",
+    "proceedThrough": "dev",
+    "planText": "plan",
+    "launchFacts": {
+      "pluginVersion": {
+        "for": "c7dad60c19ede5dcc9fdef544ff1fc1b55914cc473a38e7d5cacd086e4dee7f8",
+        "exit": 0,
+        "lines": [
+          "PLUGIN-VERSION:@@ENGINE_VERSION@@"
+        ]
+      },
+      "configBaseBranch": {
+        "for": "b8fc546b8f9fd0171266abc0ebce46a7d9e27864acf06f042ffac9b35b2199e1",
+        "exit": 0,
+        "lines": [
+          "{\"baseBranch\":\"main\"}"
+        ]
+      }
+    }
+  },
+  "calls": {
+    "probe-123-provision-provision-r0": {
+      "line": "PROBE name=provision exit=0 sha=30ad404e7bf922808eeb13427c66400303e810a9392f80082fb0abe2fc6fc271 cmd=db6fbcd27fc949fce2354699dba657b6761291af184ae5890b1a9fbfaefc9360 json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}",
+      "verify": "VERIFY ok line=PROBE name=provision exit=0 sha=30ad404e7bf922808eeb13427c66400303e810a9392f80082fb0abe2fc6fc271 cmd=db6fbcd27fc949fce2354699dba657b6761291af184ae5890b1a9fbfaefc9360 json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}"
+    },
+    "probe-123-preflight-dev-r0": {
+      "line": "PROBE name=preflight exit=0 sha=0acd6243a89b98b4bb2d70cb70c8f020921b3ba8feae419783c1e32c54be75dd cmd=c6ca3d53b8fc9deb691eb06f9a3d76236ec29fa39c08fe60da8fbbd7935a74f9 json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/wt/root/.git/worktrees/issue-123\",\"writable\":true}",
+      "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=0acd6243a89b98b4bb2d70cb70c8f020921b3ba8feae419783c1e32c54be75dd cmd=c6ca3d53b8fc9deb691eb06f9a3d76236ec29fa39c08fe60da8fbbd7935a74f9 json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/wt/root/.git/worktrees/issue-123\",\"writable\":true}"
+    },
+    "nick-issue-123": {
+      "prNumber": 42,
+      "branch": "features/issue-123",
+      "testsPass": true,
+      "summary": "opened PR #42"
+    },
+    "probe-123-preflight-branch-r0": {
+      "line": "PROBE name=preflight exit=0 sha=5fbfdf840750936170ea0caa2986e56765751306cca75f230cff37f141b42cdc cmd=04c3f066625f5de3664533a397c026300b81bb5108f97ff00bfb3ab1c56ca05f json={\"mode\":\"branch\",\"headRef\":\"features/issue-123\",\"branchPrefix\":\"\"}",
+      "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=5fbfdf840750936170ea0caa2986e56765751306cca75f230cff37f141b42cdc cmd=04c3f066625f5de3664533a397c026300b81bb5108f97ff00bfb3ab1c56ca05f json={\"mode\":\"branch\",\"headRef\":\"features/issue-123\",\"branchPrefix\":\"\"}"
+    },
+    "already-done-check-123": {
+      "isAlreadyDone": false,
+      "isIssueClosed": false,
+      "issueState": "OPEN",
+      "issueCreatedAt": "2026-01-01T00:00:00Z",
+      "isMerged": false,
+      "mergedAt": "",
+      "mergedPrClosesIssue": false,
+      "checkFailed": false
+    },
+    "probe-123-pr-write-run-state-dev-r0": {
+      "line": "PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=5f6c0bcf41c76cde922e320858db5647b4c90b68b6a1424bb6c711c9922d77b3 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}",
+      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=5f6c0bcf41c76cde922e320858db5647b4c90b68b6a1424bb6c711c9922d77b3 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}"
+    },
+    "probe-123-pr-write-run-state-dev-done-r0": {
+      "line": "PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=2872c9f9249030b8fe95ca75a4185c4c77ab634be2c581c70bf0165f8ba352f9 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}",
+      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=2872c9f9249030b8fe95ca75a4185c4c77ab634be2c581c70bf0165f8ba352f9 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}"
+    },
+    "probe-123-lines-plan-digest-r0": {
+      "line": "PROBE name=lines exit=0 sha=4b0b2f33b20b777393f4cb55ea1d47c45786b52ad36822582a5ed67647e54ed5 cmd=e8eeee695e39d6eac71cde34a44e66125adc717a30a3d70140b786a4f206820e json={\"lines\":[\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]}",
+      "verify": "VERIFY ok line=PROBE name=lines exit=0 sha=4b0b2f33b20b777393f4cb55ea1d47c45786b52ad36822582a5ed67647e54ed5 cmd=e8eeee695e39d6eac71cde34a44e66125adc717a30a3d70140b786a4f206820e json={\"lines\":[\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]}"
+    }
+  },
+  "expect": {
+    "status": "dev-done",
+    "phases": [
+      "Setup",
+      "Dev"
+    ],
+    "callLabelsAbsent": [
+      "diagnose-",
+      "scout-",
+      "plan-check-",
+      "plan-audit-",
+      "probe-123-lines-plugin-version",
+      "probe-123-lines-config-project-recheck"
+    ],
+    "logsInclude": [
+      "launch fact pluginVersion: computed by the launch hook",
+      "launch fact configBaseBranch: computed by the launch hook"
+    ]
+  },
+  "name": "581-launch-facts-dev-entry",
+  "note": "#581: on a dev entry the hook-written facts replace the plugin-version and config-project-recheck probe agents"
+}

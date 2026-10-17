@@ -18,6 +18,8 @@
 // `merged`/`epic`, then writes its own from scripts/runtime/merged-dependencies.cjs (the `depends-on:` issues closed as completed,
 // and the epic parent; fail open: a failure writes no key). `title` goes to the launch file name and description; `parallel` is
 // compared with the active runs as an advisory, never a refusal (two simultaneous launches cannot see each other's state file).
+// Launch facts (#581): the hook also deletes any typed `launchFacts` and writes the plugin-version, session-root and config
+// baseBranch answers it computes itself (scripts/runtime/launch-facts.cjs, bound to the launch by a digest; fail open).
 // Exit: 0 ok or not ours · 2 deny (reason on stderr and in the JSON; the reason names no role and no specifics text).
 
 const fs = require('fs')
@@ -194,11 +196,14 @@ function repositoryOf(arguments_) {
   }
 }
 
-// Replaces any typed `merged`/`epic` by the derived ones (none written on any failure). Returns the new object.
+// Replaces any typed `merged`/`epic`/`launchFacts` by the derived ones (none written on any failure). Returns the new object.
 function withDerivedState(expanded, pluginRoot) {
   const out = { ...expanded }
   delete out.merged
   delete out.epic
+  delete out.launchFacts
+  const facts = require('./launch-facts.cjs').computeLaunchFacts(out, pluginRoot)
+  if (Object.keys(facts).length > 0) out.launchFacts = facts
   const issue = Number(out.issue)
   if (!Number.isInteger(issue) || issue < 1) return out
   const repository = repositoryOf(out)
