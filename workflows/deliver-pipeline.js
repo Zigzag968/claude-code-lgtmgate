@@ -56,6 +56,7 @@ export const meta = {
 // | `decided` | optional string, at most 200 bytes, no newline (#545): one decision taken in conversation, with its anchor in the issue or a comment. Rendered as `decided:` in the Theo, Sam and Nick prompts. |
 // | `merged` | HOOK-WRITTEN array of at most 20 issue numbers, never typed (#545): the `depends-on:` issues of the issue body that are closed as completed. The hook (scripts/runtime/merged-dependencies.cjs) deletes a typed value and writes its own; absent in the full form, or when `gh` or the repository is unavailable. Rendered as `merged:`. |
 // | `epic` | HOOK-WRITTEN positive integer, never typed (#545): the parent issue of the run's issue. Same origin and absence as `merged`. Rendered as `epic:`. |
+// | `launchFacts` | HOOK-WRITTEN object, never typed (#581): keys `pluginVersion`, `sessionRoot`, `configBaseBranch`, each `{for, exit, lines}`, the answer of the Setup check the hook computed itself. `for` is the sha256 of the check name plus the paths it was computed for; the engine uses a fact only when it matches this launch and then skips the probe agent, else it probes as before (`launch-fact:<name>` in `trace` marks a skipped probe). |
 //
 // config.commitHygiene — OFF by default: { squashBeforeHandoff: bool, maxCommits: int }.
 // squashBeforeHandoff=true makes the pipeline soft-reset a >maxCommits branch to 2-3 logical
@@ -139,7 +140,7 @@ export const meta = {
 // `version`, checked against plugin.json by tests/templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '1.5.0', cutFrom: '1f9b34f' }
+const BUILD = { plugin: 'lgtmgate', version: '1.5.1', cutFrom: '2c23fdf' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -269,6 +270,7 @@ const {
   decided = undefined,
   merged: mergedArgument = undefined,
   epic: epicArgument = undefined,
+  launchFacts: launchFactsArgument = undefined,
 } = argumentsIn
 
 // #520 — a reference the expansion hook should have replaced: refuse before anything runs (zero agent call).
@@ -285,7 +287,7 @@ if (planReferenceArgument !== undefined) {
 }
 if (!issue || !brief || !worktreePath) throw new Error('Missing required args: issue, brief, worktreePath')
 // #545 — the run-state launch arguments: shape checked once, before the config check and any agent call.
-const launchArgumentProblem = launchArgumentsProblem({ issue, title: titleArgument, parallel, decided, merged: mergedArgument, epic: epicArgument })
+const launchArgumentProblem = launchArgumentsProblem({ issue, title: titleArgument, parallel, decided, merged: mergedArgument, epic: epicArgument }) || launchFactsProblem(launchFactsArgument)
 if (launchArgumentProblem) {
   throw new Error(`launch-argument-invalid: ${launchArgumentProblem}; nothing ran. Shorten or fix the value and relaunch; see docs/consumer-reference.md (launch-argument-invalid).`)
 }
@@ -2738,6 +2740,24 @@ function launchArgumentsProblem({ issue: issueNumber, title: titleValue, paralle
   if (epicValue !== undefined && (!Number.isInteger(epicValue) || epicValue < 1)) return 'epic is not a positive integer'
   return null
 }
+// #581: the shape of the hook-written launch facts. -> null when well formed (or absent), else a one-line problem.
+function launchFactsProblem(value) {
+  if (value === undefined) return null
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return 'launchFacts is not an object'
+  const HEX = '0123456789abcdef'
+  for (const key of Object.keys(value)) {
+    if (key !== 'pluginVersion' && key !== 'sessionRoot' && key !== 'configBaseBranch') return `launchFacts holds an unknown key ${JSON.stringify(key)}`
+    const fact = value[key]
+    if (fact === null || typeof fact !== 'object' || Array.isArray(fact)) return `launchFacts.${key} is not an object`
+    if (typeof fact.for !== 'string' || fact.for.length !== 64 || [...fact.for].some((c) => !HEX.includes(c))) return `launchFacts.${key}.for is not a lower-case sha256`
+    if (!Number.isInteger(fact.exit)) return `launchFacts.${key}.exit is not an integer`
+    if (!Array.isArray(fact.lines) || fact.lines.length > 4) return `launchFacts.${key}.lines is not an array of at most 4 lines`
+    for (const line of fact.lines) {
+      if (typeof line !== 'string' || line.length > 200 || launchArgumentHasControl(line)) return `launchFacts.${key}.lines holds a line that is not a string of at most 200 characters without control character`
+    }
+  }
+  return null
+}
 // Lines the run state adds to the Theo, Sam and Nick prompts (each ends with a newline); '' when nothing is set.
 function runStateLines({ merged: mergedValue, epic: epicValue, parallel: parallelValue, decided: decidedValue }) {
   let out = ''
@@ -3047,6 +3067,20 @@ async function runState(state) {
   }
 }
 
+// #581: a Setup answer the expansion hook computed (args.launchFacts) replaces the probe agent for that check, only when its
+// `for` digest equals the binding of THIS launch. -> the probe-shaped answer { exit, json: { lines } }, or null (probe as before).
+function launchFactFor(name, binding) {
+  const fact = launchFactsArgument && typeof launchFactsArgument === 'object' ? launchFactsArgument[name] : undefined
+  if (fact === undefined) return null
+  if (fact.for !== sha256Hex(binding)) {
+    log(`launch fact ${name} does not match this launch - probing instead`)
+    return null
+  }
+  trace.push(`launch-fact:${name}`)
+  log(`launch fact ${name}: computed by the launch hook, no probe agent`)
+  return { exit: fact.exit, json: { lines: fact.lines } }
+}
+
 // probeOnly (#80): reach probe() from a run-offline fixture while no call site exists yet.
 if (probeOnly) {
   const r = await probe(probeOnly.name, probeOnly.cmd, { ...probeOnly })
@@ -3058,7 +3092,7 @@ if (probeOnly) {
 // Only when the templates really come from pluginRoot (config.probeRunPath unset, as probeCommands and
 // probeScriptPath resolve them). A reason string on the existing escalate: no new status, agent or seam.
 if (!simulate && pluginRoot && !config.probeRunPath) {
-  const pv = await probe('lines', pluginVersionCommand(pluginRoot), { label: 'plugin-version', noReuse: true, b64: true, onFail: (reason, stderr) => ({ probeFailed: reason, probeStderr: stderr || null }) })
+  const pv = launchFactFor('pluginVersion', `plugin-version\n${pluginRoot}`) || await probe('lines', pluginVersionCommand(pluginRoot), { label: 'plugin-version', noReuse: true, b64: true, onFail: (reason, stderr) => ({ probeFailed: reason, probeStderr: stderr || null }) })
   if (pv.probeFailed === 'agent-death') return finish(STATUS['provision-died'], { issue, trace })
   const skew = pluginVersionVerdict({ engineVersion: BUILD.version, probeFailed: pv.probeFailed, exit: pv.exit, lines: pv.json && pv.json.lines })
   if (skew && pv.probeFailed) {
@@ -3077,7 +3111,7 @@ if (!simulate && pluginRoot && !config.probeRunPath) {
 // instructions). The Lead passes its session root; same git common dir as the worktree, else escalate before
 // provisioning. A reason on the existing escalate: no new status, agent or seam, no label written.
 if (!simulate && sessionRoot) {
-  const sr = await probe('lines', sessionRootCommand(sessionRoot), { label: 'session-root', noReuse: true, b64: true, onFail: (reason, stderr) => ({ probeFailed: reason, probeStderr: stderr || null }) })
+  const sr = launchFactFor('sessionRoot', `session-root\n${sessionRoot}\n${worktreePath}`) || await probe('lines', sessionRootCommand(sessionRoot), { label: 'session-root', noReuse: true, b64: true, onFail: (reason, stderr) => ({ probeFailed: reason, probeStderr: stderr || null }) })
   if (sr.probeFailed === 'agent-death') return finish(STATUS['provision-died'], { issue, trace })
   const srv = sessionRootVerdict({ probeFailed: sr.probeFailed, exit: sr.exit, lines: sr.json && sr.json.lines })
   if (srv && sr.probeFailed) {
@@ -3104,7 +3138,7 @@ if (entryStage !== 'plan') {
   if (simulate) {
     if (simulate.probes?.configProjectRecheckRaw !== undefined) configProjectRecheckRaw = simulate.probes?.configProjectRecheckRaw
   } else {
-    const r = await probe('lines', `jq -c '{baseBranch}' ${shellSingleQuote(worktreePath + '/.claude/pipeline.config.json')} 2>/dev/null`, {
+    const r = launchFactFor('configBaseBranch', `config-base-branch\n${worktreePath}`) || await probe('lines', `jq -c '{baseBranch}' ${shellSingleQuote(worktreePath + '/.claude/pipeline.config.json')} 2>/dev/null`, {
       label: 'config-project-recheck', noReuse: true, onFail: (reason) => { log(`Project config guard: pipeline.config.json re-check failed (${reason}) — keeping caller-supplied values`); return null },
     })
     configProjectRecheckRaw = r && r.exit === 0 && Array.isArray(r.json && r.json.lines) ? r.json.lines[0] : null

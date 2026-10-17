@@ -300,6 +300,25 @@ expect "run-state-merged-overwrites-typed" 0 'JSON.stringify(j.hookSpecificOutpu
 mk_input "$RS1" name ref 'a.merged = [1, 2]; a.epic = 9'; PATH="$GHBIN:$PATH" hook "$RS1"
 expect "run-state-merged-typed-dropped-without-repo (no origin, no config.repo: no derived key, the typed ones are gone)" 0 '!("merged" in j.hookSpecificOutput.updatedInput.args) && !("epic" in j.hookSpecificOutput.updatedInput.args)'
 
+# ---- launch facts (#581): the hook computes the plugin-version, session-root and config baseBranch answers ----
+LFP="$TMP/lfplugin"; mkdir -p "$LFP/templates" "$LFP/.claude-plugin"
+cp "$ROOT/templates/plugin-version.cjs" "$LFP/templates/plugin-version.cjs"; printf '{"version":"9.8.7"}\n' > "$LFP/.claude-plugin/plugin.json"
+new_tree lf ignore; LF="$TMP/lf"; mkdir -p "$LF/.claude"; printf '{"baseBranch":"develop"}\n' > "$LF/.claude/pipeline.config.json"
+SHAJS='const h = (s) => require("crypto").createHash("sha256").update(s).digest("hex"); const f = j.hookSpecificOutput.updatedInput.args.launchFacts || {};'
+mk_input "$LF" name ref 'a.pluginRoot = "'"$LFP"'"; a.launchFacts = { pluginVersion: { for: "0".repeat(64), exit: 0, lines: ["typed"] } }'; hook "$LF"
+expect "launch-facts-written (version and session root computed, bound by digest; the typed value is replaced)" 0 '(() => {'"$SHAJS"' return f.pluginVersion.for === h("plugin-version\n'"$LFP"'") && f.pluginVersion.exit === 0 && JSON.stringify(f.pluginVersion.lines) === "[\"PLUGIN-VERSION:9.8.7\"]" && f.sessionRoot.for === h("session-root\n'"$LF"'\n'"$LF"'") && f.sessionRoot.exit === 0 && JSON.stringify(f.sessionRoot.lines) === "[\"SESSION-ROOT:same\"]" && !("configBaseBranch" in f) })()'
+mk_input "$LF" name ref 'a.launchFacts = { sessionRoot: { for: "0".repeat(64), exit: 0, lines: ["typed"] } }; delete a.pluginRoot; delete a.sessionRoot'; hook "$LF"
+expect "launch-facts-typed-deleted (no pluginRoot and no sessionRoot: nothing to compute, the typed object is gone)" 0 '!("launchFacts" in j.hookSpecificOutput.updatedInput.args)'
+mk_input "$LF" name ref 'a.pluginRoot = "relative/plugin"; delete a.sessionRoot'; hook "$LF"
+expect "launch-facts-absent-without-absolute-plugin-root (fail open to the probes)" 0 '!("launchFacts" in j.hookSpecificOutput.updatedInput.args)'
+mkdir -p "$TMP/lfbad/templates"; printf 'process.exit(3)\n' > "$TMP/lfbad/templates/plugin-version.cjs"
+mk_input "$LF" name ref 'a.pluginRoot = "'"$TMP/lfbad"'"; delete a.sessionRoot'; hook "$LF"
+expect "launch-facts-failing-script-keeps-exit (a non-zero exit is recorded with no line, the verdict stays the engine's)" 0 'j.hookSpecificOutput.updatedInput.args.launchFacts.pluginVersion.exit === 3 && j.hookSpecificOutput.updatedInput.args.launchFacts.pluginVersion.lines.length === 0'
+mk_input "$LF" name ref 'a.pluginRoot = "'"$LFP"'"; delete a.sessionRoot; a.entryStage = "dev"'; hook "$LF"
+expect "launch-facts-config-only-on-dev-entry (read from the worktree config, absent on a plan entry)" 0 '(() => {'"$SHAJS"' return JSON.stringify(f.configBaseBranch.lines) === "[\"{\\\"baseBranch\\\":\\\"develop\\\"}\"]" && f.configBaseBranch.for === h("config-base-branch\n'"$LF"'") })()'
+mk_input "$LF" name ref 'a.pluginRoot = "'"$LFP"'"; delete a.sessionRoot; a.entryStage = "plan"'; hook "$LF"
+expect "launch-facts-no-config-fact-on-plan-entry" 0 '!("configBaseBranch" in j.hookSpecificOutput.updatedInput.args.launchFacts)'
+
 mkdir -p "$RS1/.pipeline"; printf '{"status":"dev"}\n' > "$RS1/.pipeline/issue-777.json"
 mk_input "$RS1" name ref 'a.parallel = [888]'; hook "$RS1"
 expect "run-state-parallel-advisory (an active run missing from parallel and a listed number with no active run)" 0 '/#777/.test(j.hookSpecificOutput.additionalContext) && /#888/.test(j.hookSpecificOutput.additionalContext) && !("permissionDecision" in j.hookSpecificOutput)'

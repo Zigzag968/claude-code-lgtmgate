@@ -416,7 +416,7 @@ inst_fail() { # <label> <dir> <expected FAIL substring>
   if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: instructions-wired: ' && echo "$OUT" | grep -qF "$3"; then ok "$1"; else ko "$1 (rc=$RC) $OUT"; fi
 }
 mkinst "$T/i1"; run_inst "$T/i1"
-if [ "$RC" -eq 0 ] && echo "$OUT" | grep -q '^PASS: instructions-wired: .claude/CLAUDE.md imports @../VISION.md and @../ARCHITECTURE.md once each, targets exist; AGENTS.md names both; 1 agents/\*.md, none sets omitClaudeMd: true$'; then ok "instructions-wired: imports, AGENTS.md, omitClaudeMd false (and only in the body) -> PASS"; else ko "instructions-wired positive (rc=$RC) $OUT"; fi
+if [ "$RC" -eq 0 ] && echo "$OUT" | grep -q '^PASS: instructions-wired: .claude/CLAUDE.md imports @../VISION.md and @../ARCHITECTURE.md once each, targets exist; AGENTS.md names both; 1 agents/\*.md, none sets omitClaudeMd: true except the mechanical probe persona (agents/probe.md)$'; then ok "instructions-wired: imports, AGENTS.md, omitClaudeMd false (and only in the body) -> PASS"; else ko "instructions-wired positive (rc=$RC) $OUT"; fi
 mkinst "$T/i2"; printf '# CLAUDE.md\n\n@../VISION.md\n- Technical constraints: `ARCHITECTURE.md`.\n' > "$T/i2/.claude/CLAUDE.md"
 inst_fail "instructions-wired: ARCHITECTURE.md only named in a code span -> FAIL" "$T/i2" '.claude/CLAUDE.md has no line `@../ARCHITECTURE.md` outside code'
 mkinst "$T/i3"; printf '# CLAUDE.md\n\n```\n@../VISION.md\n```\n@../ARCHITECTURE.md\n' > "$T/i3/.claude/CLAUDE.md"
@@ -434,6 +434,9 @@ mkinst "$T/i8"; printf '# AGENTS.md\n\nRead `VISION.md` first.\n' > "$T/i8/AGENT
 inst_fail "instructions-wired: AGENTS.md does not name ARCHITECTURE.md -> FAIL" "$T/i8" 'AGENTS.md does not name ARCHITECTURE.md'
 mkinst "$T/i9"; printf -- '---\nname: B\nomitClaudeMd: true\n---\nbody\n' > "$T/i9/agents/b.md"
 inst_fail "instructions-wired: agents/b.md frontmatter omitClaudeMd: true -> FAIL" "$T/i9" 'agents/b.md sets omitClaudeMd: true'
+mkinst "$T/i9p"; printf -- '---\nname: probe\nomitClaudeMd: true\n---\nbody\n' > "$T/i9p/agents/probe.md"
+run_inst "$T/i9p"
+if [ "$RC" -eq 0 ] && echo "$OUT" | grep -q '^PASS: instructions-wired: '; then ok "instructions-wired: agents/probe.md omitClaudeMd: true (the mechanical persona) -> PASS"; else ko "instructions-wired probe exemption (rc=$RC) $OUT"; fi
 mkinst "$T/i10"; printf '# CLAUDE.md\n\n@VISION.md\n@../ARCHITECTURE.md\n' > "$T/i10/.claude/CLAUDE.md"
 inst_fail "instructions-wired: bare @VISION.md (loads nothing from .claude/) -> FAIL" "$T/i10" 'has a bare `@VISION.md` import, which loads nothing from .claude/'
 mkinst "$T/i11"; rm -f "$T/i11/VISION.md"
