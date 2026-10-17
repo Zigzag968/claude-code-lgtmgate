@@ -51,7 +51,7 @@
 //      from .claude/ and FAILS; no second import of either, no `@AGENTS.md`
 //      import, which would load the docs twice); unless AGENTS.md (the agents.md pointer for other
 //      tools) exists and names both files; or if any agents/*.md frontmatter sets
-//      `omitClaudeMd: true` (a subagent that would skip the project instructions).
+//      `omitClaudeMd: true` (a subagent that would skip the project instructions), bar the probe persona (#581).
 //   status-table (#180): the run's STATUS registry (top-level `const STATUS = Object.freeze({ ... })` in
 //      workflows/deliver-pipeline.js) and the status table of skills/deliver/SKILL.md §5 name the same set:
 //      every registry key has a row (a row's first cell may group several statuses, each in backticks)
@@ -333,13 +333,14 @@ function checkInstructionsWired() {
   }
   const agentsDirectory = path.join(ROOT, 'agents')
   const personas = fs.existsSync(agentsDirectory) ? fs.readdirSync(agentsDirectory).filter((f) => f.endsWith('.md')).sort() : []
-  for (const f of personas) {
+  const MECHANICAL_PERSONAS = ['probe.md'] // a copier of two command lines: it needs no project instructions (#581)
+  for (const f of personas.filter((name) => !MECHANICAL_PERSONAS.includes(name))) {
     const txt = fs.readFileSync(path.join(agentsDirectory, f), 'utf8').replace(/^\uFEFF/, '')
     const fm = /^---\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/.exec(txt)
     if (fm && /^omitClaudeMd[ \t]*:[ \t]*["']?true["']?[ \t]*(?:#.*)?$/im.test(fm[1])) problems.push(`agents/${f} sets omitClaudeMd: true`)
   }
   if (problems.length) bad(`FAIL: instructions-wired: ${problems.join('; ')}`)
-  else out(`PASS: instructions-wired: .claude/CLAUDE.md imports ${IMPORTED_DOCS.map((d) => `@../${d}`).join(' and ')} once each, targets exist; AGENTS.md names both; ${personas.length} agents/*.md, none sets omitClaudeMd: true`)
+  else out(`PASS: instructions-wired: .claude/CLAUDE.md imports ${IMPORTED_DOCS.map((d) => `@../${d}`).join(' and ')} once each, targets exist; AGENTS.md names both; ${personas.length} agents/*.md, none sets omitClaudeMd: true except the mechanical probe persona (agents/probe.md)`)
 }
 
 // ---- doc-budgets (#77) --------------------------------------------------------------------------
