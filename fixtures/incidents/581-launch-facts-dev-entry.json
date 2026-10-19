@@ -45,15 +45,9 @@
       "line": "PROBE name=preflight exit=0 sha=5fbfdf840750936170ea0caa2986e56765751306cca75f230cff37f141b42cdc cmd=04c3f066625f5de3664533a397c026300b81bb5108f97ff00bfb3ab1c56ca05f json={\"mode\":\"branch\",\"headRef\":\"features/issue-123\",\"branchPrefix\":\"\"}",
       "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=5fbfdf840750936170ea0caa2986e56765751306cca75f230cff37f141b42cdc cmd=04c3f066625f5de3664533a397c026300b81bb5108f97ff00bfb3ab1c56ca05f json={\"mode\":\"branch\",\"headRef\":\"features/issue-123\",\"branchPrefix\":\"\"}"
     },
-    "already-done-check-123": {
-      "isAlreadyDone": false,
-      "isIssueClosed": false,
-      "issueState": "OPEN",
-      "issueCreatedAt": "2026-01-01T00:00:00Z",
-      "isMerged": false,
-      "mergedAt": "",
-      "mergedPrClosesIssue": false,
-      "checkFailed": false
+    "probe-123-preflight-already-done-r0": {
+      "line": "PROBE name=preflight exit=0 sha=8654c00fc2a49fe84f32e7de3bfcc8ab9d4b634bce01164cf451470f34cbbb36 cmd=d4c48aa662277ae8acc47851c9957a80f424c6aee62b4b9edb57223c38379974 json={\"mode\":\"already-done\",\"isAlreadyDone\":false,\"isIssueClosed\":false,\"issueState\":\"OPEN\",\"issueCreatedAt\":\"2026-01-01T00:00:00Z\",\"isMerged\":false,\"mergedAt\":\"\",\"mergedPr\":null,\"mergedHeadRef\":\"\",\"mergedPrClosesIssue\":false,\"checkFailed\":false}",
+      "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=8654c00fc2a49fe84f32e7de3bfcc8ab9d4b634bce01164cf451470f34cbbb36 cmd=d4c48aa662277ae8acc47851c9957a80f424c6aee62b4b9edb57223c38379974 json={\"mode\":\"already-done\",\"isAlreadyDone\":false,\"isIssueClosed\":false,\"issueState\":\"OPEN\",\"issueCreatedAt\":\"2026-01-01T00:00:00Z\",\"isMerged\":false,\"mergedAt\":\"\",\"mergedPr\":null,\"mergedHeadRef\":\"\",\"mergedPrClosesIssue\":false,\"checkFailed\":false}"
     },
     "probe-123-pr-write-run-state-dev-r0": {
       "line": "PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=5f6c0bcf41c76cde922e320858db5647b4c90b68b6a1424bb6c711c9922d77b3 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}",

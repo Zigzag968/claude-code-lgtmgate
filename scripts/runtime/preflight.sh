@@ -141,7 +141,7 @@ branch() {
 
 # already-done (#585): the issue state and the newest merged PR of the branch, over REST. The verdict stays in the engine.
 already_done() {
-  local repo="$REPO" errf="/dev/null" cls="" attempt issue_json="" pulls_json="" state created
+  local repo="$REPO" errf="/dev/null" cls="" issue_json="" pulls_json="" state created
   fail() { jq -nc --arg e "${1:-other}" '{mode:"already-done", checkFailed:true, error:$e}'; }
 
   if [ -z "$repo" ] && [ -n "$WORKTREE" ]; then
@@ -151,7 +151,7 @@ already_done() {
   if [ -n "$WORKTREE" ] && [ -d "$WORKTREE" ] && mkdir -p "$WORKTREE/.pipeline" 2>/dev/null; then errf="$WORKTREE/.pipeline/preflight-already-done.err"; fi
 
   # The issue: one plain retry of the same command, then a tool failure (never an answer).
-  for attempt in 1 2; do
+  for _ in 1 2; do
     cls=""
     issue_json="$(gh api "repos/$repo/issues/$ISSUE" 2>"$errf")" && break
     cls="$(gh_read_class "$(head -c 4000 "$errf" 2>/dev/null)")"; [ -n "$cls" ] || cls="other"
@@ -160,7 +160,7 @@ already_done() {
   if [ -z "$issue_json" ]; then fail "${cls:-other}"; return 0; fi
 
   # The closed PRs whose head is the branch (same-repo heads: head=<owner>:<branch>).
-  for attempt in 1 2; do
+  for _ in 1 2; do
     cls=""
     pulls_json="$(gh api -X GET "repos/$repo/pulls" -f state=closed -f "head=${repo%%/*}:$BRANCH" -f per_page=100 2>"$errf")" && break
     cls="$(gh_read_class "$(head -c 4000 "$errf" 2>/dev/null)")"; [ -n "$cls" ] || cls="other"
