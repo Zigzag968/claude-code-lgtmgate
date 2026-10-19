@@ -46,15 +46,9 @@
       "line": "PROBE name=lines exit=0 sha=da14e2853923ece193a3486a739f1f8c976028ca04facc681b98671e83078760 cmd=c5c02b6f6ba24a10fca25807cc8074aaf1416abf9363a69e1e7c13f8f206e222 json={\"lines\":[\"{\\\"baseBranch\\\":\\\"develop\\\"}\"]}",
       "verify": "VERIFY ok line=PROBE name=lines exit=0 sha=da14e2853923ece193a3486a739f1f8c976028ca04facc681b98671e83078760 cmd=c5c02b6f6ba24a10fca25807cc8074aaf1416abf9363a69e1e7c13f8f206e222 json={\"lines\":[\"{\\\"baseBranch\\\":\\\"develop\\\"}\"]}"
     },
-    "already-done-check-123": {
-      "isAlreadyDone": false,
-      "isIssueClosed": false,
-      "issueState": "OPEN",
-      "issueCreatedAt": "2026-01-01T00:00:00Z",
-      "isMerged": false,
-      "mergedAt": "",
-      "mergedPrClosesIssue": false,
-      "checkFailed": false
+    "probe-123-preflight-already-done-r0": {
+      "line": "PROBE name=preflight exit=0 sha=8654c00fc2a49fe84f32e7de3bfcc8ab9d4b634bce01164cf451470f34cbbb36 cmd=d4c48aa662277ae8acc47851c9957a80f424c6aee62b4b9edb57223c38379974 json={\"mode\":\"already-done\",\"isAlreadyDone\":false,\"isIssueClosed\":false,\"issueState\":\"OPEN\",\"issueCreatedAt\":\"2026-01-01T00:00:00Z\",\"isMerged\":false,\"mergedAt\":\"\",\"mergedPr\":null,\"mergedHeadRef\":\"\",\"mergedPrClosesIssue\":false,\"checkFailed\":false}",
+      "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=8654c00fc2a49fe84f32e7de3bfcc8ab9d4b634bce01164cf451470f34cbbb36 cmd=d4c48aa662277ae8acc47851c9957a80f424c6aee62b4b9edb57223c38379974 json={\"mode\":\"already-done\",\"isAlreadyDone\":false,\"isIssueClosed\":false,\"issueState\":\"OPEN\",\"issueCreatedAt\":\"2026-01-01T00:00:00Z\",\"isMerged\":false,\"mergedAt\":\"\",\"mergedPr\":null,\"mergedHeadRef\":\"\",\"mergedPrClosesIssue\":false,\"checkFailed\":false}"
     },
     "probe-123-git-rev-list-count-worktree-behind-42-r0": {
       "line": "PROBE name=git-rev-list-count exit=0 sha=9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa cmd=d1ca345e79cacf118e64a5df40a87ec31be05bea90c48c93931f5e6436b558e0 json={\"count\":0}",
@@ -96,6 +90,7 @@
       "probe:lines:haiku",
       "probe:lines:haiku",
       "probe:provision:haiku",
+      "probe:preflight:haiku",
       "one-way-door-entry:status"
     ],
     "traceExact": true,
@@ -110,7 +105,7 @@
       "nick-",
       "review-",
       "morgan-",
-      "probe-123-preflight-"
+      "probe-123-preflight-dev-"
     ],
     "logsInclude": [
       "R3 one-way-door at entryStage='dev': planText adds status"

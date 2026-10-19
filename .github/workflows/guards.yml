@@ -115,6 +115,8 @@ jobs:
         run: bash tests/scripts/test-list-active-runs.sh
       - name: merged-dependencies regression test
         run: bash tests/scripts/test-merged-dependencies.sh
+      - name: already-done regression test
+        run: bash tests/scripts/test-already-done.sh
       - name: verify-workflow-launch regression test
         run: bash tests/scripts/test-verify-workflow-launch.sh
       - name: Provision worktree guard

@@ -8,6 +8,7 @@
 # Usage:
 #   bash preflight.sh dev    --worktree DIR --issue N --base BRANCH [--repo OWNER/REPO] [--targets 'a b c'] [--engine true] [--stamp S]
 #   bash preflight.sh branch --worktree DIR [--pr N] [--repo OWNER/REPO] [--stamp S]
+#   bash preflight.sh already-done --worktree DIR --issue N --branch BRANCH [--repo OWNER/REPO] [--stamp S]
 # --stamp is ignored: it only makes the command text differ per launch (probe-run record reuse).
 #
 # dev    -> {"mode":"dev","planStale":[..]|null,"openSubIssues":["12",..]|null,"gitDir":"<abs>"|null,"writable":true|false|null,
@@ -19,11 +20,17 @@
 #   set (tls|auth|rate-limit|not-found|other, scripts/runtime/gh-read-class.sh). The stderr goes to a file under
 #   <wt>/.pipeline/ and is classified; only the class leaves the script, never the text. A silent failure keeps
 #   today's exact line (no key).
-# Requires jq and git (gh for the sub-issue / head-ref reads). bash 3.2 compatible. Never uses rm.
+# already-done -> {"mode":"already-done","isAlreadyDone":B,"isIssueClosed":B,"issueState":"OPEN|CLOSED","issueCreatedAt":"<iso>",
+#            "isMerged":B,"mergedAt":"<iso>"|"","mergedPr":N|null,"mergedHeadRef":"<ref>"|"","mergedPrClosesIssue":B,"checkFailed":false}
+#   or {"mode":"already-done","checkFailed":true,"error":"tls|auth|rate-limit|not-found|other"} (#585). Two REST reads (the
+#   issue, the closed PRs of the branch), each tried twice; a failed read is a tool failure, never an answer. The newest
+#   merged PR of the branch is judged; mergedPrClosesIssue is whether ITS body has a closing keyword before #<issue>.
+#   The verdict (acceptAlreadyDone) stays in the engine. Only the class of a gh failure leaves the script, never the text.
+# Requires jq and git (gh for the sub-issue / head-ref / already-done reads). bash 3.2 compatible. Never uses rm.
 
 MODE="${1:-}"
 [ $# -gt 0 ] && shift
-WORKTREE=""; ISSUE=""; BASE=""; REPO=""; TARGETS=""; PR=""; ENGINE=""
+WORKTREE=""; ISSUE=""; BASE=""; REPO=""; TARGETS=""; PR=""; ENGINE=""; BRANCH=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --worktree) WORKTREE="${2:-}" ;;
@@ -33,6 +40,7 @@ while [ $# -gt 0 ]; do
     --targets) TARGETS="${2:-}" ;;
     --pr) PR="${2:-}" ;;
     --engine) ENGINE="${2:-}" ;;
+    --branch) BRANCH="${2:-}" ;;
     --stamp) ;;
     *) ;;
   esac
@@ -131,9 +139,59 @@ branch() {
     '{mode:"branch", headRef:$h, branchPrefix:$p} + (if $rf == "" then {} else {readFailed:$rf} end)'
 }
 
+# already-done (#585): the issue state and the newest merged PR of the branch, over REST. The verdict stays in the engine.
+already_done() {
+  local repo="$REPO" errf="/dev/null" cls="" issue_json="" pulls_json="" state created
+  fail() { jq -nc --arg e "${1:-other}" '{mode:"already-done", checkFailed:true, error:$e}'; }
+
+  if [ -z "$repo" ] && [ -n "$WORKTREE" ]; then
+    repo="$(cd "$WORKTREE" 2>/dev/null && gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null)"
+  fi
+  if [ -z "$repo" ] || [ -z "$ISSUE" ] || [ -z "$BRANCH" ]; then fail other; return 0; fi
+  if [ -n "$WORKTREE" ] && [ -d "$WORKTREE" ] && mkdir -p "$WORKTREE/.pipeline" 2>/dev/null; then errf="$WORKTREE/.pipeline/preflight-already-done.err"; fi
+
+  # The issue: one plain retry of the same command, then a tool failure (never an answer).
+  for _ in 1 2; do
+    cls=""
+    issue_json="$(gh api "repos/$repo/issues/$ISSUE" 2>"$errf")" && break
+    cls="$(gh_read_class "$(head -c 4000 "$errf" 2>/dev/null)")"; [ -n "$cls" ] || cls="other"
+    issue_json=""
+  done
+  if [ -z "$issue_json" ]; then fail "${cls:-other}"; return 0; fi
+
+  # The closed PRs whose head is the branch (same-repo heads: head=<owner>:<branch>).
+  for _ in 1 2; do
+    cls=""
+    pulls_json="$(gh api -X GET "repos/$repo/pulls" -f state=closed -f "head=${repo%%/*}:$BRANCH" -f per_page=100 2>"$errf")" && break
+    cls="$(gh_read_class "$(head -c 4000 "$errf" 2>/dev/null)")"; [ -n "$cls" ] || cls="other"
+    pulls_json=""
+  done
+  if [ -z "$pulls_json" ]; then fail "${cls:-other}"; return 0; fi
+
+  state="$(printf '%s' "$issue_json" | jq -r '(.state // "") | ascii_upcase')" || { fail other; return 0; }
+  created="$(printf '%s' "$issue_json" | jq -r '.created_at // ""')" || { fail other; return 0; }
+  printf '%s' "$pulls_json" | jq -c --arg state "$state" --arg created "$created" --argjson n "$ISSUE" '
+    ([.[] | select(.merged_at != null)] | sort_by(.merged_at) | last) as $m
+    | ($state == "CLOSED") as $closed
+    | ($m != null) as $merged
+    | (if $merged then (($m.body // "") | test("(?<![A-Za-z0-9_])(close[sd]?|fix(e[sd])?|resolve[sd]?):?[ \t]+#" + ($n|tostring) + "(?![0-9])"; "i")) else false end) as $closes
+    | {mode:"already-done",
+       isAlreadyDone: ($closed or ($merged and $closes)),
+       isIssueClosed: $closed,
+       issueState: $state,
+       issueCreatedAt: $created,
+       isMerged: $merged,
+       mergedAt: (if $merged then $m.merged_at else "" end),
+       mergedPr: (if $merged then $m.number else null end),
+       mergedHeadRef: (if $merged then ($m.head.ref // "") else "" end),
+       mergedPrClosesIssue: $closes,
+       checkFailed: false}' || fail other
+}
+
 case "$MODE" in
   dev) dev 2>/dev/null ;;
   branch) branch 2>/dev/null ;;
+  already-done) already_done 2>/dev/null ;;
   *) printf '{"mode":null}\n' ;;
 esac
 exit 0

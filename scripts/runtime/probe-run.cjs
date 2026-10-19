@@ -117,7 +117,7 @@ const PARSERS = {
     }
     return { error: 'bad-freshness' }
   },
-  // preflight.sh output (E2.4, #83): ONE JSON object, mode dev|branch. Fields that could not be read are
+  // preflight.sh output (E2.4, #83): ONE JSON object, mode dev|branch|already-done. Fields that could not be read are
   // null; a malformed field is normalised to null, never trusted. No regex.
   preflight(stdout) {
     let v
@@ -143,6 +143,24 @@ const PARSERS = {
     if (v.mode === 'branch') {
       // #239: `readFailed` (the named cause of a failed PR read) only from the closed set, no key when absent.
       return { mode: 'branch', headRef: string_(v.headRef), branchPrefix: typeof v.branchPrefix === 'string' ? v.branchPrefix : null, ...(readClass(v.readFailed) ? { readFailed: v.readFailed } : {}) }
+    }
+    if (v.mode === 'already-done') {
+      // #585: the already-done guard's reads. A tool failure keeps only its named class; every malformed
+      // field normalises to the NON-accepting value (false, null, empty), never to one acceptAlreadyDone accepts.
+      if (v.checkFailed === true) return { mode: 'already-done', checkFailed: true, ...(readClass(v.error) ? { error: v.error } : {}) }
+      return {
+        mode: 'already-done',
+        isAlreadyDone: v.isAlreadyDone === true,
+        isIssueClosed: v.isIssueClosed === true,
+        issueState: string_(v.issueState),
+        issueCreatedAt: string_(v.issueCreatedAt),
+        isMerged: v.isMerged === true,
+        mergedAt: typeof v.mergedAt === 'string' ? v.mergedAt : '',
+        mergedPr: Number.isInteger(v.mergedPr) && v.mergedPr >= 1 ? v.mergedPr : null,
+        mergedHeadRef: typeof v.mergedHeadRef === 'string' ? v.mergedHeadRef : '',
+        mergedPrClosesIssue: v.mergedPrClosesIssue === true,
+        checkFailed: false,
+      }
     }
     return { error: 'bad-mode' }
   },

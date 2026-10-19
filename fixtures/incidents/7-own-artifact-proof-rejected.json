@@ -25,15 +25,9 @@
       "line": "PROBE name=provision exit=0 sha=df70c44d40d7d0dfa302aadd6fc5a8b3ef14fa8ca16cf9856f73932abae06a33 cmd=5245918d5bf10c9e32a649b29b25f6e8fedfabf868c4db72ad0238e9d6e98078 json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}",
       "verify": "VERIFY ok line=PROBE name=provision exit=0 sha=df70c44d40d7d0dfa302aadd6fc5a8b3ef14fa8ca16cf9856f73932abae06a33 cmd=5245918d5bf10c9e32a649b29b25f6e8fedfabf868c4db72ad0238e9d6e98078 json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}"
     },
-    "already-done-check-123": {
-      "isAlreadyDone": false,
-      "isIssueClosed": false,
-      "isMerged": false,
-      "mergedAt": "",
-      "issueState": "_",
-      "issueCreatedAt": "_",
-      "mergedPrClosesIssue": false,
-      "checkFailed": false
+    "probe-123-preflight-already-done-r0": {
+      "line": "PROBE name=preflight exit=0 sha=a0350b905a12c8539835966258bf4e77b2ac7a6e555d53eb245209e8e73a8305 cmd=07bd731f6325e2aa322e79fb0b6d1d1bd3e0b03cd9edf939ba4fddae8607678f json={\"mode\":\"already-done\",\"isAlreadyDone\":false,\"isIssueClosed\":false,\"issueState\":\"_\",\"issueCreatedAt\":\"_\",\"isMerged\":false,\"mergedAt\":\"\",\"mergedPr\":null,\"mergedHeadRef\":\"\",\"mergedPrClosesIssue\":false,\"checkFailed\":false}",
+      "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=a0350b905a12c8539835966258bf4e77b2ac7a6e555d53eb245209e8e73a8305 cmd=07bd731f6325e2aa322e79fb0b6d1d1bd3e0b03cd9edf939ba4fddae8607678f json={\"mode\":\"already-done\",\"isAlreadyDone\":false,\"isIssueClosed\":false,\"issueState\":\"_\",\"issueCreatedAt\":\"_\",\"isMerged\":false,\"mergedAt\":\"\",\"mergedPr\":null,\"mergedHeadRef\":\"\",\"mergedPrClosesIssue\":false,\"checkFailed\":false}"
     },
     "probe-123-pr-write-run-state-review-r0": {
       "line": "PROBE name=pr-write exit=0 sha=88f2b82c0ca3321187f854a28473fd9c3dc8de9638ad0e324e1f0986507e4526 cmd=b547e8a96599c1d4b3c8383ae2e28f05a5a72145566fbd04316178649412628d json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}",
@@ -95,6 +89,7 @@
       "probe:lines:haiku",
       "probe:lines:haiku",
       "probe:provision:haiku",
+      "probe:preflight:haiku",
       "probe:pr-write:haiku",
       "probe:preflight:haiku",
       "branch-check-reconciled",
@@ -109,7 +104,7 @@
       "probe-123-lines-plugin-version-r0",
       "probe-123-lines-config-project-recheck-r0",
       "probe-123-provision-provision-r0",
-      "already-done-check-123",
+      "probe-123-preflight-already-done-r0",
       "probe-123-pr-write-run-state-review-r0",
       "probe-123-preflight-branch-r0",
       "probe-123-git-rev-list-count-worktree-behind-42-r0",

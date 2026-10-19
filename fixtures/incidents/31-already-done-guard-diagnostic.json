@@ -24,17 +24,9 @@
       "line": "PROBE name=provision exit=0 sha=df70c44d40d7d0dfa302aadd6fc5a8b3ef14fa8ca16cf9856f73932abae06a33 cmd=5245918d5bf10c9e32a649b29b25f6e8fedfabf868c4db72ad0238e9d6e98078 json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}",
       "verify": "VERIFY ok line=PROBE name=provision exit=0 sha=df70c44d40d7d0dfa302aadd6fc5a8b3ef14fa8ca16cf9856f73932abae06a33 cmd=5245918d5bf10c9e32a649b29b25f6e8fedfabf868c4db72ad0238e9d6e98078 json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}"
     },
-    "already-done-check-123": {
-      "isAlreadyDone": true,
-      "isIssueClosed": false,
-      "issueState": "_",
-      "isMerged": true,
-      "mergedAt": "2026-07-31T10:52:36Z",
-      "mergedPr": 446,
-      "mergedHeadRef": "features/issue-123",
-      "mergedPrClosesIssue": true,
-      "issueCreatedAt": "_",
-      "checkFailed": false
+    "probe-123-preflight-already-done-r0": {
+      "line": "PROBE name=preflight exit=0 sha=cac4461bdb8850fc1b8f925395c0f462e51b2e413c0f023755744d75b8779385 cmd=07bd731f6325e2aa322e79fb0b6d1d1bd3e0b03cd9edf939ba4fddae8607678f json={\"mode\":\"already-done\",\"isAlreadyDone\":true,\"isIssueClosed\":false,\"issueState\":\"_\",\"issueCreatedAt\":\"_\",\"isMerged\":true,\"mergedAt\":\"2026-07-31T10:52:36Z\",\"mergedPr\":446,\"mergedHeadRef\":\"features/issue-123\",\"mergedPrClosesIssue\":true,\"checkFailed\":false}",
+      "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=cac4461bdb8850fc1b8f925395c0f462e51b2e413c0f023755744d75b8779385 cmd=07bd731f6325e2aa322e79fb0b6d1d1bd3e0b03cd9edf939ba4fddae8607678f json={\"mode\":\"already-done\",\"isAlreadyDone\":true,\"isIssueClosed\":false,\"issueState\":\"_\",\"issueCreatedAt\":\"_\",\"isMerged\":true,\"mergedAt\":\"2026-07-31T10:52:36Z\",\"mergedPr\":446,\"mergedHeadRef\":\"features/issue-123\",\"mergedPrClosesIssue\":true,\"checkFailed\":false}"
     }
   },
   "expect": {
@@ -43,14 +35,15 @@
       "branch-prefix-fallback-default",
       "probe:lines:haiku",
       "probe:lines:haiku",
-      "probe:provision:haiku"
+      "probe:provision:haiku",
+      "probe:preflight:haiku"
     ],
     "traceExact": true,
     "callLabels": [
       "probe-123-lines-plugin-version-r0",
       "probe-123-lines-config-project-recheck-r0",
       "probe-123-provision-provision-r0",
-      "already-done-check-123"
+      "probe-123-preflight-already-done-r0"
     ],
     "resultIncludes": {
       "guard": {
@@ -63,6 +56,17 @@
     },
     "logsInclude": [
       "mergedPr=446"
+    ],
+    "promptIncludes": [
+      {
+        "label": "probe-123-preflight-already-done-r0",
+        "nth": 0,
+        "includes": [
+          "already-done",
+          "'--branch'",
+          "'features/issue-123'"
+        ]
+      }
     ]
   }
 }
