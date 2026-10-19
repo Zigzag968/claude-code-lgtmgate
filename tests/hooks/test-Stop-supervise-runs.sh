@@ -259,6 +259,60 @@ rc23=$?
 none23=1; [ ! -e "$fixture23/.pipeline/nope.json.abandoned" ] && none23=0
 assert_exit "abandon-run.sh missing file refused, no abandoned sidecar" 1 "$((rc23 + none23))"
 
+# --- cases 24-27: the stale message names the per-run abandon command (issue #584) ---
+
+# hook_stderr <fixture_dir> -> prints the hook's stderr, then a final line "rc=<exit code>"
+hook_stderr() {
+  CLAUDE_PROJECT_DIR="$1" CLAUDE_PROJECTS_DIR="$1/projects" bash "$HOOK" 2>&1 >/dev/null
+  echo "rc=$?"
+}
+
+# case 24: idle review run -> 2, the message carries the exact command with the absolute record path and the marker semantics
+fixture24="$(new_fixture)"
+state24="$(write_state "$fixture24" "run.json" '{"status":"review"}')"
+backdate_mtime "$state24" $((6853 * 60))
+err24="$(hook_stderr "$fixture24")"
+miss24=0
+for needle24 in \
+  "rc=2" \
+  "Pipeline run(s) in flight with no activity" \
+  "bash $ABANDON '$state24'" \
+  "never deletes or moves" \
+  "any session of this repository" \
+  "remove"; do
+  case "$err24" in *"$needle24"*) ;; *) miss24=$((miss24 + 1)); echo "  missing in output: $needle24" ;; esac
+done
+assert_exit "idle review run: message names abandon-run.sh command, record path and marker semantics" 0 "$miss24"
+
+# case 25: stale run marked with abandon-run.sh first -> 0, empty stderr
+fixture25="$(new_fixture)"
+state25="$(write_state "$fixture25" "run.json" '{"status":"review"}')"
+backdate_mtime "$state25" $((6853 * 60))
+bash "$ABANDON" "$state25" >/dev/null 2>&1
+err25="$(hook_stderr "$fixture25")"
+empty25=1; [ "$err25" = "rc=0" ] && empty25=0
+assert_exit "abandoned idle run stays silent" 0 "$empty25"
+
+# case 26: fresh review run -> 0, empty stderr
+fixture26="$(new_fixture)"
+state26="$(write_state "$fixture26" "run.json" '{"status":"review"}')"
+backdate_mtime "$state26" 0
+err26="$(hook_stderr "$fixture26")"
+empty26=1; [ "$err26" = "rc=0" ] && empty26=0
+assert_exit "fresh run still gets no stale message" 0 "$empty26"
+
+# case 27: fresh in-progress run with a contaminated transcript -> 2, contamination message without the abandon command
+fixture27="$(new_fixture)"
+state27="$(write_state "$fixture27" "run.json" '{"status":"in-progress","runId":"wf_case27-ddd"}')"
+backdate_mtime "$state27" 0
+write_transcript "$fixture27" "sess27" "wf_case27-ddd" 1 1 1 >/dev/null
+err27="$(hook_stderr "$fixture27")"
+ok27=1
+case "$err27" in
+  *"rc=2"*"Contamination detected"*|*"Contamination detected"*"rc=2"*) case "$err27" in *"abandon-run.sh"*) ;; *) ok27=0 ;; esac ;;
+esac
+assert_exit "fresh contaminated run keeps its current message" 0 "$((ok27 == 0 ? 0 : 1))"
+
 # --- summary -------------------------------------------------------------
 
 echo "${pass_count}/${total} PASS"
