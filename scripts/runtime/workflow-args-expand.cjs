@@ -4,7 +4,7 @@
 // PreToolUse(Workflow) expansion (#520, epic #528): the Lead passes `projectSpecificsRef {refSha, fp12}` and
 // `configRef {path, digest64}` instead of retyping the whole objects; this script verifies them, expands them to the
 // full objects through `hookSpecificOutput.updatedInput`, and (for a launch of this engine) swaps the engine for a copy
-// whose workflow name is the issue title and whose description carries the issue number (scripts/lib/launch-file.cjs, under .pipeline/launch/).
+// whose `meta` name reads `#<N> - <issue title>`, title `#<N> - lgtmgate` and description `<issue title>` (scripts/lib/launch-file.cjs, under .pipeline/launch/).
 // Deterministic: git and the assembler run here, no model, nothing is asked. Scope of integrity: copy fidelity (the
 // objects the engine reads are the ones the references name), not adversarial integrity.
 //
@@ -16,7 +16,7 @@
 // equals planRef.digest (the digest the engine pinned when it returned the plan); every failure is `plan-ref-mismatch`.
 // Run state (#545): a launch of the engine that carries `title`, `parallel` or `decided` is also ours. The hook deletes any typed
 // `merged`/`epic`, then writes its own from scripts/runtime/merged-dependencies.cjs (the `depends-on:` issues closed as completed,
-// and the epic parent; fail open: a failure writes no key). `title` goes to the launch file name and description; `parallel` is
+// and the epic parent; fail open: a failure writes no key). `title` goes to the launch file labels (name, title, description); `parallel` is
 // compared with the active runs as an advisory, never a refusal (two simultaneous launches cannot see each other's state file).
 // Launch facts (#581): the hook also deletes any typed `launchFacts` and writes the plugin-version, session-root and config
 // baseBranch answers it computes itself (scripts/runtime/launch-facts.cjs, bound to the launch by a digest; fail open).
@@ -274,7 +274,7 @@ function contextualScript(toolInput, arguments_, projectDirectory, pluginRoot, t
   if (made && crypto.createHash('sha256').update(source, 'utf8').digest('hex').slice(0, 12) !== made[2]) {
     throw new Deny(`the launch file ${nodePath.basename(given)} was modified after it was written; delete it (scripts/runtime/clean-launch-files.cjs) and launch again`)
   }
-  const expected = launch.retitle(source, issue, { title, brief: arguments_.brief, pr: Number(arguments_.prNumber) })
+  const expected = launch.retitle(source, issue, { title, brief: arguments_.brief })
   if (expected === null) return null
   const file = launch.launchPath(projectDirectory, issue, expected)
   if (!isIgnored(projectDirectory, nodePath.relative(projectDirectory, file))) return null
