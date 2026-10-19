@@ -27,9 +27,10 @@
 # that SAME run to at most once per threshold window, so an already-flagged
 # stale run doesn't re-block every single turn.
 #
-# Owner escape hatch: an `.abandoned` sidecar (written by scripts/abandon-run.sh,
-# never by this hook) makes the hook skip that run entirely. Nothing is deleted;
-# remove the sidecar to report the run again.
+# Escape hatch for an idle run: an `.abandoned` sidecar (written by scripts/abandon-run.sh,
+# never by this hook) makes the hook skip that run entirely. Any session of the
+# repository may place it, the owner or one inheriting the run, because the run is
+# idle. Nothing is deleted or moved; remove the sidecar to report the run again.
 #
 # Optional field: "runId" (top-level, string, e.g. "wf_<hex>-<hex>"). When a
 # whitelisted in-flight state file carries it, the hook opportunistically
@@ -58,7 +59,7 @@ CLAUDE_PROJECTS_DIR="${CLAUDE_PROJECTS_DIR:-$HOME/.claude/projects}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VERIFY_SCRIPT="$SCRIPT_DIR/../scripts/verify-workflow-launch.sh"
 [ -x "$VERIFY_SCRIPT" ] || VERIFY_SCRIPT=""
-ABANDON_CMD="$SCRIPT_DIR/../scripts/abandon-run.sh"
+ABANDON_CMD="$(cd "$SCRIPT_DIR/.." && pwd)/scripts/abandon-run.sh"
 
 # Nothing to supervise if the project doesn't use the .pipeline/ convention.
 [ -d "$PIPELINE_DIR" ] || exit 0
@@ -107,6 +108,7 @@ resolve_transcript_dir() {
 
 now="$(date +%s)"
 stale_lines=""
+abandon_lines=""
 any_fresh_nudge=0
 contam_lines=""
 any_fresh_contam=0
@@ -159,6 +161,7 @@ while IFS= read -r -d '' state_file; do
 
   age_min=$((age / 60))
   stale_lines="${stale_lines}${rel_path} (status=${status:-unknown}, idle ${age_min}m)\n"
+  abandon_lines="${abandon_lines}  bash ${ABANDON_CMD} '${state_file}'\n"
 
   marker="${state_file}.nudged"
   marker_mtime="$(file_mtime "$marker" 2>/dev/null || echo 0)"
@@ -173,7 +176,7 @@ done < <(find "$PIPELINE_DIR" -type f -name '*.json' -print0 2>/dev/null)
 [ "$any_fresh_nudge" -eq 1 ] || [ "$any_fresh_contam" -eq 1 ] || exit 0  # everything currently flagged was already nudged recently
 
 msg=""
-[ -z "$stale_lines" ] || msg="${msg}Pipeline run(s) in flight with no activity (threshold ${STALE_MINUTES}m):\n${stale_lines}Do a guard round: resume if resumable / block / escalate.\nA run left on purpose: bash ${ABANDON_CMD} <state-file> (writes <state-file>.abandoned, deletes nothing; remove that file to report the run again).\n"
+[ -z "$stale_lines" ] || msg="${msg}Pipeline run(s) in flight with no activity (threshold ${STALE_MINUTES}m):\n${stale_lines}Do a guard round: resume if resumable / block / escalate.\nIdle run you did not start (inherited from an earlier session)? Because it is idle, any session of this repository may mark it abandoned, whether or not it started the run:\n${abandon_lines}The marker only writes <state-file>.abandoned: it never deletes or moves the record; remove that file to report the run again.\n"
 [ -z "$contam_lines" ] || msg="${msg}Contamination detected (harness stale-message-injection, cf anthropics/claude-code#96640) on:\n${contam_lines}Do NOT trust the result of the affected agent without manual re-verification.\n"
 printf '%b' "$msg" >&2
 exit 2
