@@ -263,8 +263,12 @@ assert_exit "abandon-run.sh missing file refused, no abandoned sidecar" 1 "$((rc
 
 # hook_stderr <fixture_dir> -> prints the hook's stderr, then a final line "rc=<exit code>"
 hook_stderr() {
-  CLAUDE_PROJECT_DIR="$1" CLAUDE_PROJECTS_DIR="$1/projects" bash "$HOOK" 2>&1 >/dev/null
-  echo "rc=$?"
+  local errfile rc
+  errfile="$(mktemp -p "$FIXTURE_ROOT" "stop-supervise-err.XXXXXX")"
+  CLAUDE_PROJECT_DIR="$1" CLAUDE_PROJECTS_DIR="$1/projects" bash "$HOOK" >/dev/null 2>"$errfile"
+  rc=$?
+  cat "$errfile"
+  echo "rc=$rc"
 }
 
 # case 24: idle review run -> 2, the message carries the exact command with the absolute record path and the marker semantics
