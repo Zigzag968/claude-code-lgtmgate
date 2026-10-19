@@ -43,7 +43,9 @@ An anti-spam sidecar (`<state-file>.nudged`) rate-limits re-nudging the **same**
 once per threshold window.
 
 A run left on purpose: `bash scripts/abandon-run.sh <state-file>` writes `<state-file>.abandoned`;
-the hook (and `scripts/list-active-runs.sh`) then skips that run. Nothing is deleted or edited;
+the hook (and `scripts/list-active-runs.sh`) then skips that run. The hook message prints this
+command with each idle run's record path; any session of the repository may place the marker on an
+idle run, including one it did not start. The marker never deletes or moves the record;
 `rm <state-file>.abandoned` reports the run again. Unrelated to the `abandoned` status of the
 cross-repo `blockedBy` check.
 
