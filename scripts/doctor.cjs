@@ -28,8 +28,43 @@ const USAGE = 'usage: doctor.cjs [--root <project>] [--plugin-root <dir>] [--tar
 
 class UsageError extends Error {}
 
+function realpathSafe(input) {
+  const resolved = path.resolve(input)
+  return fs.realpathSync.native ? fs.realpathSync.native(resolved) : fs.realpathSync(resolved)
+}
+
+function resolveExistingDirectory(input, flagName) {
+  let real
+  try {
+    real = realpathSafe(input)
+  } catch (error) {
+    throw new UsageError(`${flagName} must point to an existing directory: ${input}`)
+  }
+  let stat
+  try {
+    stat = fs.statSync(real)
+  } catch (error) {
+    throw new UsageError(`${flagName} must point to an existing directory: ${input}`)
+  }
+  if (!stat.isDirectory()) throw new UsageError(`${flagName} must point to a directory: ${input}`)
+  return real
+}
+
+function assertWithinBase(baseDir, candidatePath, label) {
+  const relative = path.relative(baseDir, candidatePath)
+  if (relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative))) return
+  throw new UsageError(`${label} must stay inside ${baseDir}: ${candidatePath}`)
+}
+
 function parseArguments(argv) {
-  const options = { root: process.cwd(), pluginRoot: path.join(__dirname, '..'), target: null, base: null, minFreeGb: DEFAULT_MIN_FREE_GB, help: false }
+  const options = {
+    root: resolveExistingDirectory(process.cwd(), '--root'),
+    pluginRoot: resolveExistingDirectory(path.join(__dirname, '..'), '--plugin-root'),
+    target: null,
+    base: null,
+    minFreeGb: DEFAULT_MIN_FREE_GB,
+    help: false
+  }
   for (let index = 0; index < argv.length; index++) {
     const argument = argv[index]
     const value = () => {
@@ -37,8 +72,8 @@ function parseArguments(argv) {
       return argv[++index]
     }
     if (argument === '--help' || argument === '-h') options.help = true
-    else if (argument === '--root') options.root = path.resolve(value())
-    else if (argument === '--plugin-root') options.pluginRoot = path.resolve(value())
+    else if (argument === '--root') options.root = resolveExistingDirectory(value(), '--root')
+    else if (argument === '--plugin-root') options.pluginRoot = resolveExistingDirectory(value(), '--plugin-root')
     else if (argument === '--target') options.target = value()
     else if (argument === '--base') options.base = value()
     else if (argument === '--min-free-gb') {
@@ -113,7 +148,8 @@ function readJson(file) {
 function checkInstalls(report, context) {
   const { options, target } = context
   if (!target) return report.notRun('installs', `cannot read the target version from ${path.join(options.pluginRoot, '.claude-plugin/plugin.json')} (pass --target <version>)`)
-  const script = path.join(options.pluginRoot, 'scripts/plugin-versions.sh')
+  const script = realpathSafe(path.join(options.pluginRoot, 'scripts/plugin-versions.sh'))
+  assertWithinBase(options.pluginRoot, script, 'plugin script')
   const result = run('bash', [script, '--loaded-root', options.pluginRoot, '--project', options.root, '--target', target], options.root)
   if (result.failed) return report.notRun('installs', result.failed)
   if (result.status !== 0 && result.status !== 1) return report.notRun('installs', `plugin-versions.sh exit ${result.status}: ${firstLine(result.stderr, result.stdout)}`)
@@ -251,6 +287,8 @@ function main(argv) {
     process.stdout.write(helpText())
     return 0
   }
+  options.root = resolveExistingDirectory(options.root, '--root')
+  options.pluginRoot = resolveExistingDirectory(options.pluginRoot, '--plugin-root')
   const manifest = readJson(path.join(options.pluginRoot, '.claude-plugin/plugin.json'))
   const target = options.target || (manifest && typeof manifest.version === 'string' && manifest.version ? manifest.version : null)
   const config = readJson(path.join(options.root, '.claude/pipeline.config.json'))
