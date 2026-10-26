@@ -17,7 +17,7 @@ printf '%s' '<prompt>' | claude --print --model claude-sonnet-5 --plugin-dir <WT
 ```
 
 The prompt MUST arrive on stdin — a trailing prompt arg after `--allowed-tools` errors *"Input
-must be provided"* (recorded on claude-agent-pipeline#50). Never publish to test: run the
+must be provided"*. Never publish to test: run the
 `--plugin-dir` invocation and inspect its own output.
 
 **`--plugin-dir` collision datum (P3, this session).** A `--plugin-dir` tree *contributes*
@@ -47,7 +47,7 @@ loop. §4 (Release) governs what IS committed.
 The canonical pipeline component is `lgtmgate:deliver-pipeline` (`workflows/` is a
 default-scanned plugin directory). **Always use the namespaced name** — a bare `deliver-pipeline`
 can be shadowed by another `--plugin-dir` tree or a different installed plugin of the same
-component name (claude-agent-pipeline#526's trap, inverted).
+component name.
 
 Until every consumer project migrates (S4), a not-yet-migrated project keeps its own copy at
 `.claude/workflows/deliver-pipeline.js`, launched by its explicit `scriptPath`, never by a bare or
