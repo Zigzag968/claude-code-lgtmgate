@@ -15,7 +15,7 @@
 [![Tests](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FZigzag968%2Fclaude-code-lgtmgate%2Fbadges%2Ftests.json)](#engineering-highlights)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/Zigzag968/claude-code-lgtmgate/badge)](https://scorecard.dev/viewer/?uri=github.com/Zigzag968/claude-code-lgtmgate)
 
-lgtmgate is a Claude Code plugin that takes a GitHub issue through to a merge-ready pull request. A diagnosis agent checks the issue is real before anyone writes a plan for it. A reviewer checks each item on the acceptance checklist against actual evidence, a command's output or an artifact, before approving. None of the agents merge anything themselves, including when this repo ships its own releases.
+lgtmgate is a Claude Code plugin that takes a GitHub issue through to a merge-ready pull request. A diagnosis agent checks the issue is real before anyone writes a plan for it. A reviewer checks each item on the acceptance checklist against actual evidence, a command's output or an artifact, before approving. The pipeline's agents (Theo, Mia, Sam, Nick and Morgan) never merge. Merging is a separate step: the Lead, the interactive Claude session orchestrating the run, executes it on a human's explicit go-ahead, and the merge hook and script refuse it while any acceptance box is unchecked. That holds for this repo's own releases too.
 
 ## Status
 
