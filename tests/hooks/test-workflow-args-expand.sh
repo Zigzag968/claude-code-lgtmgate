@@ -284,8 +284,9 @@ expect_deny_code "run-state-title-deny-newline" "launch-argument-invalid" "newli
 GHBIN="$TMP/ghbin"; mkdir -p "$GHBIN"
 cat > "$GHBIN/gh" <<'STUB'
 #!/usr/bin/env bash
+[ "${GH_STUB_FAIL:-}" = "1" ] && exit 1
 case "$2" in
-  repos/acme/widgets/issues/520) echo '{"number":520,"state":"open","body":"x\ndepends-on: #530, #531, #532\n"}' ;;
+  repos/acme/widgets/issues/520) printf '{"number":520,"state":"open","title":"%s","body":"x\\ndepends-on: #530, #531, #532\\n"}\n' "${GH_STUB_TITLE:-Derive the run title}" ;;
   repos/acme/widgets/issues/530|repos/acme/widgets/issues/531|repos/acme/widgets/issues/532) echo '{"state":"closed","state_reason":"completed"}' ;;
   repos/acme/widgets/issues/520/parent) echo '{"number":528}' ;;
   *) exit 1 ;;
@@ -297,6 +298,16 @@ mk_input "$RS2" name ref; PATH="$GHBIN:$PATH" hook "$RS2"
 expect "run-state-merged-derived" 0 'JSON.stringify(j.hookSpecificOutput.updatedInput.args.merged) === "[530,531,532]" && j.hookSpecificOutput.updatedInput.args.epic === 528'
 mk_input "$RS2" name ref 'a.merged = [1, 2]; a.epic = 9'; PATH="$GHBIN:$PATH" hook "$RS2"
 expect "run-state-merged-overwrites-typed" 0 'JSON.stringify(j.hookSpecificOutput.updatedInput.args.merged) === "[530,531,532]" && j.hookSpecificOutput.updatedInput.args.epic === 528'
+mk_input "$RS2" name ref 'a.title = "Review PR 9 words"'; PATH="$GHBIN:$PATH" hook "$RS2"
+expect "run-state-title-from-issue (a typed title that differs is replaced by the issue title)" 0 'j.hookSpecificOutput.updatedInput.args.title === "Derive the run title"'
+if grep -qF "  name: 'Derive the run title'," "$(script_of)"; then pass "run-state-title-from-issue-in-launch-file"; else fail "run-state-title-from-issue-in-launch-file"; fi
+LONG_TITLE="Hook sets the run title from the issue title and cuts it when it is far too long for one line"
+mk_input "$RS2" name ref 'a.title = "typed"'; GH_STUB_TITLE="$LONG_TITLE" PATH="$GHBIN:$PATH" hook "$RS2"
+expect "run-state-title-cut-word-boundary" 0 '(() => { const t = j.hookSpecificOutput.updatedInput.args.title; const src = "'"$LONG_TITLE"'"; const body = t.slice(0, -1); return Buffer.byteLength(t) <= 80 && t.endsWith("…") && src.startsWith(body) && src[body.length] === " " })()'
+mk_input "$RS2" name ref 'a.title = "Typed title kept"'; GH_STUB_FAIL=1 PATH="$GHBIN:$PATH" hook "$RS2"
+expect "run-state-title-fail-open (the issue cannot be read: the typed title is kept, no refusal)" 0 'j.hookSpecificOutput.updatedInput.args.title === "Typed title kept" && !("permissionDecision" in j.hookSpecificOutput)'
+mk_input "$RS2" name ref 'a.title = "x".repeat(81)'; GH_STUB_FAIL=1 PATH="$GHBIN:$PATH" hook "$RS2"
+expect_deny_code "run-state-title-fallback-still-validated (unreadable issue, over-long typed title: refused as before)" "launch-argument-invalid" "81 bytes"
 mk_input "$RS1" name ref 'a.merged = [1, 2]; a.epic = 9'; PATH="$GHBIN:$PATH" hook "$RS1"
 expect "run-state-merged-typed-dropped-without-repo (no origin, no config.repo: no derived key, the typed ones are gone)" 0 '!("merged" in j.hookSpecificOutput.updatedInput.args) && !("epic" in j.hookSpecificOutput.updatedInput.args)'
 

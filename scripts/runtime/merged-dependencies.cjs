@@ -8,12 +8,16 @@
 // Usage: node merged-dependencies.cjs --issue <N> --repo <owner/repo>
 // Reads the body of issue N, takes the line that starts with `depends-on:` and its `#<n>` tokens (at most 20; `none` or no
 // line -> none), keeps each dependency that is closed with state_reason `completed`, and asks `issues/<N>/parent` for the epic.
-// Stdout: one JSON line, `{"merged":[530,531],"epic":528}` with only the keys that have a value, nothing at all when both are
-// empty. Exit 0 on every data or network problem (fail open: the launch goes on without the derived lines), 2 on a usage error.
+// Also the issue title (#599), cut to 80 bytes at a word boundary with an ellipsis, from the same read of the issue.
+// Stdout: one JSON line, `{"merged":[530,531],"epic":528,"title":"..."}` with only the keys that have a value, nothing at all
+// when all are empty. Exit 0 on every data or network problem (fail open: the launch goes on without the derived lines), 2 on a usage error.
 // Calls `gh` by name from PATH (the tests stub it). Writes no file. No GraphQL, no model.
 
 const { execFileSync } = require('child_process')
 
+const { cutTitle } = require('../lib/launch-file.cjs')
+
+const TITLE_BYTES = 80
 const MAX_DEPENDENCIES = 20
 const TIMEOUT_MS = 6000
 
@@ -65,6 +69,10 @@ function main(list) {
   if (!Number.isInteger(issue) || issue < 1 || typeof repository !== 'string' || !/^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/.test(repository)) return usage()
   const result = {}
   const own = rest(`repos/${repository}/issues/${issue}`)
+  if (own && typeof own.title === 'string') {
+    const title = cutTitle(own.title, TITLE_BYTES)
+    if (title !== '') result.title = title
+  }
   const merged = []
   for (const dependency of dependenciesOf(own ? own.body : null)) {
     const held = rest(`repos/${repository}/issues/${dependency}`)

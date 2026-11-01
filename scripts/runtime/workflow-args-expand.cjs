@@ -16,7 +16,9 @@
 // equals planRef.digest (the digest the engine pinned when it returned the plan); every failure is `plan-ref-mismatch`.
 // Run state (#545): a launch of the engine that carries `title`, `parallel` or `decided` is also ours. The hook deletes any typed
 // `merged`/`epic`, then writes its own from scripts/runtime/merged-dependencies.cjs (the `depends-on:` issues closed as completed,
-// and the epic parent; fail open: a failure writes no key). `title` goes to the launch file name and description; `parallel` is
+// and the epic parent; fail open: a failure writes no key). `title` (#599) is derived the same way, from the issue title cut to 80
+// bytes at a word boundary, and replaces the typed one; the typed value is only the fallback when the issue cannot be read. `title`
+// goes to the launch file name and description; `parallel` is
 // compared with the active runs as an advisory, never a refusal (two simultaneous launches cannot see each other's state file).
 // Launch facts (#581): the hook also deletes any typed `launchFacts` and writes the plugin-version, session-root and config
 // baseBranch answers it computes itself (scripts/runtime/launch-facts.cjs, bound to the launch by a digest; fail open).
@@ -222,6 +224,7 @@ function withDerivedState(expanded, pluginRoot) {
   if (!parsed || typeof parsed !== 'object') return out
   if (Array.isArray(parsed.merged) && parsed.merged.length > 0 && parsed.merged.length <= 20 && parsed.merged.every((n) => Number.isInteger(n) && n > 0)) out.merged = parsed.merged
   if (Number.isInteger(parsed.epic) && parsed.epic > 0) out.epic = parsed.epic
+  if (typeof parsed.title === 'string' && parsed.title.trim() !== '' && utf8Bytes(parsed.title) <= TITLE_MAX_BYTES && !/[\u0000-\u001f\u007f]/.test(parsed.title)) out.title = parsed.title
   return out
 }
 
@@ -305,8 +308,8 @@ function decide(input, environment) {
   const projectDirectory = environment.CLAUDE_PROJECT_DIR || input.cwd
   if (typeof projectDirectory !== 'string' || projectDirectory === '') throw new Deny('the project directory is unknown')
   const pluginRoot = nodePath.resolve(__dirname, '..', '..')
-  const title = validateTitle(arguments_)
   const expanded = withDerivedState(expandedArguments(arguments_, projectDirectory, pluginRoot), pluginRoot)
+  const title = validateTitle(expanded)
   const updated = { ...toolInput, args: isString ? JSON.stringify(expanded) : expanded }
   const script = contextualScript(toolInput, expanded, projectDirectory, pluginRoot, title)
   if (script !== null) {
