@@ -1,0 +1,72 @@
+{
+  "name": "585-already-done-branch-override",
+  "note": "The already-done guard reads the merged PR of the branch the run expects. With branchOverride the probe command names that exact branch, not branchPrefix + issue-N, and the merged PR on it is accepted as already-done. The guard script output is recorded; the merged PR numbers and dates are synthetic.",
+  "args": {
+    "pluginRoot": "_",
+    "issue": 123,
+    "brief": "_",
+    "worktreePath": "_",
+    "config": {},
+    "mode": "semi",
+    "entryStage": "dev",
+    "planText": "_\n_\n\n_\n- [ ] <!-- ac:1 --> `ls -l report.txt` shows a file\n",
+    "branchOverride": "feat/issue-123-part-2"
+  },
+  "calls": {
+    "probe-123-lines-plugin-version-r0": {
+      "line": "PROBE name=lines exit=0 sha=dc3e556a33de82f91e3d3c086e61b607988b397e0c834aee0aa7848c6b3354d4 cmd=4ecc52a6072c98feaf1a76e8937f1ee538d8dcf775794e2cca42c443ee2a2818 json={\"lines\":[\"PLUGIN-VERSION:@@ENGINE_VERSION@@\"]}",
+      "verify": "VERIFY ok line=PROBE name=lines exit=0 sha=dc3e556a33de82f91e3d3c086e61b607988b397e0c834aee0aa7848c6b3354d4 cmd=4ecc52a6072c98feaf1a76e8937f1ee538d8dcf775794e2cca42c443ee2a2818 json={\"lines\":[\"PLUGIN-VERSION:@@ENGINE_VERSION@@\"]}"
+    },
+    "probe-123-lines-config-project-recheck-r0": {
+      "line": "PROBE name=lines exit=0 sha=209bf7c018a5733f7991a3cb09f07e5d2bce2233977d4a3c96a19850595b5430 cmd=a8f1675e83c53c6c76fd0e3d6016e032e169160ab5d875e880b78372b42c2e92 json={\"lines\":[]}",
+      "verify": "VERIFY ok line=PROBE name=lines exit=0 sha=209bf7c018a5733f7991a3cb09f07e5d2bce2233977d4a3c96a19850595b5430 cmd=a8f1675e83c53c6c76fd0e3d6016e032e169160ab5d875e880b78372b42c2e92 json={\"lines\":[]}"
+    },
+    "probe-123-provision-provision-r0": {
+      "line": "PROBE name=provision exit=0 sha=df70c44d40d7d0dfa302aadd6fc5a8b3ef14fa8ca16cf9856f73932abae06a33 cmd=5245918d5bf10c9e32a649b29b25f6e8fedfabf868c4db72ad0238e9d6e98078 json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}",
+      "verify": "VERIFY ok line=PROBE name=provision exit=0 sha=df70c44d40d7d0dfa302aadd6fc5a8b3ef14fa8ca16cf9856f73932abae06a33 cmd=5245918d5bf10c9e32a649b29b25f6e8fedfabf868c4db72ad0238e9d6e98078 json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}"
+    },
+    "probe-123-preflight-already-done-r0": {
+      "line": "PROBE name=preflight exit=0 sha=36502d4ec474987fee6fecbeda484124f6637908d26e5ab4ae00bf3e2de0e0c6 cmd=e218860c64e73451a0ebc295bf8d87f5a0802593efe42b4eea3bbc1b4f7e116c json={\"mode\":\"already-done\",\"isAlreadyDone\":true,\"isIssueClosed\":false,\"issueState\":\"OPEN\",\"issueCreatedAt\":\"2026-07-29T07:45:22Z\",\"isMerged\":true,\"mergedAt\":\"2026-07-31T10:52:36Z\",\"mergedPr\":446,\"mergedHeadRef\":\"feat/issue-123-part-2\",\"mergedPrClosesIssue\":true,\"checkFailed\":false}",
+      "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=36502d4ec474987fee6fecbeda484124f6637908d26e5ab4ae00bf3e2de0e0c6 cmd=e218860c64e73451a0ebc295bf8d87f5a0802593efe42b4eea3bbc1b4f7e116c json={\"mode\":\"already-done\",\"isAlreadyDone\":true,\"isIssueClosed\":false,\"issueState\":\"OPEN\",\"issueCreatedAt\":\"2026-07-29T07:45:22Z\",\"isMerged\":true,\"mergedAt\":\"2026-07-31T10:52:36Z\",\"mergedPr\":446,\"mergedHeadRef\":\"feat/issue-123-part-2\",\"mergedPrClosesIssue\":true,\"checkFailed\":false}"
+    }
+  },
+  "expect": {
+    "status": "already-done",
+    "trace": [
+      "probe:lines:haiku",
+      "probe:lines:haiku",
+      "probe:provision:haiku",
+      "probe:preflight:haiku"
+    ],
+    "traceExact": true,
+    "callLabels": [
+      "probe-123-lines-plugin-version-r0",
+      "probe-123-lines-config-project-recheck-r0",
+      "probe-123-provision-provision-r0",
+      "probe-123-preflight-already-done-r0"
+    ],
+    "resultIncludes": {
+      "guard": {
+        "reason": "merged",
+        "mergedPr": 446,
+        "mergedHeadRef": "feat/issue-123-part-2",
+        "mergedPrClosesIssue": true,
+        "issueState": "OPEN"
+      }
+    },
+    "logsInclude": [
+      "mergedPr=446"
+    ],
+    "promptIncludes": [
+      {
+        "label": "probe-123-preflight-already-done-r0",
+        "nth": 0,
+        "includes": [
+          "already-done",
+          "'--branch'",
+          "'feat/issue-123-part-2'"
+        ]
+      }
+    ]
+  }
+}

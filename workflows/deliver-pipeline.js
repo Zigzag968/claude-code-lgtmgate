@@ -49,7 +49,7 @@ export const meta = {
 // | `maxAuditRoundsOverrideReason` | required non-empty string whenever maxAuditRounds > 2; ignored (trimmed to '') otherwise. See "HARD CEILING" above. |
 // | `architectureDecisionApproved` | asserts the design-step-trigger's architecture-only pass (see Theo's design-step signals below) already happened and was approved, so the design-step gate does not require proceedThrough:'plan' on this launch. Also required (#208) on an entryStage='dev'\|'review' launch whose `planText` announces a declared one-way-door kind: the entry answers design-step-required otherwise, and also when `planText` is blank on a repo that declares kinds or paths (the door cannot be read). The entry also stops (#221) on a `design-step: required` line and on a `targetFiles:` line matching `oneWayDoorPaths`. |
 // | `maxPlanAmendRounds` | optional, DEFAULT 0 (issue #97): dark-launch kill-switch for routing a Morgan-classified PLAN defect (as opposed to a code defect) back to Sam for a plan amendment instead of forever re-dispatching Nick against a frozen, unfixable plan. 0 (the shipped default) is SHADOW MODE — Morgan's itemOwners classification is still computed and traced (`plan-route-shadow:<round>`), but every item is still routed to Nick as a code defect, so the off-path behaviour is byte-for-bit identical to before #97. Must be a non-negative integer; a non-integer or negative value throws. Flipped by the human only after observing shadow-mode `trace` evidence that the classification is trustworthy. |
-// | `simulate` | test fixture object; the only key the engine reads is `simulate.probes`, a map keyed by seam name (agent mocks sam/mia/nick/morgan/theo/audit/planCheck/preflight/alreadyDoneCheck, parsed-value probes such as headSha/prBody/mergeState/behindCount, agentTypeUnresolved, branchCheckRaw, ...). When set, no real agent is spawned and the trace is still recorded. The translation from the suite's flat keys to `probes` and every default live in run() of the flow suite (scripts/run-flow-suite.cjs runs it); the engine carries no `??` default on a seam. `simulate.probes[<role>] = 'DIE'` (the literal string) is the plain-death lever for a role, since `null` is nullish. An object value of `sam` is a per-attempt map of partial Sam returns (the plan-verification attempt, or the review round of a plan amendment), keyed like `planCheck`'s (#182). |
+// | `simulate` | test fixture object; the only key the engine reads is `simulate.probes`, a map keyed by seam name (agent mocks sam/mia/nick/morgan/theo/audit/planCheck/preflight, parsed-value probes such as alreadyDoneCheck (the already-done facts, no agent behind it)/headSha/prBody/mergeState/behindCount, agentTypeUnresolved, branchCheckRaw, ...). When set, no real agent is spawned and the trace is still recorded. The translation from the suite's flat keys to `probes` and every default live in run() of the flow suite (scripts/run-flow-suite.cjs runs it); the engine carries no `??` default on a seam. `simulate.probes[<role>] = 'DIE'` (the literal string) is the plain-death lever for a role, since `null` is nullish. An object value of `sam` is a per-attempt map of partial Sam returns (the plan-verification attempt, or the review round of a plan amendment), keyed like `planCheck`'s (#182). |
 // | `stamp` | optional epoch ms of the run (the harness bans an argless `new Date()`, which breaks resume): read by the already-done guard's future-merged check, the artifact-floor fallback and the preflight probes' `--stamp`; absent -> each degrades gracefully. |
 // | `title` | optional string, at most 80 bytes, no newline (#545): the issue title shortened by the Lead. Read by the expansion hook for the launch file name and description (scripts/lib/launch-file.cjs); the engine only validates it (`launch-argument-invalid`). |
 // | `parallel` | optional array of at most 10 distinct positive integers, never the run's own issue (#545): the launches in flight next to this one. Rendered as `parallel:` in the Theo, Sam and Nick prompts; the hook compares it with the active runs as an advisory. Shape only: a pull request number cannot be told from an issue offline. |
@@ -94,16 +94,15 @@ export const meta = {
 // mechanisms below. Agent-death guard: every callAgent site that can throw
 // or return null/undefined is wrapped in `callAgentSafe`, which routes the death through the
 // pure `agentDeathRouting()` — retry once for side-effect-free roles (provision, theo, mia,
-// sam, planCheck, audit, alreadyDoneCheck, preflight), else return a terminal, resumable
+// sam, planCheck, audit, preflight), else return a terminal, resumable
 // `{ status: '<stage>-died', resumable: true }` outcome (`provision-died`, `diagnose-died`,
 // `plan-died`, `plan-check-died`, `plan-audit-died`, `dev-died`, `preflight-died`). `nick` is
 // NEVER retried — it commits, pushes and opens the pull request, so a respawn after a
 // schema-only failure risks a duplicate PR; `morgan` keeps its own pre-existing `null`-result contract via
 // `callMorganGuarded` (a thrown Morgan death is caught there and folded into the same `null` →
 // `review-died` path) rather than being routed through
-// `callAgentSafe`. `mia` and `alreadyDoneCheck` DEGRADE on death instead of dying terminally —
-// both sites already documented themselves as optional/safety-net, so killing a run over either
-// would invert their purpose. Every death — retried or terminal — leaves a `trace` entry
+// `callAgentSafe`. `mia` DEGRADES on death instead of dying terminally — the site is
+// optional, so killing a run over it would invert its purpose (the already-done guard is a probe, #585, and degrades the same way). Every death — retried or terminal — leaves a `trace` entry
 // (`agent-died:<role>:<attempt>`) and a `log()` line, never silent.
 //
 // Prophylaxis (works regardless of catchability): `callAgent` appends a
@@ -140,7 +139,7 @@ export const meta = {
 // `version`, checked against plugin.json by tests/templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '1.5.1', cutFrom: '2c23fdf' }
+const BUILD = { plugin: 'lgtmgate', version: '1.5.4', cutFrom: '8fee232' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -1370,24 +1369,6 @@ const PLAN_AUDIT = {
   },
 }
 
-const ALREADY_DONE_CHECK = {
-  type: 'object',
-  required: ['isAlreadyDone'],
-  properties: {
-    isAlreadyDone: { type: 'boolean' },
-    isIssueClosed: { type: 'boolean' },
-    isMerged: { type: 'boolean' },
-    mergedAt: { type: 'string' },
-    issueState: { type: 'string' },
-    issueCreatedAt: { type: 'string' },
-    mergedPr: { type: 'number' },
-    mergedHeadRef: { type: 'string' },
-    mergedPrClosesIssue: { type: 'boolean' },
-    checkFailed: { type: 'boolean' },
-    error: { type: 'string' },
-  },
-}
-
 const PREFLIGHT = {
   type: 'object',
   required: ['pass'],
@@ -2266,12 +2247,12 @@ function auditConvergenceNote(auditTrace) {
 // retry-once or a terminal, resumable `<stage>-died` status. Pure: no I/O, no closure over
 // simulate/config/trace. Side-effectful roles (nick, morgan) are never retried — see the
 // call-site table above for why. Its STATUS table (role -> status, values are keys of the run's
-// STATUS registry near finish()) deliberately omits mia/alreadyDoneCheck: both sites DEGRADE on
-// death (continue the run) and never return a status, so a dead map entry there would mislead the
+// STATUS registry near finish()) deliberately omits mia: that site DEGRADES on
+// death (continue the run) and never returns a status, so a dead map entry there would mislead the
 // next reader.
 function agentDeathRouting(role, attempt, maxAttempts = 2) {
   const RETRY_SAFE = new Set([
-    'provision', 'theo', 'mia', 'sam', 'planCheck', 'audit', 'alreadyDoneCheck', 'preflight', 'probe',
+    'provision', 'theo', 'mia', 'sam', 'planCheck', 'audit', 'preflight', 'probe',
   ])
   // probe is RETRY_SAFE: side-effect free, probe-run.cjs reuses the stored record on a retry (#82)
   const statusTable = {
@@ -2325,8 +2306,6 @@ function simFixture(role, round = 0, pullRequestNumber = null) {
       summary: '(sim)',
     }
   }
-  if (role === 'alreadyDoneCheck')
-    return simulate.probes?.alreadyDoneCheck
   if (role === 'preflight') {
     const f = simulate.probes?.preflight?.[round]
     return f ?? { pass: true, issues: [] }
@@ -3019,6 +2998,18 @@ async function preflightProbe(modeName, label, argv) {
     log(`preflight probe (${modeName}) failed (${error.message}) — fail-open`)
     return null
   }
+}
+
+// alreadyDoneGuard (#585): the already-done guard's reads (issue state, newest merged PR of the branch, its closing
+// keyword) as ONE preflight probe in mode `already-done`; the verdict stays in acceptAlreadyDone. Returns the parsed
+// facts, or null when the probe failed or died (the guard then degrades: a safety net, never a merge gate). Under
+// simulate, `simulate.probes.alreadyDoneCheck` is the parsed value itself ('DIE' or absent -> null).
+async function alreadyDoneGuard() {
+  if (simulate) {
+    const fixture = simulate.probes?.alreadyDoneCheck
+    return fixture === 'DIE' || fixture == null ? null : fixture
+  }
+  return await preflightProbe('already-done', 'already-done', ['--worktree', worktreePath, '--issue', String(issue), '--branch', expectedBranchName, '--repo', repository || ''])
 }
 
 // prWrite (E2.6a, #85): every PR/issue/project WRITE of the review phase as ONE probe (scripts/runtime/pr-write.sh,
@@ -3789,33 +3780,12 @@ const refreshPlanBlock = () => {
 // ---------------------------------------------------------------------------
 
 if (entryStage === 'dev' || entryStage === 'review') {
-  const guard = await callAgentSafe(
-    'alreadyDoneCheck',
-    `Check whether issue #${issue} is already done. Target the correct repo — gh resolves the wrong ` +
-    `repo from an unrelated cwd, causing a false already-done:\n` +
-    (repository
-      ? `0. REPO="${repository}" (from config.repo).\n`
-      : `0. cd into "${worktreePath}"; REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner) — if this fails, run steps 1-2 from within "${worktreePath}" (cwd-scoped, still correct).\n`) +
-    `1. gh issue view ${issue} -R "$REPO" --json state,createdAt — report issueState and issueCreatedAt ` +
-    `VERBATIM from that output's .state and .createdAt (CLOSED → issue is done).\n` +
-    `2. gh pr list -R "$REPO" --search "is:merged head:${expectedBranchName}" --json number,mergedAt,headRefName,body -q '.[0]' — ` +
-    `if it prints a row, report mergedPr, mergedAt and mergedHeadRef VERBATIM from that SAME row (number, mergedAt, headRefName); ` +
-    `if it prints nothing / null / [], set isMerged:false, mergedAt:"" and mergedPrClosesIssue:false — NEVER look at another PR, branch, repo or memory, ` +
-    `and NEVER reuse a row from a different search.\n` +
-    `3. MULTI-SLICE EPIC CHECK (a merged PR on this branch may belong to an EARLIER slice of the same epic issue, not this one — lgtmgate#197): from that SAME row's .body, set mergedPrClosesIssue:true ONLY if it contains one of GitHub's closing keywords (close, closes, closed, fix, fixes, fixed, resolve, resolves, resolved — case-insensitive) immediately followed by "#${issue}" (the exact issue number, word boundary); otherwise mergedPrClosesIssue:false. This is NOT the issue's open/closed state (that is isIssueClosed from step 1) — it is whether THIS merged PR's own body claims to close #${issue}.\n` +
-    `TOOL FAILURE (fail loud, never guess): if either gh command itself fails — "tls: failed to verify certificate", ` +
-    `"x509", "OSStatus", an HTTP 401/403, a network error, an auth error, or any non-zero exit that is NOT a result — ` +
-    `that is a TOOL failure, not an answer. One plain retry of the SAME command is allowed; if it still fails, ` +
-    `STOP and return { isAlreadyDone:false, isMerged:false, mergedAt:"", checkFailed:true, error:"<exact stderr line>" }. ` +
-    `NEVER guess, NEVER fill mergedAt with the current date or a remembered value, NEVER report isMerged:true from a failed command.\n` +
-    `Return { isAlreadyDone, isIssueClosed, issueState, issueCreatedAt, isMerged, mergedAt, mergedPr, mergedHeadRef, mergedPrClosesIssue, checkFailed, error }`,
-    { schema: ALREADY_DONE_CHECK, label: `already-done-check-${issue}`, model: 'haiku' },
-  )
-  if (isAgentDeath(guard)) {
+  const guard = await alreadyDoneGuard()
+  if (guard === null) {
     // The guard is "a safety net, never a merge gate" (see the log line below on an
-    // unverified claim) — killing a resume over a DEAD safety net inverts its purpose.
+    // unverified claim) — killing a resume over an unavailable safety net inverts its purpose.
     // Degrade: skip the acceptAlreadyDone verdict block entirely and proceed with the run.
-    log('Already-done guard died — skipping (safety net, never a merge gate), proceeding with the run')
+    log('Already-done guard unavailable (probe failed or died) - skipping (safety net, never a merge gate), proceeding with the run')
     trace.push('already-done-degraded')
   } else {
     const expectedHead = `${expectedBranchName}`

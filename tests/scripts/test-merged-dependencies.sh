@@ -82,5 +82,17 @@ node "$SCRIPT" --issue 545 >/dev/null 2>&1; check "missing-repo-exit-2" '2' "$?"
 node "$SCRIPT" --issue abc --repo acme/widgets >/dev/null 2>&1; check "bad-issue-exit-2" '2' "$?"
 node "$SCRIPT" --issue 545 --repo 'not a repo' >/dev/null 2>&1; check "bad-repo-exit-2" '2' "$?"
 
+# 9. the issue title (#599): derived as is when short, cut at a word boundary within 80 bytes when long, absent when gh fails
+title_of() { run | node -e 'const o = JSON.parse(require("fs").readFileSync(0, "utf8")); process.stdout.write(o.title === undefined ? "" : o.title)'; }
+new_fix; printf '{"number":545,"state":"open","state_reason":null,"body":"depends-on: none","title":"Derive the run title"}' > "$FIX/issue-545.json"
+check "title-derived" 'Derive the run title' "$(title_of)"
+new_fix; printf '{"number":545,"state":"open","state_reason":null,"body":"x","title":"%s"}' "Hook sets the run title from the issue title and cuts it when it is far too long for one line" > "$FIX/issue-545.json"
+check "title-cut (long, multi-word: within 80 bytes, ends with an ellipsis, cut on a word boundary)" 'ok' "$(title_of | node -e 'const t = require("fs").readFileSync(0, "utf8"); const src = "Hook sets the run title from the issue title and cuts it when it is far too long for one line"; const body = t.slice(0, -1); process.stdout.write(Buffer.byteLength(t) <= 80 && t.endsWith("…") && src.startsWith(body) && src[body.length] === " " ? "ok" : "bad:" + t)')"
+new_fix; printf '{"number":545,"state":"open","state_reason":null,"body":"x","title":"%s"}' "$(node -e 'process.stdout.write("é".repeat(30) + " " + "ü".repeat(30) + " " + "ñ".repeat(30))')" > "$FIX/issue-545.json"
+check "title-cut (multi-byte: still within 80 bytes with the 3-byte ellipsis)" 'ok' "$(title_of | node -e 'const t = require("fs").readFileSync(0, "utf8"); process.stdout.write(Buffer.byteLength(t) <= 80 && t.endsWith("…") && t.length > 1 ? "ok" : "bad:" + t)')"
+new_fix; printf '{"number":545,"state":"open","state_reason":null,"body":"x","title":"Derive the run title"}' > "$FIX/issue-545.json"
+out="$(GH_STUB_FAIL=1 PATH="$BIN:$PATH" node "$SCRIPT" --issue 545 --repo acme/widgets 2>/dev/null)"
+check "title-absent-when-gh-fails" '' "$out"
+
 echo "[merged-dependencies-test] passed=${pass_count} failed=${fail_count}"
 [ "$fail_count" -eq 0 ]

@@ -15,7 +15,7 @@
 [![Tests](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FZigzag968%2Fclaude-code-lgtmgate%2Fbadges%2Ftests.json)](#engineering-highlights)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/Zigzag968/claude-code-lgtmgate/badge)](https://scorecard.dev/viewer/?uri=github.com/Zigzag968/claude-code-lgtmgate)
 
-lgtmgate is a Claude Code plugin that takes a GitHub issue through to a merge-ready pull request. A diagnosis agent checks the issue is real before anyone writes a plan for it. A reviewer checks each item on the acceptance checklist against actual evidence, a command's output or an artifact, before approving. None of the agents merge anything themselves, including when this repo ships its own releases.
+lgtmgate is a Claude Code plugin that takes a GitHub issue through to a merge-ready pull request. A diagnosis agent checks the issue is real before anyone writes a plan for it. A reviewer checks each item on the acceptance checklist against actual evidence, a command's output or an artifact, before approving. The pipeline's agents (Theo, Mia, Sam, Nick and Morgan) never merge. Merging is a separate step: the Lead, the interactive Claude session orchestrating the run, executes it on a human's explicit go-ahead, and the merge hook and script refuse it while any acceptance box is unchecked. That holds for this repo's own releases too.
 
 ## Status
 
@@ -121,7 +121,7 @@ The full key-by-key reference, including precedence rules and edge cases, is in 
 <details>
 <summary>Engineering highlights (you can reproduce every number below by running the scripts yourself)</summary>
 
-- 1007 offline test cases across 5 suites, no network or mocked API calls: `scripts/run-flow-suite.cjs` (403 pipeline-logic cases), `plugins/backlog/tests/` (514 Python unit tests), `tests/templates/test-blocked-by-check.sh` (9), `tests/hooks/test-Stop-supervise-runs.sh` (23), `tests/hooks/test-deny-destructive-git.sh` (58). `node scripts/count-tests.cjs` prints these counts, the `readme-contract` guard fails when a number here differs, and the Tests badge is produced by the same script on every push to main. The canonical guard net `tests/templates/test-canonical-guards.sh` runs the guards and is not part of this count.
+- 1012 offline test cases across 5 suites, no network or mocked API calls: `scripts/run-flow-suite.cjs` (404 pipeline-logic cases), `plugins/backlog/tests/` (514 Python unit tests), `tests/templates/test-blocked-by-check.sh` (9), `tests/hooks/test-Stop-supervise-runs.sh` (27), `tests/hooks/test-deny-destructive-git.sh` (58). `node scripts/count-tests.cjs` prints these counts, the `readme-contract` guard fails when a number here differs, and the Tests badge is produced by the same script on every push to main. The canonical guard net `tests/templates/test-canonical-guards.sh` runs the guards and is not part of this count.
 - An opt-in adversarial plan audit (`planAudit`): a separate agent can challenge Sam's plan before Nick starts coding, capped at a fixed number of rounds so a disagreement can't spawn agents indefinitely.
 - A regression guard based on a SET-DIFF: Morgan captures a baseline from the pre-change branch and diffs the exact test set the change touched, rather than re-running the whole suite on every PR.
 - Every run gets its own git worktree. Theo, Sam, Nick and Morgan work inside that same worktree so plan, code and review sit on the same frozen base, and the pipeline never touches your own working checkout.

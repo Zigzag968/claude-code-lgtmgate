@@ -65,6 +65,19 @@ function cutWords(text, limit) {
   return `${cut.replace(/[\s,;:.–—-]+$/, '')}…`
 }
 
+// A run title of at most `maxBytes` UTF-8 bytes: control characters to spaces, whitespace collapsed, a longer text cut at a
+// word boundary with an ellipsis (the ellipsis is 3 bytes, so the character limit shrinks until the bytes fit). '' if empty.
+function cutTitle(text, maxBytes) {
+  if (typeof text !== 'string') return ''
+  const clean = text.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim()
+  if (Buffer.byteLength(clean, 'utf8') <= maxBytes) return clean
+  for (let limit = [...clean].length; limit >= 1; limit--) {
+    const cut = cutWords(clean, limit)
+    if (cut !== '' && cut !== '…' && Buffer.byteLength(cut, 'utf8') <= maxBytes) return cut
+  }
+  return ''
+}
+
 function cutBytes(text, limit) {
   let out = ''
   let used = 0
@@ -126,4 +139,4 @@ function ensureLaunchFile(projectDirectory, issue, bytes) {
   return { path: file }
 }
 
-module.exports = { retitle, launchPath, ensureLaunchFile, DIRECTORY }
+module.exports = { retitle, cutTitle, launchPath, ensureLaunchFile, DIRECTORY }

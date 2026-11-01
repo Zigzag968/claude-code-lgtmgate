@@ -582,6 +582,19 @@ await testCase('entryStage:dev / already-done guard merged-but-does-not-close-is
   return error ? error : { ok: true }
 })
 
+// T585a (#585) — the already-done guard is a probe now: when it is unavailable (probe failed or died) the run
+// degrades, never stops. 'DIE' is the plain-death lever of the seam.
+await testCase('T585a already-done guard unavailable (DIE) -> flow continues, trace already-done-degraded', async () => {
+  const r = await run({
+    mode: 'auto',
+    entryStage: 'dev',
+    simulate: { alreadyDoneCheck: 'DIE', sam: 'GO', morgan: [{ verdict: 'LGTM' }] },
+  })
+  const error = eq('status', r.status, 'ready')
+  if (error) return error
+  return r.trace.includes('already-done-degraded') ? { ok: true } : { ok: false, msg: `trace must include already-done-degraded, got ${JSON.stringify(r.trace)}` }
+})
+
 // T9031 (#31) — the already-done result carries the guard's own diagnostic, so a false positive is
 // diagnosable from the returned JSON without reading the engine source. Merged path: every field is set.
 await testCase('T9031 already-done result carries the guard diagnostic (merged path)', async () => {
@@ -3291,8 +3304,8 @@ await testCase('T214d callAgent( only invoked by callAgentSafe + morgan; callAge
   const rawCalls = source.split('await callAgent(').length - 1
   const safeCalls = source.split('callAgentSafe(').length - 1
   const error1 = eq("count of 'await callAgent('", rawCalls, 2)
-  const error2 = safeCalls >= 15
-    ? null : { ok: false, msg: `expected >= 15 'callAgentSafe(' occurrences (definition + call sites), got ${safeCalls}` }
+  const error2 = safeCalls >= 14
+    ? null : { ok: false, msg: `expected >= 14 'callAgentSafe(' occurrences (definition + call sites), got ${safeCalls}` }
   return (error1 || error2) ? (error1 || error2) : { ok: true }
 })
 
