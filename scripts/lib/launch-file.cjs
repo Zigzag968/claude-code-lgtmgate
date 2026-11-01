@@ -1,15 +1,20 @@
 'use strict'
 
-// The launch file of a run (#520, #553): a copy of workflows/deliver-pipeline.js whose `meta` literal differs from the engine so
-// the run list tells two runs apart: the workflow name is the short issue title and the description reads `#<N>` (plus
-// ` PR #<P>` when known) and the first line of the brief (a leading `Issue <n>:` / `#<n>:` is dropped, a long line is cut at a
-// word boundary with an ellipsis). Phase titles stay plain (`Setup` ... `Review`).
+// The launch file of a run (#520, #553, #580): a copy of workflows/deliver-pipeline.js whose `meta` literal differs from the
+// engine so the run list and the progress panel tell two runs apart. Three labels, one per `meta` field (read from the Claude
+// Code 2.1.303 bundle and the SDK Workflow reference, confirmed live by the human gate of #580):
+//   meta.name         `#<N> - <issue name>`  run list, task-panel row
+//   meta.title        `#<N> - lgtmgate`      progress panel title
+//   meta.description  `<issue name>`         progress panel description
+// The issue name is the given title; without one it is the first line of the brief (a leading `Issue <n>:` / `#<n>:` is
+// dropped), cut at 80 bytes in the name and at a word boundary with an ellipsis in the description. With neither, the name
+// reads `#<N>` and the description `#<N>` (the runtime requires a non-empty description). Phase titles stay plain (`Setup` ...
+// `Review`). The PR number is not shown.
 // Written by hooks/workflow-args-expand.sh under <project>/.pipeline/launch/ (gitignored). Pure functions plus one atomic write.
 //
 // retitle(source, issue, options?) -> the expected bytes, or null when the source does not have the exact shape (then nothing is
-// written and the launch keeps the plugin's own engine). options = { title, brief, pr }, all optional. The name is `title`, else
-// `#<N> <first brief line>`, else `#<N>`; computed from the inputs only, so retitle is idempotent and also normalizes a launch
-// file of the previous shape (numbered phase titles).
+// written and the launch keeps the plugin's own engine). options = { title, brief }, both optional. Computed from the inputs
+// only, so retitle is idempotent and also normalizes a launch file of a previous shape (numbered phase titles, no `title` line).
 
 const fs = require('fs')
 const crypto = require('crypto')
@@ -18,11 +23,14 @@ const nodePath = require('path')
 const BASE_TITLES = ['Setup', 'Diagnose', 'Plan', 'Dev', 'Review']
 const NAME_BYTES = 80
 const DESCRIPTION_CHARS = 120
+const PANEL_WORD = 'lgtmgate'
 const DIRECTORY = nodePath.join('.pipeline', 'launch')
 
 const TITLE_RE = /(\{ title: ')(?:#\d+ )?([^']*)(')/g
 const NAME_RE = /^(  name: ')((?:[^'\\\n]|\\.)*)(',)$/m
 const DESCRIPTION_RE = /^(  description: ')(.*)(',)$/m
+const META_TITLE_RE = /^  title: '(?:[^'\\\n]|\\.)*',\n/m
+const META_TITLE_ANY_RE = /^  title:/m
 const CONSTANT_RE = /^const PHASE_TITLES = \{ setup: '(?:#\d+ )?Setup', diagnose: '(?:#\d+ )?Diagnose', plan: '(?:#\d+ )?Plan', dev: '(?:#\d+ )?Dev', review: '(?:#\d+ )?Review' \}$/gm
 
 function metaBounds(source) {
@@ -86,17 +94,16 @@ function retitle(source, issue, options) {
   if (typeof source !== 'string' || !Number.isInteger(issue) || issue < 1) return null
   const given = typeof options === 'string' ? { title: options } : options || {}
   const line = firstLine(given.brief)
-  let name
+  let issueName
   if (given.title !== undefined) {
-    name = escapeTitle(given.title)
-    if (name === null) return null
+    issueName = escapeTitle(given.title)
+    if (issueName === null) return null
   } else {
-    name = escapeTitle(cutBytes(`#${issue}${line === '' ? '' : ` ${line}`}`, NAME_BYTES))
-    if (name === null) return null
+    issueName = escapeTitle(cutBytes(line, NAME_BYTES)) || ''
   }
-  const pr = Number.isInteger(given.pr) && given.pr >= 1 ? ` PR #${given.pr}` : ''
-  const short = escapeTitle(cutWords(line, DESCRIPTION_CHARS))
-  const description = `#${issue}${pr}${short === null ? '' : `: ${short}`}`
+  const name = issueName === '' ? `#${issue}` : `#${issue} - ${issueName}`
+  const panelTitle = `#${issue} - ${PANEL_WORD}`
+  const description = given.title !== undefined ? issueName : escapeTitle(cutWords(line, DESCRIPTION_CHARS)) || `#${issue}`
   const bounds = metaBounds(source)
   if (!bounds) return null
   const meta = source.slice(bounds.start, bounds.end)
@@ -104,8 +111,10 @@ function retitle(source, issue, options) {
   if (found.length !== BASE_TITLES.length || found.some((t, index) => t !== BASE_TITLES[index])) return null
   if ((source.match(CONSTANT_RE) || []).length !== 1) return null
   if (!NAME_RE.test(meta) || !DESCRIPTION_RE.test(meta)) return null
+  if (META_TITLE_ANY_RE.test(meta) && !META_TITLE_RE.test(meta)) return null
   let next = meta.replace(TITLE_RE, (all, open, phase, close) => `${open}${phase}${close}`)
-  next = next.replace(NAME_RE, (all, open, held, close) => `${open}${name}${close}`)
+  next = next.replace(META_TITLE_RE, '')
+  next = next.replace(NAME_RE, (all, open, held, close) => `${open}${name}${close}\n  title: '${panelTitle}',`)
   next = next.replace(DESCRIPTION_RE, (all, open, text, close) => `${open}${description}${close}`)
   const constant = `const PHASE_TITLES = { ${BASE_TITLES.map((t) => `${t.toLowerCase()}: '${t}'`).join(', ')} }`
   return next + source.slice(bounds.end).replace(CONSTANT_RE, () => constant)
