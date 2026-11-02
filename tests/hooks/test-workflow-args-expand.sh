@@ -163,15 +163,17 @@ node -e '
 const fs = require("fs")
 const a = fs.readFileSync(process.argv[1], "utf8").split("\n")
 const b = fs.readFileSync(process.argv[2], "utf8").split("\n")
-if (a.length !== b.length) process.exit(1)
+if (b.length !== a.length + 1) process.exit(1)
+const titleAt = b.findIndex((l) => /^  title: \x27[^\x27]*\x27,$/.test(l))
+if (titleAt < 1 || titleAt > 12 || !b[titleAt - 1].startsWith("  name: ")) process.exit(1)
+b.splice(titleAt, 1)
 const changed = []
 for (let k = 0; k < a.length; k++) if (a[k] !== b[k]) changed.push(k)
 const inMeta = (k) => k < 12
-const constant = (k) => a[k].startsWith("const PHASE_TITLES = ")
 const ok = changed.length === 2 && changed.every(inMeta)
 process.exit(ok ? 0 : 1)' "$ENGINE" "$GEN1"
 NR=$?
-if [ "$NR" -eq 0 ]; then pass "launch-diff-only-titles (2 lines: name, description; phase titles untouched)"; else fail "launch-diff-only-titles"; fi
+if [ "$NR" -eq 0 ]; then pass "launch-diff-only-titles (one more line: meta title; name and description changed; phase titles untouched)"; else fail "launch-diff-only-titles"; fi
 hook "$T3"
 SECOND="$(node -e 'const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(j.hookSpecificOutput.updatedInput.scriptPath||"")' "$OUT")"
 if [ "$SECOND" = "$GEN1" ] && [ "$(launch_files "$T3")" = 1 ]; then pass "launch-reuse (second call, same path, one file)"; else fail "launch-reuse ($SECOND vs $GEN1)"; fi
@@ -209,11 +211,11 @@ for (const n of [1, 520, 99999, 123456]) {
 // a launch file of the previous shape normalizes to the same bytes as a fresh launch
 let legacy = retitle(source, 9)
 for (const t of ["Setup", "Diagnose", "Plan", "Dev", "Review"]) legacy = legacy.replace("{ title: \x27" + t + "\x27", "{ title: \x27#9 " + t + "\x27").replace(t.toLowerCase() + ": \x27" + t + "\x27", t.toLowerCase() + ": \x27#9 " + t + "\x27")
-legacy = legacy.replace(/^  name: .*$/m, "  name: \x27deliver-pipeline #9 Old title\x27,")
+legacy = legacy.replace(/^  name: .*$/m, "  name: \x27deliver-pipeline #9 Old title\x27,").replace(/^  title: .*\n/m, "")
 if (legacy === retitle(source, 9) || retitle(legacy, 9) !== retitle(source, 9)) ok = false
 if (retitle(source.replace("title: \x27Dev\x27", "title: \x27Develop\x27"), 1) !== null) ok = false
 // a string third argument is the title (same as { title })
-if (retitle(source, 553, "Short title") !== retitle(source, 553, { title: "Short title" }) || !retitle(source, 553, "Short title").includes("\n  name: \x27Short title\x27,\n")) ok = false
+if (retitle(source, 553, "Short title") !== retitle(source, 553, { title: "Short title" }) || !retitle(source, 553, "Short title").includes("\n  name: \x27#553 - Short title\x27,\n")) ok = false
 process.exit(ok ? 0 : 1)' "$ROOT"
 NR=$?
 if [ "$NR" -eq 0 ]; then pass "launch-phases-plain (plain titles for any issue number, idempotent, a launch file of the previous shape is normalized)"; else fail "launch-phases-plain"; fi
@@ -226,20 +228,70 @@ const descOf = (out) => { const m = out.match(/^  description: \x27(.*)\x27,$/m)
 const brief = "Issue 455: lead-merge must refuse or switch to the branch copy when the PR changes scripts/lead-merge.sh; issue body is the source of truth."
 const out = retitle(source, 455, { brief })
 const d = descOf(out)
-const rest = d.slice("#455: ".length)
-if (!d.startsWith("#455: lead-merge must refuse") || d.includes("Issue 455") || !d.endsWith("…")) ok = false
+const rest = d
+if (!d.startsWith("lead-merge must refuse") || d.includes("Issue 455") || d.includes("#455") || !d.endsWith("…")) ok = false
 if ([...rest].length > 120) ok = false
 const body = rest.slice(0, -1)
 const words = brief.replace(/^Issue 455: /, "")
 if (!words.startsWith(body) || !/\s/.test(words.charAt(body.length)) ) ok = false
-for (const b of ["#455: short brief", "Issue 455 - short brief"]) if (descOf(retitle(source, 455, { brief: b })) !== "#455: short brief") ok = false
-if (descOf(retitle(source, 520, { brief: "implement the issue" })) !== "#520: implement the issue") ok = false
+for (const b of ["#455: short brief", "Issue 455 - short brief"]) if (descOf(retitle(source, 455, { brief: b })) !== "short brief") ok = false
+if (descOf(retitle(source, 520, { brief: "implement the issue" })) !== "implement the issue") ok = false
 const longToken = descOf(retitle(source, 455, { brief: "x".repeat(200) }))
-if (!longToken.endsWith("…") || [...longToken.slice("#455: ".length)].length > 120) ok = false
+if (!longToken.endsWith("…") || [...longToken].length > 120) ok = false
 if (retitle(out, 455, { brief }) !== out) ok = false
 process.exit(ok ? 0 : 1)' "$ROOT"
 NR=$?
 if [ "$NR" -eq 0 ]; then pass "launch-description-clean (issue prefix dropped, long line cut at a word boundary with an ellipsis, short brief unchanged)"; else fail "launch-description-clean"; fi
+node -e '
+const fs = require("fs")
+const { retitle } = require(process.argv[1] + "/scripts/lib/launch-file.cjs")
+const source = fs.readFileSync(process.argv[1] + "/workflows/deliver-pipeline.js", "utf8")
+let ok = true
+const line = (out, key) => { const m = out.match(new RegExp("^  " + key + ": \\x27(.*)\\x27,$", "m")); return m ? m[1] : null }
+const out = retitle(source, 12, { title: "Fix the thing" })
+if (line(out, "name") !== "#12 - Fix the thing" || line(out, "title") !== "#12 - lgtmgate" || line(out, "description") !== "Fix the thing") ok = false
+if (out.indexOf("\n  name: ") + 1 >= out.indexOf("\n  title: ") || out.indexOf("\n  title: ") >= out.indexOf("\n  description: ")) ok = false
+if (retitle(out, 12, { title: "Fix the thing" }) !== out) ok = false
+if (retitle(out, 12, { title: "Other words" }) !== retitle(source, 12, { title: "Other words" })) ok = false
+const quoted = retitle(source, 12, { title: "it\x27s a \\ title" })
+fs.writeFileSync(process.argv[2], quoted)
+if (line(quoted, "title") !== "#12 - lgtmgate") ok = false
+process.exit(ok ? 0 : 1)' "$ROOT" "$TMP/launch-labels.js"
+NR=$?
+if [ "$NR" -eq 0 ] && node --check "$TMP/launch-labels.js" 2>/dev/null; then pass "launch-labels (name #N - title, title #N - lgtmgate, description title; idempotent; a quote and a backslash stay valid JS)"; else fail "launch-labels"; fi
+node -e '
+const fs = require("fs")
+const { retitle } = require(process.argv[1] + "/scripts/lib/launch-file.cjs")
+const source = fs.readFileSync(process.argv[1] + "/workflows/deliver-pipeline.js", "utf8")
+let ok = true
+const line = (out, key) => { const m = out.match(new RegExp("^  " + key + ": \\x27(.*)\\x27,$", "m")); return m ? m[1] : null }
+const bare = retitle(source, 520)
+if (line(bare, "name") !== "#520" || line(bare, "description") !== "#520" || line(bare, "title") !== "#520 - lgtmgate") ok = false
+process.exit(ok ? 0 : 1)' "$ROOT"
+NR=$?
+if [ "$NR" -eq 0 ]; then pass "launch-fallback-bare (no title and no brief: name #N, description #N)"; else fail "launch-fallback-bare"; fi
+node -e '
+const fs = require("fs")
+const { retitle } = require(process.argv[1] + "/scripts/lib/launch-file.cjs")
+const source = fs.readFileSync(process.argv[1] + "/workflows/deliver-pipeline.js", "utf8")
+let ok = true
+const line = (out, key) => { const m = out.match(new RegExp("^  " + key + ": \\x27(.*)\\x27,$", "m")); return m ? m[1] : null }
+const long = retitle(source, 520, { brief: ("long brief words ").repeat(20) })
+const name = line(long, "name")
+if (!name.startsWith("#520 - long brief words") || Buffer.byteLength(name.slice("#520 - ".length), "utf8") > 80) ok = false
+const wide = line(retitle(source, 520, { brief: "é".repeat(100) }), "name")
+if (Buffer.byteLength(wide.slice("#520 - ".length), "utf8") > 80) ok = false
+process.exit(ok ? 0 : 1)' "$ROOT"
+NR=$?
+if [ "$NR" -eq 0 ]; then pass "launch-fallback-bound (a long brief gives an issue name of at most 80 bytes)"; else fail "launch-fallback-bound"; fi
+node -e '
+const fs = require("fs")
+const { retitle } = require(process.argv[1] + "/scripts/lib/launch-file.cjs")
+const source = fs.readFileSync(process.argv[1] + "/workflows/deliver-pipeline.js", "utf8")
+const shaped = source.replace("\n  name: \x27deliver-pipeline\x27,\n", "\n  name: \x27deliver-pipeline\x27,\n  title: \"x\",\n")
+process.exit(shaped !== source && retitle(shaped, 12, { title: "T" }) === null ? 0 : 1)' "$ROOT"
+NR=$?
+if [ "$NR" -eq 0 ]; then pass "launch-meta-title-shape (a meta title line of another shape gives no launch file)"; else fail "launch-meta-title-shape"; fi
 new_tree t5 ignore; T5="$TMP/t5"
 node "$LA" --root "$T5" --session-root "$T5" --ref origin/main --stage plan --mode ref --issue 1234567 --brief x > "$TMP/args.json"
 node -e 'const fs=require("fs");fs.writeFileSync(process.argv[2],JSON.stringify({cwd:process.argv[1],tool_name:"Workflow",tool_input:{name:"lgtmgate:deliver-pipeline",args:JSON.parse(fs.readFileSync(process.argv[3],"utf8"))}}))' "$T5" "$TMP/in.json" "$TMP/args.json"
@@ -261,13 +313,13 @@ new_tree rs1 ignore; RS1="$TMP/rs1"
 mk_input "$RS1" name ref 'a.title = "Fast launches"'; hook "$RS1"
 expect "run-state-title-named-launch" 0 'j.hookSpecificOutput.updatedInput.scriptPath.includes("/.pipeline/launch/issue-520-") && !("name" in j.hookSpecificOutput.updatedInput) && j.hookSpecificOutput.updatedInput.args.title === "Fast launches"'
 RS1_FILE="$(script_of)"
-if grep -qF "  name: 'Fast launches'," "$RS1_FILE" && grep -qF "  description: '#520: implement the issue" "$RS1_FILE"; then pass "run-state-title-in-name-and-description"; else fail "run-state-title-in-name-and-description"; fi
+if grep -qF "  name: '#520 - Fast launches'," "$RS1_FILE" && grep -qF "  title: '#520 - lgtmgate'," "$RS1_FILE" && grep -qF "  description: 'Fast launches'," "$RS1_FILE"; then pass "run-state-title-in-labels"; else fail "run-state-title-in-labels"; fi
 if [ "$(grep -F '{ title:' "$RS1_FILE" | grep -c 'Fast launches')" = 0 ] && grep -qF "{ title: 'Setup'" "$RS1_FILE" && ! grep -qE "#520 (Setup|Diagnose|Plan|Dev|Review)" "$RS1_FILE" && grep -qF "const PHASE_TITLES = { setup: 'Setup', diagnose: 'Diagnose', plan: 'Plan', dev: 'Dev', review: 'Review' }" "$RS1_FILE"; then pass "run-state-title-phases-plain"; else fail "run-state-title-phases-plain"; fi
 new_tree rs2 ignore; RS2="$TMP/rs2"
 mk_input "$RS2" name ref; hook "$RS2"; RS2_FILE="$(script_of)"
-if grep -qF "  name: '#520 implement the issue'," "$RS2_FILE"; then pass "launch-fallback-name-brief"; else fail "launch-fallback-name-brief ($(grep -m1 '^  name:' "$RS2_FILE"))"; fi
+if grep -qF "  name: '#520 - implement the issue'," "$RS2_FILE" && grep -qF "  description: 'implement the issue'," "$RS2_FILE"; then pass "launch-fallback-name-brief"; else fail "launch-fallback-name-brief ($(grep -m1 '^  name:' "$RS2_FILE"))"; fi
 mk_input "$RS2" name ref 'a.prNumber = 560'; hook "$RS2"; RS2_FILE="$(script_of)"
-if grep -qF "  description: '#520 PR #560: implement the issue" "$RS2_FILE"; then pass "launch-description-pr"; else fail "launch-description-pr ($(grep -m1 '^  description:' "$RS2_FILE"))"; fi
+if grep -qF "  name: '#520 - implement the issue'," "$RS2_FILE" && grep -qF "  title: '#520 - lgtmgate'," "$RS2_FILE" && grep -qF "  description: 'implement the issue'," "$RS2_FILE" && ! grep -E "^  (name|title|description):" "$RS2_FILE" | grep -qF "PR #"; then pass "launch-description-no-pr"; else fail "launch-description-no-pr ($(grep -m1 '^  description:' "$RS2_FILE"))"; fi
 mk_input "$RS1" name ref 'a.title = "it'"'"'s a \\ title"'; hook "$RS1"
 RS1_Q="$(script_of)"; cp "$RS1_Q" "$TMP/quote.js"
 if [ -n "$RS1_Q" ] && node --check "$TMP/quote.js" 2>/dev/null; then pass "run-state-title-escapes-quote (valid JS with a quote and a backslash)"; else fail "run-state-title-escapes-quote"; fi
@@ -300,7 +352,7 @@ mk_input "$RS2" name ref 'a.merged = [1, 2]; a.epic = 9'; PATH="$GHBIN:$PATH" ho
 expect "run-state-merged-overwrites-typed" 0 'JSON.stringify(j.hookSpecificOutput.updatedInput.args.merged) === "[530,531,532]" && j.hookSpecificOutput.updatedInput.args.epic === 528'
 mk_input "$RS2" name ref 'a.title = "Review PR 9 words"'; PATH="$GHBIN:$PATH" hook "$RS2"
 expect "run-state-title-from-issue (a typed title that differs is replaced by the issue title)" 0 'j.hookSpecificOutput.updatedInput.args.title === "Derive the run title"'
-if grep -qF "  name: 'Derive the run title'," "$(script_of)"; then pass "run-state-title-from-issue-in-launch-file"; else fail "run-state-title-from-issue-in-launch-file"; fi
+if grep -qF "  name: '#520 - Derive the run title'," "$(script_of)" && grep -qF "  description: 'Derive the run title'," "$(script_of)"; then pass "run-state-title-from-issue-in-launch-file"; else fail "run-state-title-from-issue-in-launch-file"; fi
 LONG_TITLE="Hook sets the run title from the issue title and cuts it when it is far too long for one line"
 mk_input "$RS2" name ref 'a.title = "typed"'; GH_STUB_TITLE="$LONG_TITLE" PATH="$GHBIN:$PATH" hook "$RS2"
 expect "run-state-title-cut-word-boundary" 0 '(() => { const t = j.hookSpecificOutput.updatedInput.args.title; const src = "'"$LONG_TITLE"'"; const body = t.slice(0, -1); return Buffer.byteLength(t) <= 80 && t.endsWith("…") && src.startsWith(body) && src[body.length] === " " })()'
