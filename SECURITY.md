@@ -57,8 +57,9 @@ have — that's exactly what we want reported privately.
 Security fixes are provided for two versions of the Claude Code plugin (the `version` in
 `.claude-plugin/plugin.json`):
 
-- the latest stable release (tag `v1.0.0` today);
-- the latest beta release (`1.1.0-beta.28` today).
+- the latest stable release (the newest release on the
+  [Releases page](https://github.com/Zigzag968/claude-code-lgtmgate/releases) not marked as a pre-release);
+- the latest beta (the `version` in `.claude-plugin/plugin.json` on `main`).
 
 Older releases get no fixes, and there are no maintained release branches. Update via
 `claude plugin update lgtmgate` (or `backlog`) to get them.
