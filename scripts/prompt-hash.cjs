@@ -4,9 +4,12 @@
 //
 // Usage:
 //   node scripts/prompt-hash.cjs [--dir fixtures] [--harness scripts/run-offline.cjs]
-// `--harness` lets a base copy of run-offline be compared with the branch one, e.g.
-//   git show origin/main:scripts/run-offline.cjs > "$TMPDIR/ro-base.cjs"
-//   node scripts/prompt-hash.cjs --harness "$TMPDIR/ro-base.cjs" > before.txt
+// `--harness` lets a base copy of run-offline be compared with the branch one, e.g. (the runner loads ./lib/launch-file.cjs
+// from next to itself, so the copy carries that file too)
+//   mkdir -p "$TMPDIR/ro-base/lib"
+//   git show origin/main:scripts/run-offline.cjs > "$TMPDIR/ro-base/run-offline.cjs"
+//   git show origin/main:scripts/lib/launch-file.cjs > "$TMPDIR/ro-base/lib/launch-file.cjs"
+//   node scripts/prompt-hash.cjs --harness "$TMPDIR/ro-base/run-offline.cjs" > before.txt
 //   node scripts/prompt-hash.cjs > after.txt && diff before.txt after.txt
 // Deterministic: the hashed data holds only call labels and prompt hashes (no time, no path).
 // Last line: `[prompt-hash] fixtures=<n> total=<16 hex>`. Writes no file.
