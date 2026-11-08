@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 'use strict'
 
-// Removes the launch files the expansion hook wrote (#520): `issue-<N>-<12 hex>.js` under <root>/.pipeline/launch/, all of
-// them or those of one issue, then the directory when it is empty. Nothing else of .pipeline/ is touched and a symlinked
-// directory is never followed. The Lead runs it after a merge (skills/deliver/SKILL.md, section 6).
+// Removes the launch files `launch-args.cjs --mode file` wrote (#520, #605): the files `<root>/.pipeline/launch/<12 hex>/#<N>[ - <title>].js`,
+// all of them or those of one issue, then each emptied digest directory, then `.pipeline/launch/` when it is empty. The legacy
+// `issue-<N>-<12 hex>.js` files of the previous shape go the same way. Nothing else of .pipeline/ is touched, a file or directory
+// that is not of these shapes stays, and a symlinked directory is never followed. The Lead runs it after a merge
+// (skills/deliver/SKILL.md, section 6).
 //
 // Usage: node scripts/runtime/clean-launch-files.cjs [--root <project>] [--issue <N>]
 // Stdout: `removed <n>`. Exit: 0 ok · 2 usage error (one line on stderr).
@@ -11,20 +13,43 @@
 const fs = require('fs')
 const nodePath = require('path')
 
-const FILE_RE = /^issue-([0-9]+)-[0-9a-f]{12}\.js$/
+const { parseLaunchPath } = require('../lib/launch-file.cjs')
+
+const LEGACY_RE = /^issue-([0-9]+)-[0-9a-f]{12}\.js$/
+
+const wanted = (issue, found) => found !== null && (issue === null || found === issue)
+
+function realDirectory(path) {
+  try { return fs.lstatSync(path).isDirectory() } catch (error) { return false }
+}
+
+// Removes the generated files of one digest directory; the directory itself when emptied. -> the number of files removed.
+function cleanDigestDirectory(directory, issue) {
+  let removed = 0
+  for (const name of fs.readdirSync(directory)) {
+    const file = nodePath.join(directory, name)
+    const parsed = parseLaunchPath(file)
+    if (parsed === null || !wanted(issue, parsed.issue) || !fs.lstatSync(file).isFile()) continue
+    fs.unlinkSync(file)
+    removed += 1
+  }
+  if (fs.readdirSync(directory).length === 0) fs.rmdirSync(directory)
+  return removed
+}
 
 function clean(root, issue) {
   const directory = nodePath.join(root, '.pipeline', 'launch')
-  let status
-  try { status = fs.lstatSync(directory) } catch (error) { return 0 }
-  if (!status.isDirectory()) return 0 // absent, a file, or a symlink: nothing to follow
+  if (!realDirectory(directory)) return 0 // absent, a file, or a symlink: nothing to follow
   let removed = 0
   for (const name of fs.readdirSync(directory)) {
-    const m = FILE_RE.exec(name)
-    if (!m || (issue !== null && Number(m[1]) !== issue)) continue
-    const file = nodePath.join(directory, name)
-    if (!fs.lstatSync(file).isFile()) continue
-    fs.unlinkSync(file)
+    const entry = nodePath.join(directory, name)
+    if (/^[0-9a-f]{12}$/.test(name) && realDirectory(entry)) {
+      removed += cleanDigestDirectory(entry, issue)
+      continue
+    }
+    const legacy = LEGACY_RE.exec(name)
+    if (!legacy || !wanted(issue, Number(legacy[1])) || !fs.lstatSync(entry).isFile()) continue
+    fs.unlinkSync(entry)
     removed += 1
   }
   if (fs.readdirSync(directory).length === 0) fs.rmdirSync(directory)

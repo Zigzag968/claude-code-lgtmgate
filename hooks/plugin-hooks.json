@@ -44,7 +44,7 @@
             "type": "command",
             "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/workflow-args-expand.sh\"",
             "timeout": 10,
-            "description": "Expand the projectSpecificsRef and configRef of a deliver-pipeline launch to the full objects (verified by digest) and give a launch by name a copy of the engine titled with the issue number"
+            "description": "Expand the projectSpecificsRef and configRef of a launch of the generated deliver-pipeline launch file to the full objects (verified by digest) and refuse every other launch form of the engine (engine-launch-form)"
           }
         ]
       }
