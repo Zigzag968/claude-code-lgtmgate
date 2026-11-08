@@ -62,10 +62,10 @@ const DERIVE_TIMEOUT_MS = 8000
 const TITLE_MAX_BYTES = 80
 
 class Deny extends Error {
-  constructor(message, code, args) {
+  constructor(message, code, launchArguments) {
     super(message)
     this.code = code || 'specifics-ref-mismatch'
-    this.args = args || null
+    this.args = launchArguments || null
   }
 }
 

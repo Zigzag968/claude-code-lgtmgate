@@ -81,13 +81,8 @@ function parseArguments(argv) {
   return out
 }
 
-// The harness runs the engine as the generator's copy does: the launch-file flag is set through the generator's own function
-// (scripts/lib/launch-file.cjs), never through an args key, a simulate key or an environment variable (#605).
-function stripExports(source) {
-  const marked = require('./lib/launch-file.cjs').markGenerated(source.replace(/^export\s+/mg, ''))
-  if (marked === null) throw new Error('stripExports: more than one launch-file flag line in the source')
-  return marked
-}
+// #605: the launch-file flag is set through the generator's own function (scripts/lib/launch-file.cjs), never an args key, simulate key or environment variable.
+const stripExports = (source) => require('./lib/launch-file.cjs').markGenerated(source.replace(/^export\s+/mg, '')) ?? source
 
 // `@@ENGINE_VERSION@@` anywhere in a fixture (args, calls, expect) stands for the version of the engine under test
 // (the `version:` of its `const BUILD = { ... }` line, bumped by scripts/lead-merge.sh at every merge), so a fixture

@@ -195,8 +195,8 @@ function ensureLaunchFile(projectDirectory, bytes) {
   const file = launchPath(projectDirectory, bytes)
   if (file === null) throw new Error('the launch copy has no meta name')
   let held = null
-  try { held = fs.readFileSync(file, 'utf8') } catch (error) { held = null }
-  if (held !== null) return held === bytes ? { path: file } : { denied: nodePath.basename(file) }
+  try { held = fs.readFileSync(file) } catch (error) { held = null }
+  if (held !== null) return held.equals(Buffer.from(bytes, 'utf8')) ? { path: file } : { denied: nodePath.basename(file) }
   fs.mkdirSync(nodePath.dirname(file), { recursive: true })
   const temporary = `${file}.temporary-${process.pid}`
   fs.writeFileSync(temporary, bytes)
