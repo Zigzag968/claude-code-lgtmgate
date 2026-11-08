@@ -281,7 +281,9 @@ const [, , out, from, to] = process.argv
 const src = fs.readFileSync('scripts/run-offline.cjs', 'utf8')
 const n = src.split(from).length - 1
 if (n !== 1) { console.error('mutation target found ' + n + ' time(s): ' + from); process.exit(2) }
-fs.writeFileSync(out, src.replace(from, () => to))
+// The mutant is written outside scripts/, so its relative requires (./lib/...) are pinned to the real directory.
+const libDir = require('path').resolve('scripts/lib')
+fs.writeFileSync(out, src.replace(from, () => to).split("require('./lib/").join("require('" + libDir + '/'))
 JS
 out=$(node scripts/run-offline.cjs "$TMP/relaunch-nocarry.json" 2>&1)
 case "$out" in *"FAIL:"*"run 2: logs: missing \"acceptance item(s) rebuilt from the ids of planText\""*) n1=1;; *) n1=0;; esac
