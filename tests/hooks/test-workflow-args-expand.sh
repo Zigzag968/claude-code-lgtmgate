@@ -214,31 +214,33 @@ GEN4="$(PATH="$FAILBIN:$PATH" node "$LA" --mode file --root "$T4" --session-root
 mk_input "$T4" path ref 'ti.scriptPath = "'"$GEN4"'"'; hook "$T4"
 if [ -n "$GEN4" ] && [ -f "$GEN4" ] && grep -q 'custom-source-marker' "$GEN4" && [ "$GEN4" != "$GEN1" ] && [ "$RC" = 0 ] && [ "$(jx 'j.hookSpecificOutput.updatedInput.scriptPath === "'"$GEN4"'"')" = "true" ]; then pass "launch-from-custom-engine (a patched copy given to --mode file is launched as printed)"; else fail "launch-from-custom-engine ($GEN4)"; fi
 
-# ---- plain phase titles (#553; same rule as scripts/guards.cjs checkPhaseTitles) -----------------------------
+# ---- no declared phases (#462, #553; same rule as scripts/guards.cjs checkPhaseTitles) -----------------------
 node -e '
 const fs = require("fs")
 const { retitle } = require(process.argv[1] + "/scripts/lib/launch-file.cjs")
 const source = fs.readFileSync(process.argv[1] + "/workflows/deliver-pipeline.js", "utf8")
 let ok = true
-const titlesOf = (out) => [...out.slice(0, out.indexOf("\n}\n")).matchAll(/\{ title: \x27([^\x27]*)\x27/g)].map((m) => m[1])
+const metaOf = (out) => out.slice(0, out.indexOf("\n}\n"))
 for (const n of [1, 520, 99999, 123456]) {
   const out = retitle(source, n)
   if (out === null) { ok = false; continue }
-  if (titlesOf(out).join(",") !== "Setup,Diagnose,Plan,Dev,Review") ok = false
+  if (/\{ title: /.test(metaOf(out)) || /^  phases:/m.test(metaOf(out))) ok = false
   if (/#\d+ (Setup|Diagnose|Plan|Dev|Review)/.test(out)) ok = false
   if (retitle(out, n) !== out) ok = false
 }
-// a launch file of the previous shape normalizes to the same bytes as a fresh launch
+// a launch file of the previous shape (numbered run-time phase constants) normalizes to the same bytes as a fresh launch
 let legacy = retitle(source, 9)
-for (const t of ["Setup", "Diagnose", "Plan", "Dev", "Review"]) legacy = legacy.replace("{ title: \x27" + t + "\x27", "{ title: \x27#9 " + t + "\x27").replace(t.toLowerCase() + ": \x27" + t + "\x27", t.toLowerCase() + ": \x27#9 " + t + "\x27")
+for (const t of ["Setup", "Diagnose", "Plan", "Dev", "Review"]) legacy = legacy.replace(t.toLowerCase() + ": \x27" + t + "\x27", t.toLowerCase() + ": \x27#9 " + t + "\x27")
 legacy = legacy.replace(/^  name: .*$/m, "  name: \x27deliver-pipeline #9 Old title\x27,").replace(/^  title: .*\n/m, "")
 if (legacy === retitle(source, 9) || retitle(legacy, 9) !== retitle(source, 9)) ok = false
-if (retitle(source.replace("title: \x27Dev\x27", "title: \x27Develop\x27"), 1) !== null) ok = false
+// a source that declares a phases list again gives no launch file
+const declared = source.replace("\n  name: \x27deliver-pipeline\x27,\n", "\n  name: \x27deliver-pipeline\x27,\n  phases: [{ title: \x27Setup\x27 }],\n")
+if (declared === source || retitle(declared, 1) !== null) ok = false
 // a string third argument is the title (same as { title })
 if (retitle(source, 553, "Short title") !== retitle(source, 553, { title: "Short title" }) || !retitle(source, 553, "Short title").includes("\n  name: \x27#553 - Short title\x27,\n")) ok = false
 process.exit(ok ? 0 : 1)' "$ROOT"
 NR=$?
-if [ "$NR" -eq 0 ]; then pass "launch-phases-plain (plain titles for any issue number, idempotent, a launch file of the previous shape is normalized)"; else fail "launch-phases-plain"; fi
+if [ "$NR" -eq 0 ]; then pass "launch-phases-plain (no phases declared for any issue number, idempotent, a launch file of the previous shape is normalized, a declared list is refused)"; else fail "launch-phases-plain"; fi
 node -e '
 const fs = require("fs")
 const { retitle } = require(process.argv[1] + "/scripts/lib/launch-file.cjs")
@@ -335,7 +337,7 @@ mk_input "$RS1" path ref 'a.title = "Fast launches"'; hook "$RS1"
 expect "run-state-title-kept-with-generated-file (no origin: the typed title stays, the file is the one the call named)" 0 'j.hookSpecificOutput.updatedInput.scriptPath === i.tool_input.scriptPath && !("name" in j.hookSpecificOutput.updatedInput) && j.hookSpecificOutput.updatedInput.args.title === "Fast launches"'
 RS1_FILE="$(script_of)"; cp "$RS1_FILE" "$TMP/rs1.before"
 if cmp -s "$RS1_FILE" "$TMP/rs1.before" && grep -qF "  name: '#520 - implement the issue'," "$RS1_FILE" && grep -qF "  title: '#520 - lgtmgate'," "$RS1_FILE" && grep -qF "  description: 'implement the issue'," "$RS1_FILE"; then pass "run-state-title-never-rewrites-the-file (the typed title does not reach the labels)"; else fail "run-state-title-never-rewrites-the-file"; fi
-if [ "$(grep -F '{ title:' "$RS1_FILE" | grep -c 'Fast launches')" = 0 ] && grep -qF "{ title: 'Setup'" "$RS1_FILE" && ! grep -qE "#520 (Setup|Diagnose|Plan|Dev|Review)" "$RS1_FILE" && grep -qF "const PHASE_TITLES = { setup: 'Setup', diagnose: 'Diagnose', plan: 'Plan', dev: 'Dev', review: 'Review' }" "$RS1_FILE"; then pass "run-state-title-phases-plain"; else fail "run-state-title-phases-plain"; fi
+if [ "$(grep -F '{ title:' "$RS1_FILE" | grep -c 'Fast launches')" = 0 ] && ! grep -qE "^  phases:" "$RS1_FILE" && ! grep -qE "#520 (Setup|Diagnose|Plan|Dev|Review)" "$RS1_FILE" && grep -qF "const PHASE_TITLES = { setup: 'Setup', diagnose: 'Diagnose', plan: 'Plan', dev: 'Dev', review: 'Review' }" "$RS1_FILE"; then pass "run-state-title-phases-plain"; else fail "run-state-title-phases-plain"; fi
 new_tree rs2 ignore; RS2="$TMP/rs2"
 mk_input "$RS2" path ref; hook "$RS2"; RS2_FILE="$(script_of)"
 if grep -qF "  name: '#520 - implement the issue'," "$RS2_FILE" && grep -qF "  description: 'implement the issue'," "$RS2_FILE"; then pass "launch-fallback-name-brief"; else fail "launch-fallback-name-brief ($(grep -m1 '^  name:' "$RS2_FILE"))"; fi

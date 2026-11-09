@@ -5891,8 +5891,7 @@ await testCase('T130 run identity: first log is deliver #<issue>, Setup phase fi
     return { ok: true }
   }
   const index = (needle) => source.indexOf(needle)
-  const firstTitle = /title: ['"]([^'"]+)['"]/.exec(source)
-  const error1 = eq('first meta phase title', firstTitle && firstTitle[1], 'Setup')
+  const error1 = eq('PHASE_TITLES setup', /^const PHASE_TITLES = \{ setup: '([^']*)'/m.exec(source)?.[1], 'Setup')
   if (error1) return error1
   const indexLog = index('log(`deliver #${issue} — ')
   const indexSetup = index("phase(PHASE_TITLES.setup)")
@@ -7592,6 +7591,16 @@ await testCase('T141c a refused plan planned again records Plan 2', async () => 
   return error1 || error2 || { ok: true }
 })
 
+await testCase('T141e a plan pass, a review fix round: the recorded phase sequence is Setup, Diagnose, Plan, Plan 2, Dev, Review, Review 2', async () => {
+  const withCommand = T182_ITEMS.map((it) => (it.humanGate ? { ...it, command: 'node scripts/guards.cjs' } : it))
+  const r = await run({ mode: 'auto', simulate: { sam: { 1: t182Sam(withCommand), 2: t182Sam(T182_ITEMS) }, planCheck: T182_CONFORMING, prBody: t182GateTickedBody(), morgan: [{ verdict: 'REQUIRED_CHANGES', items: ['a'] }, { verdict: 'LGTM', boxes: t183Boxes(true, true, true) }] } })
+  const error1 = eq('status', r.status, 'ready')
+  const titles = t141Titles()
+  if (!titles) return error1 || t141Skip('T141e')
+  const error2 = eq('phase titles', titles, ['Setup', 'Diagnose', 'Plan', 'Plan 2', 'Dev', 'Review', 'Review 2'])
+  return error1 || error2 || { ok: true }
+})
+
 // The per-call `phase:` options never reach the harness in simulate mode (callAgent returns the fixture before agent()), so
 // they are pinned on the engine source text: the plan-loop scout passes `phase: planPhase`; inside the review loop (from the
 // roundPhase declaration to the round's Morgan call) the plan-amend scout, the Nick fix and Morgan pass `phase: roundPhase`
@@ -8005,14 +8014,15 @@ await testCase('T520d a full-object launch still passes', async () => {
   const r = await run({ ...t520Specifics, projectSpecifics: x.full })
   return eq('status', r.status, 'plan-ready') || ((/^specifics@[0-9a-f]{12}:[0-9a-f]{12}$/.test(r.specifics)) ? { ok: true } : { ok: false, msg: `specifics line ${JSON.stringify(r.specifics)}` })
 })
-await testCase('T520e PHASE_TITLES holds the five meta.phases titles, in order', async () => {
+await testCase('T520e meta declares no phases and PHASE_TITLES keeps the five run titles', async () => {
   const source = SUITE_ARGS.fpSource
   if (!source) { log('SKIP — T520e: SUITE_ARGS.fpSource absent'); return { ok: true } }
   const metaBlock = source.slice(0, source.indexOf('\n}\n'))
-  const declared = [...metaBlock.matchAll(/\{ title: '([^']*)'/g)].map((m) => m[1])
+  const error1 = eq('meta title entries', [...metaBlock.matchAll(/\{ title: '([^']*)'/g)].length, 0)
+  const error2 = eq('meta phases property', /^\s*phases\s*:/m.test(metaBlock), false)
   const line = /^const PHASE_TITLES = \{ setup: '([^']*)', diagnose: '([^']*)', plan: '([^']*)', dev: '([^']*)', review: '([^']*)' \}$/m.exec(source)
   if (!line) return { ok: false, msg: 'no PHASE_TITLES line of the expected shape' }
-  return eq('titles', line.slice(1), declared) || { ok: true }
+  return error1 || error2 || eq('titles', line.slice(1), ['Setup', 'Diagnose', 'Plan', 'Dev', 'Review']) || { ok: true }
 })
 
 // T469 (#469) — recovery after a stuck preflight and the branch of a review-entry `ready`.
