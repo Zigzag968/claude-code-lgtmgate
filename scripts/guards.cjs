@@ -57,11 +57,9 @@
 //      every registry key has a row (a row's first cell may group several statuses, each in backticks)
 //      and every row names a registry key. A failure names the status.
 //
-//   phase-titles (#141): the titles declared in `export const meta = { ... phases: [ ... ] }` of
-//      workflows/deliver-pipeline.js are each at most 16 characters (the progress view truncates longer ones)
-//      and none is a case-insensitive prefix of another (the view merges them into one box; the run-time
-//      numbered titles `Review 2`, `Plan 2` rely on this; titles are compared after trimming surrounding whitespace,
-//      as the viewer does). Only the meta block is read. A failure names the title.
+//   phase-titles (#141, #462): the `export const meta = { ... }` block of workflows/deliver-pipeline.js declares no
+//      `phases` list, so the progress view lists the phases in run order. Only the meta block is read. A failure
+//      names the declared titles.
 //   init-stubs (#267): the six stubs `/lgtmgate:init` creates under .claude/lgtmgate/ (STUBS of
 //      scripts/runtime/init-specifics.cjs) carry none of the engine vocabulary (ENGINE_WORDS_RE) and are empty once
 //      their comments are stripped (a stub injects nothing into an agent's prompt). Since #271 the lane stub
@@ -96,7 +94,7 @@
 //   GUARDS_PRACC_COPY      its in-repo copy for sam-parity (default: .claude/rules/pr-acceptance.md)
 //   GUARDS_STATUS_JS_FILE  workflow file for status-table (default: workflows/deliver-pipeline.js)
 //   GUARDS_DELIVER_MD      Lead runbook for status-table (default: skills/deliver/SKILL.md)
-//   GUARDS_PHASES_JS_FILE  workflow file for phase-titles (default: workflows/deliver-pipeline.js)
+//   GUARDS_PHASES_JS_FILE  workflow file for phase-titles, which must declare no meta phases (default: workflows/deliver-pipeline.js)
 //   GUARDS_INIT_STUBS      module exporting STUBS for init-stubs (default: scripts/runtime/init-specifics.cjs)
 //   GUARDS_TEST_COUNTS     JSON map suite label -> count for readme-contract (default: run the suites)
 //   GUARDS_ROOT            repo root (default: parent of scripts/)
@@ -393,29 +391,16 @@ function checkStatusTable() {
   else out(`PASS: status-table: ${keys.length} STATUS keys, each with a row in ${DELIVER_MD} §5, no row without a key`)
 }
 
-// ---- phase-titles (#141) -----------------------------------------------------------------------
-// The declared titles are the `title: '...'` entries of the `phases: [` list inside the top-level
-// `export const meta = { ... }` block (closed by a `}` at column 0); anything after the block is ignored.
-const PHASE_TITLE_CAP = 16
+// ---- phase-titles (#141, #462) -----------------------------------------------------------------
+// The `export const meta = { ... }` block (closed by a `}` at column 0) declares no `phases` list: the progress view
+// then lists the phases in run order, a declared list pins its entries first and orders the run-time titles after them.
 function checkPhaseTitles() {
   const js = readOr(process.env.GUARDS_PHASES_JS_FILE || path.join(ROOT, WORKFLOW))
   if (js === null) { bad(`FAIL: phase-titles: cannot read ${WORKFLOW}`); return }
+  if (!/^export const meta = \{/m.test(js)) { bad(`FAIL: phase-titles: no \`export const meta\` block in ${WORKFLOW}`); return }
   const titles = declaredPhaseTitles(js)
-  if (!titles) { bad(`FAIL: phase-titles: no \`phases: [ { title: '...' } ]\` list in the \`export const meta\` block of ${WORKFLOW}`); return }
-  const problems = []
-  for (const t of [...new Set(titles)]) {
-    const n = [...t].length
-    if (n > PHASE_TITLE_CAP) problems.push(`title '${t}' has ${n} characters, cap ${PHASE_TITLE_CAP}`)
-  }
-  // Each pair once; the shorter title (the first one when equal) is named as the prefix.
-  for (let index = 0; index < titles.length; index++) {
-    for (let index_ = index + 1; index_ < titles.length; index_++) {
-      const [short, long] = titles[index].trim().length <= titles[index_].trim().length ? [titles[index], titles[index_]] : [titles[index_], titles[index]]
-      if (long.trim().toLowerCase().startsWith(short.trim().toLowerCase())) problems.push(`title '${short}' is a prefix of '${long}' (case-insensitive), the progress view merges them`)
-    }
-  }
-  if (problems.length) { for (const pr of problems) bad(`FAIL: phase-titles: ${pr}`); return }
-  out(`PASS: phase-titles: ${titles.length} declared titles, longest ${Math.max(...titles.map((t) => [...t].length))}/${PHASE_TITLE_CAP} characters, none a prefix of another`)
+  if (titles) { bad(`FAIL: phase-titles: the \`export const meta\` block of ${WORKFLOW} declares a \`phases\` list (\`${titles.join(', ')}\`): declare none, the progress view then lists phases in run order (#462)`); return }
+  out('PASS: phase-titles: no phases declared in the meta block, the progress view follows run order')
 }
 
 function checkInitStubs() {

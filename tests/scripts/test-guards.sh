@@ -8,7 +8,7 @@
 # doc-budgets (at budget / over / missing / per-line cap, through GUARDS_ROOT),
 # instructions-wired (imports outside code, once each, no @AGENTS.md, AGENTS.md names both, omitClaudeMd),
 # status-table (registry <-> §5 table both ways, grouped rows, missing registry or table; #180),
-# phase-titles (real titles, a 16-character title, a 17-character title, a case-insensitive prefix title either order, a whitespace-padded title, no phases list; #141).
+# phase-titles (the real file declares none, a declared list is refused naming its titles, a meta block without a list passes, no meta block fails; #141, #462).
 # audit (the default list runs the audit check: a baseline raised vs origin/main fails; #289; rename-aware rule 2 and NEW-RULE, #303).
 # The audit cases really run scripts/audit.cjs: like test-audit.sh this file needs `npm ci` and ruff at the version of ruff.toml on PATH.
 # canary-step (the real MAINTAINING.md passes; no section and a missing script name fail naming the rule; #432).
@@ -495,21 +495,13 @@ mkphases() {
 }
 run_phases() { OUT="$(GUARDS_ONLY=phases GUARDS_PHASES_JS_FILE="$1" node scripts/guards.cjs 2>&1)"; RC=$?; }
 run_phases workflows/deliver-pipeline.js
-if [ "$RC" -eq 0 ] && [ "$OUT" = "PASS: phase-titles: 5 declared titles, longest 8/16 characters, none a prefix of another" ]; then ok "phase-titles: the 5 real titles are within the cap and none is a prefix of another -> PASS"; else ko "phase-titles real file (rc=$RC) $OUT"; fi
-mkphases "$T/ph-16.js" Setup ABCDEFGHIJKLMNOP; run_phases "$T/ph-16.js"
-if [ "$RC" -eq 0 ] && [ "$OUT" = "PASS: phase-titles: 2 declared titles, longest 16/16 characters, none a prefix of another" ]; then ok "phase-titles: a title of exactly 16 characters passes (the decoy after the meta block is not read)"; else ko "phase-titles 16 characters (rc=$RC) $OUT"; fi
-mkphases "$T/ph-17.js" Setup ABCDEFGHIJKLMNOPQ; run_phases "$T/ph-17.js"
-if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q "^FAIL: phase-titles: title 'ABCDEFGHIJKLMNOPQ' has 17 characters, cap 16$"; then ok "phase-titles: a title of 17 characters -> FAIL naming it"; else ko "phase-titles 17 characters (rc=$RC) $OUT"; fi
-mkphases "$T/ph-pre.js" Setup Plan "Plan check"; run_phases "$T/ph-pre.js"; RC1=$RC; OUT1="$OUT"
-mkphases "$T/ph-pre-ci.js" Setup plan "Plan check"; run_phases "$T/ph-pre-ci.js"
-if [ "$RC1" -ne 0 ] && [ "$RC" -ne 0 ] && echo "$OUT1" | grep -q "^FAIL: phase-titles: title 'Plan' is a prefix of 'Plan check' (case-insensitive), the progress view merges them$" && echo "$OUT" | grep -q "^FAIL: phase-titles: title 'plan' is a prefix of 'Plan check' (case-insensitive), the progress view merges them$"; then ok "phase-titles: a title that is a prefix of another, case-insensitively -> FAIL naming both"; else ko "phase-titles prefix (rc=$RC1/$RC) $OUT1 $OUT"; fi
-mkphases "$T/ph-pre-rev.js" Setup "Plan check" Plan; run_phases "$T/ph-pre-rev.js"
-if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q "^FAIL: phase-titles: title 'Plan' is a prefix of 'Plan check' (case-insensitive), the progress view merges them$"; then ok "phase-titles: the longer title listed before its prefix title -> FAIL naming both"; else ko "phase-titles prefix, longer first (rc=$RC) $OUT"; fi
-mkphases "$T/ph-trim.js" Setup Plan " Plan"; run_phases "$T/ph-trim.js"; RC1=$RC; OUT1="$OUT"
-mkphases "$T/ph-trim-pre.js" Setup "Plan " " Plan check"; run_phases "$T/ph-trim-pre.js"
-if [ "$RC1" -ne 0 ] && [ "$RC" -ne 0 ] && echo "$OUT1" | /usr/bin/grep -q "^FAIL: phase-titles: title 'Plan' is a prefix of ' Plan'" && echo "$OUT" | /usr/bin/grep -q "^FAIL: phase-titles: title 'Plan ' is a prefix of ' Plan check'"; then ok "phase-titles: titles compared after trimming surrounding whitespace -> FAIL"; else ko "phase-titles trim (rc=$RC1/$RC) $OUT1 $OUT"; fi
+if [ "$RC" -eq 0 ] && [ "$OUT" = "PASS: phase-titles: no phases declared in the meta block, the progress view follows run order" ]; then ok "phase-titles: the real workflow declares no phases -> PASS"; else ko "phase-titles real file (rc=$RC) $OUT"; fi
+mkphases "$T/ph-list.js" Setup "Plan check"; run_phases "$T/ph-list.js"
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q "^FAIL: phase-titles: the \`export const meta\` block of workflows/deliver-pipeline.js declares a \`phases\` list (\`Setup, Plan check\`): declare none"; then ok "phase-titles: a declared phases list -> FAIL naming its titles (the decoy after the meta block is not read)"; else ko "phase-titles declared list (rc=$RC) $OUT"; fi
 printf "export const meta = {\n  name: 'x',\n}\n" > "$T/ph-none.js"; run_phases "$T/ph-none.js"
-if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: phase-titles: no '; then ok "phase-titles: a meta block without a phases list -> FAIL"; else ko "phase-titles no list (rc=$RC) $OUT"; fi
+if [ "$RC" -eq 0 ] && echo "$OUT" | grep -q '^PASS: phase-titles: no phases declared'; then ok "phase-titles: a meta block without a phases list -> PASS"; else ko "phase-titles no list (rc=$RC) $OUT"; fi
+printf "const x = 1\n" > "$T/ph-nometa.js"; run_phases "$T/ph-nometa.js"
+if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q '^FAIL: phase-titles: no `export const meta` block'; then ok "phase-titles: no meta block at all -> FAIL"; else ko "phase-titles no meta (rc=$RC) $OUT"; fi
 
 # ---- init-stubs (#267) ----
 run_stubs() { OUT="$(GUARDS_ONLY=init-stubs GUARDS_INIT_STUBS="$1" node scripts/guards.cjs 2>&1)"; RC=$?; }
