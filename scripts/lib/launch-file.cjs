@@ -8,13 +8,12 @@
 //   meta.description  `<issue name>`         progress panel description
 // The issue name is the given title; without one it is the first line of the brief (a leading `Issue <n>:` / `#<n>:` is
 // dropped), cut at 80 bytes in the name and at a word boundary with an ellipsis in the description. With neither, the name
-// reads `#<N>` and the description `#<N>` (the runtime requires a non-empty description). Phase titles stay plain (`Setup` ...
-// `Review`). The PR number is not shown.
+// reads `#<N>` and the description `#<N>` (the runtime requires a non-empty description). The meta block declares no phases (#462): the progress view lists them in run order. The PR number is not shown.
 // Written by hooks/workflow-args-expand.sh under <project>/.pipeline/launch/ (gitignored). Pure functions plus one atomic write.
 //
 // retitle(source, issue, options?) -> the expected bytes, or null when the source does not have the exact shape (then nothing is
 // written and the launch keeps the plugin's own engine). options = { title, brief }, both optional. Computed from the inputs
-// only, so retitle is idempotent and also normalizes a launch file of a previous shape (numbered phase titles, no `title` line).
+// only, so retitle is idempotent and also normalizes a launch file of a previous shape (numbered run-time phase constants, no `title` line).
 
 const fs = require('fs')
 const crypto = require('crypto')
@@ -26,7 +25,8 @@ const DESCRIPTION_CHARS = 120
 const PANEL_WORD = 'lgtmgate'
 const DIRECTORY = nodePath.join('.pipeline', 'launch')
 
-const TITLE_RE = /(\{ title: ')(?:#\d+ )?([^']*)(')/g
+const TITLE_RE = /\{ title: '/
+const PHASES_RE = /^  phases:/m
 const NAME_RE = /^(  name: ')((?:[^'\\\n]|\\.)*)(',)$/m
 const DESCRIPTION_RE = /^(  description: ')(.*)(',)$/m
 const META_TITLE_RE = /^  title: '(?:[^'\\\n]|\\.)*',\n/m
@@ -107,13 +107,11 @@ function retitle(source, issue, options) {
   const bounds = metaBounds(source)
   if (!bounds) return null
   const meta = source.slice(bounds.start, bounds.end)
-  const found = [...meta.matchAll(TITLE_RE)].map((m) => m[2])
-  if (found.length !== BASE_TITLES.length || found.some((t, index) => t !== BASE_TITLES[index])) return null
+  if (TITLE_RE.test(meta) || PHASES_RE.test(meta)) return null
   if ((source.match(CONSTANT_RE) || []).length !== 1) return null
   if (!NAME_RE.test(meta) || !DESCRIPTION_RE.test(meta)) return null
   if (META_TITLE_ANY_RE.test(meta) && !META_TITLE_RE.test(meta)) return null
-  let next = meta.replace(TITLE_RE, (all, open, phase, close) => `${open}${phase}${close}`)
-  next = next.replace(META_TITLE_RE, '')
+  let next = meta.replace(META_TITLE_RE, '')
   next = next.replace(NAME_RE, (all, open, held, close) => `${open}${name}${close}\n  title: '${panelTitle}',`)
   next = next.replace(DESCRIPTION_RE, (all, open, text, close) => `${open}${description}${close}`)
   const constant = `const PHASE_TITLES = { ${BASE_TITLES.map((t) => `${t.toLowerCase()}: '${t}'`).join(', ')} }`

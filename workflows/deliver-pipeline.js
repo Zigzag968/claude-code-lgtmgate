@@ -2,13 +2,6 @@ export const meta = {
   name: 'deliver-pipeline',
   description: 'Sam (plan) -> Nick (dev+PR) -> Morgan (review) -> loop until LGTM',
   whenToUse: 'Deliver a change end-to-end through the specialized agent pipeline (bug fix, chore, or feature). The Lead creates the shared worktree before launching and passes its path.',
-  phases: [
-    { title: 'Setup', detail: 'Run identity + early probes (config recheck, provision, freshness) before any agent work' },
-    { title: 'Diagnose', detail: 'Theo qualifies EVERY issue before Sam plans — mandatory, no opt-out' },
-    { title: 'Plan', detail: 'Mia (optional) + Sam scout/plan, posted on the issue' },
-    { title: 'Dev', detail: 'Nick implements in the shared worktree + opens PR' },
-    { title: 'Review', detail: 'Morgan reviews in the same worktree; loop back to Nick on changes' },
-  ],
 }
 
 // Guards (scripts/guards.cjs, R1 ratchet vs origin/main): the counters of `await agent(` outside
@@ -139,7 +132,7 @@ export const meta = {
 // `version`, checked against plugin.json by tests/templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '1.6.0-beta.1', cutFrom: '1f20251' }
+const BUILD = { plugin: 'lgtmgate', version: '1.6.0-beta.2', cutFrom: '8aabe0a' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
