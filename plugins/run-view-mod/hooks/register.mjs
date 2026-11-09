@@ -2,12 +2,12 @@
 // Measures which sources fire for workflow agents: agent.spawn, turn.complete, the Workflow tool result.
 const FIELDS = ["input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"];
 
-async function persist($, doc) {
-  const key = `usage-${doc.runId ?? "unknown"}`;
+async function persist($, document) {
+  const key = `usage-${document.runId ?? "unknown"}`;
   try {
-    await $.fs.write(`state/${key}.json`, JSON.stringify(doc, null, 2));
+    await $.fs.write(`state/${key}.json`, JSON.stringify(document, null, 2));
   } catch {
-    await $.store.set(key, doc);
+    await $.store.set(key, document);
   }
 }
 
@@ -19,15 +19,15 @@ export function register(on) {
 
   const total = (a) => FIELDS.reduce((s, f) => s + (a[f] ?? 0), 0);
 
-  on("agent.spawn", async ($, e, next) => {
+  on("agent.spawn", async ($, event, next) => {
     spawnSeen = true;
-    if (!e.resume && e.description) labels.push(e.description);
-    return next(e).catch(() => {});
+    if (!event.resume && event.description) labels.push(event.description);
+    return next(event).catch(() => {});
   });
 
-  on("session.append", { door: "tool-result" }, async ($, e, next) => {
+  on("session.append", { door: "tool-result" }, async ($, event, next) => {
     try {
-      const text = JSON.stringify(e.message?.content ?? "");
+      const text = JSON.stringify(event.message?.content ?? "");
       if (text.includes("transcriptDir") || text.includes("async_launched")) {
         const m = /runId\\?["']?\s*[:=]\s*\\?["']?([A-Za-z0-9_-]+)/.exec(text);
         if (m) runId = m[1];
@@ -35,20 +35,20 @@ export function register(on) {
     } catch {
       // observation only
     }
-    return next(e).catch(() => {});
+    return next(event).catch(() => {});
   });
 
-  on("turn.complete", async ($, e, next) => {
+  on("turn.complete", async ($, event, next) => {
     try {
-      if (e.agentId && e.usage) {
-        let a = agents[e.agentId];
+      if (event.agentId && event.usage) {
+        let a = agents[event.agentId];
         if (!a) {
           const index = Object.keys(agents).length + 1;
-          a = { label: labels.shift() ?? e.agentId, index };
+          a = { label: labels.shift() ?? event.agentId, index };
           for (const f of FIELDS) a[f] = 0;
-          agents[e.agentId] = a;
+          agents[event.agentId] = a;
         }
-        for (const f of FIELDS) a[f] += e.usage[f] ?? 0;
+        for (const f of FIELDS) a[f] += event.usage[f] ?? 0;
         const m = Object.keys(agents).length;
         const sum = Object.values(agents).reduce((s, x) => s + total(x), 0);
         $.ui.status(`run ${runId ?? "?"} - ${a.label} ${a.index}/${m} - ${sum} tok`);
@@ -57,6 +57,6 @@ export function register(on) {
     } catch {
       // observation only
     }
-    return next(e);
+    return next(event);
   });
 }
