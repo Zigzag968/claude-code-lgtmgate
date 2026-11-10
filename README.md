@@ -15,6 +15,22 @@
 [![Tests](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FZigzag968%2Fclaude-code-lgtmgate%2Fbadges%2Ftests.json)](#engineering-highlights)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/Zigzag968/claude-code-lgtmgate/badge)](https://scorecard.dev/viewer/?uri=github.com/Zigzag968/claude-code-lgtmgate)
 
+**You hand a GitHub issue to agents and get back a pull request ready to merge, with its acceptance checklist proven.**
+
+- **You** run one command: `/lgtmgate:deliver 142 "Login page shows a stale error after a successful retry"`.
+- **The agents** check the issue is real, write the plan, write the code and review it, in the run's own git worktree. A workflow drives them. A workflow is a script, so the order of the steps is deterministic.
+- **You get back** a pull request where each checklist item was checked against evidence, a command's output or an artifact. An item tagged `[human-gate]` is left for you: no agent can tick it.
+- **The merge stays yours.** The pipeline's agents never merge. The session you launched the run from merges only on your explicit go-ahead.
+
+<picture>
+  <source media="(prefers-reduced-motion: reduce)" srcset=".github/assets/workflow-widget-static.png">
+  <source media="(prefers-color-scheme: dark)" srcset=".github/assets/workflow-widget-dark.svg">
+  <source srcset=".github/assets/workflow-widget.svg">
+  <img src=".github/assets/workflow-widget-static.png" width="100%" alt="Time-lapse of one lgtmgate run, drawn as a stylised desktop conversation with the workflow progress view next to it. The user sends /lgtmgate:deliver 142 with a one-line brief. A workflow card appears in the conversation and a background tasks panel lists the phases as they start: Setup, Diagnose, Plan, Dev, Review, each with its agents. The first review asks for changes, so a Review 2 phase opens with the fix and a second review. The run ends on a pull request that is ready and waits for the user's go-ahead to merge. The durations shown are illustrative.">
+</picture>
+
+<sub>Time-lapse of one run. The durations shown are illustrative.</sub>
+
 lgtmgate is a Claude Code plugin that takes a GitHub issue through to a merge-ready pull request. A diagnosis agent checks the issue is real before anyone writes a plan for it. A reviewer checks each item on the acceptance checklist against actual evidence, a command's output or an artifact, before approving. The pipeline's agents (Theo, Mia, Sam, Nick and Morgan) never merge. Merging is a separate step: the Lead, the interactive Claude session orchestrating the run, executes it on a human's explicit go-ahead, and the merge hook and script refuse it while any acceptance box is unchecked. That holds for this repo's own releases too.
 
 ## Status
