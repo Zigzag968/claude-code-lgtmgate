@@ -17,10 +17,10 @@
 
 **You hand a GitHub issue to agents and get back a pull request ready to merge, with its acceptance checklist proven.**
 
-- **You** run one command: `/lgtmgate:deliver 142 "Login page shows a stale error after a successful retry"`.
-- **The agents** check the issue is real, write the plan, write the code and review it, in the run's own git worktree. A workflow drives them. A workflow is a script, so the order of the steps is deterministic.
-- **You get back** a pull request where each checklist item was checked against evidence, a command's output or an artifact. An item tagged `[human-gate]` is left for you: no agent can tick it.
-- **The merge stays yours.** The pipeline's agents never merge. The Lead, the session you launched the run from, merges only on your explicit go-ahead.
+1. **Launch.** You run one command: `/lgtmgate:deliver 142 "Login page shows a stale error after a successful retry"`.
+2. **Diagnose, plan, code.** In the run's own git worktree, an isolated checkout, **Theo** checks the issue is real, **Sam** writes the plan and the acceptance checklist, **Nick** writes the code and opens the pull request. A workflow drives them. A workflow is a script, so the order of the steps is deterministic.
+3. **Review and proof.** **Morgan** reviews the pull request. A checklist item is ticked only against proof, a command's output or an artifact, and a review that asks for changes sends Nick back. An item tagged `[human-gate]` is left for you: no agent can tick it.
+4. **Approve and merge.** The agents never merge. The Lead, the session you launched the run from, merges only on your explicit go-ahead.
 
 <picture>
   <source media="(prefers-reduced-motion: reduce)" srcset=".github/assets/workflow-widget-static.png">
@@ -31,7 +31,58 @@
 
 <sub>Time-lapse of three runs in parallel. Durations and agent counts are illustrative.</sub>
 
-lgtmgate is a Claude Code plugin that takes a GitHub issue through to a merge-ready pull request. A diagnosis agent checks the issue is real before anyone writes a plan for it. A reviewer checks each item on the acceptance checklist against actual evidence, a command's output or an artifact, before approving. The pipeline's agents (Theo, Mia, Sam, Nick and Morgan) never merge. Merging is a separate step: the Lead, the interactive Claude session orchestrating the run, executes it on a human's explicit go-ahead, and the merge hook and script refuse it while any acceptance box is unchecked. That holds for this repo's own releases too.
+lgtmgate is a Claude Code plugin that takes a GitHub issue through to a merge-ready pull request. The merge hook and script refuse a merge while any acceptance box is unchecked, and that holds for this repo's own releases too.
+
+## How a run goes
+
+A run takes one GitHub issue. The Lead, the Claude Code session you launched the run from, creates the run's own git worktree and launches the workflow. The order of the steps and the checkpoints are scripted in `workflows/deliver-pipeline.js`; the Lead does not decide them turn by turn.
+
+```
+$ /lgtmgate:deliver 142 "Login page shows a stale error after a successful retry"
+```
+
+1. **Theo** reproduces the stale-error state, confirms it is real, hands off to Sam. Mia frames a feature in product terms, only if asked.
+2. **Sam** posts an anchored plan on issue #142: impact table, implementation steps, and an acceptance checklist Morgan can verify offline.
+   - `plan-ready`: in the default `auto` mode the run continues to Nick; with `--mode semi` (or `proceedThrough`) it stops here until you tell the Lead to continue.
+3. **Nick** implements the plan and opens a draft PR with the checklist copied into the body, unticked.
+   - `dev-done`: in `auto` the run continues to Morgan; with `--mode semi` it stops here until you tell the Lead to continue.
+4. **Morgan**, a different agent from the one that wrote the code, runs the regression guard, checks conventions and ticks each item against proof, then posts a verdict:
+   - `REQUIRED_CHANGES`: Nick fixes, Morgan reviews again. This loops until the review passes.
+   - `LGTM`: the PR is undrafted and mergeable.
+5. **You** tick any `[human-gate]` item yourself: no agent can. Then the Lead merges, on your explicit go-ahead. The merge hook and script refuse the merge while any acceptance box is unchecked.
+
+```mermaid
+flowchart LR
+    Theo["Theo<br/>diagnose"] --> Sam["Sam<br/>plan"]
+    Theo -. optional .-> Mia["Mia<br/>PM framing"] -.-> Sam
+    Sam --> Nick["Nick<br/>dev + PR"]
+    Sam -. optional .-> Audit{"Plan audit<br/>challenge"}
+    Audit -- not sound --> Sam
+    Audit -- sound --> Nick
+    Nick --> Morgan{"Morgan<br/>review"}
+    Morgan -- REQUIRED_CHANGES --> Nick
+    Morgan -- LGTM --> Merge(["PR mergeable"])
+```
+
+### Modes
+
+| Mode | Where the run stops |
+|------|---------------------|
+| `auto` (default) | Runs straight from Sam's plan to a reviewed PR, with no pause. It stops only for the causes listed below. |
+| `semi` | After Sam's plan and again after Nick opens the PR, until you tell the Lead to continue. |
+| `manual` | At every step. |
+
+Ask for another mode after the brief: `/lgtmgate:deliver 142 "<brief>" --mode semi`.
+
+What still stops an `auto` run:
+
+- a plan with one-way-door hits that is not approved (`architectureDecisionApproved:true`);
+- an `escalate` or `*-died` status;
+- `verified-untickable`;
+- a `[human-gate]` box a person must settle;
+- an explicit `proceedThrough` (honoured in every mode).
+
+Each run is an independent Claude Code `Workflow`, not a script tied to your current chat session: it survives an interrupted session and resumes where it left off, and since every run lives in its own git worktree, the Lead can have several issues running at once. See [Supervision of runs in flight](#supervision-of-runs-in-flight) for the mechanics.
 
 ## Status
 
@@ -52,50 +103,14 @@ lgtmgate is a Claude Code plugin that takes a GitHub issue through to a merge-re
 
 lgtmgate is MIT-licensed and comes with no warranty. Try it first on a disposable repository, read the commands you put in the config before a run executes them, and review each pull request before you merge it.
 
-## How it works
-
-```mermaid
-flowchart LR
-    Theo["Theo<br/>diagnose"] --> Sam["Sam<br/>plan"]
-    Theo -. optional .-> Mia["Mia<br/>PM framing"] -.-> Sam
-    Sam --> Nick["Nick<br/>dev + PR"]
-    Sam -. optional .-> Audit{"Plan audit<br/>challenge"}
-    Audit -- not sound --> Sam
-    Audit -- sound --> Nick
-    Nick --> Morgan{"Morgan<br/>review"}
-    Morgan -- REQUIRED_CHANGES --> Nick
-    Morgan -- LGTM --> Merge(["PR mergeable"])
-```
-
-Theo reproduces the reported problem before anyone touches code. Mia frames the feature in product terms, but only if asked. Sam writes the plan, anchored to files it actually read this run. Nick implements the plan and opens the PR. Morgan, a different agent than the one who wrote the code, reviews it and approves once every checklist item has evidence behind it. The PR is then mergeable: the Lead orchestrating the run merges it, never Nick or Morgan themselves. Role details are in [Agents](#agents).
-
-By default the pipeline runs in `auto` mode: it runs straight through from Sam's plan to a reviewed PR with no pause for a go-ahead. What still stops an `auto` run: a plan with one-way-door hits that is not approved (`architectureDecisionApproved:true`), an `escalate` or `*-died` status, `verified-untickable`, a `[human-gate]` box a person must settle, and an explicit `proceedThrough` (honoured in every mode). To ask for another mode, add it after the brief: `/lgtmgate:deliver 142 "<brief>" --mode semi` stops after Sam's plan and again after Nick opens the PR until you tell the Lead to go ahead, and `--mode manual` stops at every step.
-
-Each run is an independent Claude Code `Workflow`, not a script tied to your current chat session: it survives an interrupted session and resumes where it left off, and since every run lives in its own git worktree, the Lead can have several issues running at once. See [Supervision of runs in flight](#supervision-of-runs-in-flight) for the mechanics.
-
-## Example
-
-```
-$ /lgtmgate:deliver 142 "Login page shows a stale error after a successful retry"
-```
-
-1. **Theo** reproduces the stale-error state, confirms it's real, hands off to Sam.
-2. **Sam** posts an anchored plan on issue #142: impact table, implementation steps, an acceptance checklist Morgan can verify offline.
-   - `plan-ready`: in the default `auto` mode the run continues to Nick; with `--mode semi` (or `proceedThrough`) it stops here and waits for your green light.
-3. **Nick** implements it and opens a draft PR with the checklist copied into the body, unticked.
-   - `dev-done`: in `auto` the run continues to Morgan; with `--mode semi` it stops here and waits for your green light.
-4. **Morgan** runs the regression guard, checks conventions, ticks each box against real proof, posts a verdict:
-   - `REQUIRED_CHANGES` → Nick fixes, Morgan re-reviews. Loops until resolved.
-   - `LGTM` → PR undrafted, mergeable. The Lead merges it; Nick and Morgan never do.
-
 ## Why lgtmgate
 
-- lgtmgate is a complete pipeline built on Claude Code's `Workflow` tool: fixed roles (Theo, Sam, Nick, Morgan), an acceptance checklist that only gets ticked against cited evidence, a `[human-gate]` item no agent can ever tick, and a run isolated in its own git worktree, all wired together out of the box.
-- A git hook refuses `gh pr merge` from inside a hooked session while any acceptance box is unchecked; a box only gets checked once there's evidence behind it. (This only catches the `gh` command inside a session with the hook wired in: a merge from the GitHub web UI isn't intercepted, so treat it as a speed bump, not a wall.)
-- Once every box is checked, nothing merges automatically: the Lead is instructed to always wait for an explicit go-ahead before running `gh pr merge`. That's a prompt-level convention the agents follow; nothing in the tooling enforces it.
-- Review and implementation are split across two different agents (Morgan and Nick), so neither one reviews its own work.
-- The human maintainer stays in the loop without babysitting the run: Sam posts the plan on the issue before Nick writes any code, so anyone watching can weigh in early. Any acceptance-checklist item tagged `[human-gate]` can never be ticked by Morgan, no matter the evidence; only a human checks it. Once a person has ticked it in the PR body, the engine settles it on the next verdict; the run then no longer waits on it.
-- The pipeline is built to need you as little as possible: when a run goes silent, the Lead resolves it on its own first, resuming a resumable run through a bounded retry loop, and a run parked on another repo's issue un-parks itself via the `blockedBy` signal once that issue's label flips. It only escalates to you when the retries are exhausted or the decision genuinely needs a human, such as any `[human-gate]` item.
+- **lgtmgate is a complete pipeline** built on Claude Code's `Workflow` tool: fixed roles (Theo, Sam, Nick, Morgan), an acceptance checklist that only gets ticked against cited proof, a `[human-gate]` item no agent can ever tick, and a run isolated in its own git worktree, all wired together out of the box.
+- **A git hook refuses `gh pr merge`** from inside a hooked session while any acceptance box is unchecked; a box only gets checked once there's proof behind it. (This only catches the `gh` command inside a session with the hook wired in: a merge from the GitHub web UI isn't intercepted, so treat it as a speed bump, not a wall.)
+- **Once every box is checked, nothing merges automatically:** the Lead is instructed to always wait for an explicit go-ahead before running `gh pr merge`. That's a prompt-level convention the agents follow; nothing in the tooling enforces it.
+- **Review and implementation are split across two different agents** (Morgan and Nick), so neither one reviews its own work.
+- **The human maintainer stays in the loop without babysitting the run:** Sam posts the plan on the issue before Nick writes any code, so anyone watching can weigh in early. Any acceptance-checklist item tagged `[human-gate]` can never be ticked by Morgan, no matter the proof; only a human checks it. Once a person has ticked it in the PR body, the engine settles it on the next verdict; the run then no longer waits on it.
+- **The pipeline is built to need you as little as possible:** when a run goes silent, the Lead resolves it on its own first, resuming a resumable run through a bounded retry loop, and a run parked on another repo's issue un-parks itself via the `blockedBy` signal once that issue's label flips. It only escalates to you when the retries are exhausted or the decision genuinely needs a human, such as any `[human-gate]` item.
 
 ### This project matured through real use. Here's how.
 
@@ -153,7 +168,7 @@ The full key-by-key reference, including precedence rules and edge cases, is in 
 - **Nick**: implements the change and the tests Sam's plan specifies (Sam's impact table names what needs testing, not just what to build), opens a draft PR, copies the acceptance checklist into the body. (sonnet)
 - **Morgan**: impartial reviewer, running the regression guard, the convention review, the acceptance-checklist gate and CI verification, then posting a verdict. Never commits. (sonnet)
 
-The Lead (you, or the orchestrator) creates a shared git worktree and launches the Workflow. The step order, checkpoints, and resume logic are scripted inside the plugin's `workflows/deliver-pipeline.js`, not decided by the Lead turn by turn: the Lead's job is to launch it and, in `semi` or `manual` mode, relay a go-ahead at each checkpoint. The agents work inside that same worktree so plan, code, and review sit on one frozen base.
+The Lead (the session you launched the run from) creates a shared git worktree and launches the Workflow. The step order, checkpoints, and resume logic are scripted inside the plugin's `workflows/deliver-pipeline.js`, not decided by the Lead turn by turn: the Lead's job is to launch it and, in `semi` or `manual` mode, relay your decision to continue at each checkpoint. The agents work inside that same worktree so plan, code, and review sit on one frozen base.
 
 ## Install
 
