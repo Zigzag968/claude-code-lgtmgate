@@ -91,9 +91,11 @@ const BASE = { issue: 1, brief: 'test feature', worktreePath: '/tmp/lgtmgate-tes
 // session started in, never the branch worktree's. Correct post-merge; PRE-MERGE it silently
 // exercises the OLD pipeline, so a gate under test reads as broken when it is merely absent
 // from the resolved file (#526: T45/T47 "failed" against a pre-gate pipeline that was never
-// the file under review). Validating a branch therefore passes an explicit path:
+// the file under review). Validating a branch therefore passes an explicit path; through the real Workflow
+// tool the engine is only launched from a printed launch file (`launch-args.cjs --mode file --engine
+// <worktree>/.claude/workflows/deliver-pipeline.js`, #605), so that printed file is the fpScriptPath:
 //   Workflow({ scriptPath: '<worktree>/.claude/workflows/test-deliver-pipeline.js',
-//              args: { fpScriptPath: '<worktree>/.claude/workflows/deliver-pipeline.js' } })
+//              args: { fpScriptPath: '<printed launch file>' } })
 // Absent that arg the name resolution stands, which is what a post-merge run wants.
 //
 // #54 resolution rule, this repo's own copy: the canonical pipeline is now
@@ -101,7 +103,8 @@ const BASE = { issue: 1, brief: 'test feature', worktreePath: '/tmp/lgtmgate-tes
 // directory — the component resolves as `lgtmgate:deliver-pipeline`), while this suite
 // stays at `templates/test-deliver-pipeline.js` (its own migration is S3c's). Validating a
 // branch of THIS repo therefore passes scriptPath '<worktree>/templates/test-deliver-pipeline.js'
-// and args.fpScriptPath '<worktree>/workflows/deliver-pipeline.js' — `--fp` is ALWAYS passed
+// and args.fpScriptPath a launch file printed from '<worktree>/workflows/deliver-pipeline.js' (the offline
+// runner passes the raw path and sets the flag itself) — `--fp` is ALWAYS passed
 // explicitly by `scripts/run-flow-suite.cjs` (which defaults it to `workflows/deliver-pipeline.js`,
 // unconditionally setting `suiteArgs.fpScriptPath`), so the `FP_REF` bare-name fallback below is
 // UNREACHABLE in this repo. The bare name IS what resolves a CONSUMER project's own copy

@@ -10,9 +10,15 @@ rp_cfg() { # <fixtureDir> <paths-json>: an engine config carrying that r2Scope
   printf '{"engineRepo": true, "r2Scope": {"issueType": "bug", "paths": %s, "fixtureDir": "%s"}}' "$2" "$1"
 }
 RP_CFG="$(rp_cfg fixtures/incidents '["workflows/"]')"
-rp_main() { # <dir> <workflow-file> <with-runner 0|1>: origin/main gets the workflow (and the runner), then the branch is brought up to date with it
-  ( cd "$1/other" && git checkout -q main && mkdir -p workflows scripts && cp "$2" workflows/deliver-pipeline.js \
-    && if [ "$3" = 1 ]; then cp "$RP_RUNNER" scripts/run-offline.cjs; fi \
+# A runner and an engine as they were before #605: no ./lib/launch-file.cjs require in the runner, no launch-file flag in the engine.
+RP_RUNNER_PRE="$BASE/rp-runner-pre.cjs"; RP_WF_PRE="$BASE/rp-wf-pre.js"; RP_BROKEN_PRE="$BASE/rp-broken-pre.js"
+node -e 'const fs = require("fs"); const s = fs.readFileSync(process.argv[1], "utf8"); const t = s.replace(/^const stripExports = .*$/m, () => process.argv[3]); if (t === s) process.exit(1); fs.writeFileSync(process.argv[2], t)' \
+  "$RP_RUNNER" "$RP_RUNNER_PRE" 'const stripExports = (source) => source.replace(/^export\s+/mg, "")' || bad "r2-replay: cannot build the runner of before #605"
+grep -v 'LAUNCH_FILE_GENERATED' "$RP_WF" > "$RP_WF_PRE"; { cat "$RP_WF_PRE"; echo '}}} not javascript'; } > "$RP_BROKEN_PRE"
+rp_main() { # <dir> <workflow-file> <runner 0|1|2>: origin/main gets the workflow and the runner (1: with scripts/lib/launch-file.cjs it loads, 2: the runner of before #605, alone), then the branch is brought up to date with it
+  ( cd "$1/other" && git checkout -q main && mkdir -p workflows scripts/lib && cp "$2" workflows/deliver-pipeline.js \
+    && if [ "$3" = 1 ]; then cp "$RP_RUNNER" scripts/run-offline.cjs && cp "$ROOT/scripts/lib/launch-file.cjs" scripts/lib/launch-file.cjs; fi \
+    && if [ "$3" = 2 ]; then cp "$RP_RUNNER_PRE" scripts/run-offline.cjs; fi \
     && git add -A && git commit -qm "main: engine files" && git push -q origin main ) >/dev/null 2>&1
   r2_pull_main "$1"
 }
@@ -36,6 +42,9 @@ rp_merges() { # <label>
 # (a) green on the branch, red on base: merges
 rp_case rp-ok "$RP_BROKEN" 1 "$RP_WF" "$RP_CFG"
 rp_merges "fixture green on the branch and red on base: merges"
+# (a2) origin/main still holds the runner of before #605 (no lib file next to it): the replay copies nothing more and still works
+rp_case rp-ok-pre "$RP_BROKEN_PRE" 2 "$RP_WF_PRE" "$RP_CFG"
+rp_merges "runner of before #605 on origin/main (no scripts/lib/launch-file.cjs): fixture green on the branch and red on base: merges"
 # (b) green on both: the fixture does not reproduce the bug
 rp_case rp-both-green "$RP_WF" 1 "$RP_SAME" "$RP_CFG"
 rp_refused "fixture green on both base and branch: refused, it does not reproduce the bug" "not red on base"

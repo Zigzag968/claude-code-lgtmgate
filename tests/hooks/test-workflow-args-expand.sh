@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# Self-test of hooks/workflow-args-expand.sh + scripts/runtime/workflow-args-expand.cjs (#520): the PreToolUse(Workflow) hook that
-# expands `projectSpecificsRef` / `configRef` to the full objects and gives a launch of the engine a copy titled with the issue
-# number under .pipeline/launch/. Throw-away git trees come from scripts/gen-launch-fixtures.cjs in $TMPDIR (nothing is committed).
-# The tool_input skeletons are the three shapes observed in real Workflow calls (launch by name, launch by scriptPath, resume).
+# Self-test of hooks/workflow-args-expand.sh + scripts/runtime/workflow-args-expand.cjs (#520, #605): the PreToolUse(Workflow) hook that
+# expands `projectSpecificsRef` / `configRef` to the full objects for a launch of the generated launch file (the file
+# `launch-args.cjs --mode file` writes under .pipeline/launch/<sha12>/). The one-launch-form refusals are in test-engine-launch-form.sh.
+# Throw-away git trees come from scripts/gen-launch-fixtures.cjs in $TMPDIR (nothing is committed).
+# The tool_input skeletons follow the Workflow tool's input schema (scriptPath, resumeFromRunId, args): a launch and a resume of the
+# generated file; the engine is never launched by name any more.
 # bash 3.2 compatible. Prints `PASS: <name>` per case and a last line `[hook-test] passed=<n> failed=<m>`.
 set -u
 cd "$(dirname "$0")/../.." || exit 1
@@ -19,28 +21,30 @@ fail() { FAIL=$((FAIL+1)); echo "FAIL: $1"; }
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/workflow-args-expand.XXXXXX")"
 trap 'rm -rf "$TMP"' EXIT
 OUT="$TMP/out"; ERR="$TMP/err"; RC=0
+FAILBIN="$TMP/failbin"; mkdir -p "$FAILBIN"; printf '#!/usr/bin/env bash\nexit 1\n' > "$FAILBIN/gh"; chmod +x "$FAILBIN/gh"
 
 # new_tree <name> [ignore]: a fixture project in $TMP/<name>; with `ignore`, .pipeline/ is gitignored there
 new_tree() {
   node "$GEN" --tree "$TMP/$1" --size 4k >/dev/null || { echo "cannot build the fixture tree"; exit 1; }
   if [ "${2:-}" = "ignore" ]; then printf '.pipeline/\n' > "$TMP/$1/.gitignore"; fi
 }
-# mk_input <tree> <kind: name|path|resume> <mode: ref|full> [extra-js]: writes $TMP/in.json for the tree
+# mk_input <tree> <kind: path|resume> <mode: ref|full> [extra-js]: writes $TMP/in.json for the tree. The launch file is the one
+# `launch-args.cjs --mode file` writes in the tree (a gh that always fails keeps the label to the brief, no network).
 mk_input() {
   node "$LA" --root "$1" --session-root "$1" --ref origin/main --stage plan --mode "$3" --issue 520 --brief "implement the issue" > "$TMP/args.json" || exit 1
+  local gen; gen="$(PATH="$FAILBIN:$PATH" node "$LA" --mode file --root "$1" --session-root "$1" --issue 520 --brief "implement the issue")" || exit 1
   node -e '
 const fs = require("fs")
-const [tree, kind, engine, file] = process.argv.slice(1, 5)
+const [tree, kind, gen, file] = process.argv.slice(1, 5)
 const args = JSON.parse(fs.readFileSync(process.argv[5], "utf8"))
-const extra = process.argv[6] ? new Function("a", "ti", process.argv[6]) : null
+const extra = process.argv[6] ? new Function("a", "ti", "gen", process.argv[6]) : null
 const shapes = {
-  name: { name: "lgtmgate:deliver-pipeline", args },
-  path: { scriptPath: engine, args },
-  resume: { scriptPath: engine, resumeFromRunId: "wf_76786d84-860", args },
+  path: { scriptPath: gen, args },
+  resume: { scriptPath: gen, resumeFromRunId: "wf_76786d84-860", args },
 }
 const ti = shapes[kind]
-if (extra) extra(args, ti)
-fs.writeFileSync(file, JSON.stringify({ cwd: tree, tool_name: "Workflow", tool_input: ti }))' "$1" "$2" "$ENGINE" "$TMP/in.json" "$TMP/args.json" "${4:-}"
+if (extra) extra(args, ti, gen)
+fs.writeFileSync(file, JSON.stringify({ cwd: tree, tool_name: "Workflow", tool_input: ti }))' "$1" "$2" "$gen" "$TMP/in.json" "$TMP/args.json" "${4:-}"
 }
 # hook <tree> [input-file]: runs the hook on the input; stdout in $OUT, stderr in $ERR, exit code in $RC
 hook() {
@@ -60,7 +64,7 @@ expect() { # expect <name> <rc> <js>
 expect_deny() { # expect_deny <name> [needle]
   if [ "$RC" = 2 ] && [ "$(jx 'j.hookSpecificOutput.permissionDecision === "deny" && j.hookSpecificOutput.permissionDecisionReason.startsWith("specifics-ref-mismatch:")')" = "true" ] && [ -s "$ERR" ] && { [ -z "${2:-}" ] || grep -qF -- "$2" "$OUT"; }; then pass "$1"; else fail "$1 (rc=$RC out=$(head -c 300 "$OUT"))"; fi
 }
-launch_files() { local n=0 f; for f in "$1"/.pipeline/launch/issue-520-*.js; do [ -e "$f" ] && n=$((n+1)); done; echo "$n"; }
+launch_files() { find "$1/.pipeline/launch" -type f -name '#520*' 2>/dev/null | wc -l | tr -d ' '; }
 
 # ---- expansion ---------------------------------------------------------------------------------
 new_tree t1 ignore; T1="$TMP/t1"
@@ -144,21 +148,26 @@ if [ "$RC" = 0 ] && [ ! -s "$OUT" ]; then pass "foreign-call-with-reference-word
 # ---- args as a JSON string, preserved fields ----------------------------------------------------------
 mk_input "$T1" path ref 'ti.args = JSON.stringify(ti.args)'; hook "$T1"
 expect "args-string" 0 'typeof j.hookSpecificOutput.updatedInput.args === "string" && JSON.parse(j.hookSpecificOutput.updatedInput.args).config.baseBranch !== undefined && "projectSpecifics" in JSON.parse(j.hookSpecificOutput.updatedInput.args)'
-new_tree t2; T2="$TMP/t2" # not ignored: the engine named by the call is kept
-mk_input "$T2" name ref 'ti.extra = { keep: 1 }'; hook "$T2"
-expect "preserve-fields-name" 0 'j.hookSpecificOutput.updatedInput.name === "lgtmgate:deliver-pipeline" && !("scriptPath" in j.hookSpecificOutput.updatedInput) && j.hookSpecificOutput.updatedInput.extra.keep === 1'
+mk_input "$T1" path ref 'ti.args = "{not json, with projectSpecificsRef"'; hook "$T1"
+expect "args-string-unparseable-denied" 2 'j.hookSpecificOutput.permissionDecisionReason.startsWith("specifics-ref-mismatch:") && j.hookSpecificOutput.permissionDecisionReason.includes("not valid JSON")'
+new_tree t2 ignore; T2="$TMP/t2"
+mk_input "$T2" path ref 'ti.extra = { keep: 1 }'; hook "$T2"
+expect "preserve-fields-extra (a field the hook does not know is kept as it was)" 0 'j.hookSpecificOutput.updatedInput.extra.keep === 1 && !("name" in j.hookSpecificOutput.updatedInput)'
 mk_input "$T2" path ref; hook "$T2"
 expect "preserve-fields-scriptpath" 0 'j.hookSpecificOutput.updatedInput.scriptPath === i.tool_input.scriptPath && !("name" in j.hookSpecificOutput.updatedInput)'
 mk_input "$T2" resume ref; hook "$T2"
 expect "preserve-fields-resume" 0 'j.hookSpecificOutput.updatedInput.resumeFromRunId === "wf_76786d84-860" && j.hookSpecificOutput.updatedInput.scriptPath === i.tool_input.scriptPath'
-if [ "$(launch_files "$T2")" = 0 ] && [ ! -d "$T2/.pipeline/launch" ]; then pass "launch-not-ignored (keeps the engine, expands the arguments, writes no file)"; else fail "launch-not-ignored (a file was written)"; fi
-expect "launch-not-ignored-args-expanded" 0 '"config" in j.hookSpecificOutput.updatedInput.args && "projectSpecifics" in j.hookSpecificOutput.updatedInput.args'
+BEFORE_FILES="$(find "$T2/.pipeline/launch" -type f | wc -l | tr -d ' ')"
+hook "$T2"
+if [ "$(find "$T2/.pipeline/launch" -type f | wc -l | tr -d ' ')" = "$BEFORE_FILES" ]; then pass "launch-hook-writes-no-file (the hook never creates or rewrites a launch file)"; else fail "launch-hook-writes-no-file"; fi
+mk_input "$T2" path ref 'ti.scriptPath = a.worktreePath + "/.pipeline/launch/0123456789ab/#520 - never written.js"'; hook "$T2"
+expect "launch-file-unreadable-fails-open (a generated-shape path that does not exist: arguments expanded, no refusal)" 0 '"config" in j.hookSpecificOutput.updatedInput.args && !("permissionDecision" in j.hookSpecificOutput)'
 
 # ---- the launch file ---------------------------------------------------------------------------------
 new_tree t3 ignore; T3="$TMP/t3"
-mk_input "$T3" name ref; hook "$T3"
+mk_input "$T3" path ref; hook "$T3"
 GEN1="$(node -e 'const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(j.hookSpecificOutput.updatedInput.scriptPath||"")' "$OUT")"
-if [ -n "$GEN1" ] && [ -f "$GEN1" ] && [ "$(jx '!("name" in j.hookSpecificOutput.updatedInput) && /\/\.pipeline\/launch\/issue-520-[0-9a-f]{12}\.js$/.test(j.hookSpecificOutput.updatedInput.scriptPath)')" = "true" ]; then pass "launch-named (replaced by a scriptPath under .pipeline/launch/, no name)"; else fail "launch-named ($GEN1)"; fi
+if [ -n "$GEN1" ] && [ -f "$GEN1" ] && [ "$(jx '!("name" in j.hookSpecificOutput.updatedInput) && /\/\.pipeline\/launch\/[0-9a-f]{12}\/#520 - implement the issue\.js$/.test(j.hookSpecificOutput.updatedInput.scriptPath)')" = "true" ]; then pass "launch-generated-shape (the scriptPath the hook returns is the generated file the call named, no name added)"; else fail "launch-generated-shape ($GEN1)"; fi
 node -e '
 const fs = require("fs")
 const a = fs.readFileSync(process.argv[1], "utf8").split("\n")
@@ -169,30 +178,41 @@ if (titleAt < 1 || titleAt > 12 || !b[titleAt - 1].startsWith("  name: ")) proce
 b.splice(titleAt, 1)
 const changed = []
 for (let k = 0; k < a.length; k++) if (a[k] !== b[k]) changed.push(k)
-const inMeta = (k) => k < 12
-const ok = changed.length === 2 && changed.every(inMeta)
+const flagLine = a.findIndex((l) => /^const LAUNCH_FILE_GENERATED = false$/.test(l))
+const ok = changed.length === 3 && changed.filter((k) => k < 12).length === 2 && changed.includes(flagLine) && b[flagLine] === "const LAUNCH_FILE_GENERATED = true"
 process.exit(ok ? 0 : 1)' "$ENGINE" "$GEN1"
 NR=$?
-if [ "$NR" -eq 0 ]; then pass "launch-diff-only-titles (one more line: meta title; name and description changed; phase titles untouched)"; else fail "launch-diff-only-titles"; fi
-hook "$T3"
+if [ "$NR" -eq 0 ]; then pass "launch-diff-only-titles (three changed lines: meta name, meta description and the flag, plus the inserted meta title line; phase titles untouched)"; else fail "launch-diff-only-titles"; fi
+mk_input "$T3" path ref; hook "$T3"
 SECOND="$(node -e 'const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(j.hookSpecificOutput.updatedInput.scriptPath||"")' "$OUT")"
-if [ "$SECOND" = "$GEN1" ] && [ "$(launch_files "$T3")" = 1 ]; then pass "launch-reuse (second call, same path, one file)"; else fail "launch-reuse ($SECOND vs $GEN1)"; fi
+if [ "$SECOND" = "$GEN1" ] && [ "$(launch_files "$T3")" = 1 ]; then pass "launch-reuse (the same call twice: same path, one file)"; else fail "launch-reuse ($SECOND vs $GEN1)"; fi
 # a resume that re-passes the generated path
-mk_input "$T3" resume ref "ti.scriptPath = \"$GEN1\""; hook "$T3"
+mk_input "$T3" resume ref; hook "$T3"
 if [ "$RC" = 0 ] && [ "$(jx "j.hookSpecificOutput.updatedInput.scriptPath === \"$GEN1\" && j.hookSpecificOutput.updatedInput.resumeFromRunId === \"wf_76786d84-860\"")" = "true" ] && [ "$(launch_files "$T3")" = 1 ]; then pass "resume-generated-path-idempotent"; else fail "resume-generated-path-idempotent (rc=$RC $(head -c 300 "$OUT"))"; fi
-# one extra byte
-printf '\n' >> "$GEN1"
-mk_input "$T3" name ref; hook "$T3"
+if [ "$(grep -c '^const LAUNCH_FILE_GENERATED = true$' "$GEN1")" = 1 ] && [ "$(grep -c '^const LAUNCH_FILE_GENERATED = false$' "$ENGINE")" = 1 ]; then pass "launch-flag-on-in-the-generated-file-off-in-the-engine"; else fail "launch-flag-on-in-the-generated-file-off-in-the-engine"; fi
+# one extra byte: the same call, the file edited after it was written
+cp "$GEN1" "$TMP/gen1.keep"; printf '\n' >> "$GEN1"
+node -e '
+const fs = require("fs")
+const a = JSON.parse(fs.readFileSync(process.argv[3], "utf8"))
+const resume = process.argv[5] === "resume"
+fs.writeFileSync(process.argv[2], JSON.stringify({ cwd: process.argv[1], tool_name: "Workflow", tool_input: Object.assign({ scriptPath: process.argv[4], args: a }, resume ? { resumeFromRunId: "wf_76786d84-860" } : {}) }))' "$T3" "$TMP/tamper-path.json" "$TMP/args.json" "$GEN1" path
+hook "$T3" "$TMP/tamper-path.json"
 expect_deny "launch-tamper-denied" "$(basename "$GEN1")"
-mk_input "$T3" resume ref "ti.scriptPath = \"$GEN1\""; hook "$T3"
+node -e '
+const fs = require("fs")
+const a = JSON.parse(fs.readFileSync(process.argv[3], "utf8"))
+fs.writeFileSync(process.argv[2], JSON.stringify({ cwd: process.argv[1], tool_name: "Workflow", tool_input: { scriptPath: process.argv[4], resumeFromRunId: "wf_76786d84-860", args: a } }))' "$T3" "$TMP/tamper-resume.json" "$TMP/args.json" "$GEN1"
+hook "$T3" "$TMP/tamper-resume.json"
 expect_deny "resume-tamper-denied" "$(basename "$GEN1")"
+cp "$TMP/gen1.keep" "$GEN1"
 
-# a scriptPath given by the call is the source, not the plugin cache
+# a source given to --mode file is the source of the file, not the plugin cache
 new_tree t4 ignore; T4="$TMP/t4"
-mkdir -p "$TMP/custom"; cp "$ENGINE" "$TMP/custom/deliver-pipeline.js"; printf '// custom-source-marker\n' >> "$TMP/custom/deliver-pipeline.js"
-mk_input "$T4" path ref "ti.scriptPath = \"$TMP/custom/deliver-pipeline.js\""; hook "$T4"
-GEN4="$(node -e 'const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(j.hookSpecificOutput.updatedInput.scriptPath||"")' "$OUT")"
-if [ -n "$GEN4" ] && [ -f "$GEN4" ] && grep -q 'custom-source-marker' "$GEN4" && [ "$GEN4" != "$GEN1" ]; then pass "launch-from-scriptpath (copied from the given path)"; else fail "launch-from-scriptpath ($GEN4)"; fi
+mkdir -p "$TMP/custom"; cp "$ENGINE" "$TMP/custom/engine-copy.js"; printf '// custom-source-marker\n' >> "$TMP/custom/engine-copy.js"
+GEN4="$(PATH="$FAILBIN:$PATH" node "$LA" --mode file --root "$T4" --session-root "$T4" --issue 520 --brief "implement the issue" --engine "$TMP/custom/engine-copy.js")"
+mk_input "$T4" path ref 'ti.scriptPath = "'"$GEN4"'"'; hook "$T4"
+if [ -n "$GEN4" ] && [ -f "$GEN4" ] && grep -q 'custom-source-marker' "$GEN4" && [ "$GEN4" != "$GEN1" ] && [ "$RC" = 0 ] && [ "$(jx 'j.hookSpecificOutput.updatedInput.scriptPath === "'"$GEN4"'"')" = "true" ]; then pass "launch-from-custom-engine (a patched copy given to --mode file is launched as printed)"; else fail "launch-from-custom-engine ($GEN4)"; fi
 
 # ---- no declared phases (#462, #553; same rule as scripts/guards.cjs checkPhaseTitles) -----------------------
 node -e '
@@ -295,10 +315,11 @@ process.exit(shaped !== source && retitle(shaped, 12, { title: "T" }) === null ?
 NR=$?
 if [ "$NR" -eq 0 ]; then pass "launch-meta-title-shape (a meta title line of another shape gives no launch file)"; else fail "launch-meta-title-shape"; fi
 new_tree t5 ignore; T5="$TMP/t5"
+GEN5="$(PATH="$FAILBIN:$PATH" node "$LA" --mode file --root "$T5" --session-root "$T5" --issue 1234567 --brief x)"
 node "$LA" --root "$T5" --session-root "$T5" --ref origin/main --stage plan --mode ref --issue 1234567 --brief x > "$TMP/args.json"
-node -e 'const fs=require("fs");fs.writeFileSync(process.argv[2],JSON.stringify({cwd:process.argv[1],tool_name:"Workflow",tool_input:{name:"lgtmgate:deliver-pipeline",args:JSON.parse(fs.readFileSync(process.argv[3],"utf8"))}}))' "$T5" "$TMP/in.json" "$TMP/args.json"
+node -e 'const fs=require("fs");fs.writeFileSync(process.argv[2],JSON.stringify({cwd:process.argv[1],tool_name:"Workflow",tool_input:{scriptPath:process.argv[4],args:JSON.parse(fs.readFileSync(process.argv[3],"utf8"))}}))' "$T5" "$TMP/in.json" "$TMP/args.json" "$GEN5"
 hook "$T5"
-expect "seven-digit-issue-launches" 0 '/\/\.pipeline\/launch\/issue-1234567-/.test(j.hookSpecificOutput.updatedInput.scriptPath) && !("name" in j.hookSpecificOutput.updatedInput) && "config" in j.hookSpecificOutput.updatedInput.args'
+expect "seven-digit-issue-launches" 0 '/\/\.pipeline\/launch\/[0-9a-f]{12}\/#1234567 - x\.js$/.test(j.hookSpecificOutput.updatedInput.scriptPath) && !("name" in j.hookSpecificOutput.updatedInput) && "config" in j.hookSpecificOutput.updatedInput.args'
 
 # ---- advisory ------------------------------------------------------------------------------------------
 mk_input "$T1" path ref 'a.brief = "x".repeat(701)'; hook "$T1"
@@ -312,27 +333,26 @@ expect_deny_code() { # expect_deny_code <name> <code> [needle]
 }
 script_of() { node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).hookSpecificOutput.updatedInput.scriptPath || "")' "$OUT"; }
 new_tree rs1 ignore; RS1="$TMP/rs1"
-mk_input "$RS1" name ref 'a.title = "Fast launches"'; hook "$RS1"
-expect "run-state-title-named-launch" 0 'j.hookSpecificOutput.updatedInput.scriptPath.includes("/.pipeline/launch/issue-520-") && !("name" in j.hookSpecificOutput.updatedInput) && j.hookSpecificOutput.updatedInput.args.title === "Fast launches"'
-RS1_FILE="$(script_of)"
-if grep -qF "  name: '#520 - Fast launches'," "$RS1_FILE" && grep -qF "  title: '#520 - lgtmgate'," "$RS1_FILE" && grep -qF "  description: 'Fast launches'," "$RS1_FILE"; then pass "run-state-title-in-labels"; else fail "run-state-title-in-labels"; fi
+mk_input "$RS1" path ref 'a.title = "Fast launches"'; hook "$RS1"
+expect "run-state-title-kept-with-generated-file (no origin: the typed title stays, the file is the one the call named)" 0 'j.hookSpecificOutput.updatedInput.scriptPath === i.tool_input.scriptPath && !("name" in j.hookSpecificOutput.updatedInput) && j.hookSpecificOutput.updatedInput.args.title === "Fast launches"'
+RS1_FILE="$(script_of)"; cp "$RS1_FILE" "$TMP/rs1.before"
+if cmp -s "$RS1_FILE" "$TMP/rs1.before" && grep -qF "  name: '#520 - implement the issue'," "$RS1_FILE" && grep -qF "  title: '#520 - lgtmgate'," "$RS1_FILE" && grep -qF "  description: 'implement the issue'," "$RS1_FILE"; then pass "run-state-title-never-rewrites-the-file (the typed title does not reach the labels)"; else fail "run-state-title-never-rewrites-the-file"; fi
 if [ "$(grep -F '{ title:' "$RS1_FILE" | grep -c 'Fast launches')" = 0 ] && ! grep -qE "^  phases:" "$RS1_FILE" && ! grep -qE "#520 (Setup|Diagnose|Plan|Dev|Review)" "$RS1_FILE" && grep -qF "const PHASE_TITLES = { setup: 'Setup', diagnose: 'Diagnose', plan: 'Plan', dev: 'Dev', review: 'Review' }" "$RS1_FILE"; then pass "run-state-title-phases-plain"; else fail "run-state-title-phases-plain"; fi
 new_tree rs2 ignore; RS2="$TMP/rs2"
-mk_input "$RS2" name ref; hook "$RS2"; RS2_FILE="$(script_of)"
+mk_input "$RS2" path ref; hook "$RS2"; RS2_FILE="$(script_of)"
 if grep -qF "  name: '#520 - implement the issue'," "$RS2_FILE" && grep -qF "  description: 'implement the issue'," "$RS2_FILE"; then pass "launch-fallback-name-brief"; else fail "launch-fallback-name-brief ($(grep -m1 '^  name:' "$RS2_FILE"))"; fi
-mk_input "$RS2" name ref 'a.prNumber = 560'; hook "$RS2"; RS2_FILE="$(script_of)"
+mk_input "$RS2" path ref 'a.prNumber = 560'; hook "$RS2"; RS2_FILE="$(script_of)"
 if grep -qF "  name: '#520 - implement the issue'," "$RS2_FILE" && grep -qF "  title: '#520 - lgtmgate'," "$RS2_FILE" && grep -qF "  description: 'implement the issue'," "$RS2_FILE" && ! grep -E "^  (name|title|description):" "$RS2_FILE" | grep -qF "PR #"; then pass "launch-description-no-pr"; else fail "launch-description-no-pr ($(grep -m1 '^  description:' "$RS2_FILE"))"; fi
-mk_input "$RS1" name ref 'a.title = "it'"'"'s a \\ title"'; hook "$RS1"
-RS1_Q="$(script_of)"; cp "$RS1_Q" "$TMP/quote.js"
-if [ -n "$RS1_Q" ] && node --check "$TMP/quote.js" 2>/dev/null; then pass "run-state-title-escapes-quote (valid JS with a quote and a backslash)"; else fail "run-state-title-escapes-quote"; fi
-mk_input "$RS1" name ref 'a.title = "Fast launches"'; hook "$RS1"; FIRST="$(script_of)"
-mk_input "$RS1" path ref 'a.title = "Fast launches"; ti.scriptPath = "'"$FIRST"'"'; hook "$RS1"; SECOND="$(script_of)"
-mk_input "$RS1" path ref 'a.title = "Other words"; ti.scriptPath = "'"$FIRST"'"'; hook "$RS1"; THIRD="$(script_of)"
-mk_input "$RS1" name ref 'a.title = "Other words"'; hook "$RS1"; DIRECT="$(script_of)"
-if [ -n "$FIRST" ] && [ "$FIRST" = "$SECOND" ] && [ -n "$THIRD" ] && [ "$THIRD" != "$FIRST" ] && [ "$THIRD" = "$DIRECT" ] && [ "$RC" = 0 ]; then pass "run-state-title-idempotent (same title keeps the file, another title from a generated file equals a fresh launch)"; else fail "run-state-title-idempotent ($FIRST $SECOND $THIRD $DIRECT)"; fi
-mk_input "$RS1" name ref 'a.title = "x".repeat(81)'; hook "$RS1"
+QUOTED="$(PATH="$FAILBIN:$PATH" node "$LA" --mode file --root "$RS1" --session-root "$RS1" --issue 521 --brief "it's a \\ title")"
+cp "$QUOTED" "$TMP/quote.js"
+if [ -n "$QUOTED" ] && node --check "$TMP/quote.js" 2>/dev/null; then pass "run-state-title-escapes-quote (valid JS with a quote and a backslash)"; else fail "run-state-title-escapes-quote"; fi
+FIRST="$(PATH="$FAILBIN:$PATH" node "$LA" --mode file --root "$RS1" --session-root "$RS1" --issue 522 --brief "Fast launches")"
+SECOND="$(PATH="$FAILBIN:$PATH" node "$LA" --mode file --root "$RS1" --session-root "$RS1" --issue 522 --brief "Fast launches")"
+THIRD="$(PATH="$FAILBIN:$PATH" node "$LA" --mode file --root "$RS1" --session-root "$RS1" --issue 522 --brief "Other words")"
+if [ -n "$FIRST" ] && [ "$FIRST" = "$SECOND" ] && [ -n "$THIRD" ] && [ "$THIRD" != "$FIRST" ] && [ "$(dirname "$THIRD")" != "$(dirname "$FIRST")" ]; then pass "run-state-title-idempotent (same title keeps the file, another title is another file in another digest directory)"; else fail "run-state-title-idempotent ($FIRST $SECOND $THIRD)"; fi
+mk_input "$RS1" path ref 'a.title = "x".repeat(81)'; hook "$RS1"
 expect_deny_code "run-state-title-deny-length" "launch-argument-invalid" "81 bytes"
-mk_input "$RS1" name ref 'a.title = "two\nlines"'; hook "$RS1"
+mk_input "$RS1" path ref 'a.title = "two\nlines"'; hook "$RS1"
 expect_deny_code "run-state-title-deny-newline" "launch-argument-invalid" "newline"
 
 GHBIN="$TMP/ghbin"; mkdir -p "$GHBIN"
@@ -348,21 +368,21 @@ esac
 STUB
 chmod +x "$GHBIN/gh"
 new_tree rs2 ignore; RS2="$TMP/rs2"; git -C "$RS2" remote add origin https://github.com/acme/widgets.git
-mk_input "$RS2" name ref; PATH="$GHBIN:$PATH" hook "$RS2"
+mk_input "$RS2" path ref; PATH="$GHBIN:$PATH" hook "$RS2"
 expect "run-state-merged-derived" 0 'JSON.stringify(j.hookSpecificOutput.updatedInput.args.merged) === "[530,531,532]" && j.hookSpecificOutput.updatedInput.args.epic === 528'
-mk_input "$RS2" name ref 'a.merged = [1, 2]; a.epic = 9'; PATH="$GHBIN:$PATH" hook "$RS2"
+mk_input "$RS2" path ref 'a.merged = [1, 2]; a.epic = 9'; PATH="$GHBIN:$PATH" hook "$RS2"
 expect "run-state-merged-overwrites-typed" 0 'JSON.stringify(j.hookSpecificOutput.updatedInput.args.merged) === "[530,531,532]" && j.hookSpecificOutput.updatedInput.args.epic === 528'
-mk_input "$RS2" name ref 'a.title = "Review PR 9 words"'; PATH="$GHBIN:$PATH" hook "$RS2"
+mk_input "$RS2" path ref 'a.title = "Review PR 9 words"'; PATH="$GHBIN:$PATH" hook "$RS2"
 expect "run-state-title-from-issue (a typed title that differs is replaced by the issue title)" 0 'j.hookSpecificOutput.updatedInput.args.title === "Derive the run title"'
-if grep -qF "  name: '#520 - Derive the run title'," "$(script_of)" && grep -qF "  description: 'Derive the run title'," "$(script_of)"; then pass "run-state-title-from-issue-in-launch-file"; else fail "run-state-title-from-issue-in-launch-file"; fi
+if [ "$(jx 'j.hookSpecificOutput.additionalContext.includes("label reads \"#520 - implement the issue\"") && j.hookSpecificOutput.additionalContext.includes("issue title reads \"Derive the run title\"")')" = "true" ]; then pass "run-state-title-from-issue-drift-advisory (the file keeps its label, the advisory names both)"; else fail "run-state-title-from-issue-drift-advisory"; fi
 LONG_TITLE="Hook sets the run title from the issue title and cuts it when it is far too long for one line"
-mk_input "$RS2" name ref 'a.title = "typed"'; GH_STUB_TITLE="$LONG_TITLE" PATH="$GHBIN:$PATH" hook "$RS2"
+mk_input "$RS2" path ref 'a.title = "typed"'; GH_STUB_TITLE="$LONG_TITLE" PATH="$GHBIN:$PATH" hook "$RS2"
 expect "run-state-title-cut-word-boundary" 0 '(() => { const t = j.hookSpecificOutput.updatedInput.args.title; const src = "'"$LONG_TITLE"'"; const body = t.slice(0, -1); return Buffer.byteLength(t) <= 80 && t.endsWith("…") && src.startsWith(body) && src[body.length] === " " })()'
-mk_input "$RS2" name ref 'a.title = "Typed title kept"'; GH_STUB_FAIL=1 PATH="$GHBIN:$PATH" hook "$RS2"
+mk_input "$RS2" path ref 'a.title = "Typed title kept"'; GH_STUB_FAIL=1 PATH="$GHBIN:$PATH" hook "$RS2"
 expect "run-state-title-fail-open (the issue cannot be read: the typed title is kept, no refusal)" 0 'j.hookSpecificOutput.updatedInput.args.title === "Typed title kept" && !("permissionDecision" in j.hookSpecificOutput)'
-mk_input "$RS2" name ref 'a.title = "x".repeat(81)'; GH_STUB_FAIL=1 PATH="$GHBIN:$PATH" hook "$RS2"
+mk_input "$RS2" path ref 'a.title = "x".repeat(81)'; GH_STUB_FAIL=1 PATH="$GHBIN:$PATH" hook "$RS2"
 expect_deny_code "run-state-title-fallback-still-validated (unreadable issue, over-long typed title: refused as before)" "launch-argument-invalid" "81 bytes"
-mk_input "$RS1" name ref 'a.merged = [1, 2]; a.epic = 9'; PATH="$GHBIN:$PATH" hook "$RS1"
+mk_input "$RS1" path ref 'a.merged = [1, 2]; a.epic = 9'; PATH="$GHBIN:$PATH" hook "$RS1"
 expect "run-state-merged-typed-dropped-without-repo (no origin, no config.repo: no derived key, the typed ones are gone)" 0 '!("merged" in j.hookSpecificOutput.updatedInput.args) && !("epic" in j.hookSpecificOutput.updatedInput.args)'
 
 # ---- launch facts (#581): the hook computes the plugin-version, session-root and config baseBranch answers ----
@@ -370,32 +390,32 @@ LFP="$TMP/lfplugin"; mkdir -p "$LFP/templates" "$LFP/.claude-plugin"
 cp "$ROOT/templates/plugin-version.cjs" "$LFP/templates/plugin-version.cjs"; printf '{"version":"9.8.7"}\n' > "$LFP/.claude-plugin/plugin.json"
 new_tree lf ignore; LF="$TMP/lf"; mkdir -p "$LF/.claude"; printf '{"baseBranch":"develop"}\n' > "$LF/.claude/pipeline.config.json"
 SHAJS='const h = (s) => require("crypto").createHash("sha256").update(s).digest("hex"); const f = j.hookSpecificOutput.updatedInput.args.launchFacts || {};'
-mk_input "$LF" name ref 'a.pluginRoot = "'"$LFP"'"; a.launchFacts = { pluginVersion: { for: "0".repeat(64), exit: 0, lines: ["typed"] } }'; hook "$LF"
+mk_input "$LF" path ref 'a.pluginRoot = "'"$LFP"'"; a.launchFacts = { pluginVersion: { for: "0".repeat(64), exit: 0, lines: ["typed"] } }'; hook "$LF"
 expect "launch-facts-written (version and session root computed, bound by digest; the typed value is replaced)" 0 '(() => {'"$SHAJS"' return f.pluginVersion.for === h("plugin-version\n'"$LFP"'") && f.pluginVersion.exit === 0 && JSON.stringify(f.pluginVersion.lines) === "[\"PLUGIN-VERSION:9.8.7\"]" && f.sessionRoot.for === h("session-root\n'"$LF"'\n'"$LF"'") && f.sessionRoot.exit === 0 && JSON.stringify(f.sessionRoot.lines) === "[\"SESSION-ROOT:same\"]" && !("configBaseBranch" in f) })()'
-mk_input "$LF" name ref 'a.launchFacts = { sessionRoot: { for: "0".repeat(64), exit: 0, lines: ["typed"] } }; delete a.pluginRoot; delete a.sessionRoot'; hook "$LF"
+mk_input "$LF" path ref 'a.launchFacts = { sessionRoot: { for: "0".repeat(64), exit: 0, lines: ["typed"] } }; delete a.pluginRoot; delete a.sessionRoot'; hook "$LF"
 expect "launch-facts-typed-deleted (no pluginRoot and no sessionRoot: nothing to compute, the typed object is gone)" 0 '!("launchFacts" in j.hookSpecificOutput.updatedInput.args)'
-mk_input "$LF" name ref 'a.pluginRoot = "relative/plugin"; delete a.sessionRoot'; hook "$LF"
+mk_input "$LF" path ref 'a.pluginRoot = "relative/plugin"; delete a.sessionRoot'; hook "$LF"
 expect "launch-facts-absent-without-absolute-plugin-root (fail open to the probes)" 0 '!("launchFacts" in j.hookSpecificOutput.updatedInput.args)'
 mkdir -p "$TMP/lfbad/templates"; printf 'process.exit(3)\n' > "$TMP/lfbad/templates/plugin-version.cjs"
-mk_input "$LF" name ref 'a.pluginRoot = "'"$TMP/lfbad"'"; delete a.sessionRoot'; hook "$LF"
+mk_input "$LF" path ref 'a.pluginRoot = "'"$TMP/lfbad"'"; delete a.sessionRoot'; hook "$LF"
 expect "launch-facts-failing-script-keeps-exit (a non-zero exit is recorded with no line, the verdict stays the engine's)" 0 'j.hookSpecificOutput.updatedInput.args.launchFacts.pluginVersion.exit === 3 && j.hookSpecificOutput.updatedInput.args.launchFacts.pluginVersion.lines.length === 0'
-mk_input "$LF" name ref 'a.pluginRoot = "'"$LFP"'"; delete a.sessionRoot; a.entryStage = "dev"'; hook "$LF"
+mk_input "$LF" path ref 'a.pluginRoot = "'"$LFP"'"; delete a.sessionRoot; a.entryStage = "dev"'; hook "$LF"
 expect "launch-facts-config-only-on-dev-entry (read from the worktree config, absent on a plan entry)" 0 '(() => {'"$SHAJS"' return JSON.stringify(f.configBaseBranch.lines) === "[\"{\\\"baseBranch\\\":\\\"develop\\\"}\"]" && f.configBaseBranch.for === h("config-base-branch\n'"$LF"'") })()'
-mk_input "$LF" name ref 'a.pluginRoot = "'"$LFP"'"; delete a.sessionRoot; a.entryStage = "plan"'; hook "$LF"
+mk_input "$LF" path ref 'a.pluginRoot = "'"$LFP"'"; delete a.sessionRoot; a.entryStage = "plan"'; hook "$LF"
 expect "launch-facts-no-config-fact-on-plan-entry" 0 '!("configBaseBranch" in j.hookSpecificOutput.updatedInput.args.launchFacts)'
 
 mkdir -p "$RS1/.pipeline"; printf '{"status":"dev"}\n' > "$RS1/.pipeline/issue-777.json"
-mk_input "$RS1" name ref 'a.parallel = [888]'; hook "$RS1"
+mk_input "$RS1" path ref 'a.parallel = [888]'; hook "$RS1"
 expect "run-state-parallel-advisory (an active run missing from parallel and a listed number with no active run)" 0 '/#777/.test(j.hookSpecificOutput.additionalContext) && /#888/.test(j.hookSpecificOutput.additionalContext) && !("permissionDecision" in j.hookSpecificOutput)'
-mk_input "$RS1" name ref 'a.parallel = [777]'; hook "$RS1"
+mk_input "$RS1" path ref 'a.parallel = [777]'; hook "$RS1"
 expect "run-state-parallel-consistent-no-advisory" 0 '!("additionalContext" in j.hookSpecificOutput)'
 
-# ---- cleanup -----------------------------------------------------------------------------------------
-C="$TMP/clean"; mkdir -p "$C/.pipeline/launch"
-printf 'a' > "$C/.pipeline/launch/issue-5-aaaaaaaaaaaa.js"; printf 'b' > "$C/.pipeline/launch/issue-6-bbbbbbbbbbbb.js"
+# ---- cleanup (the launch files of the new layout; the full matrix is in test-launch-file.sh) --------------------
+C="$TMP/clean"; mkdir -p "$C/.pipeline/launch/aaaaaaaaaaaa" "$C/.pipeline/launch/bbbbbbbbbbbb"
+printf 'a' > "$C/.pipeline/launch/aaaaaaaaaaaa/#5 - five.js"; printf 'b' > "$C/.pipeline/launch/bbbbbbbbbbbb/#6 - six.js"
 printf 'k' > "$C/.pipeline/launch/keep.txt"; printf 'o' > "$C/.pipeline/other.txt"
 OUTC="$(node "$CLEAN" --root "$C" --issue 5)"
-if [ "$OUTC" = "removed 1" ] && [ ! -e "$C/.pipeline/launch/issue-5-aaaaaaaaaaaa.js" ] && [ -e "$C/.pipeline/launch/issue-6-bbbbbbbbbbbb.js" ]; then pass "cleanup-removes (one issue)"; else fail "cleanup-removes ($OUTC)"; fi
+if [ "$OUTC" = "removed 1" ] && [ ! -e "$C/.pipeline/launch/aaaaaaaaaaaa" ] && [ -e "$C/.pipeline/launch/bbbbbbbbbbbb/#6 - six.js" ]; then pass "cleanup-removes (one issue, its emptied digest directory goes too)"; else fail "cleanup-removes ($OUTC)"; fi
 OUTC="$(node "$CLEAN" --root "$C")"
 if [ "$OUTC" = "removed 1" ] && [ -e "$C/.pipeline/launch/keep.txt" ] && [ -e "$C/.pipeline/other.txt" ]; then pass "cleanup-keeps-other (other files and other .pipeline content stay)"; else fail "cleanup-keeps-other ($OUTC)"; fi
 rm "$C/.pipeline/launch/keep.txt"

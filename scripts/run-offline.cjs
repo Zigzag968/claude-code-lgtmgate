@@ -81,9 +81,8 @@ function parseArguments(argv) {
   return out
 }
 
-function stripExports(source) {
-  return source.replace(/^export\s+/mg, '')
-}
+// #605: the launch-file flag is set through the generator's own function (scripts/lib/launch-file.cjs), never an args key, simulate key or environment variable.
+const stripExports = (source) => require('./lib/launch-file.cjs').markGenerated(source.replace(/^export\s+/mg, '')) ?? source
 
 // `@@ENGINE_VERSION@@` anywhere in a fixture (args, calls, expect) stands for the version of the engine under test
 // (the `version:` of its `const BUILD = { ... }` line, bumped by scripts/lead-merge.sh at every merge), so a fixture
