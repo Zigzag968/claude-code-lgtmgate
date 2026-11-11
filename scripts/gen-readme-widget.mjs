@@ -26,7 +26,7 @@
 // - #203 (the UNBLOCK block): the run stops and leaves the panel, the Lead unblocks it alone and relaunches it
 // - the three end ready, the Lead asks before merging, then merges: the three containers leave, the panel says it is empty.
 //   A renderer without animation shows the finished session, just before that.
-// - a footnote, "Times shortened.", as the fine print under Apple's ads ("Sequence shortened"): the loop plays minutes in seconds.
+// - a footnote, "Times shortened for the animation.", as the fine print under Apple's ads ("Sequence shortened"): the loop plays minutes in seconds.
 //   It sits outside the scene's fade, so it shows all loop long and in the still, under the composer, on the model line's baseline
 // One thing moves at a time. A text that changes state is replaced at once, at the second of its event (no slide, no fade); a
 // phase event is one rigid movement (the container's back is one rect whose height changes, what is under it glides the same
@@ -49,14 +49,27 @@ const HOLD = LOOP - 0.2;    // dynamic elements cut here, once the scene has fad
 const NOW = OPTIONS.at ?? STILL;   // the second the plain attributes describe: STILL, or the frozen frame asked for
 
 // ---------------------------------------------------------------- tokens
-// Palette: the current one per theme (the header's ink and violet accent). `sel` is the selected sidebar row, a value the
-// palette already holds (win in light, bubble in dark). Secondary text and done squares all use `mute` (>= 4.5:1).
+// Palette: the current one per theme (the header's ink and violet accent). Secondary text and done squares all use `mute` (>= 4.5:1).
+// `field` is the composer's ground (the window's white in light, a step above the window in dark), `edge` the ink of the hairlines
+// drawn at a share of it (EDGE below: the window's rim, the composer's border).
 const COLOR = {
   light: { page: '#F7F6F3', win: '#FFFFFF', bar: '#EEEDF3', panel: '#FAF9F7', tile: '#FFFFFF', bubble: '#ECE9F1', line: '#DDDBE6',
-    ink: '#1E1B3A', mute: '#5B6472', idle: '#C5C8D2', acc: '#5B3FE0', sel: '#FFFFFF' },
+    ink: '#1E1B3A', mute: '#5B6472', idle: '#C5C8D2', acc: '#5B3FE0', field: '#FFFFFF', edge: '#1E1B3A' },
   dark: { page: '#0F1319', win: '#161B22', bar: '#1C2330', panel: '#12171E', tile: '#1B2230', bubble: '#2A3345', line: '#30363D',
-    ink: '#E6EDF3', mute: '#9DA7B3', idle: '#566079', acc: '#A99BFF', sel: '#2A3345' },
+    ink: '#E6EDF3', mute: '#9DA7B3', idle: '#566079', acc: '#A99BFF', field: '#202838', edge: '#FFFFFF' },
 }[THEME];
+// `from` blended into `into` at `share`, as one opaque colour (the accent over a card at the pulse's opacity; the selected row).
+const mix = (from, into, share) => `#${[1, 3, 5].map(at => Math.round(parseInt(into.slice(at, at + 2), 16) * (1 - share)
+  + parseInt(from.slice(at, at + 2), 16) * share).toString(16).padStart(2, '0')).join('').toUpperCase()}`;
+// The selected sidebar row (HIG color, "Selected content background color"): the accent over the sidebar, 15 % in light and 26 % in
+// dark (the dark ground needs more to show); `selbar`, its placeholder: the ink at half over it (the idle grey no longer reads on it).
+COLOR.sel = mix(COLOR.acc, COLOR.bar, THEME === 'dark' ? 0.26 : 0.15);
+COLOR.selbar = mix(COLOR.ink, COLOR.sel, 0.5);
+const EDGE = { rim: 0.16, field: THEME === 'dark' ? 0.14 : 0.16 };   // the share of `edge` the window's rim and the composer's border take
+// The window's lights (HIG windows: the key window uses colour for closing, minimising and zooming): fill and 0.5 px rim, the same
+// in both themes, as on macOS.
+const LIGHTS = [['#FF5F57', '#E0443E'], ['#FEBC2E', '#DEA123'], ['#28C840', '#1AAB29']];
+const STROKE = 1.3;   // the icons' line, in px: an icon's weight follows its text's (ehmo-ios 7.10, SF Symbols)
 const LINE = 20;   // one line of the conversation: about 27 lines per height
 const SIZE = { f12: 12, f13: 13, f14: 14 };   // the type scale, in px (.f12 .f13 .f14): 14 for the conversation and the titles, 13 elsewhere, 12 the footnote
 const EM = { text: 0.53, mono: 0.62 };   // average advance per em, above the system face so a wider fallback still fits
@@ -314,10 +327,6 @@ const shimmer = (x, y, size, raw) => `<text x="${x}" y="${y}" class="${size} mut
   .map((part, index) => `<tspan class="sh d${index % 8}${litNow(index % 8) ? ' ink' : ''}">${escapeXml(part)}</tspan>`).join('')}</text>`;
 // One line of the Lead: `code` spans in monospace.
 const said = (x, y, raw) => `<text x="${x}" y="${y}" class="f14 ink">${raw.split('`').map((part, index) => `<tspan${index % 2 ? ' class="m f13"' : ''}>${escapeXml(part)}</tspan>`).join('')}</text>`;
-// `from` blended into `into`: the accent at the pulse's opacity over the card, as one opaque colour.
-const mix = (from, into, share) => `#${[1, 3, 5].map(at => Math.round(parseInt(into.slice(at, at + 2), 16) * (1 - share)
-  + parseInt(from.slice(at, at + 2), 16) * share).toString(16).padStart(2, '0')).join('').toUpperCase()}`;
-
 // One square per started agent (of a run in its card, of a phase in the panel), a single element whose paint fades from state
 // to state over MOTION.enter: outlined while the agent before it runs (closing the row), accent while it runs (the pulse folded
 // into its colour over its `ground`), mute once done. One more square, outlined, closes the row while the last agent runs.
@@ -351,26 +360,26 @@ function surfaces() {
 // One content edge, 12 px inside the window (the lights, the icons, "Recents", the recent rows); the selected row's pill
 // spreads 8 px past it on each side.
 function sidebar() {
-  const edge = WINDOW.x + 12, lights = [0, 16, 32].map(dx => ring(edge + 4.5 + dx, WINDOW.y + 20, 4.5, 'idle')).join('');
+  const edge = WINDOW.x + 12, lights = LIGHTS.map((unused, index) => ring(edge + 4.5 + 16 * index, WINDOW.y + 20, 4.25, `light${index}`)).join('');
   const icons = [
-    stroke(edge + 5.75, 60.5, 'M0 -5v10M-5 0h10', 'ink-s'),
-    ring(edge + 4.75, 85.5, 4, 'sk ink-s') + stroke(edge + 7.75, 88.5, 'M0 0l3 3', 'ink-s'),
-    box(edge + 0.75, 108.5, 8, 9, 1.5, 'sk ink-s') + stroke(edge + 3.75, 106.5, 'M0 0h6.5v8', 'ink-s'),
-    ring(edge + 6.25, 138.5, 5.5, 'sk ink-s') + stroke(edge + 6.25, 135.5, 'M0 0v3h2.5', 'ink-s'),
-    box(edge + 0.75, 161.5, 11, 8, 2, 'sk ink-s') + stroke(edge + 4.25, 159.5, 'M0 2v-2h4v2', 'ink-s'),
+    stroke(edge + 5.75, 60.5, 'M0 -5v10M-5 0h10', 'acc-s'),
+    ring(edge + 4.75, 85.5, 4, 'sk acc-s') + stroke(edge + 7.75, 88.5, 'M0 0l3 3', 'acc-s'),
+    box(edge + 0.75, 108.5, 8, 9, 1.5, 'sk acc-s') + stroke(edge + 3.75, 106.5, 'M0 0h6.5v8', 'acc-s'),
+    ring(edge + 6.25, 138.5, 5.5, 'sk acc-s') + stroke(edge + 6.25, 135.5, 'M0 0v3h2.5', 'acc-s'),
+    box(edge + 0.75, 161.5, 11, 8, 2, 'sk acc-s') + stroke(edge + 4.25, 159.5, 'M0 2v-2h4v2', 'acc-s'),
   ];
   const items = ['New session', 'Search', 'Artifacts', 'Scheduled tasks', 'Customize'].map((label, index) => icons[index] + words(edge + 20, 65 + 26 * index, 'f13 ink', label)).join('');
-  const recents = words(edge, 203, 'f13 mute', 'Recents') + stroke(edge + Math.ceil(faceWidth('Recents', SIZE.f13)) + 6, 197, 'M0 0l3 3 3-3', 'mute-s')
-    + box(edge - 8, 213, COLUMN.side - edge + 4, 20, 6, 'sel') + [104, 86, 118, 72, 96, 110, 64, 90, 80].map((width, index) => box(edge, 220 + 24 * index, width, 6, 3, 'idle')).join('');
+  const recents = words(edge, 203, 'f13 w6 mute', 'Recents') + stroke(edge + Math.ceil(faceWidth('Recents', SIZE.f13)) + 6, 197, 'M0 0l3 3 3-3', 'mute-s')
+    + box(edge - 8, 213, COLUMN.side - edge + 4, 20, 6, 'sel') + [104, 86, 118, 72, 96, 110, 64, 90, 80].map((width, index) => box(edge, 220 + 24 * index, width, 6, 3, index ? 'idle' : 'selbar')).join('');
   return lights + items + recents;
 }
 
 // The session's title on the conversation's edge, its menu on the other; the panel's title and close button on its cards' text.
 function headers() {
   const middle = WINDOW.y + 20, base = middle + 5;
-  const title = words(CONV.left, base, 'f14 ink', 'Deliver issues') + stroke(CONV.left + Math.ceil(faceWidth('Deliver issues', SIZE.f14)) + 8, middle - 1.5, 'M0 0l3.5 3.5 3.5-3.5', 'mute-s')
+  const title = words(CONV.left, base, 'f14 w6 ink', 'Deliver issues') + stroke(CONV.left + Math.ceil(faceWidth('Deliver issues', SIZE.f14)) + 8, middle - 1.5, 'M0 0l3.5 3.5 3.5-3.5', 'mute-s')
     + [-10, -5, 0].map(dx => ring(CONV.right - 1.2 + dx, middle + 0.5, 1.2, 'mute')).join('');
-  const tasks = words(PANEL.left, base, 'f14 ink', 'Background tasks') + hairline(`M${COLUMN.tasks} ${WINDOW.y + WINDOW.top + 0.5}h${WINDOW.x + WINDOW.width - COLUMN.tasks}`)
+  const tasks = words(PANEL.left, base, 'f14 w6 ink', 'Background tasks') + hairline(`M${COLUMN.tasks} ${WINDOW.y + WINDOW.top + 0.5}h${WINDOW.x + WINDOW.width - COLUMN.tasks}`)
     + stroke(PANEL.right - 9.5, middle - 4, 'M0 0l8 8M8 0l-8 8', 'mute-s');
   return title + tasks;
 }
@@ -382,7 +391,7 @@ function drafts() {
   const placeholder = except(asks.map(item => [item.typed, item.at]), words(COMPOSER.text, COMPOSER.base, 'f14 mute', 'Type / for commands'));
   return placeholder + asks.map(item => {
     const travel = Math.ceil(widthOf(item.text, SIZE.f14)) + 3, typedBy = item.typed + item.text.length / MOTION.type;
-    const cover = box(COMPOSER.text - 1, COMPOSER.y + 9, travel + 4, 23, 0, 'bubble') + box(COMPOSER.text - 1, COMPOSER.y + 13, 1.5, 15, 0.75, 'ink');
+    const cover = box(COMPOSER.text - 1, COMPOSER.y + 9, travel + 4, 23, 0, 'field') + box(COMPOSER.text - 1, COMPOSER.y + 13, 1.5, 15, 0.75, 'ink');
     return during([[item.typed, item.at]], words(COMPOSER.text, COMPOSER.base, 'f14 ink', item.text) + uncover(item.typed, typedBy, travel, cover, item.text.length), { slot: 'composer' });
   }).join('');
 }
@@ -395,9 +404,9 @@ function composer() {
     const angle = -Math.PI / 2 + step * Math.PI / 24;
     return `${step ? 'L' : 'M'}${+(right - 10 + 5.5 * Math.cos(angle)).toFixed(2)} ${+(base - 4 + 5.5 * Math.sin(angle)).toFixed(2)}`;
   }).join('');
-  return box(x, y, width, height, 12, 'bubble') + stroke(x + 16, y + 20, 'M0 -5v10M-5 0h10', 'mute-s') + `<g clip-path="url(#pad)">${drafts()}</g>`
+  return box(x + 0.5, y + 0.5, width - 1, height - 1, 11.5, 'field edge-s border') + stroke(x + 16, y + 20, 'M0 -5v10M-5 0h10', 'mute-s') + `<g clip-path="url(#pad)">${drafts()}</g>`
     + box(right - 20.5, y + 10.5, 6, 10, 3, 'sk mute-s') + stroke(right - 21.5, y + 17, 'M0 0v1.5l4 3.5 4-3.5v-1.5M4 5v3', 'mute-s')
-    + inline(right - 22, base, 'f13 ink', [['', 'Sonnet 5.5'], ['mute', 'High'], ['', 'Auto']], 'end') + words(CONV.left, base, 'f12 mute', 'Times shortened.')
+    + inline(right - 22, base, 'f13 ink', [['', 'Sonnet 5.5'], ['mute', 'High'], ['', 'Auto']], 'end') + words(CONV.left, base, 'f12 mute', 'Times shortened for the animation.')
     + ring(right - 10, base - 4, 5.5, 'sk mute-s') + `<path d="${arc}" class="sk acc-s"/>`;
 }
 
@@ -509,15 +518,18 @@ function conversation() {
 // ---------------------------------------------------------------- style sheet and output
 function styleSheet() {
   const fills = Object.entries(COLOR).map(([key, hex]) => `.${key}{fill:${hex}}.${key}-s{stroke:${hex}}`).join('');
+  const lamps = LIGHTS.map(([fill, rim], index) => `.light${index}{fill:${fill};stroke:${rim};stroke-width:0.5}`).join('');
   const sizes = Object.entries(SIZE).map(([key, px]) => `.${key}{font-size:${px}px}`).join('');
   const frames = [...keyframes].map(([body, key]) => `@keyframes ${key}{${body}}.${key}{animation-name:${key}}`).join('\n');
   const sweep = Array.from({ length: 8 }, (unused, index) => `.d${index}{animation-delay:${+(index * MOTION.sweep).toFixed(2)}s}`).join('');
   const frozen = OPTIONS.at === undefined ? '' : '.a,.p,.sh{animation:none}\n';   // '{"at":12}': one still frame, drawn from the plain attributes
   return `text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Helvetica,Arial,sans-serif}
-.m{font-family:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace}.w5{font-weight:500}
+.m{font-family:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace}.w5{font-weight:500}.w6{font-weight:600}
 ${sizes}
 ${fills}
-.no,.sk{fill:none}.sk{stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+${lamps}
+.rim{stroke-opacity:${EDGE.rim}}.border{stroke-opacity:${EDGE.field}}
+.no,.sk{fill:none}.sk{stroke-width:${STROKE};stroke-linecap:round;stroke-linejoin:round}
 .a{animation-duration:${LOOP}s;animation-iteration-count:infinite;animation-timing-function:step-end;animation-fill-mode:both}
 .p{animation:pulse ${MOTION.pulse}s ease-in-out infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:${MOTION.floor}}}
@@ -549,7 +561,7 @@ const scenery = [
   `<g clip-path="url(#conv)">${scene(conversation())}<rect x="${COLUMN.side + 1}" y="${wy + WINDOW.top}" width="${COLUMN.tasks - COLUMN.side - 1}" height="${CONV.soft}" fill="url(#soft)"/></g>`,
   `<g clip-path="url(#tasks)">${panel}</g>`,
   headers(), composer(), sidebar(), hairline(`M${COLUMN.side + 0.5} ${wy}v${wh}M${COLUMN.tasks + 0.5} ${wy}v${wh}`), '</g>',
-  box(wx + 0.5, wy + 0.5, ww - 1, wh - 1, wr, 'line-s no'),
+  box(wx + 0.5, wy + 0.5, ww - 1, wh - 1, wr, 'edge-s rim no'),
 ].join('\n');
 const edges = checkSlots();
 const svg = `<svg viewBox="0 0 ${WIDTH} ${HEIGHT}" width="${WIDTH}" height="${HEIGHT}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${ARIA}">
