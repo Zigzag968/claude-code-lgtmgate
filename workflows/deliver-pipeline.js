@@ -917,9 +917,8 @@ function parseChecklist(text) {
       const vis = `**ac:${id}**`
       if (rest.startsWith(vis)) rest = rest.slice(vis.length).trim()
     }
-    const g = rest.toLowerCase().indexOf(AC_TAG)
-    const humanGate = g >= 0
-    if (humanGate) rest = (rest.slice(0, g).trimEnd() + ' ' + rest.slice(g + AC_TAG.length).trimStart()).trim()
+    const humanGate = rest.toLowerCase().startsWith(AC_TAG)
+    if (humanGate) rest = rest.slice(AC_TAG.length).trim()
     items.push({ id: id === null ? items.length + 1 : id, text: rest, humanGate })
   }
   return items
@@ -1116,8 +1115,11 @@ function validateAcceptanceItems(entries) {
     if (!entry || typeof entry !== 'object' || typeof entry.text !== 'string') { issues.push(`item ${n}: must be an object with a string text`); return }
     const text = entry.text.trim()
     if (text === '' || text.includes('\n') || text.includes('\r')) { issues.push(`item ${n}: text must be one non-empty line`); return }
-    if (text.startsWith('- [') || text.includes(AC_ID_OPEN) || text.toLowerCase().includes(AC_TAG)) {
-      issues.push(`item ${n}: text must not carry the "- [ ]" prefix, an "<!-- ac:N -->" id or the ${AC_TAG} tag (the workflow renders those): write the bare text and set humanGate instead`)
+    const leadingMarker = text.startsWith('- [') ? 'the "- [ ]" prefix'
+      : text.startsWith(AC_ID_OPEN) ? 'an "<!-- ac:N -->" id'
+        : text.toLowerCase().startsWith(AC_TAG) ? `the ${AC_TAG} tag` : null
+    if (leadingMarker !== null) {
+      issues.push(`item ${n}: text must not carry ${leadingMarker} at its start (the workflow renders it): write the bare text and set humanGate instead`)
       return
     }
     if (entry.humanGate !== undefined && typeof entry.humanGate !== 'boolean') { issues.push(`item ${n}: humanGate must be true or false`); return }

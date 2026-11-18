@@ -6230,7 +6230,6 @@ await testCase('T182g validateAcceptanceItems: each refused shape names its item
     ['a two-line text', [{ text: 'first\nsecond' }], 'item 1: text must be one non-empty line'],
     ['a checkbox prefix in the text', [{ text: 'ok' }, { text: '- [ ] already a box' }], 'item 2: text must not carry'],
     ['an id comment in the text', [{ text: '<!-- ac:1 --> already numbered' }], 'item 1: text must not carry'],
-    ['the tag in the text, any case', [{ text: 'judge it [Human-Gate]' }], 'item 1: text must not carry'],
     ['a non-boolean humanGate', [{ text: 'ok', humanGate: 'yes' }], 'item 1: humanGate must be true or false'],
     ['a non-string command', [{ text: 'ok', command: 5 }], 'item 1: command must be a string'],
     ['a gate item with a command', [{ text: 'a person judges it', humanGate: true, command: 'node x.js' }], 'item 1: flagged humanGate but carries the command `node x.js`'],
@@ -6249,6 +6248,7 @@ await testCase('T182g validateAcceptanceItems: each refused shape names its item
     ['a command in a gate item\'s text (the plan check judges it)', [{ text: 'a person runs `bash x.sh` first', humanGate: true }]],
     ['a command on an item whose humanGate is false', [{ text: 'a person judges it', humanGate: false, command: 'dotnet test' }]],
     ['an arrow inside the text', [{ text: 'the --> arrow is fine', humanGate: false }, { text: 'so is this --> one', humanGate: true }]],
+    ['the tag at the end of the text, any case', [{ text: 'judge it [Human-Gate]' }]],
   ]
   for (const [label, entries] of accepted) {
     const issues = fns.validateAcceptanceItems(entries)
@@ -6257,6 +6257,41 @@ await testCase('T182g validateAcceptanceItems: each refused shape names its item
   const both = fns.validateAcceptanceItems([{ text: '' }, { text: 'fine' }, { text: 'x', humanGate: 'no' }])
   const error1 = eq('one issue per bad item, in item order', both.map((s) => s.split(':')[0]), ['item 1', 'item 3'])
   return error1 || { ok: true }
+})
+
+// T626a (#626) — a marker is refused only at the START of the text (where the rendering collides); a mention elsewhere is accepted and survives parse(render(x)).
+await testCase('T626a acceptance text: a leading marker is refused with its name, a mention elsewhere is accepted and round-trips', async () => {
+  const fns = t182Block()
+  if (!fns) return t182Skip('T626a')
+  const mentions = [
+    { text: 'mentions the [human-gate] tag mid-sentence' },
+    { text: 'a trailing mention of the [Human-Gate]' },
+    { text: 'an id mention <!-- ac:7 --> inside the sentence' },
+  ]
+  const mentionError = eq('mentions are accepted', fns.validateAcceptanceItems(mentions), [])
+  if (mentionError) return mentionError
+  const leading = [
+    ['- [ ] x', 'the "- [ ]" prefix'],
+    ['<!-- ac:3 --> x', 'an "<!-- ac:N -->" id'],
+    ['[human-gate] x', 'the [human-gate] tag'],
+    ['[Human-Gate] x', 'the [human-gate] tag'],
+  ]
+  const messages = []
+  for (const [text, name] of leading) {
+    const issues = fns.validateAcceptanceItems([{ text }])
+    const message = issues[0] || ''
+    if (issues.length !== 1 || !message.includes('item 1: text must not carry') || !message.includes(name) || !message.includes('at its start')) {
+      return { ok: false, msg: `${text}: expected one issue naming ${name} at its start, got ${JSON.stringify(issues)}` }
+    }
+    messages.push(message)
+  }
+  const differError = eq('the three leading messages differ', new Set(messages.slice(0, 3)).size, 3)
+  if (differError) return differError
+  const plain = { id: 1, text: 'mentions the [human-gate] tag mid-sentence', humanGate: false }
+  const plainError = eq('non-gate mention round-trips', fns.parseChecklist(fns.renderLine(plain)), [plain])
+  if (plainError) return plainError
+  const gate = { ...plain, humanGate: true }
+  return eq('gate mention round-trips', fns.parseChecklist(fns.renderLine(gate)), [gate]) || { ok: true }
 })
 
 // T182h (#182) — source-anchored: the new text is interpolated where the contract needs it, once per site, and the two
