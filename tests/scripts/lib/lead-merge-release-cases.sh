@@ -17,6 +17,8 @@ EXC='- [x] exception: skip the lint pass \xe2\x80\x94 needs a config migration \
 EXC="$(printf -- "$EXC")"
 exc_run exc-ok "$EXC" "open tech-debt,other" 9
 [ "$rc" -eq 0 ] && grep -q 'pr merge' "$D/log" && ok "valid exception: merge proceeds" || bad "valid exception (rc=$rc): $(tail -3 "$D/out")"
+exc_run exc-type-label "$EXC" "open type:tech-debt,status:ready" 9
+[ "$rc" -eq 0 ] && grep -q 'pr merge' "$D/log" && ok "type:tech-debt label only: merge proceeds" || bad "type:tech-debt label only (rc=$rc): $(tail -3 "$D/out")"
 exc_run exc-ascii "exception: skip lint -- migration pending -- #9" "open tech-debt" 9
 [ "$rc" -eq 0 ] && ok "valid exception with ' -- ' separator and no box prefix" || bad "ascii separator (rc=$rc)"
 exc_run exc-bad "- [x] exception: skip the lint pass, no reason" "open tech-debt" 9; exc_refused "malformed line" "malformed"
