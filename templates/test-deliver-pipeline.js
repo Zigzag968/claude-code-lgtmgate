@@ -5543,6 +5543,51 @@ await testCase('T263a (#263) worktree git-dir not writable → escalate before N
   return error ? error : { ok: true }
 })
 
+// T643a (#643) — the escalation names the session starting directory, the sandbox cause, the probe stderr and the docs pointer.
+await testCase('T643a (#643) worktree git-dir not writable → detail names the starting directory, the cause and the docs entry', async () => {
+  const writeError = 'touch: cannot touch: Operation not permitted'
+  const r = await run({
+    mode: 'auto',
+    sessionRoot: '/path/to/repo',
+    simulate: {
+      sam: 'GO',
+      gitDirWritable: { writable: false, gitDir: '/path/to/repo/.git/worktrees/issue-1', writeError },
+    },
+  })
+  const detail = String(r.detail || '')
+  const error1 = eq('status', r.status, 'escalate')
+  const error2 = eq('reason', r.reason, 'worktree-git-dir-not-writable')
+  const missing = ['session starting directory', '/path/to/repo', '2.1.323', writeError].find(part => !detail.includes(part))
+  const error3 = missing ? { ok: false, msg: `detail: expected it to include ${JSON.stringify(missing)}, got ${JSON.stringify(detail)}` } : null
+  const error4 = detail.endsWith('docs/consumer-reference.md, Run reasons, worktree-git-dir-not-writable')
+    ? null
+    : { ok: false, msg: `detail: expected the docs pointer at the end, got ${JSON.stringify(detail)}` }
+  const error5 = eq('writeError', r.writeError, writeError)
+  const error = error1 || error2 || error3 || error4 || error5
+  return error ? error : { ok: true }
+})
+
+// T643b (#643) — the pure helper keeps naming the starting directory and the cause without sessionRoot or writeError.
+await testCase('T643b (#643) gitDirectoryNotWritableDetail variants without sessionRoot or writeError', async () => {
+  const source = SUITE_ARGS.fpSource
+  if (!source) {
+    log('SKIP — T643b: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const block = extractBetween(source, '// --- gitDirNotWritable:start ---', '// --- gitDirNotWritable:end ---')
+  if (!block) return { ok: false, msg: 'gitDirNotWritable marker block missing from deliver-pipeline.js' }
+  const { gitDirectoryNotWritableDetail } = new Function(block + '\nreturn { gitDirectoryNotWritableDetail }')()
+  const bare = gitDirectoryNotWritableDetail({ gitDir: '/g' })
+  const checks = [
+    ['session starting directory', bare],
+    ['not passed', bare],
+    ['no message', bare],
+    ['2.1.323', bare],
+    ['/g', bare],
+  ].find(([part, text]) => !text.includes(part))
+  return checks ? { ok: false, msg: `bare variant lacks ${JSON.stringify(checks[0])}: ${bare}` } : { ok: true }
+})
+
 // T263b (#263, negative control) — a writable git-dir is a no-op: proceeds through Dev/Review
 // to ready unchanged.
 await testCase('T263b (#263) worktree git-dir writable → no escalate, proceeds to ready', async () => {

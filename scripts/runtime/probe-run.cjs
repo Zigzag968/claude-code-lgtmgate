@@ -138,6 +138,8 @@ const PARSERS = {
         gitDir: string_(v.gitDir),
         writable: typeof v.writable === 'boolean' ? v.writable : null,
         layout,
+        // #643: the captured touch stderr, only with writable:false, bounded, no key when absent.
+        ...(v.writable === false && string_(v.writeError) ? { writeError: v.writeError.slice(0, 300) } : {}),
       }
     }
     if (v.mode === 'branch') {

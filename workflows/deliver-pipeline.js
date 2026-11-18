@@ -132,7 +132,7 @@ export const meta = {
 // `version`, checked against plugin.json by tests/templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '1.6.0-beta.7', cutFrom: '6938d63' }
+const BUILD = { plugin: 'lgtmgate', version: '1.6.0-beta.8', cutFrom: '907564b' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -3006,6 +3006,15 @@ function sessionRootVerdict({ probeFailed, exit, lines }) {
 }
 // --- sessionRoot:end ---
 
+// --- gitDirNotWritable:start --- (pure & self-contained — keep extractable by the flow suite)
+// DEBT(#657): the incident fixture is missing because publish-fixture refuses the capture
+function gitDirectoryNotWritableDetail({ gitDir: gitDirectory, sessionRoot: startRoot, writeError }) {
+  const message = writeError ? `the write probe said: ${writeError}` : 'the write probe gave no message'
+  const start = startRoot ? `the session starting directory is ${startRoot}` : 'the session starting directory was not passed (sessionRoot)'
+  return `The git directory of the worktree (${gitDirectory || 'unknown'}) cannot be written; ${message}; ${start}. Cause: from Claude Code 2.1.323 the tooling sandbox refuses git worktree add and writes under .git/worktrees/ when the session starting directory is the repository or one of its linked worktrees. Remedy: create the worktree from a session started outside the repository, or run only that command outside the sandbox, then drive the run from the worktree; never create a worktree from a linked worktree; see docs/consumer-reference.md, Run reasons, worktree-git-dir-not-writable`
+}
+// --- gitDirNotWritable:end ---
+
 async function probe(name, command, { label, round = 0, onFail, noReuse = false, gateCmd: gateCommand = false, b64 = false } = {}) {
   if (!isSafeProbeToken(name) || !isSafeProbeToken(label)) {
     throw new Error(`probe: unsafe name/label (${JSON.stringify(name)} / ${JSON.stringify(label)})`)
@@ -4193,14 +4202,15 @@ if (after('dev', entryStage)) {
       log(`gitDirWritableProbe: no preflight result, skipping worktree write-access preflight (fail-open)`)
       return null
     }
-    return { writable: preflightDevelopment.writable, gitDir: preflightDevelopment.gitDir }
+    return { writable: preflightDevelopment.writable, gitDir: preflightDevelopment.gitDir, writeError: typeof preflightDevelopment.writeError === 'string' ? preflightDevelopment.writeError : null }
   }
   const gitDirectoryProbe = await gitDirectoryWritableProbe()
   if (gitDirectoryProbe && gitDirectoryProbe.writable === false) {
     trace.push(`worktree-git-dir-not-writable:${gitDirectoryProbe.gitDir || 'unknown'}`)
-    log(`Worktree write-access preflight: git-dir "${gitDirectoryProbe.gitDir}" is not writable — escalating before Nick spawn`)
+    const gitDirectoryDetail = gitDirectoryNotWritableDetail({ gitDir: gitDirectoryProbe.gitDir, sessionRoot, writeError: gitDirectoryProbe.writeError })
+    log(`Worktree write-access preflight: git-dir "${gitDirectoryProbe.gitDir}" is not writable — escalating before Nick spawn. ${gitDirectoryDetail}`)
     await updateStatus('Blocked')
-    return finish(STATUS['escalate'], { reason: 'worktree-git-dir-not-writable', gitDir: gitDirectoryProbe.gitDir, issue, worktreePath, trace })
+    return finish(STATUS['escalate'], { reason: 'worktree-git-dir-not-writable', detail: gitDirectoryDetail, gitDir: gitDirectoryProbe.gitDir, sessionRoot: sessionRoot || null, writeError: gitDirectoryProbe.writeError || null, issue, worktreePath, trace })
   }
 
   const epicReference = subGate.blocked ? `(see #${issue})` : 'Closes #' + issue
