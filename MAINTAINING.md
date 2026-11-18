@@ -43,6 +43,15 @@ procedure, not a caveat**:
 The `-dev` value is never committed — it exists only in the worktree for the duration of the dev
 loop. §4 (Release) governs what IS committed.
 
+### Creating the worktree under the tooling sandbox
+
+From Claude Code 2.1.323 the sandbox refuses `git worktree add`, `move` and `remove`, and writes
+under `.git/worktrees/`, when the session's starting directory is the repository or one of its linked
+worktrees. Create the worktree from a session whose starting directory is outside the repository, or
+with one Bash call that runs only that command outside the sandbox, then drive the run from the
+worktree. Never create a worktree from a linked worktree. The engine reports the case as
+`worktree-git-dir-not-writable` (see `docs/consumer-reference.md`, Run reasons).
+
 ## 2. Names, S2→S4 window
 
 The canonical pipeline component is `lgtmgate:deliver-pipeline` (`workflows/` is a
