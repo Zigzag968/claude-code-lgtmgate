@@ -1205,7 +1205,7 @@ function reviewLine(worktree, command) {
 }
 // The `proof-command ac:<id>: <command>` lines of the items that carry a command, in item order.
 function proofLinesText(items) {
-  return items.filter((i) => typeof i.command === 'string' && i.command !== '').map((i) => `${PROOF_LINE_PREFIX}ac:${i.id}: ${i.command}`).join('\n')
+  return items.filter((item) => typeof item.command === 'string' && item.command !== '').map((item) => `${PROOF_LINE_PREFIX}ac:${item.id}: ${item.command}`).join('\n')
 }
 // The lines of a text that start with `proof-command ` (one trailing CR stripped), joined by newline.
 function proofLinesOf(text) {
@@ -1229,8 +1229,8 @@ function commandsFromPlan(plan) {
   }
   return map
 }
-function withCommands(items, commands) {
-  return items.map((item) => (typeof commands.get(item.id) === 'string' ? { ...item, command: commands.get(item.id) } : item))
+function withCommands(items, commandMap) {
+  return items.map((item) => (typeof commandMap.get(item.id) === 'string' ? { ...item, command: commandMap.get(item.id) } : item))
 }
 // sha256 of the proof lines of the commands the items carry; null when none carries one. `hash` is injected.
 function commandsDigest(items, hash) {
@@ -1250,11 +1250,11 @@ function bindCommands(items, entries, plan) {
 // True when some non-gate entry carries a command while the plan carries no proof-command line (drives one log line).
 function contractAbsent(entries, plan) {
   if (proofLinesOf(plan) !== '') return false
-  return (Array.isArray(entries) ? entries : []).some((e) => e && e.humanGate !== true && typeof e.command === 'string' && e.command.trim() !== '')
+  return (Array.isArray(entries) ? entries : []).some((entry) => entry && entry.humanGate !== true && typeof entry.command === 'string' && entry.command.trim() !== '')
 }
 // The plan-gate issues of the contract: [] when the returned plan has no proof-command line; else the returned plan and
 // the artifact (by digest of its proof lines) must carry exactly the lines of the items' commands.
-function proofCommandIssues(items, returnedPlan, artifactLinesDigest, hash, planPath) {
+function proofCommandIssues(items, returnedPlan, artifactLinesDigest, hash, artifactPath) {
   if (proofLinesOf(returnedPlan) === '') return []
   const expected = proofLinesText(items)
   const issues = []
@@ -1269,13 +1269,13 @@ function proofCommandIssues(items, returnedPlan, artifactLinesDigest, hash, plan
     issues.push(`the returned plan must carry the proof-command lines ${rule} (${shown})`)
   }
   if (typeof artifactLinesDigest === 'string' && artifactLinesDigest !== hash(expected)) {
-    issues.push(`the artifact at ${planPath} must carry the proof-command lines ${rule} (${shown})`)
+    issues.push(`the artifact at ${artifactPath} must carry the proof-command lines ${rule} (${shown})`)
   }
   return issues
 }
 // Ids of the proven, non-gate boxes whose item has a command and whose key is not among the recorded keys.
 function attestDemotions(boxes, items, keys, keyOf, worktree) {
-  const byId = new Map(items.map((i) => [i.id, i]))
+  const byId = new Map(items.map((item) => [item.id, item]))
   const known = Array.isArray(keys) ? keys : []
   const ids = []
   for (const b of boxes) {
@@ -1287,7 +1287,7 @@ function attestDemotions(boxes, items, keys, keyOf, worktree) {
 }
 // box-unbound:<id> for each proven, non-gate box whose item has no command (bound runs only).
 function unboundTraces(boxes, items) {
-  const byId = new Map(items.map((i) => [i.id, i]))
+  const byId = new Map(items.map((item) => [item.id, item]))
   return boxes.filter((b) => {
     const item = byId.get(b.id)
     return b.proven && !b.humanGate && item && !(typeof item.command === 'string' && item.command !== '')
@@ -1303,17 +1303,17 @@ function recordEmptyTraces(demotedIds, keys, round) {
   return demotedIds.length > 0 && !(Array.isArray(keys) && keys.length > 0) ? [`review-record-empty:${round}`] : []
 }
 function blockDigestText(items) {
-  return items.map((i) => renderLine(i, true, false)).join('\n')
+  return items.map((item) => renderLine(item, true, false)).join('\n')
 }
 // The note appended to Morgan's prompt: the nonce marker and one exact line per bound box. '' without a nonce or a bound item.
 function reviewAttestNote(nonce, items, worktree) {
-  const bound = (items || []).filter((i) => !i.humanGate && typeof i.command === 'string' && i.command !== '')
+  const bound = (items || []).filter((item) => !item.humanGate && typeof item.command === 'string' && item.command !== '')
   if (!nonce || bound.length === 0) return ''
   return `\n<!-- pipeline-attest nonce=${nonce} -->\n` +
     'REVIEW ATTESTATION: for each box below run the line as ONE Bash call, byte for byte; one changed byte is a different call; ' +
     'never run a box line in the background (a call run in the background is not recorded); ' +
     'in the comment you post and in `proof` write `<worktree>` for the path; a box with no line is judged as before.\n' +
-    bound.map((i) => `ac:${i.id}: ${reviewLine(worktree, i.command)}`).join('\n') + '\n'
+    bound.map((item) => `ac:${item.id}: ${reviewLine(worktree, item.command)}`).join('\n') + '\n'
 }
 // --- acceptanceItems:end ---
 
@@ -3080,7 +3080,7 @@ async function checkProofLines(items, returnedPlan) {
   planDigestPinned = null
   commandsDigestPinned = null
   if (proofLinesOf(returnedPlan) === '') return []
-  if (!items.some((i) => typeof i.command === 'string' && i.command !== '')) return proofCommandIssues(items, returnedPlan, null, sha256Hex, planPath)
+  if (!items.some((item) => typeof item.command === 'string' && item.command !== '')) return proofCommandIssues(items, returnedPlan, null, sha256Hex, planPath)
   let artifact = null
   if (simulate) artifact = { digest: null, linesDigest: sha256Hex(proofLinesOf(returnedPlan)) }
   else artifact = await readPlanArtifact()
