@@ -18,6 +18,8 @@
 //   node pr-body-splice.cjs tick-ids <preFile> <outFile> <idsCsv>
 //       (#257) only the boxes of idsCsv set `[x]` in the acceptance block of preFile, every other byte kept (no rendered text
 //       needed). Exits: 3 = markers absent, 5 = an id has no box, 6 = an id is a `[human-gate]` box, 2 = bad ids.
+//       Optional fifth argument (#631): a sha256 hex of idBoxLines(preFile) (the id box lines as `- [ ] <!-- ac:N --> text`, ticks and
+//       the visible `**ac:N**` token dropped); unequal = exit 7, nothing written.
 //   node pr-body-splice.cjs checked <bodyFile|->
 //       prints the ids of the boxes ticked in the acceptance block (comma-separated, ascending; empty when none or no
 //       block); `-` reads the body from stdin. Exit 0.
@@ -31,6 +33,7 @@
 // No network, no regex outside the block.
 
 const fs = require('fs')
+const crypto = require('crypto')
 
 // --- prBodySplice:start --- (pure & self-contained: scripts/runtime/pr-body-splice.cjs carries a byte-identical copy, parity-tested)
 const DECISION_LOG_START = '<!-- decision-log:start -->'
@@ -340,12 +343,44 @@ function tickIdsInBody(body, ids) {
   return { out: chars.join('') }
 }
 
+// The id box lines of the acceptance block of `body` (#631), as the text the engine's items render to: for the LAST unfenced
+// marker pair, each `- [ ]` / `- [x]` / `- [X]` line with a well-formed `<!-- ac:N -->` comment becomes `- [ ] ` + the rest
+// (the visible `**ac:N** ` token after the comment dropped, trimmed, a trailing "\r" stripped), joined by "\n". Foreign lines
+// (prose, an `exception:` line, an id-less box, a fenced example) are not part of the text. String operations only.
+function idBoxLines(body) {
+  const source = String(body ?? '')
+  const span = acceptanceSpan(source)
+  if (span === null) return null
+  const out = []
+  let fence = ''
+  for (const raw of source.slice(span.from, span.to).split('\n')) {
+    const l = raw.endsWith('\r') ? raw.slice(0, -1) : raw
+    const next = fenceAfter(l, fence)
+    const fenced = fence !== '' || next !== ''
+    fence = next
+    const t = l.trimStart()
+    const head = t.slice(0, 5)
+    if (fenced || !(head === '- [x]' || head === '- [X]' || head === '- [ ]') || !(t.length === 5 || t[5] === ' ' || t[5] === '\t')) continue
+    const rest = t.slice(5).trimStart()
+    if (!rest.startsWith('<!-- ac:')) continue
+    const end = rest.indexOf('-->')
+    const digits = end > 0 ? rest.slice(8, end).trim() : ''
+    if (digits === '' || ![...digits].every((d) => d >= '0' && d <= '9')) continue
+    let after = rest.slice(end + 3).trimStart()
+    const token = `**ac:${Number(digits)}** `
+    if (after.startsWith(token)) after = after.slice(token.length).trimStart()
+    out.push('- [ ] ' + (rest.slice(0, end + 3) + (after === '' ? '' : ' ' + after)).trimEnd())
+  }
+  return out.join('\n')
+}
+
 function cli(argv) {
   const mode = argv[0]
   if (mode === 'tick-ids') {
     const pre = fs.readFileSync(argv[1], 'utf8')
     const parts = String(argv[3] ?? '').split(',')
     if (parts.length === 0 || parts.some((p) => p === '' || ![...p].every((d) => d >= '0' && d <= '9'))) return 2
+    if (argv[4] !== undefined && crypto.createHash('sha256').update(idBoxLines(pre) ?? '').digest('hex') !== argv[4]) return 7
     const result = tickIdsInBody(pre, parts.map(Number))
     if (result.code !== undefined) return result.code
     fs.writeFileSync(argv[2], result.out)
@@ -405,4 +440,4 @@ if (require.main === module) {
   process.exit(rc)
 }
 
-module.exports = { tickIdsInBody, decisionLogEntries, spliceDecisionLogBlock, spliceAcceptanceBlock, tickAcceptanceBlock, checkedAcceptanceIds, openAcceptanceBoxCount, bodyWriteGuardOk, composeDecisionLogBlock, upsertDecisionLog }
+module.exports = { tickIdsInBody, idBoxLines, decisionLogEntries, spliceDecisionLogBlock, spliceAcceptanceBlock, tickAcceptanceBlock, checkedAcceptanceIds, openAcceptanceBoxCount, bodyWriteGuardOk, composeDecisionLogBlock, upsertDecisionLog }
