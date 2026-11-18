@@ -404,10 +404,13 @@ then `claude plugin install lgtmgate@zigzag-plugins`.
 
 ### Canary re-initialised from scratch before every release candidate
 
-- Before every release candidate, the canary repository is re-initialised from scratch: a fresh clone, no copy of the previous config, `/lgtmgate:init` run in it (commands: `docs/canary-kit.md`).
+- Before every release candidate, the canary repository is re-initialised from scratch (Scenario B below): a fresh clone, no copy of the previous config, `/lgtmgate:init` run in it (commands: `docs/canary-kit.md`).
+- Scenario A (update): an existing committed configuration and a newly installed plugin version. After the plugin update, check the loaded version with `scripts/plugin-versions.sh` and start a new session; on a `LOADED-CACHE` line, run `claude plugin update lgtmgate@zigzag-plugins-beta --scope local` in the root checkout.
+- Scenario B (fresh install): no configuration; the committed configuration is deleted before `/lgtmgate:init`. A then B are run in that order, without asking which one a consumer is in.
+- Trust gesture: a human accepts the `Workspace not trusted` prompt once for a never-opened folder (see `docs/canary-kit.md`).
 - It is then given one path-scoped rule file through a lane (`sam.<lane>.md` with `lane:` and `paths:`) and one listed context file.
 - First proof of the candidate: `scripts/template-drift.cjs`, `scripts/config-check.cjs` and `scripts/runtime/agent-context.cjs` are run against it; their outputs are posted before the canary run. The canary run itself follows.
-- Cost, stated: one more canary run per candidate. It is the price of the criterion: a canary that passes as `ready` with a hand-kept config says nothing about a consumer that installs from scratch or upgrades.
+- Cost, stated: one more canary run per candidate and per scenario. It is the price of the criterion: a canary that passes as `ready` with a hand-kept config says nothing about a consumer that installs from scratch or upgrades.
 - Second consumer: the criterion also needs a complete delivery by two consumers of different stacks, without a gesture from the Lead of this repository.
 
 ### Review attestation canary
