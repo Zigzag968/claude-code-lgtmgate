@@ -749,7 +749,7 @@ const t182Block = () => {
   if (!source) return null
   const block = extractBetween(source, '// --- acceptanceItems:start ---', '// --- acceptanceItems:end ---')
   if (!block) throw new Error('acceptanceItems:start/:end markers not found in the pipeline source')
-  return new Function(block + '\nreturn { tickIdsArgv, numberItems, renderLine, renderChecklist, parseChecklist, itemsFromPlan, validateAcceptanceItems, planLacksItems, mapBoxes, nickBlockNote, morganBoxesNote, boxLineId, lineKey, humanGateLine, onlyHumanGateLines, parkUntickable, morganItemsRule, reviewProgress, ciScope, ciAbsent, ciBlocker, redChecks, verdictProblem }')()
+  return new Function(block + '\nreturn { tickIdsArgv, numberItems, renderLine, renderChecklist, parseChecklist, itemsFromPlan, validateAcceptanceItems, planLacksItems, mapBoxes, reviewLine, proofLinesText, proofLinesOf, commandsFromPlan, withCommands, commandsDigest, bindCommands, contractAbsent, proofCommandIssues, attestDemotions, unboundTraces, windowStartTraces, recordEmptyTraces, blockDigestText, reviewAttestNote, nickBlockNote, morganBoxesNote, boxLineId, lineKey, humanGateLine, onlyHumanGateLines, parkUntickable, morganItemsRule, reviewProgress, ciScope, ciAbsent, ciBlocker, redChecks, verdictProblem }')()
 }
 const T182_ITEMS = [
   { text: '`node scripts/guards.cjs; echo $?` prints `0` as its last line', humanGate: false },
@@ -2569,7 +2569,7 @@ await testCase('T272 probeCommands() extracted from source markers (#82)', async
         eq('expectCmd never reaches the verify command', gated.verify.includes('--expect-cmd'), false),
         eq('the default run has no --expect-cmd', withRoot.run.includes('--expect-cmd'), false),
         eq('prWrite gates the command (gateCmd: true)', /async function prWrite[\s\S]*?probe\('pr-write', command, \{[\s\S]*?gateCmd: true/.test(source), true),
-        eq('a non-empty tick sends the short command tickIdsArgv(pr, tickIds) (#257)', source.includes('tickIdsArgv(pr, tickIds)'), true),
+        eq('a non-empty tick sends the short command tickIdsArgv(pr, tickIds) (#257)', source.includes('tickIdsArgv(pr, tickIds'), true),
         eq('the empty tick keeps the text mode: the block as --text-b64 base64Utf8(rendered)', source.includes("'--text-b64', base64Utf8(rendered)"), true),
         eq('the tick no longer sends the block as --text', source.includes("'--mode', 'tick', '--text', rendered"), false),
         eq('the plugin-version probe does not gate its command (a stale root must still answer)', source.split('\n').filter((l) => l.includes("probe('lines', pluginVersionCommand(pluginRoot)")).every((l) => !l.includes('gateCmd')), true),
@@ -8248,6 +8248,262 @@ await testCase('T545h the run-state lines are interpolated in the Theo, Sam and 
   return eq('interpolations of RUN_STATE_LINES', source.split('${RUN_STATE_LINES}').length - 1, 3)
     || eq('header rows of the five arguments', source.split('\n').filter((line) => /^\/\/ \| `(title|parallel|decided|merged|epic)` \|/.test(line)).length, 5)
     || { ok: true }
+})
+
+// T631a-i (#631) — a proven box of a bound run counts only when Morgan executed the exact command of its item.
+// Vectors are literals checked through the extracted sha256Hex; the source-anchored cases skip without SUITE_ARGS.fpSource.
+const T631_ITEMS = [
+  { id: 1, text: 'a', humanGate: false, command: 'git grep -c foo -- a.txt' },
+  { id: 2, text: 'the maintainer confirms the wording', humanGate: true },
+  { id: 3, text: 'b', humanGate: false, command: 'bash t.sh' },
+]
+const T631_LINES = 'proof-command ac:1: git grep -c foo -- a.txt\nproof-command ac:3: bash t.sh'
+const T631_ENTRIES = [{ text: 'a', command: 'git grep -c foo -- a.txt' }, { text: 'the maintainer confirms the wording', humanGate: true }, { text: 'b', command: 'bash t.sh' }]
+const t631Fns = () => t182Block()
+await testCase('T631a binding pure functions: reviewLine, proof lines, issues table, note, window traces', async () => {
+  const f = t631Fns()
+  const sha = t533Sha()
+  if (!f || !sha) return t182Skip('T631a')
+  const hash = (s) => sha(s)
+  const e1 = eq('reviewLine plain', f.reviewLine('/w/x', 'git status --porcelain'), "cd '/w/x' && git status --porcelain")
+  const e2 = eq('reviewLine quote', f.reviewLine("/w/o'b", 'git status --porcelain'), "cd '/w/o'\\''b' && git status --porcelain")
+  const e3 = eq('reviewLine space', f.reviewLine('/w/a b', 'ls'), "cd '/w/a b' && ls")
+  const e4 = eq('proofLinesText', f.proofLinesText(T631_ITEMS), T631_LINES)
+  const e5 = eq('proofLinesText none', f.proofLinesText([{ id: 1, text: 'a', humanGate: false }]), '')
+  const e6 = eq('proofLinesOf', f.proofLinesOf('x\r\n' + T631_LINES.split('\n')[0] + '\r\n  proof-command indented\n' + T631_LINES.split('\n')[1]), T631_LINES)
+  const cm = f.commandsFromPlan(T631_LINES + '\nproof-command ac:3: other')
+  const e7 = eq('commandsFromPlan', [...f.commandsFromPlan(T631_LINES).entries()], [[1, 'git grep -c foo -- a.txt'], [3, 'bash t.sh']])
+  const e8 = eq('commandsFromPlan conflict', cm.get(3), null)
+  const pi = (items, plan, digest) => f.proofCommandIssues(items, plan, digest, hash, 'p.md').length
+  const good = hash(T631_LINES)
+  const e9 = eq('no line gives []', pi(T631_ITEMS, 'no contract here', good), 0)
+  const e10 = eq('equal lines', pi(T631_ITEMS, 'x\n' + T631_LINES + '\n', good), 0)
+  const e11 = eq('missing line', pi(T631_ITEMS, 'x\n' + T631_LINES.split('\n')[0], null), 1)
+  const e12 = eq('altered line', pi(T631_ITEMS, T631_LINES + ' ', null), 1)
+  const e13 = eq('line while no command', pi([{ id: 1, text: 'a', humanGate: false }], T631_LINES, null), 1)
+  const e14 = eq('command with newline', pi([{ id: 1, text: 'a', humanGate: false, command: 'a\nb' }], 'proof-command ac:1: a', null) >= 1, true)
+  const e15 = eq('differing artifact digest', pi(T631_ITEMS, T631_LINES, hash('other')), 1)
+  const e16 = eq('null digest adds nothing', pi(T631_ITEMS, T631_LINES, null), 0)
+  const note = f.reviewAttestNote('0123456789abcdef', T631_ITEMS, '/w/x')
+  const phrase = 'never run a box line in the background'
+  const e17 = eq('note phrase once', note.split(phrase).length - 1, 1)
+  const e18 = eq('note lines', note.includes("ac:1: cd '/w/x' && git grep -c foo -- a.txt\nac:3: cd '/w/x' && bash t.sh") && note.includes('<!-- pipeline-attest nonce=0123456789abcdef -->'), true)
+  const e19 = eq('note empty', [f.reviewAttestNote('', T631_ITEMS, '/w/x'), f.reviewAttestNote('0123456789abcdef', [{ id: 1, text: 'a', humanGate: false }], '/w/x')], ['', ''])
+  const e20 = eq('windowStartTraces', [f.windowStartTraces(null, 0), f.windowStartTraces({ nonce: 'n' }, 1), f.windowStartTraces({ nonce: 'n', forgeable: true }, 2), f.windowStartTraces({ forgeable: true }, 3)],
+    [['review-nonce-unavailable:0'], [], ['review-attest-forgeable:2'], ['review-nonce-unavailable:3', 'review-attest-forgeable:3']])
+  const e21 = eq('recordEmptyTraces', [f.recordEmptyTraces([1], [], 0), f.recordEmptyTraces([1], undefined, 1), f.recordEmptyTraces([1], ['k'], 2), f.recordEmptyTraces([], [], 3)], [['review-record-empty:0'], ['review-record-empty:1'], [], []])
+  return e1 || e2 || e3 || e4 || e5 || e6 || e7 || e8 || e9 || e10 || e11 || e12 || e13 || e14 || e15 || e16 || e17 || e18 || e19 || e20 || e21 || { ok: true }
+})
+
+await testCase('T631b commandsDigest vectors and a resume that binds only lines hashing to planRef.commandsDigest', async () => {
+  const f = t631Fns()
+  const sha = t533Sha()
+  if (!f || !sha) return t182Skip('T631b')
+  const items = T631_ITEMS
+  const good = 'c00f0946f1ea366f85676dc85b566e66cabb5bb31c14f8c4c548f6c78f55f664'
+  const e1 = eq('digest vector', f.commandsDigest(items, sha), good)
+  const altered = [items[0], items[1], { ...items[2], command: 'bash t.sh ' }]
+  const e2 = eq('altered byte', f.commandsDigest(altered, sha), 'be56f6f364fdf4ee6f980e91da37242dbc6590daf1121629100129fb8c6b70d5')
+  const e3 = eq('no command gives null', f.commandsDigest([{ id: 1, text: 'a', humanGate: false }], sha), null)
+  const planText = t182Sam(T182_ITEMS).plan
+  const withLines = (lines) => planText + lines + '\n'
+  const base = t182Sam(T182_ITEMS)
+  const plan = (lines) => withLines(lines)
+  const itemsOfPlan = f.itemsFromPlan(plan(T631_LINES))
+  const idsOk = itemsOfPlan !== null && itemsOfPlan.length === 3
+  const resume = (text, digest) => t533Message({
+    entryStage: 'review', prNumber: 7, planText: text,
+    planRef: { issue: 1, digest: sha(text), ...(digest ? { commandsDigest: digest } : {}) },
+    simulate: { morgan: [{ verdict: 'LGTM' }] },
+  })
+  const heldItems = f.withCommands(itemsOfPlan, f.commandsFromPlan(plan(T631_LINES)))
+  const tokenDigest = f.commandsDigest(heldItems, sha)
+  const e4 = eq('lines hash back to the vector', idsOk && tokenDigest, good)
+  const bad = await resume(plan(T631_LINES.replace('bash t.sh', 'bash t.sh ')), tokenDigest)
+  const missing = await resume(plan(T631_LINES.split('\n')[0]), tokenDigest)
+  const e5 = eq('altered line throws', typeof bad === 'string' && bad.startsWith('plan-ref-mismatch'), true)
+  const e6 = eq('missing line throws', typeof missing === 'string' && missing.startsWith('plan-ref-mismatch'), true)
+  const none = await resume(plan(T631_LINES), null)
+  const e7 = eq('no digest binds nothing and does not throw', none, null)
+  return e1 || e2 || e3 || e4 || e5 || e6 || e7 || { ok: true }
+})
+
+// A plan whose items carry the T631 commands: the plan text holds the item lines and, optionally, proof-command lines.
+const t631Plan = (items, lines) => ({
+  plan: '## Plan\n1. change it\ntargetFiles: none\n\n## Acceptance checklist\n' + t182Lines(items, true, false).join('\n') + '\n' + (lines ? lines + '\n' : ''),
+  acceptanceItems: items.map((i) => (i.command ? { text: i.text, humanGate: i.humanGate, command: i.command } : { text: i.text, humanGate: i.humanGate })),
+})
+const T631_PLAN_ITEMS = [
+  { text: 'item one', humanGate: false, command: 'git grep -c foo -- a.txt' },
+  { text: 'item two', humanGate: false, command: 'bash t.sh' },
+]
+await testCase('T631c plan gate: no line is unbound, a partial contract is refused, exact lines pass, the artifact read is real', async () => {
+  const f = t631Fns()
+  const sha = t533Sha()
+  const source = SUITE_ARGS.fpSource
+  if (!f || !sha || !source) return t182Skip('T631c')
+  const lines2 = 'proof-command ac:1: git grep -c foo -- a.txt\nproof-command ac:2: bash t.sh'
+  const refusals = (r) => (r.trace || []).filter((t) => String(t).startsWith('plan-proof-commands-refused:'))
+  const none = await run({ mode: 'semi', simulate: { sam: { 1: t631Plan(T631_PLAN_ITEMS, '') }, planCheck: T182_CONFORMING } })
+  const e1 = eq('no contract: no refusal', refusals(none), [])
+  const e1b = eq('no contract: no commandsDigest', none.planRef && none.planRef.commandsDigest, undefined)
+  const partial = await run({ mode: 'semi', simulate: { sam: { 1: t631Plan(T631_PLAN_ITEMS, lines2.split('\n')[0]), 2: t631Plan(T631_PLAN_ITEMS, lines2.split('\n')[0]) }, planCheck: T182_CONFORMING } })
+  const e2 = eq('partial contract refused at pass 1', refusals(partial)[0], 'plan-proof-commands-refused:1')
+  const noCommand = await run({ mode: 'semi', simulate: { sam: { 1: t631Plan([{ text: 'item one', humanGate: false }], 'proof-command ac:1: x'), 2: t631Plan([{ text: 'item one', humanGate: false }], 'proof-command ac:1: x') }, planCheck: T182_CONFORMING } })
+  const e3 = eq('a line while no item carries a command is refused', refusals(noCommand)[0], 'plan-proof-commands-refused:1')
+  const exact = await run({ mode: 'semi', simulate: { sam: { 1: t631Plan(T631_PLAN_ITEMS, lines2) }, planCheck: T182_CONFORMING } })
+  const e4 = eq('exact lines: no refusal', refusals(exact), [])
+  const e5 = eq('exact lines pin the digest', exact.planRef && exact.planRef.commandsDigest, sha(lines2))
+  // the real PLAN_ARTIFACT_JS with a stub fs and a stub crypto backed by sha256Hex
+  const start = source.indexOf('const PLAN_ARTIFACT_JS = ')
+  const js = new Function(source.slice(start, source.indexOf('\n', start)) + '\nreturn PLAN_ARTIFACT_JS')()
+  const runJs = (fileText, fail) => {
+    const out = []
+    const fsStub = { readFileSync: () => { if (fail) throw new Error('nope'); return { toString: () => fileText, text: fileText } } }
+    const hashStub = { createHash: () => { const o = { data: '', update(b) { o.data = typeof b === 'string' ? b : b.text; return o }, digest() { return sha(o.data) } }; return o } }
+    new Function('require', 'process', 'console', js)((m) => (m === 'fs' ? fsStub : hashStub), { argv: ['node', 'p.md'] }, { log: (x) => out.push(x) })
+    return out
+  }
+  const art = 'x\n' + lines2 + '\n'
+  const same = runJs(art, false)
+  const diff = runJs(art.replace('bash t.sh', 'bash t.sh '), false)
+  const e6 = eq('lines digest equals the plan\'s', same, [sha(art), sha(lines2)])
+  const e7 = eq('one byte differs', diff[1] !== same[1], true)
+  const e8 = eq('read failure', runJs('', true), ['PLAN-DIGEST-ERROR'])
+  const iCheck = source.indexOf('await checkProofLines(samAcceptanceItems, sam.plan)')
+  const iPlanCheck = source.indexOf('const planCheck = scriptIssues.length > 0')
+  const e9 = eq('checkProofLines awaited before the plan check, its issues join scriptIssues', iCheck > 0 && iCheck < iPlanCheck && source.includes('itemIssues.concat(targetIssues, proofIssues)'), true)
+  const e10 = eq('planDigestPinned is read by planReferenceFor', source.includes('planDigestPinned !== null'), true)
+  return e1 || e1b || e2 || e3 || e4 || e5 || e6 || e7 || e8 || e9 || e10 || { ok: true }
+})
+
+await testCase('T631d demotion: a proven bound box whose exact command is not in reviewKeys is demoted', async () => {
+  const f = t631Fns()
+  const sha = t533Sha()
+  if (!f || !sha) return t182Skip('T631d')
+  const keyOf = (s) => sha(s).slice(0, 16)
+  const e0 = eq('key vector plain', keyOf("cd '/w/x' && git status --porcelain"), 'ea2b8547dee67be2')
+  const e0b = eq('key vector quoted', keyOf("cd '/w/o'\\''b' && git status --porcelain"), 'aac05bf38d926eac')
+  const items = [
+    { id: 1, text: 'a', humanGate: false, command: 'git status --porcelain' },
+    { id: 2, text: 'g', humanGate: true },
+    { id: 3, text: 'c', humanGate: false, command: 'bash t.sh' },
+    { id: 4, text: 'd', humanGate: false },
+  ]
+  const boxes = [
+    { id: 1, humanGate: false, proven: true }, { id: 2, humanGate: true, proven: true },
+    { id: 3, humanGate: false, proven: false }, { id: 4, humanGate: false, proven: true },
+  ]
+  const k1 = keyOf("cd '/w/x' && git status --porcelain")
+  const e1 = eq('recorded key keeps the box', f.attestDemotions(boxes, items, [k1], keyOf, '/w/x'), [])
+  const e2 = eq('a key of no item is ignored, the box is demoted', f.attestDemotions(boxes, items, ['0123456789abcdef'], keyOf, '/w/x'), [1])
+  const e3 = eq('empty, absent, not a list demote every proven bound box', [f.attestDemotions(boxes, items, [], keyOf, '/w/x'), f.attestDemotions(boxes, items, undefined, keyOf, '/w/x'), f.attestDemotions(boxes, items, 'k', keyOf, '/w/x')], [[1], [1], [1]])
+  const e4 = eq('unbound, gate and unproven boxes are kept', f.attestDemotions(boxes, items, [], keyOf, '/w/x').includes(4) || f.attestDemotions(boxes, items, [], keyOf, '/w/x').includes(2) || f.attestDemotions(boxes, items, [], keyOf, '/w/x').includes(3), false)
+  const e5 = eq('another worktree is another key', f.attestDemotions(boxes, items, [k1], keyOf, '/w/y'), [1])
+  // an LGTM carrying a demoted box becomes REQUIRED_CHANGES (the engine path under simulate has the gate off; the table is the proof)
+  return e0 || e0b || e1 || e2 || e3 || e4 || e5 || { ok: true }
+})
+
+await testCase('T631e review window: mint on the window start only, nonce on the window end only, note only with a nonce, nothing under simulate', async () => {
+  const source = SUITE_ARGS.fpSource
+  if (!source) return t182Skip('T631e')
+  const start = source.indexOf('const reviewerWindowStart = async')
+  const startEnd = source.indexOf('const flagReviewerWindowIssues')
+  const win = source.slice(start, startEnd)
+  const e1 = eq('mintNonce passed on the window start, once', source.split('mintNonce: true').length - 1, 1)
+  const e2 = eq('window start passes it', win.includes("prState('window-start', round, bound ? { mintNonce: true } : {})"), true)
+  const e3 = eq('windowNonce reset first, before the simulate return', win.indexOf('windowNonce = null') > 0 && win.indexOf('windowNonce = null') < win.indexOf('if (simulate)'), true)
+  const e4 = eq('window end passes the nonce', source.includes("prState('window-end', round, { ...(windowStart ? { since: windowStart } : {}), ...(windowNonce ? { nonce: windowNonce } : {}) })"), true)
+  const e5 = eq('note appended only when the nonce is set', source.includes('if (windowNonce) prompt += reviewAttestNote(windowNonce, samAcceptanceItems, worktreePath)'), true)
+  const e6 = eq('window start traces pushed', win.includes('windowStartTraces(st, round)'), true)
+  const e7 = eq('attestBound is false under simulate', source.includes('const attestBound = () => !simulate &&'), true)
+  const e8 = eq('--mint-nonce and --nonce only behind a flag of prState', source.split("'--mint-nonce'").length - 1 === 1 && source.split("'--nonce', nonce").length - 1 === 1, true)
+  return e1 || e2 || e3 || e4 || e5 || e6 || e7 || e8 || { ok: true }
+})
+
+await testCase('T631f box mapping: demote before the boxes are assigned, then review-record-empty and box-unbound, inside attestBound()', async () => {
+  const f = t631Fns()
+  const source = SUITE_ARGS.fpSource
+  if (!f || !source) return t182Skip('T631f')
+  const a = source.indexOf('const mapMorganBoxes = ')
+  const body = source.slice(a, source.indexOf('const callMorganGuarded', a))
+  const iBound = body.indexOf('if (attestBound()) {')
+  const iDem = body.indexOf('attestDemotions(')
+  const iAssign = body.indexOf('boxesMapped = mapped.boxes.map(')
+  const iEmpty = body.indexOf('recordEmptyTraces(demoted, keys, round)')
+  const iUnbound = body.indexOf('unboundTraces(boxesMapped, samAcceptanceItems)')
+  const e1 = eq('order inside the bound branch', iBound > 0 && iBound < iDem && iDem < iAssign && iAssign < iEmpty && iEmpty < iUnbound, true)
+  const e2 = eq('keys only from the probe reviewKeys', body.includes('const keys = endState && endState.reviewKeys') && !body.includes('planText') && !body.includes('prBody'), true)
+  const items = [
+    { id: 1, text: 'a', humanGate: false, command: 'x' }, { id: 2, text: 'g', humanGate: true },
+    { id: 3, text: 'u', humanGate: false }, { id: 4, text: 'p', humanGate: false }, { id: 5, text: 'v', humanGate: false },
+  ]
+  const boxes = [
+    { id: 1, humanGate: false, proven: true }, { id: 2, humanGate: true, proven: true }, { id: 3, humanGate: false, proven: true },
+    { id: 4, humanGate: false, proven: false }, { id: 5, humanGate: false, proven: true },
+  ]
+  const e3 = eq('only proven non-gate boxes with no command are traced', f.unboundTraces(boxes, items), ['box-unbound:3', 'box-unbound:5'])
+  return e1 || e2 || e3 || { ok: true }
+})
+
+await testCase('T631g tick: --expect-block only in a bound run, the two-argument argv is unchanged', async () => {
+  const f = t631Fns()
+  const sha = t533Sha()
+  const source = SUITE_ARGS.fpSource
+  if (!f || !sha || !source) return t182Skip('T631g')
+  const two = f.tickIdsArgv(7, [1, 3])
+  const e1 = eq('two arguments', two, ['--pr', 7, '--mode', 'tick-ids', '--ids', '1,3'])
+  const e2 = eq('three arguments', f.tickIdsArgv(7, [1, 3], 'f'.repeat(64)), [...two, '--expect-block', 'f'.repeat(64)])
+  const items = [
+    { id: 1, text: '`git grep -c foo -- a.txt` prints `1`', humanGate: false },
+    { id: 2, text: 'the maintainer confirms the wording', humanGate: true },
+    { id: 3, text: '`bash t.sh` ends with `failed=0`', humanGate: false },
+  ]
+  const e3 = eq('block digest vector', sha(f.blockDigestText(items)), '44505406f0dcc318bf7890b005578f2849396cb7c469bce66e119e6b4aeb0377')
+  const e4 = eq('digest only when attestBound()', source.includes('tickIdsArgv(pr, tickIds, attestBound() ? sha256Hex(blockDigestText(samAcceptanceItems)) : undefined)'), true)
+  return e1 || e2 || e3 || e4 || { ok: true }
+})
+
+await testCase('T631h the only agent type the engine can give Morgan is lgtmgate:Morgan', async () => {
+  const source = SUITE_ARGS.fpSource
+  if (!source) return t182Skip('T631h')
+  const a = source.indexOf('const PIPELINE_ROLES')
+  const b = source.indexOf('// --- projectSpecifics:start')
+  const normalize = new Function(source.slice(a, b) + '; return normalizeAgentType')()
+  const e1 = eq("agentType: 'Morgan' occurs twice", source.split("agentType: 'Morgan'").length - 1, 2)
+  const e2 = eq('no personaFallback beside Morgan', source.split('\n').filter((l) => l.includes("agentType: 'Morgan'") && l.includes('personaFallback')).length, 0)
+  const e3 = eq('callAgent, not callAgentSafe', source.includes("callAgent('morgan'") && !source.includes("callAgentSafe('morgan'"), true)
+  const e4 = eq('normalized', [normalize('Morgan'), normalize('morgan'), normalize('lgtmgate:probe')], ['lgtmgate:Morgan', 'morgan', 'lgtmgate:probe'])
+  return e1 || e2 || e3 || e4 || { ok: true }
+})
+
+await testCase('T631i binding rule on the recorded shape: a placeholder command and no proof-command line binds nothing', async () => {
+  const f = t631Fns()
+  const sha = t533Sha()
+  const source = SUITE_ARGS.fpSource
+  if (!f || !sha || !source) return t182Skip('T631i')
+  const entries = [0, 1, 2, 3].map((n) => ({ text: 'item ' + n, humanGate: false, command: '_' }))
+  const plan = 'plan with no contract line\n'
+  const e1 = eq('bindCommands equals numberItems', f.bindCommands(f.numberItems(entries), entries, plan), f.numberItems(entries))
+  const e2 = eq('no command key', f.bindCommands(f.numberItems(entries), entries, plan).some((i) => 'command' in i), false)
+  const e3 = eq('contractAbsent', f.contractAbsent(entries, plan), true)
+  const e4 = eq('proofCommandIssues empty', f.proofCommandIssues(f.numberItems(entries), plan, null, sha, 'p.md'), [])
+  const e5 = eq('commandsDigest null', f.commandsDigest(f.bindCommands(f.numberItems(entries), entries, plan), sha), null)
+  const withLine = 'proof-command ac:1: _\nproof-command ac:2: _\nproof-command ac:3: _\nproof-command ac:4: _\n'
+  const bound = f.bindCommands(f.numberItems(entries), entries, withLine)
+  const e6 = eq('with a line the commands are kept', bound.map((i) => i.command), ['_', '_', '_', '_'])
+  // every engine occurrence of the new flags and labels sits behind attestBound() or proofLinesOf(
+  const lines = source.split('\n')
+  const bad = []
+  lines.forEach((l, index) => {
+    for (const needle of ["'--mint-nonce'", "'--nonce'", "'--expect-block'", "label: 'plan-artifact'", "'box-unbound:", '`box-unbound:']) {
+      if (!l.includes(needle) || l.trimStart().startsWith('//')) continue
+      const around = lines.slice(Math.max(0, index - 40), index + 1).join('\n')
+      if (!around.includes('attestBound()') && !around.includes('proofLinesOf(') && !around.includes('mintNonce') && !around.includes('if (nonce)') && !around.includes('blockDigest') && !around.includes('readPlanArtifact')) bad.push(`${index + 1}: ${needle}`)
+    }
+  })
+  const e7 = eq('no unguarded occurrence', bad, [])
+  return e1 || e2 || e3 || e4 || e5 || e6 || e7 || { ok: true }
 })
 
 await testCase('T123 test IDs are unique across the suite (no duplicated T<n>)', async () => {
