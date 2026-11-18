@@ -3007,6 +3007,7 @@ function sessionRootVerdict({ probeFailed, exit, lines }) {
 // --- sessionRoot:end ---
 
 // --- gitDirNotWritable:start --- (pure & self-contained — keep extractable by the flow suite)
+// DEBT(#657): the incident fixture is missing because publish-fixture refuses the capture
 function gitDirectoryNotWritableDetail({ gitDir: gitDirectory, sessionRoot: startRoot, writeError }) {
   const message = writeError ? `the write probe said: ${writeError}` : 'the write probe gave no message'
   const start = startRoot ? `the session starting directory is ${startRoot}` : 'the session starting directory was not passed (sessionRoot)'
