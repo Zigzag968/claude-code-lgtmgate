@@ -80,8 +80,12 @@ function parseArguments(argv) {
   return out
 }
 
+// The harness runs the engine as the generator's copy does: the launch-file flag is set through the generator's own function
+// (scripts/lib/launch-file.cjs), never through an args key, a simulate key or an environment variable (#605).
 function stripExports(source) {
-  return source.replace(/^export\s+/mg, '')
+  const marked = require('./lib/launch-file.cjs').markGenerated(source.replace(/^export\s+/mg, ''))
+  if (marked === null) throw new Error('stripExports: more than one launch-file flag line in the source')
+  return marked
 }
 
 // agent() throws — under `simulate` mode every agent() call site inside
@@ -128,6 +132,7 @@ function buildExpandedLaunch(fpPath) {
   const os = require('os')
   const { makeTree } = require('./gen-launch-fixtures.cjs')
   const launch = require('./runtime/launch-args.cjs')
+  const launchFile = require('./lib/launch-file.cjs')
   const { decide } = require('./runtime/workflow-args-expand.cjs')
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'flow-suite-launch-'))
   try {
@@ -136,7 +141,10 @@ function buildExpandedLaunch(fpPath) {
     const fixed = { worktreePath: tree, pluginRoot: '/pl', sessionRoot: tree }
     const full = launch.build({ root: tree, ref: 'origin/main', stage: 'plan', mode: 'full', ...fixed })
     const reference = launch.build({ root: tree, ref: 'origin/main', stage: 'plan', mode: 'ref', ...fixed })
-    const decided = decide({ cwd: tree, 'tool_name': 'Workflow', 'tool_input': { scriptPath: fpPath, args: reference } }, { CLAUDE_PROJECT_DIR: tree })
+    // the hook only accepts the generated launch file (#605): a real one is written in the temporary tree
+    const bytes = launchFile.retitle(fs.readFileSync(fpPath, 'utf-8'), reference.issue, { brief: reference.brief })
+    const generated = launchFile.ensureLaunchFile(tree, bytes).path
+    const decided = decide({ cwd: tree, 'tool_name': 'Workflow', 'tool_input': { scriptPath: generated, args: reference } }, { CLAUDE_PROJECT_DIR: tree })
     return { full: full.projectSpecifics, expanded: decided.updatedInput.args.projectSpecifics, fp12: reference.projectSpecificsRef.fp12 }
   } finally {
     fs.rmSync(directory, { recursive: true, force: true })

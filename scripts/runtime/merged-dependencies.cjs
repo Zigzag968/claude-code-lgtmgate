@@ -13,13 +13,9 @@
 // when all are empty. Exit 0 on every data or network problem (fail open: the launch goes on without the derived lines), 2 on a usage error.
 // Calls `gh` by name from PATH (the tests stub it). Writes no file. No GraphQL, no model.
 
-const { execFileSync } = require('child_process')
+const { rest, titleOfIssue } = require('../lib/issue-title.cjs')
 
-const { cutTitle } = require('../lib/launch-file.cjs')
-
-const TITLE_BYTES = 80
 const MAX_DEPENDENCIES = 20
-const TIMEOUT_MS = 6000
 
 function usage() {
   process.stderr.write('usage: merged-dependencies.cjs --issue <N> --repo <owner/repo>\n')
@@ -29,17 +25,6 @@ function usage() {
 function argumentOf(list, flag) {
   const index = list.indexOf(flag)
   return index >= 0 && index + 1 < list.length ? list[index + 1] : undefined
-}
-
-// -> the parsed JSON of a REST call, or null on any failure (missing gh, 404, timeout, bad JSON).
-function rest(path) {
-  try {
-    const stdout = execFileSync('gh', ['api', path], { encoding: 'utf8', timeout: TIMEOUT_MS, stdio: ['ignore', 'pipe', 'ignore'] })
-    const parsed = JSON.parse(stdout)
-    return parsed && typeof parsed === 'object' ? parsed : null
-  } catch (error) {
-    return null
-  }
 }
 
 // -> the issue numbers named on the `depends-on:` line of a body (first such line), at most MAX_DEPENDENCIES, deduplicated.
@@ -69,10 +54,8 @@ function main(list) {
   if (!Number.isInteger(issue) || issue < 1 || typeof repository !== 'string' || !/^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/.test(repository)) return usage()
   const result = {}
   const own = rest(`repos/${repository}/issues/${issue}`)
-  if (own && typeof own.title === 'string') {
-    const title = cutTitle(own.title, TITLE_BYTES)
-    if (title !== '') result.title = title
-  }
+  const title = titleOfIssue(own)
+  if (title !== null) result.title = title
   const merged = []
   for (const dependency of dependenciesOf(own ? own.body : null)) {
     const held = rest(`repos/${repository}/issues/${dependency}`)

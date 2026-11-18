@@ -168,6 +168,12 @@ r2_replay_tip() {
   git cat-file -e origin/main:scripts/run-offline.cjs 2>/dev/null || { echo "NOTE: r2-replay skipped (no scripts/run-offline.cjs on origin/main)" >&2; return 0; }
   mkdir -p "$d"
   git show origin/main:scripts/run-offline.cjs > "$d/run-offline.cjs" || r2_fail "r2-replay: cannot read the runner on origin/main"
+  # The runner loads ./lib/launch-file.cjs from next to itself (#605): bring the one from the same commit. A runner that predates
+  # it has no such file on origin/main and needs none.
+  if git cat-file -e origin/main:scripts/lib/launch-file.cjs 2>/dev/null; then
+    mkdir -p "$d/lib"
+    git show origin/main:scripts/lib/launch-file.cjs > "$d/lib/launch-file.cjs" || r2_fail "r2-replay: cannot read scripts/lib/launch-file.cjs on origin/main"
+  fi
   git show "origin/main:$WORKFLOW" > "$d/base-workflow.js" 2>/dev/null || r2_fail "r2-replay: cannot read $WORKFLOW on origin/main"
   git show "$t:$WORKFLOW" > "$d/tip-workflow.js" 2>/dev/null || r2_fail "r2-replay: cannot read $WORKFLOW on the PR head"
   git show "$t:$fx" > "$d/fixture.json" || r2_fail "r2-replay: cannot read $fx on the PR head"

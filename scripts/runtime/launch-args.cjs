@@ -6,10 +6,15 @@
 // Mode full carries the config and the specifics in full; mode ref (#520) carries `configRef` and `projectSpecificsRef`,
 // which the PreToolUse hook hooks/workflow-args-expand.sh expands before the engine reads them.
 // Nothing here reads git for the config (the working-tree file is the one the Lead reads) and no model runs.
+// Mode file (#605) prints no args: it writes the launch file of the run (scripts/lib/launch-file.cjs) and prints its absolute
+// path, the one `scriptPath` the Lead launches the engine from. The title of the label is the issue title read by REST (the same
+// helper as the hook, scripts/lib/issue-title.cjs), else the first line of --brief, else `#<N>`; there is no title flag.
 //
 // Usage: node scripts/runtime/launch-args.cjs --root <worktree> --ref origin/<base> --stage plan|dev|review
 //          [--mode full|ref] [--issue N] [--brief text] [--pr N] [--plan-file f | --plan-ref '<json>'] [--worktree <path>]
 //          [--session-root <abs>] (required in mode ref)
+//        node scripts/runtime/launch-args.cjs --mode file --issue N --root <worktree> --session-root <abs> [--brief text]
+//          [--engine <abs path of the engine source>]   (default: <plugin root>/workflows/deliver-pipeline.js)
 // Stdout: JSON.stringify(args) + newline. Key order (full): issue, brief, worktreePath, mode, pmReview, config, configLocal,
 //        projectSpecifics (only when the config sets projectSpecifics or agentContext), pluginRoot, sessionRoot;
 //        (ref): issue, brief, worktreePath, mode, pmReview, configRef {path, digest64}, configLocal, projectSpecificsRef
@@ -19,13 +24,17 @@
 //        was pinned by the engine, never computed here). Both together, or --plan-ref in mode full, is a usage error.
 //        --worktree sets worktreePath (default: --root).
 //        sessionRoot is the --session-root value (the directory the Lead's session was opened in); it defaults to --root in mode full only.
-// Exit:  0 ok · 2 any argument or read error (one line on stderr, stdout empty).
+//        Mode file: stdout is the absolute path of the launch file and one newline, nothing else.
+// Exit:  0 ok · 2 any argument or read error (one line on stderr, stdout empty); in mode file also an engine source that lacks
+//        the launch-copy shape, a launch directory that git does not ignore, and a git that cannot answer `check-ignore`.
 
 const fs = require('fs')
 const nodePath = require('path')
 const crypto = require('crypto')
 const { assemble, localConfigFile } = require('./agent-context.cjs')
 const { fingerprint12 } = require('../lib/agent-context-text.cjs')
+const launch = require('../lib/launch-file.cjs')
+const { readIssueTitle, repositoryOf } = require('../lib/issue-title.cjs')
 
 const DEFAULT_BRIEF = 'implement the issue'
 const STAGES = ['plan', 'dev', 'review']
@@ -103,6 +112,31 @@ function build(options) {
   return arguments_
 }
 
+// Mode file (#605): writes the launch file of the run and returns its absolute path.
+function buildFile(options) {
+  const issue = options.issue
+  if (!Number.isSafeInteger(issue) || issue < 1) throw new UsageError('--issue is required with --mode file and must be a positive integer')
+  if (options.sessionRoot === undefined) throw new UsageError('--session-root is required with --mode file: the directory this session was opened in (see docs/consumer-reference.md, entry --session-root)')
+  if (!nodePath.isAbsolute(options.sessionRoot)) throw new UsageError('--session-root must be an absolute path (see docs/consumer-reference.md, entry --session-root)')
+  const pluginRoot = options.pluginRoot === undefined ? nodePath.resolve(__dirname, '..', '..') : options.pluginRoot
+  const enginePath = options.engine === undefined ? nodePath.join(pluginRoot, 'workflows', 'deliver-pipeline.js') : options.engine
+  if (!nodePath.isAbsolute(enginePath)) throw new UsageError('--engine must be an absolute path')
+  let source
+  try { source = fs.readFileSync(enginePath, 'utf8') } catch (error) { throw new UsageError(`${enginePath}: cannot be read`) }
+  const config = readJson(nodePath.join(options.root, '.claude', 'pipeline.config.json'), true)
+  const repository = repositoryOf({ config, worktreePath: options.root })
+  const title = repository === null ? null : readIssueTitle(repository, issue)
+  const bytes = launch.retitle(source, issue, title === null ? { brief: options.brief } : { title })
+  if (bytes === null) throw new UsageError(`${enginePath}: not an engine copy the launch file can be made from (see docs/consumer-reference.md, entry --mode file)`)
+  const target = launch.launchPath(options.sessionRoot, bytes)
+  const state = launch.ignoredState(options.sessionRoot, nodePath.relative(options.sessionRoot, target))
+  if (state === 'not-ignored') throw new UsageError('.pipeline/ is not ignored by git in the session root, and the launch file is written there: add the line `.pipeline/` to .gitignore, then run this again (see docs/consumer-reference.md, entry --mode file)')
+  if (state === 'git-failed') throw new UsageError('git check-ignore failed in the session root, so it cannot be told whether .pipeline/ is ignored: run this from a git repository with git installed (see docs/consumer-reference.md, entry --mode file)')
+  const written = launch.ensureLaunchFile(options.sessionRoot, bytes)
+  if (written.denied) throw new UsageError(`the launch file ${written.denied} was modified after it was written; delete it (scripts/runtime/clean-launch-files.cjs) and run this again`)
+  return written.path
+}
+
 function parseArguments(argv) {
   const o = { root: process.cwd(), ref: 'origin/main', stage: 'plan', mode: 'full' }
   for (let index = 0; index < argv.length; index++) {
@@ -129,6 +163,7 @@ function parseArguments(argv) {
     }
     else if (a === '--worktree') o.worktreePath = value()
     else if (a === '--session-root') o.sessionRoot = value()
+    else if (a === '--engine') o.engine = value()
     else throw new UsageError(`unknown argument: ${a}`)
   }
   return o
@@ -136,8 +171,12 @@ function parseArguments(argv) {
 
 function main(argv) {
   try {
-    const arguments_ = build(parseArguments(argv))
-    process.stdout.write(JSON.stringify(arguments_) + '\n')
+    const options = parseArguments(argv)
+    if (options.mode === 'file') {
+      process.stdout.write(`${buildFile(options)}\n`)
+      return 0
+    }
+    process.stdout.write(JSON.stringify(build(options)) + '\n')
     return 0
   } catch (error) {
     const first = String(error && error.errors ? error.errors[0] : error && error.message ? error.message : error).split('\n')[0]
@@ -146,6 +185,6 @@ function main(argv) {
   }
 }
 
-module.exports = { build, main, DEFAULT_BRIEF }
+module.exports = { build, buildFile, main, DEFAULT_BRIEF }
 
 if (require.main === module) process.exitCode = main(process.argv.slice(2))

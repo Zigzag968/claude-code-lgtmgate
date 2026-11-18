@@ -6,6 +6,8 @@ the trust model of the delivery channel it ships through. Linked from `README.md
 ## 1. Dev loop (`--plugin-dir`)
 
 Edit `workflows/deliver-pipeline.js` (or any component) in a worktree, never on `main` directly.
+The dev-loop prompt launches the engine from a printed `scriptPath` (a launch file made with
+`launch-args.cjs --mode file`, see §2 and `skills/deliver/SKILL.md` §4, Single launch form), never by name.
 Local pre-check: `git config core.hooksPath .githooks` runs `tests/templates/test-canonical-guards.sh`
 on every commit (a local pre-check only — see §5 Enforcement below for why it is not the real
 gate).
@@ -45,14 +47,17 @@ loop. §4 (Release) governs what IS committed.
 ## 2. Names, S2→S4 window
 
 The canonical pipeline component is `lgtmgate:deliver-pipeline` (`workflows/` is a
-default-scanned plugin directory). **Always use the namespaced name** — a bare `deliver-pipeline`
-can be shadowed by another `--plugin-dir` tree or a different installed plugin of the same
-component name.
+default-scanned plugin directory). **Always use the namespaced name** wherever the component is
+named — a bare `deliver-pipeline` can be shadowed by another `--plugin-dir` tree or a different
+installed plugin of the same component name. The engine is never launched by that name any more: it
+is launched from a generated launch file (`skills/deliver/SKILL.md` §4, Single launch form), and the
+hook refuses the name.
 
 Until every consumer project migrates (S4), a not-yet-migrated project keeps its own copy at
-`.claude/workflows/deliver-pipeline.js`, launched by its explicit `scriptPath`, never by a bare or
-namespaced name — see `skills/deliver/SKILL.md` step 1/4 for the resolution logic the Lead runbook
-follows.
+`.claude/workflows/deliver-pipeline.js`. The engine is launched from a generated launch file only (the hook
+refuses a call by name, bare or namespaced, and the engine refuses it too): the not-yet-migrated local copy is
+launched from a file printed with `launch-args.cjs --mode file --engine <copy>` — see
+`skills/deliver/SKILL.md` step 1/4 for the resolution logic the Lead runbook follows.
 
 **Bare-name probe answer, recorded verbatim (this session, `--plugin-dir`, before 0.8.0 was
 published) — UNSTABLE across invocations, never a reliable error.** The same headless runner,
@@ -190,6 +195,30 @@ live example). The hand-written notes name what changed for a user and the PRs. 
 the changelog users read, and no `CHANGELOG.md` is added. A Release makes the SHA of an old version
 easy to find, but not installable: there is no `--version` pin (§7).
 
+### Card-label replay (one minute, every Claude Code upgrade and every release candidate)
+
+The label of a run on the Workflow card and in the Background tasks pane is a measured behaviour, not a documented one
+(`docs/consumer-reference.md`, section Launch form). Replay it before a release candidate is cut and after each Claude Code upgrade:
+
+1. Three throwaway workflows, one agent each (a trivial prompt): an inline `script` whose `meta.name` is `poc inline`; a `scriptPath`
+   named `#999 - poc.js` whose `meta.name` is another text; and the generated shape, a file `<12 hex>/#999 - poc.js` under a scratch
+   `.pipeline/launch/` made with `launch-args.cjs --mode file --engine <a copy of the engine>`.
+2. Read the title on the card in the conversation and in the Background tasks pane for each. Expected: the inline script shows its
+   `meta.name`; the two files show `#999 - poc` (the file name without `.js`).
+3. Launch the generated file with `args` that carry references and read the card: the expanded `args` show (the hook's
+   `updatedInput`, returned without a permission decision, is measured live here, not documented).
+4. List or discover workflows in the Workflow UI: listing must not trigger the `engine-launch-form` throw (the engine throws only when it
+   is started).
+5. Append one row to the result log with the version from `claude --version`.
+
+| Date | Claude Code | Inline script | `scriptPath` `#999 - poc.js` | Generated shape | Expanded args on the card | Listing does not throw |
+|---|---|---|---|---|---|---|
+| 2026-11-08 | Claude Code 2.1.317 | `meta.name` | file name without `.js` | file name without `.js` | not replayed (the issue's measurement is the first row) | not replayed |
+
+DEBT(#606): the card label and the unprompted `updatedInput` are measured, not documented. Exit condition: the Claude Code Workflow
+documentation states which field the card reads and that `updatedInput` without a permission decision is supported for the Workflow
+tool; then replace this replay by a link, drop the `DEBT(#606)` lines (here and in `docs/consumer-reference.md`) and close #606.
+
 ## 5. Trust root
 
 **Updated 2026-09-30 — the repo went public on 2026-09-29 (open-source cutover, legacy#253/#283);
@@ -221,15 +250,16 @@ suspenders, not yet reassessed for whether one layer could safely be dropped.
 
 After this slice (S2) merges, **publish + update + restart is the FIRST thing done**, before any
 further slice (S3a–S5) is launched — those later slices are themselves run BY this pipeline, so
-the pipeline must be live on the artifact they touch. Until publish happens, run the pipeline via:
+the pipeline must be live on the artifact they touch. Until publish happens, run the pipeline from a launch file
+printed from the repository's own engine, then launch the printed `scriptPath` with the usual `args`:
 
 ```
-Workflow({ scriptPath: '<repo>/workflows/deliver-pipeline.js', args: {...} })
+node scripts/runtime/launch-args.cjs --mode file --engine "$PWD/workflows/deliver-pipeline.js" --root "$PWD" --session-root "$PWD" --issue <N> --brief "<one line>"
 ```
 
 **This is also the rollback runbook's end state** (§7) — after any rollback, the repo returns to
 exactly this same "publish + update + restart is the first thing done" state, and the same
-`scriptPath` interim path applies until the pin is moved forward again.
+printed-`scriptPath` interim path applies until the pin is moved forward again.
 
 ## 7. Rollback
 
@@ -257,8 +287,8 @@ rehearsal; do not leave it pointed backward.
 ## 8. Emergency override
 
 If the marketplace pin is stuck, broken, or you need to run a patched copy that has not been
-published: `Workflow({ scriptPath: '<abs path to a locally patched copy>' })`, and for the flow
-suite, `args.fpScriptPath` pointing at the same patched copy. Never re-add a tracked
+published: print a launch file from the patched copy with `launch-args.cjs --mode file --engine <abs path to the patched copy>`
+and launch the printed `scriptPath`, and for the flow suite, `args.fpScriptPath` pointing at the same printed file. Never re-add a tracked
 `.claude/workflows/deliver-pipeline.js` copy to this repo as a workaround — that is exactly the
 drift class this slice retired.
 

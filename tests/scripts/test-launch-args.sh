@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# Self-test of scripts/runtime/launch-args.cjs (#527, mode ref #520): the args object of a workflow launch, built from a
+# Self-test of scripts/runtime/launch-args.cjs (#527, mode ref #520, mode file #605): the args object of a workflow launch, built from a
 # synthetic git tree made by scripts/gen-launch-fixtures.cjs in $TMPDIR (nothing is committed).
 # Covers the shape of a plan, dev and review launch, the byte-for-byte determinism, the overrides, and the
 # mode ref (references instead of the objects, the fingerprint of the specifics) and the refusals (unknown mode, stage or flag,
-# a root that is not a git tree), all exit 2 with empty stdout.
+# a root that is not a git tree), all exit 2 with empty stdout. Mode file: the launch file of a run (one absolute path of the
+# generated shape, the label from the REST title, then the brief, then the issue number), its refusals (bad issue, not ignored,
+# git failure, relative session root, unknown flag, an engine source without the shape).
 # bash 3.2 compatible. Trailer: [test-launch-args] status=<ok|fail> passed=<n> failed=<n>
 set -u
 cd "$(dirname "$0")/../.." || exit 1
@@ -90,6 +92,68 @@ refused "unknown flag is refused" --root "$TREE" --stage plan --bogus
 mkdir -p "$TMP/plain/.claude"
 cp "$TREE/.claude/pipeline.config.json" "$TMP/plain/.claude/pipeline.config.json"
 refused "a root that is not a git tree is refused" --root "$TMP/plain" --stage plan
+
+# ---- mode file (#605) -----------------------------------------------------------------------------
+GHBIN="$TMP/ghbin"; mkdir -p "$GHBIN"
+cat > "$GHBIN/gh" <<'STUB'
+#!/usr/bin/env bash
+[ "${GH_STUB_FAIL:-}" = "1" ] && exit 1
+case "$2" in
+  repos/acme/widgets/issues/520) printf '{"number":520,"state":"open","title":"%s","body":"x"}\n' "${GH_STUB_TITLE:-Derive the run title}" ;;
+  *) exit 1 ;;
+esac
+STUB
+chmod +x "$GHBIN/gh"
+git -C "$TREE" remote add origin https://github.com/acme/widgets.git
+SESS="$TMP/sess"; mkdir -p "$SESS"; git init -q "$SESS"; printf '.pipeline/\n' > "$SESS/.gitignore"
+written() { find "$1" -type f 2>/dev/null | wc -l | tr -d ' '; }
+pathrun() { PATH="$GHBIN:$PATH" run --mode file --root "$TREE" --session-root "$SESS" "$@"; }
+
+pathrun --issue 520
+P1="$(cat "$TMP/out")"
+if [ "$RC" -eq 0 ] && [ "$(wc -l < "$TMP/out" | tr -d ' ')" = "1" ] && [ -f "$P1" ] && printf '%s' "$P1" | grep -Eq '^/.*/\.pipeline/launch/[0-9a-f]{12}/#520 - Derive the run title\.js$'; then ok "mode file: one absolute path of the generated shape, the file exists"; else bad "mode file: shape ($RC $P1)"; fi
+DIGEST="$(node -e 'process.stdout.write(require("crypto").createHash("sha256").update(require("fs").readFileSync(process.argv[1])).digest("hex").slice(0, 12))' "$P1")"
+if [ "$(basename "$(dirname "$P1")")" = "$DIGEST" ] && grep -qx 'const LAUNCH_FILE_GENERATED = true' "$P1" && grep -qx "  name: '#520 - Derive the run title'," "$P1"; then ok "mode file: the directory is the digest of the bytes, the flag is on, the meta name is the label"; else bad "mode file: digest or flag"; fi
+pathrun --issue 520
+if [ "$RC" -eq 0 ] && [ "$(cat "$TMP/out")" = "$P1" ] && [ "$(written "$SESS/.pipeline")" = 1 ]; then ok "mode file: a second run prints the same path and writes no second file"; else bad "mode file: not idempotent"; fi
+GH_STUB_FAIL=1 pathrun --issue 520 --brief "Issue 520: a brief line
+second line"
+if [ "$RC" -eq 0 ] && grep -qF '/#520 - a brief line.js' "$TMP/out"; then ok "mode file: without a REST title the label is the first line of --brief"; else bad "mode file: brief label ($(cat "$TMP/out"))"; fi
+GH_STUB_FAIL=1 pathrun --issue 520
+if [ "$RC" -eq 0 ] && grep -qF '/#520.js' "$TMP/out"; then ok "mode file: without a title and a brief the label is #<N>"; else bad "mode file: bare label ($(cat "$TMP/out"))"; fi
+pathrun --issue 520 --brief "ignored brief"
+if [ "$RC" -eq 0 ] && [ "$(cat "$TMP/out")" = "$P1" ]; then ok "mode file: the REST title wins over --brief"; else bad "mode file: title chain"; fi
+
+# the same helper gives the hook its title: args.title equals the title part of the file name
+printf '%s' "{\"cwd\":\"$TREE\",\"tool_name\":\"Workflow\",\"tool_input\":{\"scriptPath\":\"$P1\",\"args\":{\"issue\":520,\"worktreePath\":\"$TREE\",\"title\":\"typed\"}}}" > "$TMP/hook-in.json"
+PATH="$GHBIN:$PATH" CLAUDE_PROJECT_DIR="$SESS" bash "$ROOT/hooks/workflow-args-expand.sh" < "$TMP/hook-in.json" > "$TMP/hook-out.json" 2>/dev/null
+HOOK_TITLE="$(node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).hookSpecificOutput.updatedInput.args.title)' "$TMP/hook-out.json" 2>/dev/null)"
+FILE_TITLE="$(basename "$P1" .js | sed 's/^#520 - //')"
+if [ -n "$HOOK_TITLE" ] && [ "$HOOK_TITLE" = "$FILE_TITLE" ]; then ok "mode file: the hook derives the same title as the file name (one helper)"; else bad "mode file: hook title '$HOOK_TITLE' vs file '$FILE_TITLE'"; fi
+
+BEFORE="$(written "$SESS/.pipeline")"
+refused "mode file: a 20-digit --issue is refused" --mode file --root "$TREE" --session-root "$SESS" --issue 99999999999999999999
+refused "mode file: --issue 0 is refused" --mode file --root "$TREE" --session-root "$SESS" --issue 0
+refused "mode file: a missing --issue is refused" --mode file --root "$TREE" --session-root "$SESS"
+refused "mode file: a relative --session-root is refused" --mode file --root "$TREE" --session-root rel/dir --issue 520
+refused "mode file: --title is an unknown argument" --mode file --root "$TREE" --session-root "$SESS" --issue 520 --title x
+if grep -q 'unknown argument: --title' "$TMP/err"; then ok "mode file: --title is refused as an unknown argument"; else bad "mode file: --title message"; fi
+if [ "$(written "$SESS/.pipeline")" = "$BEFORE" ]; then ok "mode file: the refusals write nothing"; else bad "mode file: a refusal wrote a file"; fi
+
+NOIGN="$TMP/noignore"; mkdir -p "$NOIGN"; git init -q "$NOIGN"
+refused "mode file: a session root that does not ignore .pipeline/ is refused" --mode file --root "$TREE" --session-root "$NOIGN" --issue 520 --brief x
+if grep -qF '.gitignore' "$TMP/err" && grep -qF '.pipeline/' "$TMP/err" && [ ! -e "$NOIGN/.pipeline" ]; then ok "mode file: the not-ignored message names .pipeline/ and .gitignore, nothing is written"; else bad "mode file: not-ignored message ($(cat "$TMP/err"))"; fi
+cp "$TMP/err" "$TMP/err-not-ignored"
+NOREPO="$TMP/norepo"; mkdir -p "$NOREPO"
+GIT_CEILING_DIRECTORIES="$TMP" refused "mode file: a session root outside any repository is refused" --mode file --root "$TREE" --session-root "$NOREPO" --issue 520 --brief x
+if grep -qF 'git check-ignore' "$TMP/err" && ! grep -qF '.gitignore' "$TMP/err" && ! cmp -s "$TMP/err" "$TMP/err-not-ignored" && [ ! -e "$NOREPO/.pipeline" ]; then ok "mode file: the git-failure message names git check-ignore and differs from the not-ignored one"; else bad "mode file: git-failure message ($(cat "$TMP/err"))"; fi
+
+cp "$ROOT/workflows/deliver-pipeline.js" "$TMP/patched-engine.js"; printf '// patched-copy-marker\n' >> "$TMP/patched-engine.js"
+pathrun --issue 520 --engine "$TMP/patched-engine.js"
+if [ "$RC" -eq 0 ] && grep -qF 'patched-copy-marker' "$(cat "$TMP/out")" && [ "$(cat "$TMP/out")" != "$P1" ]; then ok "mode file: --engine launches a patched copy of the engine"; else bad "mode file: --engine ($RC)"; fi
+printf 'console.log(1)\n' > "$TMP/not-an-engine.js"
+refused "mode file: an engine source without the launch-copy shape is refused" --mode file --root "$TREE" --session-root "$SESS" --issue 520 --engine "$TMP/not-an-engine.js"
+refused "mode file: a relative --engine is refused" --mode file --root "$TREE" --session-root "$SESS" --issue 520 --engine workflows/deliver-pipeline.js
 
 STATUS=ok; [ "$FAIL" -eq 0 ] || STATUS=fail
 echo "[test-launch-args] status=${STATUS} passed=${PASS} failed=${FAIL}"

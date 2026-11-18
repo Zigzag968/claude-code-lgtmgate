@@ -73,6 +73,8 @@ jobs:
         run: node scripts/gen-launch-fixtures.cjs --check
       - name: launch-args self-test
         run: bash tests/scripts/test-launch-args.sh
+      - name: launch-file self-test
+        run: bash tests/scripts/test-launch-file.sh
       - name: context-print self-test
         run: bash tests/scripts/test-context-print.sh
       - name: context-audit self-test
@@ -95,6 +97,8 @@ jobs:
         run: bash tests/hooks/test-pii-guard.sh
       - name: workflow-args-expand hook regression test
         run: bash tests/hooks/test-workflow-args-expand.sh
+      - name: engine launch form hook regression test
+        run: bash tests/hooks/test-engine-launch-form.sh
       - name: pii-guard pr-write regression test
         run: bash tests/scripts/test-pii-write.sh
       - name: SubagentStop worktree-cleanup hook regression test

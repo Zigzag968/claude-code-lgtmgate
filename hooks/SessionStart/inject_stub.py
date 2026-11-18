@@ -232,7 +232,8 @@ def _specifics_hint(project_dir: str, config_path: Path) -> str:
 def _pipeline_ignore_hint(project_dir: str) -> str:
     """
     One line when git reports `.pipeline/` as not ignored (check-ignore exit 1):
-    launching by reference then silently falls back. Silent outside a git
+    the launch file of a run is written there, so launches of the engine are
+    refused until it is ignored (#605). Silent outside a git
     repository (exit 128), without git, on timeout. Writes nothing. MUST NEVER
     raise: any failure means "no hint".
     """
@@ -244,8 +245,8 @@ def _pipeline_ignore_hint(project_dir: str) -> str:
         if res.returncode != 1:
             return ""
         return (
-            "- Fast launches by reference are not used: .pipeline/ is not git-ignored in this "
-            "repository (a missed gain, not an error). Add the line .pipeline/ to .gitignore."
+            "- Launches of the engine will be refused until .pipeline/ is git-ignored in this "
+            "repository: the launch file of a run is written there. Add the line .pipeline/ to .gitignore."
         )
     except Exception:
         return ""

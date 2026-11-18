@@ -223,8 +223,11 @@ const finish = async (outcome, extra = {}) => {
     ? { reason: 'classifier-outage: resume with resumeFromRunId' } : {}), ...outcome, ...extra }
 }
 
-// #520 — the five progress-box titles, one constant: the launch file written by hooks/workflow-args-expand.sh differs from this engine only in the `meta` literal and this line (scripts/lib/launch-file.cjs).
+// #520 — the five progress-box titles, one constant: the launch file written by `launch-args.cjs --mode file` differs from this engine only in the `meta` literal, this line and the flag below (scripts/lib/launch-file.cjs).
 const PHASE_TITLES = { setup: 'Setup', diagnose: 'Diagnose', plan: 'Plan', dev: 'Dev', review: 'Review' }
+// #605 — only the launch-file generator writes `true` (the label on the card is the file name). Any other start of the engine stops here.
+const LAUNCH_FILE_GENERATED = false
+if (LAUNCH_FILE_GENERATED !== true) throw new Error('engine-launch-form: the engine was started by name, inline, from the engine source or from a renamed copy, so nothing ran. Print the launch file first with `node <plugin>/scripts/runtime/launch-args.cjs --mode file --issue <N> --root <worktree> --session-root <project>` and launch its scriptPath; see docs/consumer-reference.md (engine-launch-form).')
 const argumentsIn = (typeof args === 'string' ? JSON.parse(args) : args) || {}
 // The removed scout arg: refuse it before anything else (zero agent call), with the remedy in the message.
 if (argumentsIn.scoutAgent !== undefined) throw new Error('removed: declare lanes with a `lane:` frontmatter in `.claude/lgtmgate/<role>.<lane>.md`; start a fresh run at the wanted entryStage')
