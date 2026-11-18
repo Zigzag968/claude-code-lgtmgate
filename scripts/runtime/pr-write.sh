@@ -28,10 +28,13 @@
 #       skipped/not-on-project (never an edit with an empty id); option already set -> skipped/already-set;
 #       else gh project item-edit.
 #   body-splice --pr N --mode decision-log|acceptance|tick --text T|--text-b64 B [--ids CSV --keep CSV] [--expect-digest D]
-#   body-splice --pr N --mode tick-ids --ids CSV [--expect-digest D]
+#   body-splice --pr N --mode tick-ids --ids CSV [--expect-digest D] [--expect-block B]
 #       (#257) the short tick: no text. The script reads the body itself and sets `[x]` on the boxes of --ids (a
 #       non-empty digits/commas list), every other byte kept; an id with no box -> failed/unknown-id, a `[human-gate]`
 #       box -> failed/human-gate-id (nothing written). Same read, recheck, guard and result line as the other modes.
+#       --expect-block B (#631, 64 lowercase hex, else failed/bad-args): the sha256 of the id box lines the engine rendered from its items
+#       (`- [ ] <!-- ac:N --> text`, joined by newlines); the body's id box lines (scripts/runtime/pr-body-splice.cjs idBoxLines) that
+#       hash differently -> failed/block-mismatch, nothing written.
 #       read the body, splice (scripts/runtime/pr-body-splice.cjs), unchanged -> skipped/unchanged; acceptance
 #       markers absent -> failed/no-markers (never appends); write; re-read; guard (>= 90 % of the pre
 #       length and both acceptance markers) else restore the pre body -> failed/guard-failed-restored.
@@ -50,13 +53,13 @@
 #   comment ops: on a thread of >= 100 comments the marker lookup re-reads ALL comments through REST.
 # pii-guard (#167): issue-comment, pr-comment and body-splice (decision-log|acceptance|tick) pipe their text to pii-guard.sh; a match of a
 #   pattern of the repository's .pii-patterns file -> failed/pii-refused:<name>, nothing read from or written to GitHub. No file = no effect.
-# reasons on failed: bad-args, read-failed, write-failed, splice-failed, no-markers, unknown-id, human-gate-id, stale-read, guard-failed-restored, pii-refused:<name>.
+# reasons on failed: bad-args, read-failed, write-failed, splice-failed, no-markers, unknown-id, human-gate-id, block-mismatch, stale-read, guard-failed-restored, pii-refused:<name>.
 # Requires jq, gh and node (body-splice). bash 3.2 compatible. Never uses rm (the stderr file is overwritten each call).
 
 OP="${1:-}"
 [ $# -ge 1 ] && shift
 
-WORKTREE=""; REPO=""; PR=""; NUMBER=""; MARKER=""; BODY=""; ID=""; ISSUE=""; PROJECT_NUMBER=""; PID=""; FID=""; OID=""; MODE=""; TEXT=""; TEXT_B64=""; EXPECT=""; IDS=""; KEEP=""; RSTATUS=""
+WORKTREE=""; REPO=""; PR=""; NUMBER=""; MARKER=""; BODY=""; ID=""; ISSUE=""; PROJECT_NUMBER=""; PID=""; FID=""; OID=""; MODE=""; TEXT=""; TEXT_B64=""; EXPECT=""; EXPECT_BLOCK=""; IDS=""; KEEP=""; RSTATUS=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --worktree) WORKTREE="${2:-}" ;;
@@ -78,6 +81,7 @@ while [ $# -gt 0 ]; do
     --ids) IDS="${2:-}" ;;
     --keep) KEEP="${2:-}" ;;
     --expect-digest) EXPECT="${2:-}" ;;
+    --expect-block) EXPECT_BLOCK="${2:-}" ;;
     *) ;;
   esac
   [ $# -ge 2 ] && shift 2 || shift
@@ -102,6 +106,7 @@ emit() {
 # read_failed: a `gh` READ failed; its stderr (in $ERRF) is classified, only the class is emitted (#239).
 read_failed() { emit failed read-failed "" "$(gh_read_class "$(head -c 4000 "$ERRF" 2>/dev/null)")"; }
 
+is_hex64() { [ ${#1} -eq 64 ] && case "$1" in *[!0-9a-f]*) return 1 ;; *) return 0 ;; esac; }
 is_num() { case "$1" in ''|*[!0-9]*) return 1 ;; *) return 0 ;; esac; }
 
 # pii_check <text>: 0 = clean (or no .pii-patterns), 1 = refused (the result line is already emitted; the pattern NAME only).
@@ -204,6 +209,7 @@ body_splice_op() {
   elif [ -z "$TEXT" ]; then emit failed bad-args; return; fi
   if [ "$MODE" != "tick-ids" ]; then pii_check "$TEXT" || return; fi
   case "$IDS$KEEP" in *[!0-9,]*) emit failed bad-args; return ;; esac
+  if [ -n "$EXPECT_BLOCK" ] && ! { [ "$MODE" = "tick-ids" ] && is_hex64 "$EXPECT_BLOCK"; }; then emit failed bad-args; return; fi
   mkdir -p .pipeline
   gh pr view "$PR" ${REPO:+-R "$REPO"} --json body -q .body > ".pipeline/pr-body-$PR.pre.md" 2>"$ERRF" || { read_failed; return; }
   if [ -n "$EXPECT" ] && [ "$(body_digest ".pipeline/pr-body-$PR.pre.md")" != "$EXPECT" ]; then emit failed stale-read; return; fi
@@ -212,7 +218,7 @@ body_splice_op() {
     printf '%s\n' "$TEXT" > ".pipeline/pr-body-$PR.text.md" || { emit failed splice-failed; return; }
   fi
   if [ "$MODE" = "tick-ids" ]; then
-    node "$SD/pr-body-splice.cjs" tick-ids ".pipeline/pr-body-$PR.pre.md" ".pipeline/pr-body-$PR.md" "$IDS" >/dev/null 2>&1
+    node "$SD/pr-body-splice.cjs" tick-ids ".pipeline/pr-body-$PR.pre.md" ".pipeline/pr-body-$PR.md" "$IDS" ${EXPECT_BLOCK:+"$EXPECT_BLOCK"} >/dev/null 2>&1
   elif [ "$MODE" = "tick" ]; then
     node "$SD/pr-body-splice.cjs" tick ".pipeline/pr-body-$PR.pre.md" ".pipeline/pr-body-$PR.text.md" ".pipeline/pr-body-$PR.md" "$IDS" "$KEEP" >/dev/null 2>&1
   else
@@ -222,6 +228,7 @@ body_splice_op() {
   if [ "$rc" -eq 3 ]; then emit failed no-markers; return; fi
   if [ "$MODE" = "tick-ids" ] && [ "$rc" -eq 5 ]; then emit failed unknown-id; return; fi
   if [ "$MODE" = "tick-ids" ] && [ "$rc" -eq 6 ]; then emit failed human-gate-id; return; fi
+  if [ "$MODE" = "tick-ids" ] && [ "$rc" -eq 7 ]; then emit failed block-mismatch; return; fi
   if [ "$rc" -ne 0 ]; then emit failed splice-failed; return; fi
   if cmp -s ".pipeline/pr-body-$PR.pre.md" ".pipeline/pr-body-$PR.md"; then emit skipped unchanged; return; fi
   gh pr view "$PR" ${REPO:+-R "$REPO"} --json body -q .body > ".pipeline/pr-body-$PR.recheck.md" 2>"$ERRF" || { read_failed; return; }

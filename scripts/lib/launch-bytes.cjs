@@ -37,6 +37,7 @@ const FIXED = { worktreePath: '/wt', pluginRoot: '/pl', sessionRoot: '/ss' }
 const WORST_PLAN_REF = {
   issue: 9999, digest: 'f'.repeat(64), targets: Array.from({ length: 25 }, (_, index) => `${'d'.repeat(36)}/${String(index).padStart(2, '0')}`.slice(0, 40)),
   designStep: true, lanes: ['engine-lane', 'consumer-lane'],
+  commandsDigest: 'f'.repeat(64),
 }
 
 function measure(root) {
