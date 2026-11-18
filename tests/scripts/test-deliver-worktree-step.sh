@@ -15,7 +15,7 @@ SKILL="${SKILL_FILE:-$REPO_ROOT/skills/deliver/SKILL.md}"
 # fill <command text> <slug> <worktree path>: replace the skill placeholders by scratch values
 fill() { printf '%s\n' "$1" | sed -e "s#<WORKTREE>#$3#g" -e "s#<branchPrefix>#feat/#g" -e "s#<slug>#$2#g" -e "s#<baseBranch>#main#g"; }
 
-CREATE="$(grep -m1 -E '^ *git worktree add .*origin/<baseBranch>' "$SKILL" | sed -E 's/^ +//')"
+CREATE="$(sed -n 's/.*`\(git worktree add [^`]*origin\/<baseBranch>\)`.*/\1/p' "$SKILL" | head -n 1)"
 RECOVER="$(sed -n 's/.*`\(git worktree add "<WORKTREE>" <branchPrefix><slug>\)`.*/\1/p' "$SKILL" | head -n 1)"
 
 case "$CREATE" in
