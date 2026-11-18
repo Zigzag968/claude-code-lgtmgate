@@ -4,10 +4,11 @@
 # Run through probe-run.cjs (--parser pr-state, --no-reuse: live state): the script EXECUTES the reads,
 # an LLM only copies the PROBE line, a hook attests it. Always exits 0 and prints exactly ONE compact
 # JSON line on stdout (nothing else on stdout, stderr silenced). A read that fails is reported as null,
-# never as an error. Read-only: writes nothing to the PR or the issues.
+# never as an error. Writes nothing to the PR or the issues; --mint-nonce writes the local nonce file and attempts one
+# empty record file (the forgeable test).
 #
 # Usage:
-#   bash pr-state.sh --pr N [--worktree DIR] [--repo OWNER/REPO] [--since ISO]
+#   bash pr-state.sh --pr N [--worktree DIR] [--repo OWNER/REPO] [--since ISO] [--mint-nonce 1] [--nonce HEX]
 #
 # -> {"now":"<ISO>","headRefName":..,"headRefOid":..,"bodyDigest":"<12 hex>","acceptanceChecked":[N,..]|null,"acceptanceOpen":N|null,
 #     "decisionLog":["- round N — ..",..]|null,"mergeable":..,"mergeStateStatus":..,"lastCommitDate":..,"commitCount":N,"ciState":"green|failing|pending|none"|null,"ciChecks":{"<check name>":"green|failing|pending"}|null,"reviewCommentIds":["<id>",..],"files":["<path>",..]|null,
@@ -39,18 +40,27 @@
 # server-side `created:>=` bound; REVIEWER_WINDOW_SCAN_SAFETY_LIMIT is a belt-and-suspenders ceiling:
 # a result of exactly that many issues is the truncation signal -> openIssues null, openIssuesTruncated
 # true (lgtmgate#18).
+# review attestation (#631), keys present only with their flag (every other output stays byte-identical):
+# --mint-nonce 1 (needs --worktree) writes 16 lowercase hex to <worktree>/.pipeline/review-nonce and adds
+#   "nonce":"<hex>" and "forgeable":true|false (a real attempt to create the window's empty record file in an lgtmgate-* directory
+#   of <plugins root>/data, plugins root = $CLAUDE_CODE_PLUGIN_CACHE_DIR or ~/.claude/plugins: true when the probe's own sandboxed
+#   process could write it; it cannot see an unsandboxed retry, #636).
+# --nonce HEX (16 lowercase hex, else reviewKeys []) adds "reviewKeys":[distinct 16-hex keys] read from review-attest-HEX.jsonl in each
+#   lgtmgate-* directory (null when jq fails). The record path is resolved here and nowhere else.
 # Requires jq, gh and node (acceptanceChecked). bash 3.2 compatible. Never uses rm.
 
 REVIEWER_WINDOW_SCAN_SAFETY_LIMIT=1000
 SD="$(cd "$(dirname "$0")" 2>/dev/null && pwd)"
 
-PR=""; WORKTREE=""; REPO=""; SINCE=""
+PR=""; WORKTREE=""; REPO=""; SINCE=""; MINT=""; NONCE=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --pr) PR="${2:-}" ;;
     --worktree) WORKTREE="${2:-}" ;;
     --repo) REPO="${2:-}" ;;
     --since) SINCE="${2:-}" ;;
+    --mint-nonce) MINT="${2:-}" ;;
+    --nonce) NONCE="${2:-}" ;;
     *) ;;
   esac
   [ $# -ge 2 ] && shift 2 || shift
@@ -68,17 +78,75 @@ open_boxes_json() {
   printf null
 }
 
+# review attestation (#631): the lgtmgate-* plugin data directories under the plugins root.
+plugin_data_dirs() {
+  local root="${CLAUDE_CODE_PLUGIN_CACHE_DIR:-}" d
+  [ -n "$root" ] || { [ -n "${HOME:-}" ] && root="$HOME/.claude/plugins"; }
+  [ -n "$root" ] || return 0
+  for d in "$root"/data/lgtmgate-*; do
+    [ -d "$d" ] && printf '%s\n' "$d"
+  done
+  return 0
+}
+
+mint_nonce() {
+  local n
+  n="$(od -An -N8 -tx1 /dev/urandom 2>/dev/null | tr -d ' \n')"
+  case "$n" in ''|*[!0-9a-f]*) return 1 ;; esac
+  [ ${#n} -eq 16 ] || return 1
+  mkdir -p "$WORKTREE/.pipeline" 2>/dev/null || return 1
+  printf '%s\n' "$n" > "$WORKTREE/.pipeline/review-nonce" 2>/dev/null || return 1
+  printf '%s' "$n"
+}
+
+# a real write attempt (an empty file named for the window's nonce), never [ -w ]: mode bits do not show a sandbox.
+record_writable() {
+  local d
+  while IFS= read -r d; do
+    [ -n "$d" ] || continue
+    { : >> "$d/review-attest-$1.jsonl"; } 2>/dev/null && return 0
+  done <<EOF
+$(plugin_data_dirs)
+EOF
+  return 1
+}
+
+review_keys_json() {
+  local d
+  case "$1" in *[!0-9a-f]*) printf '{"reviewKeys":[]}'; return ;; esac
+  [ ${#1} -eq 16 ] || { printf '{"reviewKeys":[]}'; return; }
+  { while IFS= read -r d; do
+      [ -n "$d" ] && [ -f "$d/review-attest-$1.jsonl" ] && cat "$d/review-attest-$1.jsonl" 2>/dev/null
+    done <<EOF
+$(plugin_data_dirs)
+EOF
+  } | jq -Rsc --arg n "$1" '{reviewKeys: ([split("\n")[] | fromjson? | select(type == "object" and .nonce == $n and (.key | type == "string" and test("^[0-9a-f]{16}$"))) | .key] | unique)}' 2>/dev/null || printf '{"reviewKeys":null}'
+}
+
+review_extra_json() {
+  local n
+  if [ "$MINT" = "1" ] && [ -n "$WORKTREE" ]; then
+    n="$(mint_nonce)" || { printf '{}'; return; }
+    if record_writable "$n"; then printf '{"nonce":"%s","forgeable":true}' "$n"; else printf '{"nonce":"%s","forgeable":false}' "$n"; fi
+  elif [ -n "$NONCE" ]; then
+    review_keys_json "$NONCE"
+  else
+    printf '{}'
+  fi
+}
+
 main() {
-  local now view body digest pr_json issues n checked ac_json dl dl_json open_json
+  local now view body digest pr_json issues n checked ac_json dl dl_json open_json extra
   local repo_args=""
   local issues_json="null" truncated="false"
 
   now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  extra="$(review_extra_json)"
 
   pr_json='{"headRefName":null,"headRefOid":null,"bodyDigest":null,"acceptanceChecked":null,"acceptanceOpen":null,"decisionLog":null,"mergeable":null,"mergeStateStatus":null,"lastCommitDate":null,"commitCount":null,"ciState":null,"ciChecks":null,"reviewCommentIds":null,"files":null}'
 
   if [ -n "$WORKTREE" ] && ! cd "$WORKTREE"; then
-    jq -nc --arg now "$now" --argjson pr "$pr_json" '{now:$now} + $pr + {openIssues:null, openIssuesTruncated:false}'
+    jq -nc --arg now "$now" --argjson pr "$pr_json" --argjson extra "$extra" '{now:$now} + $pr + {openIssues:null, openIssuesTruncated:false} + $extra'
     return
   fi
 
@@ -142,8 +210,8 @@ main() {
     fi
   fi
 
-  jq -nc --arg now "$now" --argjson pr "$pr_json" --argjson oi "$issues_json" --argjson tr "$truncated" \
-    '{now:$now} + $pr + {openIssues:$oi, openIssuesTruncated:$tr}'
+  jq -nc --arg now "$now" --argjson pr "$pr_json" --argjson oi "$issues_json" --argjson tr "$truncated" --argjson extra "$extra" \
+    '{now:$now} + $pr + {openIssues:$oi, openIssuesTruncated:$tr} + $extra'
 }
 
 main 2>/dev/null
