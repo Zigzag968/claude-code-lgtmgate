@@ -20,10 +20,12 @@
     "reason": "provision-failed",
     "trace": [
       "branch-prefix-fallback-default",
+      "probe:lines:haiku",
       "probe:lines:haiku"
     ],
     "traceExact": true,
     "callLabels": [
+      "probe-195-lines-plugin-version-r0",
       "probe-195-lines-plugin-version-r0"
     ],
     "logsInclude": [
