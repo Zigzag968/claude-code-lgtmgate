@@ -86,6 +86,30 @@
         ]
       }
     ],
+    "WorktreeCreate": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/worktree-create.sh\"",
+            "timeout": 60,
+            "description": "Create the issue-N or agent-ID worktree and branch the engine creates today and print its path (refuses any other name)"
+          }
+        ]
+      }
+    ],
+    "WorktreeRemove": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/worktree-remove.sh\"",
+            "timeout": 30,
+            "description": "Remove a worktree only through scripts/cleanup-worktree.sh, so every cleanup guard applies"
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "matcher": "",
