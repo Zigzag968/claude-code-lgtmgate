@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # The engine writes the per-run state file (#502): op run-state of scripts/runtime/pr-write.sh puts
-# <main checkout>/.pipeline/issue-<N>.json where the Stop watchdog looks, and the real hook reads it.
+# <main checkout>/.pipeline/issue-<N>.json where the Stop watchdog looks, and the real hook reads it. When the
+# main checkout is not writable (a worktree session, #663) it falls back to <worktree>/.pipeline.
 set -u
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PW="$ROOT/scripts/runtime/pr-write.sh"
@@ -34,6 +35,30 @@ for s in plan dev review ready; do
   [ ! -e "$WT/.pipeline/issue-7.json" ] && [ ! -e "$STATE.tmp" ] && ok=1 || ok=0
   check "after $s: no copy in the worktree, no temp file left" "$ok"
 done
+
+named "main-checkout case unchanged: written at the main checkout, no copy in the worktree (#663 fallback not taken)" "$([ -f "$STATE" ] && [ ! -e "$WT/.pipeline/issue-7.json" ] && echo 1 || echo 0)"
+
+# #663: common dir not writable (a worktree session) -> falls back to the worktree's own .pipeline
+RO="$(cd "$AREA" && mkdir ro && cd ro && pwd -P)"
+git -C "$RO" init -q 2>/dev/null
+git -C "$RO" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init 2>/dev/null
+WTRO="$AREA/wtro"
+git -C "$RO" worktree add -q "$WTRO" -b feat/issue-8 2>/dev/null
+chmod a-w "$RO"
+out="$(bash "$PW" run-state --issue 8 --status dev --worktree "$WTRO")"
+FB="$WTRO/.pipeline/issue-8.json"
+[ "$(printf '%s' "$out" | jq -r .result)" = written ] && ok=1 || ok=0
+named "read-only common dir: run-state reports written" "$ok"
+[ "$(jq -r .status "$FB" 2>/dev/null)" = dev ] && [ ! -e "$RO/.pipeline" ] && [ ! -e "$FB.tmp" ] && ok=1 || ok=0
+named "fallback file holds status in the worktree .pipeline, nothing in the main checkout" "$ok"
+scan="$(bash "$ROOT/scripts/list-active-runs.sh" "$WTRO" 2>/dev/null)"
+printf '%s' "$scan" | grep -q 'active: 1' && printf '%s' "$scan" | grep -q '\.pipeline/issue-8\.json' && ok=1 || ok=0
+named "list-active-runs.sh on the worktree sees the fallback file" "$ok"
+backdate_mtime "$FB" $((45 * 60))
+CLAUDE_PROJECT_DIR="$WTRO" CLAUDE_PROJECTS_DIR="$AREA/projects" bash "$HOOK" >/dev/null 2>&1; rc=$?
+[ "$rc" = 2 ] && ok=1 || ok=0
+named "Stop hook with CLAUDE_PROJECT_DIR=worktree reports the stalled fallback file" "$ok"
+chmod u+w "$RO"
 
 # bad arguments write nothing
 BAD="$AREA/bad"; mkdir -p "$BAD"; git -C "$BAD" init -q 2>/dev/null
