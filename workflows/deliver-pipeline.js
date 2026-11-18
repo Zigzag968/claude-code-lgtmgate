@@ -132,7 +132,7 @@ export const meta = {
 // `version`, checked against plugin.json by tests/templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '1.6.0-beta.15', cutFrom: 'b626cf2' }
+const BUILD = { plugin: 'lgtmgate', version: '1.6.0-beta.17', cutFrom: '6ec5029' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -1864,7 +1864,10 @@ function staleArtifactBlockers(proofs, floorIso, prFiles, worktreeDirectory) {
   // Accepts an explicit UTC 'Z' or a numeric offset: Morgan stats artifacts on the local
   // machine, so a valid ISO-8601 like 2026-08-11T18:02:02+02:00 must not be rejected
   // (the staleness compare below already goes through Date.parse, offset-aware).
-  const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:?\d{2})$/
+  // Rule (#619): a timezone-less ISO mtime (no Z, no offset) is read as machine-local time, the
+  // machine Morgan stats on, which is what Date.parse does for a date-time without offset.
+  // Z and numeric offsets are unchanged; anything else (empty, 'yesterday') stays no-valid-mtime.
+  const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:?\d{2})?$/
   const floorMs = typeof floorIso === 'string' ? Date.parse(floorIso) : NaN
   const floorValid = Number.isFinite(floorMs)
   const blockers = []
