@@ -9,7 +9,7 @@
 #      A head holding only this script's own bump/merge commits after the reviewed sha (a re-run) is accepted.
 #   1b. declared exceptions (#122): each `exception: <what> — <why> — #N` line between the acceptance markers
 #      (optionally prefixed `- ` or `- [x] `; ` -- ` is accepted as separator too) must parse, name an OPEN issue
-#      #N labelled `tech-debt` (REST), and the PR diff (`git diff origin/main...<tip>`, added lines only) must hold a
+#      #N labelled `tech-debt` or `type:tech-debt` (REST), and the PR diff (`git diff origin/main...<tip>`, added lines only) must hold a
 #      `DEBT(#N)` marker. The gates 1b and 1b2 judge the tip that WILL be merged: the remote head of the PR (fetched, checked
 #      against the head sha step 1a read) and, when the local branch has commits the remote lacks (step 2 pushes them), the local
 #      head: local ahead = the local head, local behind = the remote head, diverged = both, each must pass. Any failure prints one `FAIL: declared-exception: <reason>` line and exits before any
