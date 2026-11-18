@@ -250,7 +250,7 @@ mk "$P2" lgtmgate:Morgan "$BARE" | withcwd "$D" | run_pd "$D"
 [ "$(rec_lines)" = "1" ] && [ "$(jq -r '"\(.event)|\(.exit)"' "$REC")" = "failure|1" ] && ok=1 || ok=0
 check "[662] bare failure (Exit code 1) is recorded with exit 1" "$ok"
 fresh
-D1="$D"; REC1="$REC"; CPD1="$CPD"
+D1="$D"
 D2="$(mktemp -d "$WORK/wt2.XXXXXX")"
 mkdir -p "$D2/.pipeline"; printf '%s\n' "fedcba9876543210" > "$D2/.pipeline/review-nonce"
 mk "$P3" lgtmgate:Morgan "$BARE" | withcwd "$D2" | run_pd "$D2"
