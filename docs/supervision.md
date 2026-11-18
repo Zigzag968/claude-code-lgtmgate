@@ -25,7 +25,7 @@ status, and any unrecognized/typo'd value (fails safe: never flagged as stuck).
 - The engine writes it (#502): op `run-state` of `scripts/runtime/pr-write.sh`, through the same `pr-write` probe as every other write of a run. No Lead action is needed.
 - Path `<main checkout>/.pipeline/issue-<N>.json`, content `{"issue":N,"status":"...","lastTouchedAt":"<UTC ISO>"}`, written atomically (temp file, then `mv`) so each write refreshes the mtime the watchdog reads.
 - Values: `plan` (before the Diagnose stage), `dev`, `review` while the run is in flight, then the status the run returns (`ready`, `plan-ready`, `escalate`, `review-died`, ...). None of the exit values is on the whitelist, so a finished or parked run is never flagged.
-- Why the main checkout: the Stop hook scans `$CLAUDE_PROJECT_DIR/.pipeline`, never a worktree's own `.pipeline/`. Outside a git checkout the op falls back to the directory it runs in.
+- Why the main checkout: a Lead session started there has `CLAUDE_PROJECT_DIR` = main checkout, and the Stop hook scans `$CLAUDE_PROJECT_DIR/.pipeline`. When that write is refused (a session started in a worktree has a sandbox limited to the worktree, #663) the engine writes `<worktree>/.pipeline/issue-<N>.json` instead, which the Stop hook and `scripts/list-active-runs.sh` read when the session started in that worktree (both scan `$CLAUDE_PROJECT_DIR/.pipeline`). A Lead in the main checkout does not see a run that fell back. Outside a git checkout the op falls back to the directory it runs in.
 - Fail-open: a failed write is logged and the run continues; a simulated, dry or probe-only run writes nothing.
 
 ## Staleness threshold
