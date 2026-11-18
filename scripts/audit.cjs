@@ -36,6 +36,17 @@ const FAIL = 'FAIL: audit:'
 
 const toolBinary = (name) => path.join(TOOL_ROOT, 'node_modules', '.bin', name)
 
+// The npm wrapper checks W_OK on its own bin/ and tries a download on any failure, which breaks when node_modules is a link to a read-only checkout: run the vendored binary directly, the wrapper stays the fallback.
+function shellcheckBinary() {
+  const direct = path.join(TOOL_ROOT, 'node_modules', 'shellcheck', 'bin', 'shellcheck')
+  try {
+    fs.accessSync(direct, fs.constants.X_OK)
+    return direct
+  } catch {
+    return toolBinary('shellcheck')
+  }
+}
+
 // ---- process helpers -----------------------------------------------------------------------
 function runCommand(command, commandArguments, options) {
   return new Promise((resolve) => {
@@ -262,7 +273,7 @@ async function runShellcheck(target, files) {
   const found = emptyResult()
   if (files.length === 0) return found
   const environment = { ...process.env, SHELLCHECKJS_LOGGER_LEVEL: 'off' }
-  const result = await runCommand(toolBinary('shellcheck'), ['-f', 'json1', '--severity=warning', ...files], { cwd: target, environment })
+  const result = await runCommand(shellcheckBinary(),['-f', 'json1', '--severity=warning', ...files], { cwd: target, environment })
   const report = parseJson(result.stdout)
   if (report === null || !Array.isArray(report.comments) || (result.code !== 0 && result.code !== 1)) {
     found.failures.push(toolFailure('shellcheck', result, result.stderr.trim().split('\n')[0] || `exit ${result.code}`))
