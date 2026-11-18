@@ -39,6 +39,7 @@ function checkPlanReference(reference) {
   if (!Number.isInteger(reference.issue) || reference.issue < 1) bad('issue must be a positive integer')
   if (typeof reference.digest !== 'string' || !/^[0-9a-f]{64}$/.test(reference.digest)) bad('digest must be 64 lowercase hex characters')
   if (reference.targets !== undefined && (!Array.isArray(reference.targets) || reference.targets.length > 25 || reference.targets.some((t) => typeof t !== 'string'))) bad('targets must be at most 25 paths')
+  if (reference.commandsDigest !== undefined && (typeof reference.commandsDigest !== 'string' || !/^[0-9a-f]{64}$/.test(reference.commandsDigest))) bad('commandsDigest must be 64 lowercase hex characters')
   if (reference.designStep !== undefined && reference.designStep !== true) bad('designStep must be true when present')
   if (reference.lanes !== undefined && (!Array.isArray(reference.lanes) || reference.lanes.some((n) => typeof n !== 'string'))) bad('lanes must be a list of names')
   return reference

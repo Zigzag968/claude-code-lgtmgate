@@ -241,6 +241,29 @@ $R2L"
   OUT="$(run_pw body-splice --pr 9 --mode tick-ids --ids 1,3,14)"
   ok=0; [ "$(res "$OUT")" = "skipped/unchanged" ] && [ "$(no_call 'pr edit')" = 1 ] && ok=1
   check "[tick-ids] a second tick of the same ids is skipped/unchanged, no edit" "$ok"
+  # [631] --expect-block: the digest of the body's id lines (boxes normalised to open, the visible id dropped) guards the tick
+  EB="$(printf '%s' "$(ti_block '')" | shasum -a 256 | cut -d' ' -f1)"
+  tk_body "$(ti_block '2')"; cp "$PWD_/body.md" "$PWD_/eb-before.md"
+  OUT="$(run_pw body-splice --pr 9 --mode tick-ids --ids 1,3 --expect-block "$(printf '%s' 'other' | shasum -a 256 | cut -d' ' -f1)")"
+  ok=0; [ "$(res "$OUT")" = "failed/block-mismatch" ] && cmp -s "$PWD_/body.md" "$PWD_/eb-before.md" && [ "$(no_call 'pr edit')" = 1 ] && ok=1
+  check "[631] pr-write.sh tick-ids --expect-block: a different digest is failed/block-mismatch, body untouched, no edit" "$ok"
+  OUT="$(run_pw body-splice --pr 9 --mode tick-ids --ids 1,3 --expect-block "$EB")"
+  ok=0; [ "$(res "$OUT")" = "written/-" ] && grep -qF -- '- [x] <!-- ac:1 --> ' "$PWD_/body.md" && grep -qF -- '- [x] <!-- ac:3 --> ' "$PWD_/body.md" && ok=1
+  check "[631] pr-write.sh tick-ids --expect-block: the matching digest ticks (a box already [x] does not change the digest)" "$ok"
+  tk_body "$(ti_block '' | sed 's/<!-- ac:\([0-9]*\) --> /<!-- ac:\1 --> **ac:\1** /')"
+  OUT="$(run_pw body-splice --pr 9 --mode tick-ids --ids 1 --expect-block "$EB")"
+  ok=0; [ "$(res "$OUT")" = "written/-" ] && ok=1
+  check "[631] pr-write.sh tick-ids --expect-block: the visible **ac:N** token does not change the digest" "$ok"
+  tk_body "$(ti_block '')"
+  OUT="$(run_pw body-splice --pr 9 --mode tick-ids --ids 1 --expect-block nothex)"
+  ok=0; [ "$(res "$OUT")" = "failed/bad-args" ] && ok=1
+  check "[631] pr-write.sh tick-ids --expect-block: a value that is not 64 lowercase hex is failed/bad-args" "$ok"
+  tk_body '- [ ] <!-- ac:1 --> `git grep -c foo -- a.txt` prints `1`
+- [ ] <!-- ac:2 --> [human-gate] the maintainer confirms the wording
+- [ ] <!-- ac:3 --> `bash t.sh` ends with `failed=0`'
+  OUT="$(run_pw body-splice --pr 9 --mode tick-ids --ids 1,3 --expect-block 44505406f0dcc318bf7890b005578f2849396cb7c469bce66e119e6b4aeb0377)"
+  ok=0; [ "$(res "$OUT")" = "written/-" ] && ok=1
+  check "[631] pr-write.sh tick-ids --expect-block: the shared vector 44505406... is the digest of the three items on both sides" "$ok"
   # [183] second review round (G1): the tick replaces only the id boxes; every other line of the block survives, once, in order
   while IFS= read -r FOREIGN <&3; do
     tk_body "- [ ] <!-- ac:1 --> first

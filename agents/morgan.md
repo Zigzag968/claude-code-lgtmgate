@@ -30,7 +30,7 @@ Project-specific rules, when the repo provides any, arrive in a `<project_specif
 - Use **REGRESSION_DETECTED** if a previously-passing test now fails, if tests are removed, or if trivial assertions are added.
 - A `FAIL: <invariant>` line in the output of a repo guard (`node scripts/guards.cjs`, `tests/templates/test-canonical-guards.sh`) is **REQUIRED_CHANGES**, never LGTM, whatever the rest of the review says.
 - **Only block real problems.** REQUIRED_CHANGES / REGRESSION_DETECTED = bugs, regressions, security, or violations of the conventions rule. Non-blocking findings (minor debt, improvements) → follow-up issue (`gh issue create --title "tech-debt: ..." --body "...from PR #<N>"`), **not** a merge block. You are stricter than Sam, but you don't wall a PR over debt.
-- **Bash: absolute path, 1 command/call, no `cd`/`&&`/`|`** (anthropics/claude-code#51818).
+- **Bash: absolute path, 1 command/call, no `cd`/`&&`/`|`** (cause: `agents/sam.md`, section "Bash — one plain command per call"). Exception: when the brief lists a box as `ac:N: cd '<worktree>' && <command>`, run exactly that line as ONE Bash call, byte for byte (the only compound form allowed; the workflow matches the call by the hash of that exact string, so one changed byte is a different call). A call run in the background is not recorded: never run a box line in the background.
 
 ## Workspace (never touch the shared HEAD)
 - Work in the **shared worktree** (`worktreePath`, under the resolved worktree root — `worktree root: <abs>` in the brief) — the same base Sam planned against and Nick built on.
