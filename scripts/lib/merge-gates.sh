@@ -63,7 +63,7 @@ for line in sys.stdin.read().splitlines():
       info="$(gh api "repos/$REPO/issues/$val" --jq '.state + " " + ([.labels[].name] | join(","))')" \
         || exc_fail "cannot read follow-up issue #$val"
       case "${info%% *}" in open) ;; *) exc_fail "follow-up issue #$val is not open (${info%% *})" ;; esac
-      case ",${info#* }," in *,tech-debt,*) ;; *) exc_fail "follow-up issue #$val lacks the tech-debt label" ;; esac
+      case ",${info#* }," in *,tech-debt,*|*,type:tech-debt,*) ;; *) exc_fail "follow-up issue #$val lacks the tech-debt label" ;; esac
       exc_marker_in_every_tip "$val" || exc_fail "no DEBT(#$val) marker in the PR diff"
     done <<EOX
 $exc_lines
