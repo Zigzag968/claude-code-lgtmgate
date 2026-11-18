@@ -4,7 +4,7 @@
 # cwd): the PR worktree is never written. Each case prints `PASS: <id> <label>`; the ids are what the acceptance
 # items grep. Needs `npm ci` and ruff at the version of ruff.toml on PATH.
 # Cases: P-30 size budget, P-31 function length (plain, nested, template literal), P-32 naming (identifier, abbreviation,
-# file name), P-33 baseline freeze and the hook-name exemption, P-34 ShellCheck, P-35 baseline-vs-origin (raised, bootstrap),
+# file name), P-33 baseline freeze and the hook-name exemption, P-34 ShellCheck (planted warning; direct binary and wrapper fallback), P-35 baseline-vs-origin (raised, bootstrap),
 # P-41 slack, P-42 stale key and folder, P-43 suppression comments, P-36 fixtures out of scope, P-37 unreadable file, P-38 default list of guards.cjs, P-39 same verdict line through
 # guards.cjs, P-40 clean repo (one line, timing), ruff-missing, ruff-version, baseline-missing, P-07 folder key and rule
 # name, P-08 root folders, folder names, forbidden extensions, file names, ignore:, git-ignored paths, P-09 misplaced
@@ -238,6 +238,33 @@ case_fixtures_and_shebang() {
   if [ "$shebang_rc" -eq 1 ] && printf '%s\n' "$shebang_out" | grep -qF 'FAIL: audit: tool SC2034 1 > baseline 0' && [ "$RC" -eq 0 ]; then ok "P-09 an extensionless #!/bin/sh script with a ShellCheck warning is red, named"; else ko "P-09 shebang (rc=$shebang_rc/$RC) $shebang_out $OUT"; fi
 }
 
+# fake_shellcheck <path> <code> <mode>: a stand-in shellcheck reporting one SC<code> warning on a.sh.
+fake_shellcheck() {
+  mkdir -p "$(dirname "$1")"
+  printf '#!/bin/sh\necho '"'"'{"comments":[{"file":"a.sh","code":%s,"level":"warning","message":"x"}]}'"'"'\nexit 1\n' "$2" > "$1"
+  chmod "$3" "$1"
+}
+
+case_shellcheck_binary() {
+  local root="$T/toolroot" direct="$T/toolroot/node_modules/shellcheck/bin/shellcheck" tool
+  mkdir -p "$root/scripts" "$root/node_modules/.bin"
+  cp "$REPO_ROOT/scripts/audit.cjs" "$root/scripts/audit.cjs"
+  cp "$REPO_ROOT/ruff.toml" "$REPO_ROOT/.ls-lint.yml" "$REPO_ROOT/eslint.config.js" "$root/"
+  for tool in eslint ls-lint; do ln -s "$REPO_ROOT/node_modules/.bin/$tool" "$root/node_modules/.bin/$tool"; done
+  fake_shellcheck "$root/node_modules/.bin/shellcheck" 9002 755
+  mkrepo scbin
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$REPO/a.sh"
+  fake_shellcheck "$direct" 9001 555
+  OUT="$(cd "$REPO" && "$NODE" "$root/scripts/audit.cjs" --report 2>&1)"; RC=$?
+  if has SC9001 && ! has SC9002; then ok "P-34 the vendored shellcheck binary is run directly while the wrapper exists"; else ko "P-34 direct (rc=$RC) $OUT"; fi
+  chmod 644 "$direct"
+  OUT="$(cd "$REPO" && "$NODE" "$root/scripts/audit.cjs" --report 2>&1)"; RC=$?
+  if has SC9002 && ! has SC9001; then ok "P-34 a vendored binary without the execute bit falls back to the wrapper"; else ko "P-34 non-executable (rc=$RC) $OUT"; fi
+  rm -f "$direct"
+  OUT="$(cd "$REPO" && "$NODE" "$root/scripts/audit.cjs" --report 2>&1)"; RC=$?
+  if has SC9002 && ! has SC9001; then ok "P-34 with no vendored binary the wrapper is used"; else ko "P-34 wrapper (rc=$RC) $OUT"; fi
+}
+
 case_plants
 case_template
 case_baseline_freeze
@@ -250,6 +277,7 @@ case_layout
 case_layout_extra
 case_fixtures_and_shebang
 case_tool_setup
+case_shellcheck_binary
 
 RESULT=ok; [ "$FAIL_N" -eq 0 ] || RESULT=fail
 echo "[test-audit] status=${RESULT} passed=${PASS_N} failed=${FAIL_N}"
