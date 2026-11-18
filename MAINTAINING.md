@@ -6,6 +6,7 @@ the trust model of the delivery channel it ships through. Linked from `README.md
 ## 1. Dev loop (`--plugin-dir`)
 
 Edit `workflows/deliver-pipeline.js` (or any component) in a worktree, never on `main` directly.
+Create that worktree with `claude -w issue-<N>` from the main checkout (WorktreeCreate hook, `hooks/worktree-create.sh`; never from a linked worktree); without the hook installed, use the `git worktree add` fallback of `skills/deliver/SKILL.md` section 3 (see there, not repeated here).
 Local pre-check: `git config core.hooksPath .githooks` runs `tests/templates/test-canonical-guards.sh`
 on every commit (a local pre-check only — see §5 Enforcement below for why it is not the real
 gate).
