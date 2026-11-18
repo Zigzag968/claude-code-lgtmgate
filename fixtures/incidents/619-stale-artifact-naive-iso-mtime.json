@@ -1,0 +1,14 @@
+{
+  "name": "619-stale-artifact-naive-iso-mtime",
+  "blocks": ["staleArtifactBlockers"],
+  "cases": [
+    { "fn": "staleArtifactBlockers", "args": [[{ "item": "ac:1", "path": "a.txt", "exists": true, "bytes": 10, "mtime": "2099-01-01T00:00:00" }], "2026-01-01T00:00:00Z"], "expect": { "returns": [] } },
+    { "fn": "staleArtifactBlockers", "args": [[{ "item": "ac:2", "path": "a.txt", "exists": true, "bytes": 10, "mtime": "2099-01-01T00:00:00.123" }], "2026-01-01T00:00:00Z"], "expect": { "returns": [] } },
+    { "fn": "staleArtifactBlockers", "args": [[{ "item": "ac:3", "path": "a.txt", "exists": true, "bytes": 10, "mtime": "2000-01-01T00:00:00" }], "2026-01-01T00:00:00Z"], "expect": { "returns": [{ "item": "ac:3", "reason": "artifact-stale" }] } },
+    { "fn": "staleArtifactBlockers", "args": [[{ "item": "ac:4", "path": "a.txt", "exists": true, "bytes": 10, "mtime": "2099-01-01T00:00:00Z" }], "2026-01-01T00:00:00Z"], "expect": { "returns": [] } },
+    { "fn": "staleArtifactBlockers", "args": [[{ "item": "ac:5", "path": "a.txt", "exists": true, "bytes": 10, "mtime": "2000-01-01T00:00:00Z" }], "2026-01-01T00:00:00Z"], "expect": { "returns": [{ "item": "ac:5", "reason": "artifact-stale" }] } },
+    { "fn": "staleArtifactBlockers", "args": [[{ "item": "ac:6", "path": "a.txt", "exists": false, "mtime": "2099-01-01T00:00:00" }], "2026-01-01T00:00:00Z"], "expect": { "returns": [{ "item": "ac:6", "reason": "artifact-absent" }] } },
+    { "fn": "staleArtifactBlockers", "args": [[{ "item": "ac:7", "path": "a.txt", "exists": true, "bytes": 10, "mtime": "yesterday" }], "2026-01-01T00:00:00Z"], "expect": { "returns": [{ "item": "ac:7", "reason": "no-valid-mtime" }] } },
+    { "fn": "staleArtifactBlockers", "args": [[{ "item": "ac:8", "path": "a.txt", "exists": true, "bytes": 10, "mtime": "" }], "2026-01-01T00:00:00Z"], "expect": { "returns": [{ "item": "ac:8", "reason": "no-valid-mtime" }] } }
+  ]
+}

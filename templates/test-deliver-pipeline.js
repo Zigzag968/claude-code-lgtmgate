@@ -7272,6 +7272,27 @@ await testCase('T212b a tick retried after a digest mismatch that repeats parks:
   return error1 || error2 || error3 || error4 || { ok: true }
 })
 
+// #661: when r2Applies, the R2 fixture item is one of the engine's items (id, Nick's block, Morgan's boxes, tick by id).
+const T661_R2_LINE = '- [ ] <!-- ac:4 --> **ac:4** fixture `fixtures/incidents/1-*.json` present, replayed red on base and green on the branch by `scripts/run-offline.cjs`'
+await testCase('T661a r2Applies: the R2 fixture item is an engine item (ac:4) in Nick\'s block and ticked by id', async () => {
+  const r = await run({ mode: 'auto', config: R2_ENGINE_CONFIG, issueType: 'bug', simulate: { sam: { 1: t182Sam(T183_PLAIN) }, samTargetFiles: ['workflows/deliver-pipeline.js'], morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, true, true, true) }] } })
+  const p = r.nickPromptPreview || ''
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = includes('ticked trace', r.trace || [], 'acceptance-ticked:round=0,n=4')
+  const error3 = includes('nickPromptPreview carries the engine R2 line', p, T661_R2_LINE)
+  const error4 = p.includes('add this acceptance item to the checklist verbatim') ? { ok: false, msg: 'nickPromptPreview: tells Nick to add the R2 item itself' } : null
+  return error1 || error2 || error3 || error4 || { ok: true }
+})
+
+await testCase('T661b r2Applies false: no R2 engine item, 3 boxes ticked', async () => {
+  const r = await run({ mode: 'auto', config: R2_ENGINE_CONFIG, issueType: 'bug', simulate: { sam: { 1: t182Sam(T183_PLAIN) }, samTargetFiles: ['agents/nick.md'], morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, true, true) }] } })
+  const p = r.nickPromptPreview || ''
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = includes('ticked trace', r.trace || [], 'acceptance-ticked:round=0,n=3')
+  const error3 = p.includes('fixtures/incidents/') || p.includes('ac:4') ? { ok: false, msg: 'nickPromptPreview: unexpected R2 item or ac:4' } : null
+  return error1 || error2 || error3 || { ok: true }
+})
+
 await testCase('T444 the tick entry of the trace names the round and the number of boxes ticked: two boxes ticked in round 1 record acceptance-ticked:round=1,n=2', async () => {
   const r = await t183Review({
     prBody: t183Body(T183_L3),

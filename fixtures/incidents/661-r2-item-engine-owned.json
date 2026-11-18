@@ -1,0 +1,18 @@
+{
+  "name": "661-r2-item-engine-owned",
+  "blocks": ["acceptanceItems"],
+  "cases": [
+    { "fn": "withR2Item",
+      "args": [[{ "id": 1, "text": "a", "humanGate": false }], "fixture present and replayed"],
+      "expect": { "returns": [{ "id": 1, "text": "a", "humanGate": false }, { "id": 2, "text": "fixture present and replayed", "humanGate": false }] } },
+    { "fn": "withR2Item",
+      "args": [[], "fixture present and replayed"],
+      "expect": { "returns": [{ "id": 1, "text": "fixture present and replayed", "humanGate": false }] } },
+    { "fn": "withR2Item",
+      "args": [[{ "id": 1, "text": "fixture present and replayed", "humanGate": false }], "fixture present and replayed"],
+      "expect": { "returns": [{ "id": 1, "text": "fixture present and replayed", "humanGate": false }] } },
+    { "fn": "withR2Item",
+      "args": [null, "fixture present and replayed"],
+      "expect": { "returns": null } }
+  ]
+}

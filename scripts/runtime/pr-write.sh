@@ -49,7 +49,8 @@
 #   run-state --issue N --status S
 #       (#502) write the per-run state file <main checkout>/.pipeline/issue-N.json, {issue,status,lastTouchedAt}, that the Stop
 #       watchdog and the SessionStart stub read. S is lowercase letters and hyphens. The main checkout is the parent of the git
-#       common dir (a worktree's own .pipeline is never scanned); anything else falls back to the worktree. Atomic: temp file then mv.
+#       common dir; when that is not writable (a worktree session's sandbox, #663) the file goes to the worktree's own .pipeline,
+#       which is what a session started there scans; outside git it is the directory itself. Atomic: temp file then mv.
 #   comment ops: on a thread of >= 100 comments the marker lookup re-reads ALL comments through REST.
 # pii-guard (#167): issue-comment, pr-comment and body-splice (decision-log|acceptance|tick) pipe their text to pii-guard.sh; a match of a
 #   pattern of the repository's .pii-patterns file -> failed/pii-refused:<name>, nothing read from or written to GitHub. No file = no effect.
@@ -160,19 +161,29 @@ minimize_op() {
 }
 
 run_state_op() {
-  local gc root dir tmp bytes
+  local gc root
   if ! is_num "$ISSUE"; then emit failed bad-args; return; fi
   case "$RSTATUS" in ''|*[!a-z-]*) emit failed bad-args; return ;; esac
   gc="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || gc=""
   case "$gc" in */.git) root="${gc%/.git}" ;; *) root="$PWD" ;; esac
   [ -n "$root" ] || root="$PWD"
-  dir="$root/.pipeline"
+  # Main checkout first (a Lead started there scans it), then this worktree's own .pipeline (#663: a session
+  # started in the worktree has a sandbox that refuses the main checkout, and scans its own .pipeline).
+  if run_state_try "$root/.pipeline"; then return; fi
+  if [ "$PWD/.pipeline" != "$root/.pipeline" ] && run_state_try "$PWD/.pipeline"; then return; fi
+  emit failed write-failed
+}
+
+# One candidate directory: mkdir, temp write, mv. Emits written and returns 0 on full success, else returns 1 silently.
+run_state_try() {
+  local dir="$1" tmp bytes
   tmp="$dir/issue-$ISSUE.json.tmp"
-  mkdir -p "$dir" 2>/dev/null || { emit failed write-failed; return; }
+  mkdir -p "$dir" 2>/dev/null || return 1
   jq -nc --argjson i "$ISSUE" --arg s "$RSTATUS" --arg t "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    '{issue:$i, status:$s, lastTouchedAt:$t}' > "$tmp" 2>/dev/null || { emit failed write-failed; return; }
+    '{issue:$i, status:$s, lastTouchedAt:$t}' > "$tmp" 2>/dev/null || return 1
   bytes="$(wc -c < "$tmp" | tr -d ' ')"
-  if mv -f "$tmp" "$dir/issue-$ISSUE.json" 2>/dev/null; then emit written "" "$bytes"; else emit failed write-failed; fi
+  mv -f "$tmp" "$dir/issue-$ISSUE.json" 2>/dev/null || return 1
+  emit written "" "$bytes"
 }
 
 status_op() {
