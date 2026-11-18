@@ -11,7 +11,7 @@
 #   bash preflight.sh already-done --worktree DIR --issue N --branch BRANCH [--repo OWNER/REPO] [--stamp S]
 # --stamp is ignored: it only makes the command text differ per launch (probe-run record reuse).
 #
-# dev    -> {"mode":"dev","planStale":[..]|null,"openSubIssues":["12",..]|null,"gitDir":"<abs>"|null,"writable":true|false|null,
+# dev    -> {"mode":"dev","planStale":[..]|null,"openSubIssues":["12",..]|null,"gitDir":"<abs>"|null,"writable":true|false|null[,"writeError":"<touch stderr, 300 bytes max, only with writable false>"],
 #            "layout":{"verdict":"CONFORMING"|"NOT_CONFORMING","issues":[..]}|null}
 #   layout (#307): with --engine true, empty files are created at the planned --targets in <wt>/.pipeline/layout-probe and
 #   ls-lint runs on that tree WITHOUT file arguments (the folder and exists rules only fire so). null = not checked.
@@ -55,7 +55,7 @@ if [ -f "$SD/gh-read-class.sh" ]; then . "$SD/gh-read-class.sh"; else gh_read_cl
 lines_json() { jq -Rsc 'split("\n") | map(select(length > 0))'; }
 
 dev() {
-  local plan_stale="null" subs="null" gitdir="null" writable="null" layout="null" out total repo gd probe d bin t lout lrc tlist
+  local plan_stale="null" subs="null" gitdir="null" writable="null" layout="null" out total repo gd probe d bin t lout lrc tlist werr=""
   local -a target_paths
 
   # planStale: files of the plan targets that moved on origin/<base> since the frozen base.
@@ -106,11 +106,18 @@ dev() {
   if [ -n "$WORKTREE" ] && gd="$(git -C "$WORKTREE" rev-parse --absolute-git-dir 2>/dev/null)" && [ -n "$gd" ]; then
     gitdir="$(jq -nc --arg g "$gd" '$g')"
     probe="$gd/.pipeline-write-probe-${ISSUE:-0}-$$"
-    if touch "$probe" 2>/dev/null && unlink "$probe" 2>/dev/null; then writable="true"; else writable="false"; fi
+    # The touch stderr is captured (never printed) and reported, bounded, as writeError (#643).
+    if werr="$(touch "$probe" 2>&1)" && unlink "$probe" 2>/dev/null; then
+      writable="true"; werr=""
+    else
+      writable="false"
+      [ -z "$werr" ] && werr="unlink refused"
+      werr="$(printf '%s' "$werr" | head -c 300 | tr '\n' ' ')"
+    fi
   fi
 
-  jq -nc --argjson ps "$plan_stale" --argjson si "$subs" --argjson gd "$gitdir" --argjson w "$writable" --argjson ly "$layout" \
-    '{mode:"dev", planStale:$ps, openSubIssues:$si, gitDir:$gd, writable:$w, layout:$ly}'
+  jq -nc --argjson ps "$plan_stale" --argjson si "$subs" --argjson gd "$gitdir" --argjson w "$writable" --argjson ly "$layout" --arg we "$werr" \
+    '{mode:"dev", planStale:$ps, openSubIssues:$si, gitDir:$gd, writable:$w, layout:$ly} + (if $w == false and $we != "" then {writeError:$we} else {} end)'
 }
 
 branch() {

@@ -66,6 +66,38 @@ node -e '
 ' "$PR" 2>/dev/null && ok=1
 check "[307] PARSERS preflight keeps a well-formed layout and nulls a malformed one" "$ok"
 
+# [643] the touch stderr of a refused git-dir write is captured as writeError (bounded string, only with writable:false)
+if command -v jq >/dev/null 2>&1; then
+  W643="$WORK/gitdir643"; mkdir -p "$W643"
+  git init -q "$W643" >/dev/null 2>&1
+  chmod 555 "$W643/.git"
+  if touch "$W643/.git/.probe643" 2>/dev/null; then
+    unlink "$W643/.git/.probe643"
+    chmod 755 "$W643/.git"
+    echo "SKIP - [643] preflight.sh refused-touch e2e: touch still succeeds in a read-only .git (root?)"
+    check "[643] refused touch e2e skipped (touch not blocked)" 1
+  else
+    OUT="$(bash "$PF307" dev --worktree "$W643")"
+    chmod 755 "$W643/.git"
+    ok=0
+    [ "$(printf '%s' "$OUT" | jq -r '.writable')" = "false" ] && [ "$(printf '%s' "$OUT" | jq -r '.writeError | type')" = "string" ] && [ -n "$(printf '%s' "$OUT" | jq -r '.writeError')" ] && [ "$(printf '%s\n' "$OUT" | wc -l | tr -d ' ')" = "1" ] && ok=1
+    check "[643] preflight.sh dev on a read-only .git: writable false with a captured writeError, still one line" "$ok"
+  fi
+else
+  echo "SKIP - [643] preflight.sh refused-touch e2e needs jq"
+  check "[643] refused touch e2e skipped (jq absent)" 1
+fi
+ok=0
+node -e '
+  const assert = require("assert")
+  const { PARSERS } = require(process.argv[1])
+  const mk = (o) => PARSERS.preflight(JSON.stringify({ mode: "dev", planStale: null, openSubIssues: null, gitDir: null, layout: null, ...o }))
+  assert.strictEqual(mk({ writable: false, writeError: "x" }).writeError, "x")
+  assert.strictEqual(mk({ writable: false, writeError: "y".repeat(500) }).writeError.length, 300)
+  for (const o of [{ writable: true, writeError: "x" }, { writable: null, writeError: "x" }, { writable: false, writeError: "" }, { writable: false, writeError: 7 }, { writable: false }]) assert.ok(!("writeError" in mk(o)))
+' "$PR" 2>/dev/null && ok=1
+check "[643] PARSERS preflight keeps writeError only as a string with writable:false" "$ok"
+
 BLK='/^\/\/ --- prBodySplice:start ---/,/^\/\/ --- prBodySplice:end ---/p'
 [ -n "$(sed -n "$BLK" "$ROOT/workflows/deliver-pipeline.js")" ] && [ "$(sed -n "$BLK" "$ROOT/workflows/deliver-pipeline.js")" = "$(sed -n "$BLK" "$ROOT/scripts/runtime/pr-body-splice.cjs")" ] && ok=1 || ok=0
 check "pr-body-splice.cjs: source identical to the engine block" "$ok"
