@@ -303,6 +303,56 @@ GHEOF
   ' "$PR")"
   [ "$out5" = "abc123:2" ] && ok=1
   check "pr-state.sh output round-trips through the pr-state parser" "$ok"
+
+  # [631] review attestation: --mint-nonce writes the nonce and tries one empty record file; --nonce reads the keys back.
+  psx() { PATH="$PSD/bin:$PATH" CLAUDE_CODE_PLUGIN_CACHE_DIR="$PLUG" bash "$PS" --pr 7 --repo o/r "$@"; }
+  PLUG="$WORK/plug631"; mkdir -p "$PLUG/data/lgtmgate-x" "$PLUG/data/other-y" "$PSD/wt631"
+  N631="0123456789abcdef"
+  out="$(psx --worktree "$PSD/wt631")"
+  [ "$(printf '%s' "$out" | jq -c 'has("nonce") or has("forgeable") or has("reviewKeys")')" = "false" ] && ok=1 || ok=0
+  check "[631] pr-state.sh: no flag, no nonce / forgeable / reviewKeys key" "$ok"
+  out="$(psx --worktree "$PSD/wt631" --mint-nonce 1)"
+  M="$(printf '%s' "$out" | jq -r '.nonce')"
+  ok=0
+  case "$M" in *[!0-9a-f]*|'') ;; *) [ ${#M} -eq 16 ] && [ "$(cat "$PSD/wt631/.pipeline/review-nonce")" = "$M" ] && [ "$(printf '%s' "$out" | jq -r '.forgeable')" = "true" ] && ok=1 ;; esac
+  check "[631] pr-state.sh: --mint-nonce writes .pipeline/review-nonce, prints nonce and forgeable true for a writable lgtmgate-* directory" "$ok"
+  [ -f "$PLUG/data/lgtmgate-x/review-attest-$M.jsonl" ] && [ ! -s "$PLUG/data/lgtmgate-x/review-attest-$M.jsonl" ] && [ -z "$(find "$PSD/wt631" -name 'review-attest*')" ] && [ ! -e "$PLUG/data/other-y/review-attest-$M.jsonl" ] && ok=1 || ok=0
+  check "[631] pr-state.sh: the forgeable test leaves one EMPTY record file in the lgtmgate-* directory, nothing in the worktree or another directory" "$ok"
+  PLUG2="$WORK/plug631b"; mkdir -p "$PLUG2/data/other-y"
+  out="$(PATH="$PSD/bin:$PATH" CLAUDE_CODE_PLUGIN_CACHE_DIR="$PLUG2" bash "$PS" --pr 7 --repo o/r --worktree "$PSD/wt631" --mint-nonce 1)"
+  [ "$(printf '%s' "$out" | jq -r '.forgeable')" = "false" ] && ok=1 || ok=0
+  check "[631] pr-state.sh: forgeable false with no lgtmgate-* directory (a directory not named lgtmgate-* does not count)" "$ok"
+  if [ "$(id -u)" = "0" ]; then echo "SKIP - [631] mode-555 record directory (root)"; else
+    PLUG3="$WORK/plug631c"; mkdir -p "$PLUG3/data/lgtmgate-ro"; chmod 555 "$PLUG3/data/lgtmgate-ro"
+    out="$(PATH="$PSD/bin:$PATH" CLAUDE_CODE_PLUGIN_CACHE_DIR="$PLUG3" bash "$PS" --pr 7 --repo o/r --worktree "$PSD/wt631" --mint-nonce 1)"
+    chmod 755 "$PLUG3/data/lgtmgate-ro"
+    [ "$(printf '%s' "$out" | jq -r '.forgeable')" = "false" ] && ok=1 || ok=0
+    check "[631] pr-state.sh: forgeable false for a mode-555 record directory" "$ok"
+  fi
+  printf '%s\n' '{"nonce":"0123456789abcdef","key":"aaaaaaaaaaaaaaaa"}' '{"nonce":"0123456789abcdef","key":"bbbbbbbbbbbbbbbb"}' 'not json' '{"nonce":"0123456789abcdef","key":"aaaaaaaaaaaaaaaa"}' '{"nonce":"fedcba9876543210","key":"cccccccccccccccc"}' '{"nonce":"0123456789abcdef","key":"short"}' > "$PLUG/data/lgtmgate-x/review-attest-$N631.jsonl"
+  mkdir -p "$PSD/wt631/.pipeline"; printf '%s\n' '{"nonce":"0123456789abcdef","key":"dddddddddddddddd"}' > "$PSD/wt631/.pipeline/review-attest-$N631.jsonl"
+  printf '%s\n' '{"nonce":"0123456789abcdef","key":"eeeeeeeeeeeeeeee"}' > "$PLUG/data/other-y/review-attest-$N631.jsonl"
+  out="$(psx --worktree "$PSD/wt631" --nonce "$N631")"
+  [ "$(printf '%s' "$out" | jq -c '.reviewKeys')" = '["aaaaaaaaaaaaaaaa","bbbbbbbbbbbbbbbb"]' ] && ok=1 || ok=0
+  check "[631] pr-state.sh: --nonce lists the distinct keys of that nonce only (another nonce, a bad line, a short key, a planted worktree record and a directory not named lgtmgate-* are ignored)" "$ok"
+  out="$(psx --worktree "$PSD/wt631" --nonce 1111111111111111)"
+  [ "$(printf '%s' "$out" | jq -c '.reviewKeys')" = '[]' ] && ok=1 || ok=0
+  check "[631] pr-state.sh: --nonce of a window with no record gives []" "$ok"
+  ok=1
+  for bad in "../x" "0123456789ABCDEF" "short" "0123456789abcdef0" "a/b"; do
+    out="$(psx --worktree "$PSD/wt631" --nonce "$bad")"
+    [ "$(printf '%s' "$out" | jq -c '.reviewKeys')" = '[]' ] || ok=0
+  done
+  check "[631] pr-state.sh: a --nonce that is not 16 lowercase hex (also one holding / or ..) gives []" "$ok"
+  ok=0
+  out6="$(printf '%s' '{"pr":{},"nonce":"0123456789abcdef","forgeable":false,"reviewKeys":["aaaaaaaaaaaaaaaa"]}' | node -e '
+    const { PARSERS } = require(process.argv[1])
+    const v = PARSERS["pr-state"](require("fs").readFileSync(0, "utf8"), "", 0)
+    const w = PARSERS["pr-state"](JSON.stringify({ nonce: "xyz", forgeable: "yes", reviewKeys: ["bad"] }), "", 0)
+    process.stdout.write(JSON.stringify([v.nonce, v.forgeable, v.reviewKeys, "nonce" in w, "forgeable" in w, "reviewKeys" in w]))
+  ' "$PR")"
+  [ "$out6" = '["0123456789abcdef",false,["aaaaaaaaaaaaaaaa"],false,false,false]' ] && ok=1
+  check "[631] pr-state parser keeps nonce, forgeable and reviewKeys only when well formed" "$ok"
 else
   echo "SKIP - pr-state.sh e2e needs jq"
 fi

@@ -174,6 +174,7 @@ const PARSERS = {
     if (v === null || typeof v !== 'object' || Array.isArray(v)) return { error: 'bad-json' }
     const string_ = (x) => (typeof x === 'string' && x.length > 0 ? x : null)
     const stringArray = (x) => (Array.isArray(x) && x.every((index) => typeof index === 'string') ? x : null)
+    const hex16 = (x) => typeof x === 'string' && x.length === 16 && x.split('').every((c) => '0123456789abcdef'.includes(c))
     const idArray = (x) => (Array.isArray(x) && x.every((index) => Number.isInteger(index) && index >= 1) ? x : null)
     const issues = (x) => {
       if (!Array.isArray(x)) return null
@@ -217,6 +218,10 @@ const PARSERS = {
       ...(stringArray(v.files) ? { files: v.files } : {}),
       // #405: the count of open acceptance boxes in the body; the key is absent unless it is an integer >= 0 (fixtures stay byte-identical).
       ...(Number.isInteger(v.acceptanceOpen) && v.acceptanceOpen >= 0 ? { acceptanceOpen: v.acceptanceOpen } : {}),
+      // #631: the review window's nonce, its forgeable sample and the record keys; each key is absent unless well formed.
+      ...(hex16(v.nonce) ? { nonce: v.nonce } : {}),
+      ...(typeof v.forgeable === 'boolean' ? { forgeable: v.forgeable } : {}),
+      ...(Array.isArray(v.reviewKeys) && v.reviewKeys.every(hex16) ? { reviewKeys: v.reviewKeys } : {}),
     }
   },
   // pr-write.sh output (E2.6a, #85): ONE JSON object {op, result, reason, bytes}. result must be one of

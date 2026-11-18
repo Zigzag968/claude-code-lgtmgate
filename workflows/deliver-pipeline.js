@@ -132,7 +132,7 @@ export const meta = {
 // `version`, checked against plugin.json by tests/templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '1.6.0-beta.5', cutFrom: 'd0ccd74' }
+const BUILD = { plugin: 'lgtmgate', version: '1.6.0-beta.6', cutFrom: 'f0ef291' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -873,7 +873,7 @@ function bodyWriteGuardOk(preLength, newBody) {
 // The acceptance checklist as data (#182). Sam returns `acceptanceItems` [{ text, humanGate, command? }]; the script
 // validates them (validateAcceptanceItems), numbers them (numberItems: id = 1-based position), renders them
 // (renderChecklist) and reads a body back (parseChecklist: ids optional, so a body opened before #182 still parses).
-// `command` exists only for the validator, it is not part of an item. A human-gate item is written with the literal
+// An item carries `command` only through bindCommands (#631); numberItems never adds it. A human-gate item is written with the literal
 // [human-gate] tag after its id: the tag stays the wire form that scripts/lead-merge.sh and the prompts read until
 // ids replace text detection. String operations only, no regex, so the R1 regex counter is untouched.
 const AC_TAG = '[human-gate]'
@@ -1191,8 +1191,129 @@ function morganItemsRule(block) {
 }
 // #257: the argv of the short tick, `--mode tick-ids`: only the PR number and the ids travel, the script reads the body
 // itself. Pure, no checklist text in it.
-function tickIdsArgv(pr, ids) {
-  return ['--pr', pr, '--mode', 'tick-ids', '--ids', ids.join(',')]
+// #631: a bound run adds the digest of the items' block so the script refuses a body whose id lines drifted.
+function tickIdsArgv(pr, ids, blockDigest) {
+  const argv = ['--pr', pr, '--mode', 'tick-ids', '--ids', ids.join(',')]
+  if (typeof blockDigest === 'string') argv.push('--expect-block', blockDigest)
+  return argv
+}
+// --- review attestation (#631): the proven box of a bound run counts only when Morgan executed its exact command ---
+const PROOF_LINE_PREFIX = 'proof-command '
+// The exact line Morgan runs: cd '<worktree>' && <command>, the worktree single-quoted ('\'' for a quote).
+function reviewLine(worktree, command) {
+  return 'cd \'' + String(worktree).split('\'').join('\'\\\'\'') + '\' && ' + command
+}
+// The `proof-command ac:<id>: <command>` lines of the items that carry a command, in item order.
+function proofLinesText(items) {
+  return items.filter((item) => typeof item.command === 'string' && item.command !== '').map((item) => `${PROOF_LINE_PREFIX}ac:${item.id}: ${item.command}`).join('\n')
+}
+// The lines of a text that start with `proof-command ` (one trailing CR stripped), joined by newline.
+function proofLinesOf(text) {
+  return String(text ?? '').split('\n').map((l) => (l.endsWith('\r') ? l.slice(0, -1) : l)).filter((l) => l.startsWith(PROOF_LINE_PREFIX)).join('\n')
+}
+// Map id -> command from the proof lines of a plan; two different commands for one id give null for that id.
+function commandsFromPlan(plan) {
+  const map = new Map()
+  const lead = `${PROOF_LINE_PREFIX}ac:`
+  for (const line of proofLinesOf(plan).split('\n')) {
+    if (!line.startsWith(lead)) continue
+    const rest = line.slice(lead.length)
+    const colon = rest.indexOf(': ')
+    if (colon <= 0) continue
+    const idText = rest.slice(0, colon)
+    const id = Number(idText)
+    if (!Number.isInteger(id) || id < 1 || String(id) !== idText) continue
+    const command = rest.slice(colon + 2)
+    if (map.has(id) && map.get(id) !== command) map.set(id, null)
+    else if (!map.has(id)) map.set(id, command)
+  }
+  return map
+}
+function withCommands(items, commandMap) {
+  return items.map((item) => (typeof commandMap.get(item.id) === 'string' ? { ...item, command: commandMap.get(item.id) } : item))
+}
+// sha256 of the proof lines of the commands the items carry; null when none carries one. `hash` is injected.
+function commandsDigest(items, hash) {
+  const text = proofLinesText(items)
+  return text === '' ? null : hash(text)
+}
+// Decision 5: the commands bind only when the plan also carries the proof-command contract. Without a line the items
+// are returned as they are (an unbound run, byte-identical to a run before #631).
+function bindCommands(items, entries, plan) {
+  if (proofLinesOf(plan) === '') return items
+  return items.map((item, index) => {
+    const entry = entries[index]
+    const command = entry && !item.humanGate && typeof entry.command === 'string' ? entry.command.trim() : ''
+    return command === '' ? item : { ...item, command }
+  })
+}
+// True when some non-gate entry carries a command while the plan carries no proof-command line (drives one log line).
+function contractAbsent(entries, plan) {
+  if (proofLinesOf(plan) !== '') return false
+  return (Array.isArray(entries) ? entries : []).some((entry) => entry && entry.humanGate !== true && typeof entry.command === 'string' && entry.command.trim() !== '')
+}
+// The plan-gate issues of the contract: [] when the returned plan has no proof-command line; else the returned plan and
+// the artifact (by digest of its proof lines) must carry exactly the lines of the items' commands.
+function proofCommandIssues(items, returnedPlan, artifactLinesDigest, hash, artifactPath) {
+  if (proofLinesOf(returnedPlan) === '') return []
+  const expected = proofLinesText(items)
+  const issues = []
+  const shown = expected === '' ? 'no such line at all' : `exactly these lines:\n${expected}`
+  const rule = 'at column 0, in item order, and no other line starting with `proof-command `'
+  for (const item of items) {
+    if (typeof item.command === 'string' && (item.command.includes('\n') || item.command.includes('\r'))) {
+      issues.push(`item ${item.id}: the command must be one line (it travels as one proof-command line)`)
+    }
+  }
+  if (proofLinesOf(returnedPlan) !== expected) {
+    issues.push(`the returned plan must carry the proof-command lines ${rule} (${shown})`)
+  }
+  if (typeof artifactLinesDigest === 'string' && artifactLinesDigest !== hash(expected)) {
+    issues.push(`the artifact at ${artifactPath} must carry the proof-command lines ${rule} (${shown})`)
+  }
+  return issues
+}
+// Ids of the proven, non-gate boxes whose item has a command and whose key is not among the recorded keys.
+function attestDemotions(boxes, items, keys, keyOf, worktree) {
+  const byId = new Map(items.map((item) => [item.id, item]))
+  const known = Array.isArray(keys) ? keys : []
+  const ids = []
+  for (const b of boxes) {
+    const item = byId.get(b.id)
+    if (!b.proven || b.humanGate || !item || typeof item.command !== 'string' || item.command === '') continue
+    if (!known.includes(keyOf(reviewLine(worktree, item.command)))) ids.push(b.id)
+  }
+  return ids
+}
+// box-unbound:<id> for each proven, non-gate box whose item has no command (bound runs only).
+function unboundTraces(boxes, items) {
+  const byId = new Map(items.map((item) => [item.id, item]))
+  return boxes.filter((b) => {
+    const item = byId.get(b.id)
+    return b.proven && !b.humanGate && item && !(typeof item.command === 'string' && item.command !== '')
+  }).map((b) => `box-unbound:${b.id}`)
+}
+function windowStartTraces(state, round) {
+  const out = []
+  if (!state || typeof state.nonce !== 'string') out.push(`review-nonce-unavailable:${round}`)
+  if (state && state.forgeable === true) out.push(`review-attest-forgeable:${round}`)
+  return out
+}
+function recordEmptyTraces(demotedIds, keys, round) {
+  return demotedIds.length > 0 && !(Array.isArray(keys) && keys.length > 0) ? [`review-record-empty:${round}`] : []
+}
+function blockDigestText(items) {
+  return items.map((item) => renderLine(item, true, false)).join('\n')
+}
+// The note appended to Morgan's prompt: the nonce marker and one exact line per bound box. '' without a nonce or a bound item.
+function reviewAttestNote(nonce, items, worktree) {
+  const bound = (items || []).filter((item) => !item.humanGate && typeof item.command === 'string' && item.command !== '')
+  if (!nonce || bound.length === 0) return ''
+  return `\n<!-- pipeline-attest nonce=${nonce} -->\n` +
+    'REVIEW ATTESTATION: for each box below run the line as ONE Bash call, byte for byte; one changed byte is a different call; ' +
+    'never run a box line in the background (a call run in the background is not recorded); ' +
+    'in the comment you post and in `proof` write `<worktree>` for the path; a box with no line is judged as before.\n' +
+    bound.map((item) => `ac:${item.id}: ${reviewLine(worktree, item.command)}`).join('\n') + '\n'
 }
 // --- acceptanceItems:end ---
 
@@ -1987,6 +2108,7 @@ function planReferenceProblem(reference, issueNumber) {
   if (reference.targets !== undefined && (!Array.isArray(reference.targets) || reference.targets.length > 25 || reference.targets.some((t) => typeof t !== 'string'))) return 'planRef.targets is not a list of paths'
   if (reference.designStep !== undefined && reference.designStep !== true) return 'planRef.designStep is not true'
   if (reference.lanes !== undefined && (!Array.isArray(reference.lanes) || reference.lanes.some((n) => typeof n !== 'string'))) return 'planRef.lanes is not a list of names'
+  if (reference.commandsDigest !== undefined && !isHex64(reference.commandsDigest)) return 'planRef.commandsDigest is not a lowercase SHA-256'
   return null
 }
 // --- oneWayDoor:end ---
@@ -2950,7 +3072,34 @@ async function probe(name, command, { label, round = 0, onFail, noReuse = false,
 // is the one of the text in hand. A plan amendment calls resetPlanReference() so the next result carries the new digest.
 let planReferenceMemo
 let planReferenceStale = false
-function resetPlanReference() { planReferenceMemo = undefined; planReferenceStale = true }
+// #631: the artifact digest and the proof-command digest taken in memory at the plan gate (null: nothing pinned).
+let planDigestPinned = null
+let commandsDigestPinned = null
+function resetPlanReference() { planReferenceMemo = undefined; planReferenceStale = true; planDigestPinned = null; commandsDigestPinned = null }
+// One node program: sha256 of the artifact bytes, then sha256 of its `proof-command `-prefixed lines (same rule as proofLinesOf).
+const PLAN_ARTIFACT_JS = 'try{var fs=require("fs");var cr=require("crypto");var b=fs.readFileSync(process.argv[1]);var nl=String.fromCharCode(10);var cr13=String.fromCharCode(13);var ls=b.toString("utf8").split(nl).map(function(l){return l.endsWith(cr13)?l.slice(0,-1):l}).filter(function(l){return l.startsWith("proof-command ")}).join(nl);console.log(cr.createHash("sha256").update(b).digest("hex"));console.log(cr.createHash("sha256").update(ls).digest("hex"))}catch(e){console.log("PLAN-DIGEST-ERROR")}'
+async function readPlanArtifact() {
+  const r = await probe('lines', `node -e ${shellSingleQuote(PLAN_ARTIFACT_JS)} ${shellSingleQuote(planPath)}`, { label: 'plan-artifact', noReuse: true, b64: true, onFail: (reason) => ({ probeFailed: reason }) })
+  const lines = r && !r.probeFailed && r.json && Array.isArray(r.json.lines) ? r.json.lines.map((l) => String(l ?? '').trim()) : []
+  return lines.length >= 2 && isHex64(lines[0]) && isHex64(lines[1]) ? { digest: lines[0], linesDigest: lines[1] } : null
+}
+// Plan gate of the contract (#631): clears the pins, then -> the issues (a plan with no proof-command line has none).
+async function checkProofLines(items, returnedPlan) {
+  planDigestPinned = null
+  commandsDigestPinned = null
+  if (proofLinesOf(returnedPlan) === '') return []
+  if (!items.some((item) => typeof item.command === 'string' && item.command !== '')) return proofCommandIssues(items, returnedPlan, null, sha256Hex, planPath)
+  let artifact = null
+  if (simulate) artifact = { digest: null, linesDigest: sha256Hex(proofLinesOf(returnedPlan)) }
+  else artifact = await readPlanArtifact()
+  if (artifact === null) { trace.push('plan-artifact-unreadable'); return proofCommandIssues(items, returnedPlan, null, sha256Hex, planPath) }
+  const issues = proofCommandIssues(items, returnedPlan, artifact.linesDigest, sha256Hex, planPath)
+  if (issues.length === 0) {
+    commandsDigestPinned = commandsDigest(items, sha256Hex)
+    if (!simulate) planDigestPinned = artifact.digest
+  }
+  return issues
+}
 async function planReferenceFor(textInHand) {
   if (planReferenceMemo !== undefined) return planReferenceMemo
   const given = planReferenceArgument && !planReferenceStale ? planReferenceArgument : null
@@ -2959,6 +3108,8 @@ async function planReferenceFor(textInHand) {
   if (simulate) {
     if (typeof textInHand !== 'string' || textInHand === '') { planReferenceMemo = null; return null }
     digest = sha256Hex(textInHand)
+  } else if (planDigestPinned !== null) {
+    digest = planDigestPinned
   } else {
     const js = 'try{console.log(require("crypto").createHash("sha256").update(require("fs").readFileSync(process.argv[1])).digest("hex"))}catch(e){console.log("PLAN-DIGEST-ERROR")}'
     const r = await probe('lines', `node -e ${shellSingleQuote(js)} ${shellSingleQuote(planPath)}`, { label: 'plan-digest', noReuse: true, b64: true, onFail: (reason) => ({ probeFailed: reason }) })
@@ -2973,6 +3124,7 @@ async function planReferenceFor(textInHand) {
     ...(targets.length > 0 ? { targets } : {}),
     ...((planReferenceArgument ? base.designStep === true : designStepOpen) ? { designStep: true } : {}),
     ...(lanesDevelopment.length > 0 ? { lanes: lanesDevelopment } : {}),
+    ...(typeof commandsDigestPinned === 'string' ? { commandsDigest: commandsDigestPinned } : {}),
   }
   return planReferenceMemo
 }
@@ -3409,7 +3561,7 @@ const ABSENCE_CLAIMS_RULE = 'ABSENCE CLAIMS: any claim that something outside th
 // in a gate item's text, and a gate that restates another item.
 const HUMAN_GATE_CHECK_NOTE = 'A `[human-gate]` item (a judgement no command can decide) is exempt from the executed-command requirement. It is NOT conforming when its text contains a command that could decide it (that command belongs in a proven item), or when it restates the expected output of another item of the checklist, which already proves it; a judgement about wording, layout or taste is conforming, even when it quotes UI copy or a heading.'
 // #182: Sam's instruction for the checklist as data; ends the scout prompt (see validateAcceptanceItems for the refusals).
-const ACCEPTANCE_ITEMS_RULE = 'ACCEPTANCE ITEMS RULE: return the acceptance checklist as data in `acceptanceItems`, one entry per item in checklist order: `{ text, humanGate, command? }`. `text` is ONE line: no `- [ ]` prefix, no `<!-- ac:N -->` id, no `[human-gate]` tag (the workflow adds them). `humanGate` is true only for a decision, an authorization or an action to perform, or a judgement no read-only command can confirm; that is the one kind of item that needs no Proof log entry. A human-gate item carries no `command` (the plan is refused and sent back to you); a command written in its text is judged by the plan check. `command` is the command that proves the item, when there is one. Write the same items in the artifact and in the index comment as `- [ ] <!-- ac:N --> <text>` lines (N = the 1-based position; a `humanGate` item as `- [ ] <!-- ac:N --> [human-gate] <text>`); the plan gate refuses a plan whose text lacks an item\'s line. Do not return `acceptanceChecklist`.'
+const ACCEPTANCE_ITEMS_RULE = 'ACCEPTANCE ITEMS RULE: return the acceptance checklist as data in `acceptanceItems`, one entry per item in checklist order: `{ text, humanGate, command? }`. `text` is ONE line: no `- [ ]` prefix, no `<!-- ac:N -->` id, no `[human-gate]` tag (the workflow adds them). `humanGate` is true only for a decision, an authorization or an action to perform, or a judgement no read-only command can confirm; that is the one kind of item that needs no Proof log entry. A human-gate item carries no `command` (the plan is refused and sent back to you); a command written in its text is judged by the plan check. `command` is the command that proves the item, when there is one. Write the same items in the artifact and in the index comment as `- [ ] <!-- ac:N --> <text>` lines (N = the 1-based position; a `humanGate` item as `- [ ] <!-- ac:N --> [human-gate] <text>`); the plan gate refuses a plan whose text lacks an item\'s line. When any item has a `command`, also write at column 0 of the artifact and of the returned plan the line `proof-command ac:N: <the command exactly as in the item>`, one per item with a command in item order and no other line starting with `proof-command ` (the workflow binds the commands only when the plan carries these lines); Morgan runs it as `cd \'<worktree>\' && <command>`, one Bash call. Do not return `acceptanceChecklist`.'
 // #153: checklist lines (`- [ ]`) Sam returned in acceptanceChecklist that are absent from the
 // returned plan text. Pure string ops, no regex. Empty checklist => [] (nothing to compare).
 const planMissingChecklistLines = (plan, checklist) => {
@@ -3537,9 +3689,18 @@ if (after('plan', entryStage)) {
       const itemEntries = Array.isArray(sam.acceptanceItems) ? sam.acceptanceItems : null
       const itemIssues = itemEntries ? validateAcceptanceItems(itemEntries) : []
       const targetIssues = planTargetIssues(sam.plan, sam.targetFiles)
-      const scriptIssues = itemIssues.concat(targetIssues)
-      samAcceptanceItems = itemEntries && itemIssues.length === 0 ? numberItems(itemEntries) : null
+      // #631 decision 5: the item commands bind only when the plan carries `proof-command` lines (else the items are today's).
+      samAcceptanceItems = itemEntries && itemIssues.length === 0 ? bindCommands(numberItems(itemEntries), itemEntries, sam.plan) : null
+      if (itemEntries && contractAbsent(itemEntries, sam.plan)) {
+        log('Plan gate: the items carry commands but the plan carries no `proof-command` line, so no box is bound and the run proves its boxes as today (DEBT(#638))')
+      }
+      const proofIssues = samAcceptanceItems ? await checkProofLines(samAcceptanceItems, sam.plan) : []
+      const scriptIssues = itemIssues.concat(targetIssues, proofIssues)
       acceptanceBlock = samAcceptanceItems ? renderChecklist(samAcceptanceItems) : ''
+      if (proofIssues.length > 0) {
+        trace.push(`plan-proof-commands-refused:${planPass}`)
+        log(`Plan-verification gate: ${proofIssues.length} proof-command problem(s) found by the script — refusing without a plan-check call`)
+      }
       if (itemIssues.length > 0) {
         trace.push(`acceptance-items-refused:${planPass}`)
         log(`Plan-verification gate: ${itemIssues.length} acceptance item problem(s) found by the script — refusing without a plan-check call`)
@@ -3736,6 +3897,14 @@ if (samPlan === null && (after('dev', entryStage) || after('review', entryStage)
 // and Morgan is still asked for `boxes` by id. A plan without ids keeps today's legacy path (items null, block '').
 if (samAcceptanceItems === null && (entryStage === 'dev' || entryStage === 'review')) {
   samAcceptanceItems = itemsFromPlan(planText)
+  // #631: the proof commands of planText bind only when they hash to planRef.commandsDigest (no digest binds nothing).
+  if (samAcceptanceItems && planReferenceArgument && planReferenceArgument.commandsDigest !== undefined) {
+    const held = withCommands(samAcceptanceItems, commandsFromPlan(planText))
+    if (commandsDigest(held, sha256Hex) !== planReferenceArgument.commandsDigest) {
+      throw new Error('plan-ref-mismatch: the proof-command lines of planText do not hash to planRef.commandsDigest; nothing ran. Relaunch from the planRef of the latest result, or in full form with planText; see docs/consumer-reference.md (plan-ref-mismatch).')
+    }
+    samAcceptanceItems = held
+  }
   acceptanceBlock = samAcceptanceItems ? renderChecklist(samAcceptanceItems) : ''
   if (samAcceptanceItems) log(`Resume at entryStage='${entryStage}': ${samAcceptanceItems.length} acceptance item(s) rebuilt from the ids of planText.`)
 }
@@ -4172,11 +4341,13 @@ if (after('review', entryStage)) {
   // `new Date()`/`Date.now()` in a workflow script (breaks resume; claude-agent-pipeline#144/#135), so
   // the clock is `date -u` inside pr-state.sh, run by the probe gate: no LLM interprets it (incident #14).
   // Returns the parsed object, or null on any failure (fail-open: every caller keeps its own fallback).
-  const prState = async (label, round, { since } = {}) => {
+  const prState = async (label, round, { since, mintNonce, nonce } = {}) => {
     try {
       const argv = ['--pr', String(pr), '--worktree', worktreePath]
       if (repository) argv.push('--repo', repository)
       if (since) argv.push('--since', since)
+      if (mintNonce) argv.push('--mint-nonce', '1')
+      if (nonce) argv.push('--nonce', nonce)
       const command = 'bash ' + shellSingleQuote(probeScriptPath('pr-state.sh')) + ' ' + argv.map(shellSingleQuote).join(' ')
       const r = await probe('pr-state', command, {
         label,
@@ -4193,7 +4364,11 @@ if (after('review', entryStage)) {
 
   // #249: the ids ticked in the PR body at the window start (set by reviewerWindowStart, read by callMorganGuarded).
   let windowTickedIds = []
+  // #631: the nonce minted at the window start (null: no bound run, or no mint), stamped by the review hook, read back at the window end.
+  let windowNonce = null
+  const attestBound = () => !simulate && (samAcceptanceItems || []).some((item) => !item.humanGate && typeof item.command === 'string' && item.command !== '')
   const reviewerWindowStart = async (round) => {
+    windowNonce = null
     if (simulate) {
       // The read of the body a simulated run does: null when the body is unreadable (simulate.probes.prBody null).
       const body = simBody()
@@ -4201,8 +4376,18 @@ if (after('review', entryStage)) {
       windowTickedIds = checkedAcceptanceIds(body ?? '')
       return simulate.probes?.windowStart
     }
-    const st = await prState('window-start', round)
+    const bound = attestBound()
+    const st = await prState('window-start', round, bound ? { mintNonce: true } : {})
     windowTickedIds = Array.isArray(st?.acceptanceChecked) ? st.acceptanceChecked : []
+    if (bound) {
+      if (st && typeof st.nonce === 'string') windowNonce = st.nonce
+      for (const entry of windowStartTraces(st, round)) {
+        trace.push(entry)
+        log(entry.startsWith('review-attest-forgeable')
+          ? `Round ${round}: the review record file could be written by the probe's own process, so the record is not tamper-proof in this run (informs only; a window-start sample, the unsandboxed retry is not seen, #636)`
+          : `Round ${round}: no review nonce could be minted — every bound box will be demoted`)
+      }
+    }
     // The decision-log lines the body already holds, read once, before this run writes any (lgtmgate#164).
     notePriorRead(st?.decisionLog)
     return st?.now ?? null
@@ -4329,7 +4514,7 @@ if (after('review', entryStage)) {
   // #182: Morgan's boxes mapped by id to the rendered items (finish() then carries them as `boxes`; a round whose
   // verdict has none clears the previous round's). An id no item carries is dropped and traced, so is an item she
   // returned no box for. #183: the boxes then drive the tick (tickAcceptanceBoxes).
-  const mapMorganBoxes = (v, endState) => {
+  const mapMorganBoxes = (v, endState, round) => {
     boxesMapped = null
     boxesGates = []
     if (samAcceptanceItems) {
@@ -4343,6 +4528,22 @@ if (after('review', entryStage)) {
       boxesGates = mapped.gates
       for (const id of mapped.unknown) trace.push(`boxes-unknown-id:${id}`)
       for (const id of mapped.missing) trace.push(`boxes-missing:${id}`)
+      if (attestBound()) {
+        // #631: a proven bound box counts only when its exact command was recorded in this window; the keys come from the
+        // engine-held items and the probe's reviewKeys, nothing read from the PR body, the plan text or a file.
+        const keys = endState && endState.reviewKeys
+        const demoted = attestDemotions(mapped.boxes, samAcceptanceItems, keys, (text) => sha256Hex(text).slice(0, 16), worktreePath)
+        boxesMapped = mapped.boxes.map((b) => (demoted.includes(b.id) ? { ...b, proven: false } : b))
+        for (const id of demoted) {
+          trace.push(`box-unattested:${id}`)
+          log(`Round ${round}: box ac:${id} claims a proof but its exact command is not in the review record — not proven`)
+        }
+        for (const entry of recordEmptyTraces(demoted, keys, round)) trace.push(entry)
+        for (const entry of unboundTraces(boxesMapped, samAcceptanceItems)) {
+          trace.push(entry)
+          log(`Round ${round}: ${entry} — proven as before, no command bound, nothing executed for it`)
+        }
+      }
     }
   }
 
@@ -4356,6 +4557,7 @@ if (after('review', entryStage)) {
     if (tickedGates.length > 0) {
       prompt += `\n\nHuman-gate box(es) ${tickedGates.join(', ')} already ticked by a person in the PR body: settled, do not list them in items.`
     }
+    if (windowNonce) prompt += reviewAttestNote(windowNonce, samAcceptanceItems, worktreePath)
     let v
     try {
       v = await callAgent('morgan', prompt, options, round)
@@ -4371,7 +4573,7 @@ if (after('review', entryStage)) {
     // ONE pr-state probe per Morgan round serves the window end, the issue scan and the artifact floor.
     // Without a window start (its probe failed) it carries no `since`, so lastCommitDate still feeds
     // artifactFloorIso; flagReviewerWindowIssues skips on its own when windowStart is falsy (#85).
-    const endState = simulate ? null : await prState('window-end', round, windowStart ? { since: windowStart } : {})
+    const endState = simulate ? null : await prState('window-end', round, { ...(windowStart ? { since: windowStart } : {}), ...(windowNonce ? { nonce: windowNonce } : {}) })
     await flagReviewerWindowIssues(windowStart, round, endState)
     if (v === null) return v
     // #184: a verdict that fails the structure check against MORGAN stops the run at once (no retry round, no tick: a
@@ -4396,7 +4598,7 @@ if (after('review', entryStage)) {
       log(`callMorganGuarded round ${round}: LGTM with CI not green — REQUIRED_CHANGES (${line})`)
       return { ...settled, verdict: 'REQUIRED_CHANGES', items: [...(settled.items || []), line] }
     }
-    mapMorganBoxes(v, endState)
+    mapMorganBoxes(v, endState, round)
     const proofs = Array.isArray(v.artifactProofs) ? v.artifactProofs : []
     if (proofs.length === 0) return await settle(v)
     const floorIso = await artifactFloorIso(round, endState)
@@ -4498,7 +4700,7 @@ if (after('review', entryStage)) {
       }
       // #257: a non-empty tick is the short command (ids only); the empty tick keeps the text mode, which reopens a stale [x].
       const result = await prWrite('body-splice', label, round, tickIds.length > 0
-        ? tickIdsArgv(pr, tickIds)
+        ? tickIdsArgv(pr, tickIds, attestBound() ? sha256Hex(blockDigestText(samAcceptanceItems)) : undefined)
         : ['--pr', pr, '--mode', 'tick', '--text-b64', base64Utf8(rendered), '--ids', tickIds.join(','), '--keep', keepIds.join(',')])
       if (result && (result.result === 'written' || result.result === 'skipped')) return null
       tickDetail = result ? namedReadFailure(result.detail) : null
@@ -5042,8 +5244,10 @@ if (after('review', entryStage)) {
       // #182: the amended checklist as items, checked and rendered like the first one; the legacy string is the fallback.
       const amendEntries = Array.isArray(samAmend.acceptanceItems) ? samAmend.acceptanceItems : null
       const amendIssues = amendEntries ? validateAcceptanceItems(amendEntries) : []
-      if (amendEntries && amendIssues.length === 0) {
-        samAcceptanceItems = numberItems(amendEntries)
+      const amendBound = amendEntries && amendIssues.length === 0 ? bindCommands(numberItems(amendEntries), amendEntries, samAmend.plan) : null
+      if (amendBound) amendIssues.push(...await checkProofLines(amendBound, samAmend.plan))
+      if (amendBound && amendIssues.length === 0) {
+        samAcceptanceItems = amendBound
         acceptanceBlock = renderChecklist(samAcceptanceItems)
       }
       if (amendIssues.length > 0) log(`Round ${round}: the amended acceptance items are refused by the script (${amendIssues.join(' | ')}) — not synced`)

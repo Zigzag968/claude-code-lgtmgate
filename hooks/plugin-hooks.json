@@ -58,6 +58,25 @@
             "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/PostToolUse-probe-attest.sh\"",
             "timeout": 10,
             "description": "Attest the PROBE and VERIFY lines the lgtmgate:probe agent copies from scripts/runtime/probe-run.cjs (fail-open, never blocks)"
+          },
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/PostToolUse-review-attest.sh\"",
+            "timeout": 10,
+            "description": "Witness the box commands the Morgan reviewer runs as `cd '<worktree>' && <command>` into the plugin data directory (fail-open, never blocks)"
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/PostToolUse-review-attest.sh\"",
+            "timeout": 10,
+            "description": "Witness the box commands the Morgan reviewer runs as `cd '<worktree>' && <command>` into the plugin data directory (fail-open, never blocks)"
           }
         ]
       }
