@@ -408,3 +408,11 @@ then `claude plugin install lgtmgate@zigzag-plugins`.
 - First proof of the candidate: `scripts/template-drift.cjs`, `scripts/config-check.cjs` and `scripts/runtime/agent-context.cjs` are run against it; their outputs are posted before the canary run. The canary run itself follows.
 - Cost, stated: one more canary run per candidate. It is the price of the criterion: a canary that passes as `ready` with a hand-kept config says nothing about a consumer that installs from scratch or upgrades.
 - Second consumer: the criterion also needs a complete delivery by two consumers of different stacks, without a gesture from the Lead of this repository.
+
+### Review attestation canary
+
+- Run before the stable pin moves (tracked by #639), by an agent, after the owner's authorization (the human-gate box ac:38 of the PR of #631): in the canary repository with the branch's plugin loaded, one throwaway review round whose issue states three checks (one passing, one failing, one of the git kind).
+- Then read the record. One JSON line per window; done when `morganOnly`, `hasSuccess` and `hasFailure` are true and `distinctKeys` is at least 3. Run it from a script file (a shell may error on an unmatched glob):
+  `jq -s -c 'group_by(.nonce) | .[] | {nonce: .[0].nonce, entries: length, distinctKeys: (map(.key) | unique | length), agentTypes: (map(.agent_type) | unique), morganOnly: all(.[]; .agent_type | ascii_downcase | . == "lgtmgate:morgan"), hasSuccess: any(.[]; .event == "post" and .exit == 0), hasFailure: any(.[]; .event == "failure" and .exit != 0)}' "${CLAUDE_CODE_PLUGIN_CACHE_DIR:-$HOME/.claude/plugins}"/data/lgtmgate-*/review-attest-*.jsonl`
+- The agent also reports, without a gate: the `reviewKeys` of the window-end probe, the `forgeable` value of the window-start probe against the sandbox state of the run (a window-start sample), the absence of a "failed to initialize" sandbox message, and whether a box line run in the background or moved there at its timeout left an entry (the moved case is DEBT(#640)).
+- The record directory is never pruned (#635): an older window satisfies the command too; run the round after the last hook change and say so.

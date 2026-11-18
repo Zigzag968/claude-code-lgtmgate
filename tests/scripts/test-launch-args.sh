@@ -84,6 +84,11 @@ check "mode full: sessionRoot still defaults to --root without the flag" 'a.sess
 refused "mode ref without --session-root is refused" --root "$TREE" --stage plan --mode ref
 if grep -q 'entry --session-root)$' "$TMP/err"; then ok "mode ref without --session-root: the message ends with the pointer"; else bad "mode ref without --session-root: no pointer at the end of the message"; fi
 refused "mode ref with a relative --session-root is refused" --root "$TREE" --stage plan --mode ref --session-root rel/dir
+H64=$(printf 'a%.0s' $(seq 1 64)); C64=$(printf 'c%.0s' $(seq 1 64))
+run --root "$TREE" --stage review --mode ref --session-root "$SESSION" --pr 5 --plan-ref "{\"issue\":1,\"digest\":\"$H64\",\"commandsDigest\":\"$C64\"}"
+check "[631] --plan-ref with a commandsDigest of 64 hex is accepted and echoed" "a.planRef.commandsDigest === '$C64' && a.planRef.digest === '$H64'"
+refused "[631] --plan-ref with a short commandsDigest is refused" --root "$TREE" --stage review --mode ref --session-root "$SESSION" --pr 5 --plan-ref "{\"issue\":1,\"digest\":\"$H64\",\"commandsDigest\":\"abc\"}"
+refused "[631] --plan-ref with a non-hex commandsDigest is refused" --root "$TREE" --stage review --mode ref --session-root "$SESSION" --pr 5 --plan-ref "{\"issue\":1,\"digest\":\"$H64\",\"commandsDigest\":\"$(printf 'Z%.0s' $(seq 1 64))\"}"
 refused "unknown mode is refused" --root "$TREE" --stage plan --mode bogus
 refused "unknown stage is refused" --root "$TREE" --stage x
 refused "unknown flag is refused" --root "$TREE" --stage plan --bogus
