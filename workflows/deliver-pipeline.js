@@ -132,7 +132,7 @@ export const meta = {
 // `version`, checked against plugin.json by tests/templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '1.6.0-beta.18', cutFrom: '7029651' }
+const BUILD = { plugin: 'lgtmgate', version: '1.6.0-beta.19', cutFrom: 'e3065f5' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -2777,6 +2777,14 @@ const EMPTY_OUTPUT_SHA256 = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca49
 function probeNotRun(parsed, want, gated) { return !gated && parsed.exit === -1 && parsed.sha === EMPTY_OUTPUT_SHA256 && parsed.cmd !== want }
 // --- probeNotRun:end ---
 
+// --- probeRetryable:start --- (#678, pure)
+// A read probe whose copy check failed is side-effect free, so it runs once more with a fresh agent; a gated write never does (tickAcceptanceBoxes retries it, #212).
+function probeRetryable(reason, gated) {
+  if (gated) return false
+  return ['command-not-run', 'sha-mismatch', 'line-mismatch', 'unparseable-verify', 'unparseable-line'].includes(reason)
+}
+// --- probeRetryable:end ---
+
 // --- base64Utf8:start --- (pure & self-contained: standard padded base64 of the UTF-8 bytes, one line; the runtime has no Buffer)
 // #212: a long multi-line block travels on a command line as ONE token a copier cannot reflow; pr-write.sh decodes it
 // (--text-b64). Same UTF-8 byte loop as sha256Hex; no regex.
@@ -3070,10 +3078,11 @@ async function probe(name, command, { label, round = 0, onFail, noReuse = false,
     if (verified.line !== String(result.line).trim()) return { reason: 'line-mismatch' }
     return { parsed }
   }
-  // #486: a read probe that ends command-not-run (a stochastic mis-copy, side-effect free) runs once more with a fresh agent
+  // #486/#678: a read probe that ends command-not-run, sha-mismatch, line-mismatch, unparseable-verify or unparseable-line
+  // (a stochastic mis-copy, side-effect free) runs once more with a fresh agent
   let outcome = await attempt()
-  if (outcome.reason === 'command-not-run' && !gateCommand) {
-    log(`probe ${name}/${label}: command-not-run — running the probe once more with a fresh agent`)
+  if (probeRetryable(outcome.reason, gateCommand)) {
+    log(`probe ${name}/${label}: ${outcome.reason} — running the probe once more with a fresh agent`)
     outcome = await attempt()
   }
   return outcome.reason ? fail(outcome.reason, outcome.stderr) : outcome.parsed
@@ -4373,7 +4382,7 @@ if (after('review', entryStage)) {
         label,
         round,
         noReuse: true,   // live state: a stored record from an earlier launch must never answer (#83)
-        onFail: (reason) => { log(`pr-state probe (${label}, round ${round}): ${reason} — fail-open`); return null },
+        onFail: (reason) => { trace.push(`probe-failed:pr-state:${label}:${reason}:${round}`); log(`pr-state probe (${label}, round ${round}): ${reason} — fail-open`); return null },
       })
       return r && r.json && !r.json.error ? r.json : null
     } catch (error) {

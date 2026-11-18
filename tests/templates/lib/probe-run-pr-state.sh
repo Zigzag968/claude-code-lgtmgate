@@ -338,6 +338,16 @@ GHEOF
   out="$(psx --worktree "$PSD/wt631" --nonce 1111111111111111)"
   [ "$(printf '%s' "$out" | jq -c '.reviewKeys')" = '[]' ] && ok=1 || ok=0
   check "[631] pr-state.sh: --nonce of a window with no record gives []" "$ok"
+  # [678] a retried window start runs --mint-nonce twice: one nonce stays on disk and the window end that carries it reads its keys.
+  out="$(psx --worktree "$PSD/wt631" --mint-nonce 1)"; M1="$(printf '%s' "$out" | jq -r '.nonce')"
+  out="$(psx --worktree "$PSD/wt631" --mint-nonce 1)"; M2="$(printf '%s' "$out" | jq -r '.nonce')"
+  printf '%s\n' "{\"nonce\":\"$M2\",\"key\":\"aaaaaaaaaaaaaaaa\"}" > "$PLUG/data/lgtmgate-x/review-attest-$M2.jsonl"
+  ok=0
+  if [ -n "$M1" ] && [ "$M1" != "$M2" ] && [ "$(cat "$PSD/wt631/.pipeline/review-nonce")" = "$M2" ] \
+    && [ "$(find "$PSD/wt631/.pipeline" -name 'review-nonce*' | wc -l | tr -d ' ')" = "1" ] \
+    && [ "$(psx --worktree "$PSD/wt631" --nonce "$M2" | jq -c '.reviewKeys')" = '["aaaaaaaaaaaaaaaa"]' ] \
+    && [ "$(psx --worktree "$PSD/wt631" --nonce "$M1" | jq -c '.reviewKeys')" = '[]' ]; then ok=1; fi
+  check "[678] pr-state.sh: two --mint-nonce runs leave one nonce on disk (the window end that carries the kept nonce reads its record)" "$ok"
   ok=1
   for bad in "../x" "0123456789ABCDEF" "short" "0123456789abcdef0" "a/b"; do
     out="$(psx --worktree "$PSD/wt631" --nonce "$bad")"

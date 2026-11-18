@@ -2746,8 +2746,9 @@ await testCase('T478b probe(): command-not-run checked before cmd-mismatch, read
   return checks.find(c => c) || { ok: true }
 })
 
-// T486 (#486) — a read probe that ends command-not-run runs once more with a fresh agent, through the same call site;
-// no loop, never for a gated write, cmd-mismatch, unparseable-line or agent-death.
+// T486 (#486, #678) — a read probe that ends command-not-run, sha-mismatch, line-mismatch, unparseable-verify or
+// unparseable-line runs once more with a fresh agent, through the same call site; no loop, never for a gated write,
+// cmd-mismatch, name-mismatch or agent-death.
 await testCase('T486 probe(): a read command-not-run is retried once through the single probe call site (#486)', async () => {
   const source = SUITE_ARGS.fpSource
   if (!source) {
@@ -2767,11 +2768,119 @@ await testCase('T486 probe(): a read command-not-run is retried once through the
   })()
   const checks = [
     eq('the probe body was found', first > 0, true),
-    eq('the retry condition names command-not-run and excludes gated writes', condition.includes("outcome.reason === 'command-not-run'") && condition.includes('!gateCommand'), true),
+    eq('the retry decision goes through the pure probeRetryable block with the gated flag', condition.includes('probeRetryable(outcome.reason, gateCommand)'), true),
     eq('exactly one retry call follows the first', count('await attempt()'), 2),
     eq('no loop around the retry', /\b(while|for)\s*\(/.test(body), false),
     eq('one probe call site', count("callAgentSafe('probe'"), 1),
     eq('the hint no longer carries the old single-relaunch advice', !String(hints && hints['command-not-run']).includes('relaunch' + ' once'), true),
+  ]
+  return checks.find(c => c) || { ok: true }
+})
+
+// T678 (#678) — a read probe whose copy check failed runs once more; a gated write never does.
+const t678Harness = (source, scripted, { isDeath = false } = {}) => {
+  const pStart = source.indexOf('const PROBE_LINE =')
+  const pEnd = source.indexOf('// guards:parser-end', pStart)
+  const pFrom = source.indexOf('async function probe(')
+  const pUpTo = source.indexOf('// #533: the reference', pFrom)
+  if (pStart < 0 || pEnd < 0 || pFrom < 0 || pUpTo < 0) return null
+  const names = ['sha256Hex', 'probeNotRun', 'base64Utf8', 'probeCommands']
+  const blocks = names.map((n) => extractBetween(source, `// --- ${n}:start ---`, `// --- ${n}:end ---`))
+  if (blocks.some((b) => !b)) return null
+  const retry = extractBetween(source, '// --- probeRetryable:start ---', '// --- probeRetryable:end ---') || ''
+  const state = { calls: 0, logs: [] }
+  const callAgentSafe = async () => { const a = scripted[Math.min(state.calls, scripted.length - 1)]; state.calls += 1; return a }
+  const body = source.slice(pStart, pEnd) + '\n' + blocks.join('\n') + '\n' + retry + '\n' + source.slice(pFrom, pUpTo) + '\nreturn probe'
+  const build = new Function('config', 'pluginRoot', 'worktreePath', 'issue', 'trace', 'log', 'isAgentDeath', 'PROBE_SCHEMA', 'PROBE_PERSONA', 'callAgentSafe',
+    body)
+  const trace = []
+  const probe = build({}, '/plugin', '/wt', 678, trace, (m) => state.logs.push(m), () => isDeath, {}, 'persona', callAgentSafe)
+  return { probe, state, trace, sha256Hex: new Function(blocks[0] + '\nreturn sha256Hex')() }
+}
+const t678Line = (sha256Hex, command, json, { cmd } = {}) =>
+  `PROBE name=pr-state exit=0 sha=${'d'.repeat(64)} cmd=${cmd || sha256Hex(command)} json=${json}`
+await testCase('T678a probeRetryable(): truth table (#678)', async () => {
+  const source = SUITE_ARGS.fpSource
+  if (!source) {
+    log('SKIP — T678a: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const blk = extractBetween(source, '// --- probeRetryable:start ---', '// --- probeRetryable:end ---')
+  if (!blk) return { ok: false, msg: 'probeRetryable block not found in pipeline source' }
+  const retryable = new Function(blk + '\nreturn probeRetryable')()
+  const five = ['command-not-run', 'sha-mismatch', 'line-mismatch', 'unparseable-verify', 'unparseable-line']
+  const other = ['cmd-mismatch', 'name-mismatch', 'agent-death', 'no-attestation', 'verify-sha-mismatch']
+  const checks = [
+    ...five.map((r) => eq(`${r} on a read is retried`, retryable(r, false), true)),
+    ...five.map((r) => eq(`${r} on a gated write is never retried`, retryable(r, true), false)),
+    ...other.map((r) => eq(`${r} is not retried`, retryable(r, false), false)),
+  ]
+  return checks.find(c => c) || { ok: true }
+})
+await testCase('T678b probe(): the captured window-start pair of the canary run ends with the nonce in hand after one retry (#678)', async () => {
+  const source = SUITE_ARGS.fpSource
+  if (!source) {
+    log('SKIP — T678b: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const command = "bash '/plugin/scripts/runtime/pr-state.sh' '--pr' '64' '--worktree' '/wt' '--mint-nonce' '1'"
+  // The window-start PROBE line of canary scenario B (issue 62, pull request 64): the nonce 1284fbb9d3de3559 and a files list
+  // starting with src; the VERIFY the probe agent copied carried six extra characters (":"src) after "files":["src.
+  const json = '{"nonce":"1284fbb9d3de3559","pr":64,"files":["src/a.js","src/b.js"],"comments":[]}'
+  const h0 = t678Harness(source, [{}])
+  if (!h0) return { ok: false, msg: 'probe harness blocks not found in pipeline source' }
+  const line = t678Line(h0.sha256Hex, command, json)
+  const altered = 'VERIFY ok line=' + line.replace('"files":["src', '"files":["src":"src')
+  const good = 'VERIFY ok line=' + line
+  const h = t678Harness(source, [{ line, verify: altered }, { line, verify: good }])
+  const parse = new Function(source.slice(source.indexOf('const PROBE_LINE ='), source.indexOf('// guards:parser-end', source.indexOf('const PROBE_LINE '))) + '\nreturn { parseProbeLine, parseVerifyLine }')()
+  const result = await h.probe('pr-state', command, { label: 'window-start', round: 0, noReuse: true, onFail: () => null })
+  const checks = [
+    eq('the PROBE line parses', parse.parseProbeLine(line) !== null, true),
+    eq('the inner altered line does not parse', parse.parseProbeLine(parse.parseVerifyLine(altered).line), null),
+    eq('the probe agent is called twice', h.state.calls, 2),
+    eq('the nonce is in hand after the retry', result && result.json && result.json.nonce, '1284fbb9d3de3559'),
+  ]
+  return checks.find(c => c) || { ok: true }
+})
+await testCase('T678c probe(): two copy-mismatches end fail-open naming the reason; a gated write is never retried (#678)', async () => {
+  const source = SUITE_ARGS.fpSource
+  if (!source) {
+    log('SKIP — T678c: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const command = 'bash /plugin/x.sh'
+  const json = '{"files":["src/a.js"]}'
+  const h0 = t678Harness(source, [{}])
+  if (!h0) return { ok: false, msg: 'probe harness blocks not found in pipeline source' }
+  const line = t678Line(h0.sha256Hex, command, json)
+  const altered = { line, verify: 'VERIFY ok line=' + line.replace('"files":["src', '"files":["src":"src') }
+  const probeRun = async (scripted, options = {}, harnessOptions) => {
+    const h = t678Harness(source, scripted, harnessOptions)
+    const reasons = []
+    await h.probe('pr-state', command, { label: 'window-start', onFail: (r) => { reasons.push(r); return null }, ...options })
+    return { calls: h.state.calls, reasons }
+  }
+  const two = await probeRun([altered, altered])
+  const gated = await probeRun([altered, altered], { gateCmd: true })
+  const lineMismatch = await probeRun([{ line, verify: 'VERIFY ok line=' + line.replace('"src/a.js"', '"src/b.js"') }])
+  const unparseableVerify = await probeRun([{ line, verify: '' }])
+  const unparseableLine = await probeRun([{ line: '', verify: '' }])
+  const otherCommand = await probeRun([{ line: t678Line(h0.sha256Hex, command, json, { cmd: 'e'.repeat(64) }), verify: 'VERIFY ok line=x' }])
+  const death = await probeRun([altered], {}, { isDeath: true })
+  const from = source.indexOf("const r = await probe('pr-state'")
+  const onFailBody = from < 0 ? '' : source.slice(from, source.indexOf('})', from))
+  const checks = [
+    eq('two sha-mismatches: two calls', two.calls, 2),
+    eq('two sha-mismatches: onFail once with the reason', two.reasons, ['sha-mismatch']),
+    eq('a gated write is called once', gated.calls, 1),
+    eq('a gated write still fails with the reason', gated.reasons, ['sha-mismatch']),
+    eq('line-mismatch is retried once', lineMismatch.calls, 2),
+    eq('unparseable-verify is retried once', unparseableVerify.calls, 2),
+    eq('unparseable-line is retried once', unparseableLine.calls, 2),
+    eq('cmd-mismatch is not retried', otherCommand.calls, 1),
+    eq('agent-death is not retried', death.calls, 1),
+    eq('the prState onFail pushes the reason to the trace', onFailBody.includes('probe-failed:pr-state:') && onFailBody.includes('trace.push'), true),
   ]
   return checks.find(c => c) || { ok: true }
 })
