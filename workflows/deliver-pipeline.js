@@ -4781,6 +4781,16 @@ if (after('review', entryStage)) {
       `  A failure/error may be dismissed as 'pre-existing' ONLY if BOTH hold: its EXACT fully-qualified test name appears in the baseline log AND its source file is NOT in the step-2 added-files list — and you MUST cite both the baseline line and the added-files check. You MUST actually run both suites; do NOT grep test-function counts as a substitute. `
     : `run the unit suite via \`${testCommand}\` and treat ANY failing or erroring test as REQUIRED_CHANGES (no regression baseline configured; do NOT grep test-function counts as a substitute). `
 
+  // Preflight check 3 — same set-diff rule as the regression guard, stated once (#617): a red whose
+  // failing names are all in the baseline log is pre-existing and must not park every PR.
+  const check3BaselineRule = baselineCommand
+    ? `BASELINE RULE: run the baseline capture command below (export WORKTREE="${worktreePath}" and BASE_BRANCH="${baseBranch}" first), ` +
+      `then DIFF the failing-name SET of the test command against that baseline log. Check 3 FAILS only if a failing or erroring test name is ABSENT from the baseline log, ` +
+      `or its source file is in \`git -C "${worktreePath}" diff --name-only --diff-filter=ACR origin/${baseBranch}...HEAD\`. ` +
+      `Failures whose exact name is in the baseline log (and not in that list) are PRE-EXISTING: check 3 PASSES and each is listed in issues[] as advisory \`pre-existing failure: <name>\`.\n` +
+      `${baselineCommand}\n`
+    : `BASELINE RULE: no regression baseline is configured (regressionGuard.baselineCmd is empty), so any failing or erroring test fails check 3.\n`
+
   // Artifact-proof gate — lane-agnostic, shared by both Morgan prompts below (initial +
   // loop). Post-mortem (real incident): only a PREVIOUS-day report was on disk while the box claimed a
   // fresh re-run; a content-only check (the clause above) cannot catch a stale-but-matching
@@ -4873,13 +4883,14 @@ if (after('review', entryStage)) {
       `2. git -C "${worktreePath}" diff --cached --name-only | head -5 — no stray staged files\n` +
       `3. Unit suite still green. Run EXACTLY the configured test command below, ONCE, in ONE shell ` +
       `whose cwd is "${worktreePath}". The command is OPAQUE to you: do NOT substitute, simplify, split, ` +
-      `re-quote or improvise another runner — a bare \`pytest\` is NOT this command. Judge check 3 on ` +
-      `its exit status only. Report in \`testCommandRun\` the command you actually ran, verbatim; ` +
-      `if it is not the block below, check 3 FAILS.\n` +
+      `re-quote or improvise another runner — a bare \`pytest\` is NOT this command. ` +
+      `Judge check 3 by test NAME, not by raw exit status: exit 0 passes; on a non-zero exit collect the failing and erroring tests by fully-qualified NAME and apply the baseline rule below. ` +
+      `Report in \`testCommandRun\` the command you actually ran, verbatim: a command that is not the block below makes check 3 FAIL, otherwise testCommandRun is report-only and never changes the verdict.\n` +
       `--- BEGIN TEST COMMAND (run verbatim) ---\n` +
       `cd "${worktreePath}"\n` +
       `${testCommand}\n` +
       `--- END TEST COMMAND ---\n` +
+      `${check3BaselineRule}` +
       `ADVISORY checks (require live GitHub/gh access):\n` +
       (banPattern
         ? `4. gh pr view ${pr}${prFlag} --json body -q .body | grep -iE "${banPattern}" — no banned strings in PR body (fail if match found)\n`
@@ -4904,7 +4915,7 @@ if (after('review', entryStage)) {
       `Return { pass: bool, issues: string[], failedChecks } where pass=true if HARD checks ${hardRange} all pass AND no ADVISORY ` +
       `check (4-5) that actually ran found a positive result; an advisory check skipped due to a tool ` +
       `failure does NOT set pass:false. ` +
-      `Also include testCommandRun as forensics only (see check 3) — it does not affect the check-3 verdict.`
+      `Also include testCommandRun, as defined in check 3.`
     )
     if (simulate) preflightPromptPreview = p
     return p
