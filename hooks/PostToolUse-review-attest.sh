@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
 # PostToolUse + PostToolUseFailure (Bash) - witness that a box command really ran in the review window (#631, #632).
-# Records one JSON line per Bash call of the reviewer whose command is exactly `cd '<dir>' && <rest>`
-# (<dir> quoted the way the engine writes it, each quote as '\''), when <dir>/.pipeline/review-nonce holds a nonce.
+# Records one JSON line per Bash call of the reviewer in one of two forms: `cd '<dir>' && <rest>` (<dir> quoted the way
+# the engine writes it, each quote as '\'') or the bare command, the form Claude Code's worktree isolation guard leaves
+# the reviewer for a git box (#662). The bare form is recorded only when the payload cwd equals $CLAUDE_PROJECT_DIR
+# (trailing slashes removed on both sides; absent, empty, relative or different records nothing), under the key of the
+# cd line built from that directory. cwd comes from session tracking (anthropics/claude-code#76708).
+# It records when <dir>/.pipeline/review-nonce holds a nonce.
 # The line goes to ${CLAUDE_PLUGIN_DATA}/review-attest-<nonce>.jsonl, outside the worktree: {nonce, agent_id,
-# agent_type, tool_use_id, key, event, exit, ts}. key = first 16 hex of the sha256 of the exact command string;
+# agent_type, tool_use_id, key, event, exit, ts}. key = first 16 hex of the sha256 of the exact engine line `cd '<dir>' && <command>`;
 # the command text is never recorded. A call that executed and exited non-zero counts (event failure, first line of
 # `error` = `Exit code N`); a call that never ran does not (bare error, failing cd, interrupt).
 # The only agent_type accepted is lgtmgate:morgan in any casing (the engine gives Morgan lgtmgate:Morgan); any other
@@ -48,27 +52,47 @@ CMD="$(jqi -j '.tool_input.command // empty'; printf x)" || exit 0
 CMD="${CMD%x}"
 [ -n "$CMD" ] || exit 0
 
-# cd '<dir>' && <rest>, <dir> decoded from the '\'' encoding
+# Two forms. Prefixed: cd '<dir>' && <rest>, <dir> decoded from the '\'' encoding. Bare: any other command, taken
+# only when the payload cwd equals $CLAUDE_PROJECT_DIR; <dir> is then that value. A prefixed command that fails a test
+# never falls back to the bare form.
 ESC="'\\''"
-S="${CMD#cd \'}"
-[ "$S" != "$CMD" ] || exit 0
 DIR=""
 REST=""
-while :; do
-  case "$S" in *\'*) ;; *) exit 0 ;; esac
-  DIR="$DIR${S%%\'*}"
-  S="${S#*\'}"
-  if [ "${S:0:3}" = "${ESC:1}" ]; then
-    DIR="$DIR'"
-    S="${S:3}"
-  elif [ "${S:0:4}" = " && " ]; then
-    REST="${S:4}"
-    break
-  else
-    exit 0
-  fi
-done
-[ -n "$REST" ] || exit 0
+KEYSTR="$CMD"
+S="${CMD#cd \'}"
+if [ "$S" != "$CMD" ]; then
+  while :; do
+    case "$S" in *\'*) ;; *) exit 0 ;; esac
+    DIR="$DIR${S%%\'*}"
+    S="${S#*\'}"
+    if [ "${S:0:3}" = "${ESC:1}" ]; then
+      DIR="$DIR'"
+      S="${S:3}"
+    elif [ "${S:0:4}" = " && " ]; then
+      REST="${S:4}"
+      break
+    else
+      exit 0
+    fi
+  done
+  [ -n "$REST" ] || exit 0
+else
+  CWDV="$(jqi -j '.cwd // empty'; printf x)" || exit 0
+  CWDV="${CWDV%x}"
+  PD="${CLAUDE_PROJECT_DIR:-}"
+  [ -n "$CWDV" ] && [ -n "$PD" ] || exit 0
+  case "$CWDV" in /*) ;; *) exit 0 ;; esac
+  case "$PD" in /*) ;; *) exit 0 ;; esac
+  [[ "$CWDV" =~ [[:cntrl:]] ]] && exit 0
+  [[ "$PD" =~ [[:cntrl:]] ]] && exit 0
+  while [ "${#CWDV}" -gt 1 ] && [ "${CWDV%/}" != "$CWDV" ]; do CWDV="${CWDV%/}"; done
+  while [ "${#PD}" -gt 1 ] && [ "${PD%/}" != "$PD" ]; do PD="${PD%/}"; done
+  [ "$CWDV" = "$PD" ] || exit 0
+  DIR="$CWDV"
+  QT="'"
+  QD="${DIR//$QT/$ESC}"
+  KEYSTR="cd '$QD' && $CMD"
+fi
 case "$DIR" in /*) ;; *) exit 0 ;; esac
 # a call whose cd could not run is not an executed command; the exit line cannot tell it from a failed command
 [ -d "$DIR" ] && [ -x "$DIR" ] || exit 0
@@ -79,9 +103,9 @@ NONCE="$(head -c 17 "$NF" 2>/dev/null | head -n 1)" || exit 0
 [[ "$NONCE" =~ ^[0-9a-f]{16}$ ]] || exit 0
 
 if command -v shasum >/dev/null 2>&1; then
-  KEY="$(printf '%s' "$CMD" | shasum -a 256 | cut -c1-16)"
+  KEY="$(printf '%s' "$KEYSTR" | shasum -a 256 | cut -c1-16)"
 else
-  KEY="$(printf '%s' "$CMD" | sha256sum | cut -c1-16)"
+  KEY="$(printf '%s' "$KEYSTR" | sha256sum | cut -c1-16)"
 fi
 [[ "$KEY" =~ ^[0-9a-f]{16}$ ]] || exit 0
 

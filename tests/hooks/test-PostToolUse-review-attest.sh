@@ -186,7 +186,7 @@ check "[631] an interrupt records nothing" "$ok"
 fresh
 mk "$P3" lgtmgate:Morgan "echo ok" | run_hook
 [ "$(rec_lines)" = "0" ] && ok=1 || ok=0
-check "[631] a command without the cd prefix records nothing" "$ok"
+check "[631] a command without the cd prefix whose cwd is not the project directory records nothing" "$ok"
 fresh
 rm "$D/.pipeline/review-nonce"
 mk "$P3" lgtmgate:Morgan "$(box_cmd 'echo ok')" | run_hook
@@ -218,6 +218,103 @@ for t in cat head tr cut mkdir date shasum sha256sum printf; do p="$(command -v 
 mk "$P3" lgtmgate:Morgan "$(box_cmd 'echo ok')" | PATH="$NOJQ" CLAUDE_PLUGIN_DATA="$CPD" "$BASH_BIN" "$HOOK"
 [ "$(rec_lines)" = "0" ] && [ -x "$JQ_BIN" ] && ok=1 || ok=0
 check "[631] no jq on PATH records nothing" "$ok"
+
+# ---- [662] the bare form: the CLI refuses the cd prefix, the reviewer runs the command from the worktree
+# withcwd <dir|-> sets the payload cwd (- deletes it); run_pd <dir> runs the hook with CLAUDE_PROJECT_DIR set to it
+withcwd() { if [ "$1" = "-" ]; then jq -c 'del(.cwd)'; else jq -c --arg d "$1" '.cwd = $d'; fi; }
+run_pd() { CLAUDE_PROJECT_DIR="$1" CLAUDE_PLUGIN_DATA="$CPD" bash "$HOOK"; }
+key_of() { printf '%s' "$1" | shasum -a 256 | cut -c1-16; }
+BARE='git status --porcelain src test'
+ISOLATION='This session is isolated in the worktree /w/x, but this command changes directory to a location computed at runtime before running git. Refusing to run it. Run the equivalent from /w/x without the redirect.'
+
+fresh
+mk "$P3" lgtmgate:Morgan "$BARE" | withcwd "$D" | run_pd "$D"
+[ "$(rec_lines)" = "1" ] && [ "$(jq -r '.key' "$REC")" = "$(key_of "$(box_cmd "$BARE")")" ] && ok=1 || ok=0
+check "[662] bare call from the worktree cwd is recorded under the key of the cd line" "$ok"
+fresh
+mk "$P3" lgtmgate:Morgan "$(box_cmd "$BARE")" | withcwd "$D" | run_pd "$D"
+[ "$(rec_lines)" = "1" ] && [ "$(jq -r '.key' "$REC")" = "$(key_of "$(box_cmd "$BARE")")" ] && ok=1 || ok=0
+check "[662] prefixed call is still recorded under the same key" "$ok"
+fresh
+mk "$P3" lgtmgate:Morgan "$BARE" | withcwd "$D/" | run_pd "$D//"
+[ "$(rec_lines)" = "1" ] && [ "$(jq -r '.key' "$REC")" = "$(key_of "$(box_cmd "$BARE")")" ] && ok=1 || ok=0
+check "[662] bare call with a trailing slash on cwd and on CLAUDE_PROJECT_DIR gets the same key" "$ok"
+fresh
+D="$(mktemp -d "$WORK/o'b.XXXXXX")"
+mkdir -p "$D/.pipeline"; printf '%s\n' "$NONCE" > "$D/.pipeline/review-nonce"
+mk "$P3" lgtmgate:Morgan "$BARE" | withcwd "$D" | run_pd "$D"
+[ "$(rec_lines)" = "1" ] && [ "$(jq -r '.key' "$REC")" = "$(key_of "$(box_cmd "$BARE")")" ] && ok=1 || ok=0
+check "[662] bare call with a quote in the worktree path gets the key of the quoted cd line" "$ok"
+fresh
+mk "$P2" lgtmgate:Morgan "$BARE" | withcwd "$D" | run_pd "$D"
+[ "$(rec_lines)" = "1" ] && [ "$(jq -r '"\(.event)|\(.exit)"' "$REC")" = "failure|1" ] && ok=1 || ok=0
+check "[662] bare failure (Exit code 1) is recorded with exit 1" "$ok"
+fresh
+D1="$D"
+D2="$(mktemp -d "$WORK/wt2.XXXXXX")"
+mkdir -p "$D2/.pipeline"; printf '%s\n' "fedcba9876543210" > "$D2/.pipeline/review-nonce"
+mk "$P3" lgtmgate:Morgan "$BARE" | withcwd "$D2" | run_pd "$D2"
+K2="$(jq -r '.key' "$CPD/review-attest-fedcba9876543210.jsonl")"
+D="$D2"; W2="$(key_of "$(box_cmd "$BARE")")"
+[ "$K2" = "$W2" ] && [ "$K2" != "$(key_of "$(printf "cd '%s' && %s" "$D1" "$BARE")")" ] && ok=1 || ok=0
+check "[662] bare call from another worktree with its own nonce gets another key" "$ok"
+fresh
+mk "$P3" lgtmgate:Morgan "cd '$WORK/missing-dir' && $BARE" | withcwd "$D" | run_pd "$D"
+[ "$(rec_lines)" = "0" ] && ok=1 || ok=0
+check "[662] failing cd with cwd as the worktree records nothing and does not fall back to the bare branch" "$ok"
+fresh
+mk "$P3" lgtmgate:Morgan "cd 'oops && $BARE" | withcwd "$D" | run_pd "$D"
+[ "$(rec_lines)" = "0" ] && ok=1 || ok=0
+check "[662] malformed cd with cwd as the worktree records nothing and does not fall back to the bare branch" "$ok"
+fresh
+D2="$(mktemp -d "$WORK/wt2.XXXXXX")"
+mkdir -p "$D2/.pipeline"; printf '%s\n' "$NONCE" > "$D2/.pipeline/review-nonce"
+mk "$P3" lgtmgate:Morgan "$BARE" | withcwd "$D2" | (cd "$D" && run_pd "$D")
+[ "$(rec_lines)" = "0" ] && ok=1 || ok=0
+check "[662] hook run from the worktree with a payload cwd elsewhere records nothing" "$ok"
+fresh
+mk "$P2" lgtmgate:Morgan "$BARE" "$ISOLATION" | withcwd "$D" | run_pd "$D"
+[ "$(rec_lines)" = "0" ] && ok=1 || ok=0
+check "[662] PostToolUseFailure carrying the worktree isolation message records nothing" "$ok"
+fresh
+mk "$P3" lgtmgate:Morgan "$BARE" | withcwd "$D" | env -u CLAUDE_PROJECT_DIR CLAUDE_PLUGIN_DATA="$CPD" bash "$HOOK"
+[ "$(rec_lines)" = "0" ] && ok=1 || ok=0
+check "[662] CLAUDE_PROJECT_DIR absent records nothing" "$ok"
+fresh
+D2="$(mktemp -d "$WORK/wt2.XXXXXX")"
+mkdir -p "$D2/.pipeline"; printf '%s\n' "$NONCE" > "$D2/.pipeline/review-nonce"
+mk "$P3" lgtmgate:Morgan "$BARE" | withcwd "$D" | run_pd "$D2"
+[ "$(rec_lines)" = "0" ] && ok=1 || ok=0
+check "[662] CLAUDE_PROJECT_DIR different records nothing" "$ok"
+fresh
+mk "$P3" lgtmgate:Morgan "$BARE" | withcwd "$D" | run_pd "$D"
+[ "$(rec_lines)" = "1" ] && ok=1 || ok=0
+check "[662] CLAUDE_PROJECT_DIR equal records the call" "$ok"
+fresh
+CTL="$D"$'\n'
+mk "$P3" lgtmgate:Morgan "$BARE" | withcwd "$CTL" | run_pd "$CTL"
+[ "$(rec_lines)" = "0" ] && ok=1 || ok=0
+check "[662] cwd with a control character records nothing" "$ok"
+fresh
+rm "$D/.pipeline/review-nonce"
+mk "$P3" lgtmgate:Morgan "$BARE" | withcwd "$D" | run_pd "$D"
+[ "$(rec_lines)" = "0" ] && ok=1 || ok=0
+check "[662] cwd without a nonce records nothing" "$ok"
+fresh
+ok=1
+for C in relative/dir "" -; do
+  mk "$P3" lgtmgate:Morgan "$BARE" | withcwd "$C" | run_pd "$D"
+  [ "$(rec_lines)" = "0" ] || ok=0
+done
+check "[662] relative or empty or absent cwd records nothing" "$ok"
+fresh
+mk "$P3" general-purpose "$BARE" | withcwd "$D" | run_pd "$D"
+[ "$(rec_lines)" = "0" ] && ok=1 || ok=0
+check "[662] agent general-purpose records nothing" "$ok"
+fresh
+mk "$P3" lgtmgate:Morgan "$BARE" - true | withcwd "$D" | run_pd "$D"
+[ "$(rec_lines)" = "0" ] && ok=1 || ok=0
+check "[662] run_in_background true records nothing" "$ok"
 
 # ---- registration
 jq -e '.hooks.PostToolUse[] | select(.matcher == "Bash") | .hooks[] | select(.command | contains("PostToolUse-review-attest.sh"))' "$REG" >/dev/null 2>&1 && ok=1 || ok=0
