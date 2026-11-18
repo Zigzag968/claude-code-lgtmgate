@@ -132,7 +132,7 @@ export const meta = {
 // `version`, checked against plugin.json by tests/templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '1.6.0-beta.10', cutFrom: 'e26254e' }
+const BUILD = { plugin: 'lgtmgate', version: '1.6.0-beta.11', cutFrom: '3c9370a' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -558,6 +558,7 @@ let samAcceptanceItems = null  // populated by Sam (#182) — her validated, num
                                 // checklist string, or the resumed plan carries no id (or no planText was given).
 let acceptanceBlock = ''       // renderChecklist(samAcceptanceItems): the lines Nick pastes and Morgan quotes;
                                 // '' when samAcceptanceItems is null, so a legacy run's prompts stay byte-identical.
+let r2ItemText = null          // #661 — the R2 fixture item text when r2Applies (set in the Dev stage), else null; an amendment re-adds it.
 
 // ---------------------------------------------------------------------------
 // Stage helpers
@@ -883,6 +884,12 @@ const AC_BLOCK_END = '<!-- acceptance:end -->'
 // Sam's validated entries -> items { id, text, humanGate }. Key order is part of the contract (JSON-compared).
 function numberItems(entries) {
   return entries.map((entry, index) => ({ id: index + 1, text: entry.text.trim(), humanGate: entry.humanGate === true }))
+}
+// #661 — the R2 fixture item joins the engine's items (the data the body, the boxes and the tick follow). Unchanged when items is
+// null (legacy run) or when an item already carries this text (Sam wrote it herself). Never mutates `items`, never adds `command`.
+function withR2Item(items, text) {
+  if (!items || items.some((item) => item.text === text)) return items
+  return [...items, { id: items.length + 1, text, humanGate: false }]
 }
 // With ids the line is the checkbox prefix, the machine id comment, then (visible, default) the id as bold text for the
 // human reader, then the tag. The comment stays first: every id reader requires it right after the checkbox prefix.
@@ -4221,8 +4228,15 @@ if (after('dev', entryStage)) {
   const r2Scope = r2ScopeOf(config)
   if (isEngineRepository(config) && r2Scope === null) log('R2 not applied: engineRepo is true but r2Scope is missing or invalid in the pipeline config (see README, r2Scope)')
   const r2Applies = r2Scope !== null && issueType === r2Scope.issueType && safePlanTargets(samTargetFiles).some(p => r2Scope.paths.some(q => p.startsWith(q)))
+  r2ItemText = r2Applies ? `fixture \`${r2Scope.fixtureDir}/${issue}-*.json\` present, replayed red on base and green on the branch by \`scripts/run-offline.cjs\`` : null
+  // #661: with engine items, the R2 item is one of them (rendered with an id, proven and ticked like the others).
+  const r2InEngine = r2Applies && samAcceptanceItems !== null
+  if (r2InEngine) {
+    samAcceptanceItems = withR2Item(samAcceptanceItems, r2ItemText)
+    acceptanceBlock = renderChecklist(samAcceptanceItems)
+  }
   const r2Note = r2Applies
-    ? `R2 fixture rule (issue #${issue}): add this acceptance item to the checklist verbatim — "fixture \`${r2Scope.fixtureDir}/${issue}-*.json\` present, replayed red on base and green on the branch by \`scripts/run-offline.cjs\`". If no such fixture exists in the branch, run \`gh issue edit ${issue} -R ${repository || '<repo>'} --add-label no-fixture\` and use \`Refs #${issue}\` instead of \`Closes #${issue}\` on the first line of the PR body (the issue then stays open). `
+    ? `R2 fixture rule (issue #${issue}): ${r2InEngine ? `the acceptance checklist below already carries this item as its last line (fixture \`${r2Scope.fixtureDir}/${issue}-*.json\`, with its ac id) — do not add it again.` : `add this acceptance item to the checklist verbatim — "${r2ItemText}".`} If no such fixture exists in the branch, run \`gh issue edit ${issue} -R ${repository || '<repo>'} --add-label no-fixture\` and use \`Refs #${issue}\` instead of \`Closes #${issue}\` on the first line of the PR body (the issue then stays open). `
     : ''
   const nickPrompt = (
     `Work in the shared worktree "${worktreePath}" (cd into it; it already exists${worktreeRoot ? `; worktree root: ${worktreeRoot}` : ''}). ` +
@@ -5248,7 +5262,7 @@ if (after('review', entryStage)) {
       const amendBound = amendEntries && amendIssues.length === 0 ? bindCommands(numberItems(amendEntries), amendEntries, samAmend.plan) : null
       if (amendBound) amendIssues.push(...await checkProofLines(amendBound, samAmend.plan))
       if (amendBound && amendIssues.length === 0) {
-        samAcceptanceItems = amendBound
+        samAcceptanceItems = r2ItemText === null ? amendBound : withR2Item(amendBound, r2ItemText)
         acceptanceBlock = renderChecklist(samAcceptanceItems)
       }
       if (amendIssues.length > 0) log(`Round ${round}: the amended acceptance items are refused by the script (${amendIssues.join(' | ')}) — not synced`)
