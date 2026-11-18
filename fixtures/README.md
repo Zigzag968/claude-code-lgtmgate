@@ -11,6 +11,7 @@ before it is committed, and the `no-private-refs` invariant scans the whole trac
 | `specifics/` | project specifics (#265): payloads shaped like the assembler output with a fake ref, asserted through `promptIncludes`/`promptOrder`; the launch refusals end in a `throws` with no agent call | `run-offline.cjs --all fixtures` (CI) |
 | `metrics/` | synthetic REST `issues.json` / `pulls.json` payloads, not replay fixtures (`run-offline.cjs --all` skips a directory named `metrics`) | `scripts/test-run-metrics.sh` |
 | `probes/` | raw stdout of a real `gh`/`git` command (`*.raw`), consumed by `tests/templates/test-probe-run.sh` once the probe layer exists (E2.2) | `test-probe-run.sh` |
+| `hooks/` | raw stdin of a real hook event (`*.raw`, one JSON line), replayed by `tests/hooks/test-worktree-*.sh`; never an engine fixture (`run-offline.cjs` lists only `.json`) | `tests/hooks/test-worktree-create.sh`, `tests/hooks/test-worktree-remove.sh` |
 
 ## Fixture format
 
