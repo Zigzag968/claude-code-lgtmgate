@@ -1603,6 +1603,42 @@ await testCase('T46 artifact-proof gate negative control (fresh artifact → rea
   return error ? error : { ok: true }
 })
 
+// T9619 (#619) — a timezone-less ISO mtime is read as machine-local time, not rejected no-valid-mtime.
+// Dates sit days away from the floor so the result does not depend on the machine timezone.
+await testCase('T9619 a timezone-less ISO mtime is parsed as machine-local time, not rejected no-valid-mtime (#619)', async () => {
+  const proofWith = (mtime) => ({
+    item: ARTIFACT_PROOF_ITEM,
+    path: ARTIFACT_PROOF_PATH,
+    exists: true,
+    mtime,
+    bytes: 4096,
+  })
+  const fresh = await run({
+    mode: 'auto',
+    simulate: {
+      sam: 'GO',
+      morgan: [{ verdict: 'LGTM', artifactProofs: [proofWith('2026-08-10T10:29:49')] }],
+      artifactFloor: ARTIFACT_FLOOR,
+    },
+  })
+  const stale = await run({
+    mode: 'semi',
+    proceedThrough: 'dev',
+    simulate: {
+      sam: 'GO',
+      morgan: [{ verdict: 'LGTM', artifactProofs: [proofWith('2026-07-30T12:50:44')] }],
+      artifactFloor: ARTIFACT_FLOOR,
+    },
+  })
+  const error1 = eq('fresh status', fresh.status, 'ready')
+  const error2 = eq('fresh trace', fresh.trace, ['Plan', 'Dev', 'Review', 'PR Ready'])
+  const error3 = eq('stale status', stale.status, 'needs-revision')
+  const error4 = includes('stale trace', stale.trace, 'artifact-proof-rejected:artifact-stale')
+  const error5 = stale.trace.some((t) => String(t).includes('no-valid-mtime')) ? 'stale trace carries no-valid-mtime' : null
+  const error = error1 || error2 || error3 || error4 || error5
+  return error ? error : { ok: true }
+})
+
 // T47 (#526) — a declared artifact that does not EXIST on disk must overturn LGTM regardless
 // of mtime/floor; the run stays paused, never reaching 'ready'.
 await testCase('T47 artifact-proof gate overturns LGTM on a missing artifact', async () => {

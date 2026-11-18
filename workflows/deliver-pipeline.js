@@ -1855,7 +1855,10 @@ function staleArtifactBlockers(proofs, floorIso, prFiles, worktreeDirectory) {
   // Accepts an explicit UTC 'Z' or a numeric offset: Morgan stats artifacts on the local
   // machine, so a valid ISO-8601 like 2026-08-11T18:02:02+02:00 must not be rejected
   // (the staleness compare below already goes through Date.parse, offset-aware).
-  const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:?\d{2})$/
+  // Rule (#619): a timezone-less ISO mtime (no Z, no offset) is read as machine-local time, the
+  // machine Morgan stats on, which is what Date.parse does for a date-time without offset.
+  // Z and numeric offsets are unchanged; anything else (empty, 'yesterday') stays no-valid-mtime.
+  const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:?\d{2})?$/
   const floorMs = typeof floorIso === 'string' ? Date.parse(floorIso) : NaN
   const floorValid = Number.isFinite(floorMs)
   const blockers = []
