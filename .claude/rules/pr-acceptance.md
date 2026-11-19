@@ -13,6 +13,7 @@ Sam drafts the checklist in the plan (posted on the issue). Every item MUST be :
   read-only command can confirm.** A human-gate item carries no `command`; a command written in its text is
   judged by the plan check (a command that could decide the item is not conforming; a judgement about
   wording, layout or taste is).
+- **Literal-safe** — a proof command that searches for a literal pattern writes `command grep -F '<literal>'`: a plain `grep` can be a shell shim with another pattern dialect, and the same pattern then exits with the opposite status, so a box is proven or refused wrongly. A pattern that must be a regex uses `command grep -E`.
 
 **When `[human-gate]` applies.** Before tagging an item `[human-gate]`, ask whether the box asks someone to decide, authorize or perform an action (tag it), or only to confirm that an action already happened (do not tag it). A confirmation has a read-only command (a run-status query, a policy read, a log read): write that command as a normal Morgan-verifiable box and cite the earlier human decision inline in the item text. Default to a normal box whenever a read-only command exists; tag only a genuine judgment call or an action no read-only command can confirm.
 
