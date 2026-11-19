@@ -3576,6 +3576,7 @@ const MORGAN_PRODUCT_DIRECTION = "PRODUCT DIRECTION: signal a conflict with the 
 // '' when it declares none, so a consumer Sam is never asked about engine kinds. Pinned by T77g, T77l.
 const SAM_ONE_WAY_DOOR = samOneWayDoorText(config.oneWayDoorKinds)
 const ACCEPTANCE_PROOF_RULE = 'ACCEPTANCE PROOF RULE: (1) every acceptance item is a command you RAN in the provisioned worktree during planning; the plan carries a "Proof log" listing, per item, the command and its real output pasted verbatim (output on the base branch: green for state-preservation checks, red for the stated reason for a check the change must turn green); (2) a command you saw fail for any other reason, or could not run (missing gitignored directory, no network), is rewritten to run in the worktree or dropped, never inscribed as-is and never excused in Risks; (3) an item describes a verifiable state of the repo or branch only: never an external-world state (e.g. "no known advisory for pinned dependency X", a network service, a file present only outside the worktree) and never a negative universal claim ("no known X", "absence of Y") about anything outside the diff; write commands that run as-is from a plain bash script; (4) the one exemption to (1), (2) and (3): a read-only confirmation of an action that was already authorized and executed (a run-status query, a policy read, a log read) is allowed as a normal box although it reads the outside world; its Proof-log entry is its command, with the verbatim output when the action happened before planning and the command can run in the worktree, otherwise the command alone with the words "not runnable at planning"; the item text cites the earlier human decision inline; every other external-world state and every "no known X" claim stays forbidden. PROOF LOG RULES: in the plan\'s proof log, EVERY acceptance item gets its own entry with the COMPLETE command, copied character for character from the issue, followed by its COMPLETE output. Never write `...` or any ellipsis inside a command or a regex, never summarise a command, never write a verdict alone. Never write a `.txt` file inside the worktree: redirect to a path under the temporary directory. Keep the PR body and the plan free of token costs and absolute local paths (quote paths as `<project>` placeholders). For any artifact proof, report `bytes` (from `wc -c`, a number greater than 0), `exists`, `mtime` (ISO-8601 with Z) and `committedInPr`.'
+const LITERAL_GREP_RULE = "LITERAL-SAFE GREP: in an acceptance proof command, search for a literal string (a path, a marker, a `[x]` box, a `${{ }}` expression) with `command grep -F '<literal>'`, never a plain `grep` whose shell shim or alias can read the same pattern in another dialect and exit with the opposite status; use `command grep -E` only when the item needs a regex."
 const REQUIREMENT_RULE = "REQUIREMENT: every proof must be quoted word for word (command + full output). Never paraphrase, abbreviate with '...', or pipe through tail/head except where the acceptance item itself says so."
 const ABSENCE_CLAIMS_RULE = 'ABSENCE CLAIMS: any claim that something outside the diff is absent or needs no change needs the executed command and its COMPLETE verbatim output in the Proof log.'
 // #169: appended to the plan-check and plan-audit proof checks. The script refuses a human-gate item that carries a
@@ -3615,6 +3616,7 @@ const samScoutPrompt = ({ fixBlock = '', auditFixBlock = '', reviewFixBlock = ''
     `${SAM_ONE_WAY_DOOR}${SAM_PRODUCT_DIRECTION}` +
     `Author the acceptance checklist against the project specifics (if any): never assert a whole-repo clean state the base branch cannot satisfy. ` +
     `${ACCEPTANCE_PROOF_RULE} ` +
+    `${LITERAL_GREP_RULE} ` +
     `${REQUIREMENT_RULE} ` +
     `${ABSENCE_CLAIMS_RULE} ` +
     `${HUMAN_GATE_TAG_RULE} ` +
@@ -5197,6 +5199,7 @@ if (after('review', entryStage)) {
       `${regressionGuardStep}` +
       `For asset/render/human-facing lanes, BEFORE any verdict, execute the real-case live run yourself (the exact command the plan names, deps included) and machine-verify the output contract from the plan (e.g. the exact pixel/asset dimensions and named visual elements the plan calls for, screenshot non-empty, named fields written). Units mock the other side, so seam errors pass with the mock; only a taste judgment then remains for the human-gate. ` +
       `${artifactProofStep}` +
+      `${LITERAL_GREP_RULE} ` +
       `${freshnessStep}` +
       `${morganBoxesNote(acceptanceBlock)}` +
       `${subIssuesUncovered.length > 0
@@ -5350,6 +5353,7 @@ if (after('review', entryStage)) {
         `Re-run the regression guard the same way: ${regressionGuardStep}` +
         `For asset/render/human-facing lanes, BEFORE any verdict, execute the real-case live run yourself (the exact command the plan names, deps included) and machine-verify the output contract from the plan (e.g. the exact pixel/asset dimensions and named visual elements the plan calls for, screenshot non-empty, named fields written). Units mock the other side, so seam errors pass with the mock; only a taste judgment then remains for the human-gate. ` +
         `${artifactProofStep}` +
+        `${LITERAL_GREP_RULE} ` +
         `${freshnessStep}` +
         `${morganBoxesNote(acceptanceBlock)}` +
         `Then post the new verdict (LGTM | REQUIRED_CHANGES | REGRESSION_DETECTED) as a comment on the PR. Prefix that posted comment EXACTLY with the pipeline-review-round marker \`${reviewVerdictMarker}\` as its own first line${reviewShaRule} (hidden HTML marker; do NOT let it leak into \`items\`). ` +
