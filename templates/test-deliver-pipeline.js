@@ -8294,6 +8294,25 @@ await testCase('T469c review entry with a reconciled prefix → ready reports th
   return eq('status', r.status, 'ready') || eq('branch', r.branch, 'feat/issue-1') || { ok: true }
 })
 
+// T622a (#622) — the Sam plan-comment lookup is paginated: without `--paginate`, `gh api .../comments` returns only
+// the first 30 comments, so past 30 the marker lookup misses and a second plan comment is created. No Sam prompt
+// preview seam exists and none is added (a `samPromptPreview` would be a new seam, a one-way door), so the assertion
+// is anchored on the prompt template source; `samScoutPrompt` interpolates only constants into that line.
+await testCase('T622a the Sam plan-comment lookup passes --paginate (#622)', async () => {
+  const source = SUITE_ARGS.fpSource
+  if (!source) {
+    log('SKIP — T622a: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const from = source.indexOf('const samScoutPrompt =')
+  const to = from < 0 ? -1 : source.indexOf('VERSION RULE: do NOT bump', from)
+  const slice = from < 0 || to < 0 ? '' : source.slice(from, to)
+  const error1 = eq('Sam prompt slice found', slice.length > 0, true)
+  const error2 = includes('paginated plan lookup', slice, `comments --paginate --jq '.[]|select(.body|startswith("\${planMarker}"))|.id'`)
+  const error3 = eq('no unpaginated lookup left in the Sam prompt', slice.includes('comments --jq'), false)
+  return error1 || error2 || error3 || { ok: true }
+})
+
 // T123 (#42) — every test ID is unique across the suite. Must stay the LAST case so `results`
 // holds every other case name. Includes a negative control proving the detector really detects.
 // T533 (#533) — a plan reference instead of a retyped planText. The engine pins the sha256 of the plan artifact when it
