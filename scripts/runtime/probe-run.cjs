@@ -42,9 +42,12 @@
 // Verify mode (#82): node probe-run.cjs --verify --label L --round N --out /abs/dir --parser NAME
 //   --attest /abs/probe-attest.jsonl
 // Does NOT re-run the command. Prints ONE line (exit 0):
-//   VERIFY ok line=<PROBE line>                      the record exists and the attestation file
+//   VERIFY ok linesha=<sha256 of the PROBE line>     the record exists and the attestation file
 //                                                    holds an entry equal to that recomputed line,
-//                                                    attested for the SAME label and round (#83)
+//                                                    attested for the SAME label and round (#83).
+//   #699: the line itself is NOT repeated (a model copying ~890 characters twice lost a byte in 6 of 10 probes):
+//   the engine compares this digest to the sha256 of the PROBE line the agent copied. The former form
+//   `VERIFY ok line=<PROBE line>` is no longer printed; the engine still parses it (stored fixtures and records).
 //   Binding to the agent (#83): when the matching entries carry an agent_id, the MOST RECENT entry
 //   (file order) for this label/round must equal the recomputed line AND have ts >= the record's ts
 //   (floored to the second: the hook stamps whole seconds), i.e. it was written after this call's own
@@ -364,7 +367,7 @@ function main() {
   const file = path.join(a.out, `${a.label}-r${Number(a.round)}.json`)
   if (a.verify) {
     const v = verifyRecord(a.parser, readRecord(file), readJsonl(a.attest), { label: a.label, round: Number(a.round) })
-    process.stdout.write((v.ok ? `VERIFY ok line=${v.line}` : `VERIFY fail reason=${v.reason}`) + '\n')
+    process.stdout.write((v.ok ? `VERIFY ok linesha=${sha256(v.line)}` : `VERIFY fail reason=${v.reason}`) + '\n')
     process.exit(0)
   }
   let record = readRecord(file)

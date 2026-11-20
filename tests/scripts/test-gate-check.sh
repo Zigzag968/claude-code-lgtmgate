@@ -150,7 +150,7 @@ check "eval: verify-ok.md reduced to 'VERIFY ok' -> FAIL, exit 1" "$ok"
 mkroot "$WORK/e-sha"
 node "$WORK/edit.cjs" sub "$WORK/e-sha/evals/probe-provision/graders/verify-ok.md" 'sha=[0-9a-f]' 'sha=x'
 gc "$WORK/e-sha" --ci
-ok=0; [ "$GRC" -eq 1 ] && is eval FAIL 'probe-provision: verify-ok.md pattern is not the tool_result VERIFY ok line of the probe-line sha' && ok=1
+ok=0; [ "$GRC" -eq 1 ] && is eval FAIL 'probe-provision: verify-ok.md pattern is not the tool_result VERIFY ok linesha of the probe line' && ok=1
 check "eval: verify-ok.md pinning another sha than probe-line.md -> FAIL, exit 1" "$ok"
 
 mkroot "$WORK/e-flags"

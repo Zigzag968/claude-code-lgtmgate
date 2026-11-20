@@ -10,7 +10,7 @@
 #              (run-offline alone passes when a fixture is deleted).
 #   eval       (a) every evals/probe-*/ case still pins its probe-line and verify-ok graders: probe-line is
 #              `^\s*<the whole PROBE line, regex-escaped>\s*$` on the last message (name, exit, 64-hex sha,
-#              64-hex cmd, json), verify-ok is the tool_result `VERIFY ok line=PROBE name= exit= sha=` of the
+#              64-hex cmd, json), verify-ok is the tool_result `VERIFY ok linesha=<sha256 of the PROBE line>` of the
 #              SAME line, neither with flags, so a generic or weakened grader fails; (b) scripts/probe-eval-gate.sh
 #              on evals/results (>= 29/30 fully passed runs). tests/scripts/test-probe-evals.sh proves the pinned line
 #              equals the real one by running the case; (a) is the offline contract of the grader text.
@@ -96,9 +96,9 @@ for (const c of names) {
   const m = lit && lit.match(/^PROBE name=([A-Za-z0-9_-]+) exit=(\d+) sha=([0-9a-f]{64}) cmd=([0-9a-f]{64}) json=\{.*\}$/)
   if (lit && !m) bad.push(c + ': probe-line.md literal is not a whole PROBE line (name, exit, 64-hex sha, 64-hex cmd, json)')
   if (m) {
-    const want = '"type":"tool_result","content":"(?:[^"\\\\]|\\\\.)*VERIFY ok line=PROBE name=' + m[1] + ' exit=' + m[2] + ' sha=' + m[3]
+    const want = '"type":"tool_result","content":"(?:[^"\\\\]|\\\\.)*VERIFY ok linesha=' + require('crypto').createHash('sha256').update(lit).digest('hex')
     if (field(vo, 'type') !== 'regex' || field(vo, 'target') !== 'trace' || field(vo, 'flags') !== '') bad.push(c + ': verify-ok.md must be type regex, target trace, no flags')
-    else if (scalar(field(vo, 'pattern')) !== want) bad.push(c + ': verify-ok.md pattern is not the tool_result VERIFY ok line of the probe-line sha')
+    else if (scalar(field(vo, 'pattern')) !== want) bad.push(c + ': verify-ok.md pattern is not the tool_result VERIFY ok linesha of the probe line')
   }
 }
 if (bad.length) { for (const b of bad) console.log(b); process.exit(1) }

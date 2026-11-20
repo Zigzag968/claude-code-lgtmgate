@@ -115,8 +115,7 @@ function withEngineVersion(fixture, version) {
 // The answer of the plugin version probe (#195) is journaled with the LITERAL engine version, which lead-merge bumps at
 // every merge. A capture or published fixture stores the token instead, wherever the answer names the run's engine
 // (`versions` lists those strings). Quote-delimited, so `1.0.0-beta.90` is not `1.0.0-beta.9`. Rewrites `line` and `verify`
-// of every `probe-<issue>-lines-plugin-version-r<round>` entry in place; returns the number of strings rewritten. The PROBE
-// `cmd=` hash covers the command (root path, no version), so it stays valid.
+// of every `probe-<issue>-lines-plugin-version-r<round>` entry in place; returns the number rewritten. `cmd=` stays valid; #699: a digest-form VERIFY becomes `VERIFY ok line=<line>`.
 const VERSION_PROBE_LABEL = /^probe-\d+-lines-plugin-version-r\d+$/
 function tokenizeVersionProbes(calls, versions) {
   let n = 0
@@ -135,6 +134,7 @@ function tokenizeVersionProbes(calls, versions) {
           n++
         }
       }
+      if (/^VERIFY ok linesha=/.test(callEntry.verify) && String(callEntry.line).includes(ENGINE_VERSION_TOKEN)) callEntry.verify = `VERIFY ok line=${callEntry.line}`
     }
   }
   return n
