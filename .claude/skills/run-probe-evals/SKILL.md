@@ -59,7 +59,7 @@ description: Run or debug the probe evals of issue #81 (`claude plugin eval` on 
 - The probe agent answers "I need two commands": the prompt gives only the run command; add the `--verify` command.
 - Score meaning: 4 graders weighted 1 each, so 0.25 per grader (agent-dispatched, bash-called, probe-line, verify-ok).
   - `probe-line` pins the WHOLE expected PROBE line (sha, cmd, json) and must match the whole final message: one flipped hex char, a paraphrase, an invented line, prose or a code fence around it fails.
-  - `verify-ok` looks in the trace for `VERIFY ok line=PROBE name=<name> exit=0 sha=<pinned sha>` inside a Bash `tool_result`: it proves the commands really ran and exited 0.
+  - `verify-ok` looks in the trace for `VERIFY ok linesha=<sha256 of the pinned PROBE line>` inside a Bash `tool_result`: it proves the commands really ran and exited 0.
   - 0.75 = one regex grader failed:
     - `probe-line` only: the final message is not exactly the PROBE line (the relay added prose or altered a char).
     - `verify-ok` only: the VERIFY line is absent from the Bash results (verify failed, or the trace shape changed).
