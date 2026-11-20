@@ -63,7 +63,7 @@ A bug in a pure function of the engine has no `agent()` call to replay. A functi
 - `calls` is keyed by the `label` of each `agent()` call. A migrated probe (#82: provision, provision
   freshness, review-phase behind-count) is keyed `probe-<issue>-<parser>-<label>-r<round>` and answered
   `{ line, verify }`: `line` built with `require('./templates/probe-run.cjs').probeLine(parser, { stdout, exit })`,
-  `verify` = `VERIFY ok line=<line>`. A string answers a schema-less call
+  `verify` = `VERIFY ok linesha=<sha256 of the line>` (what `probe-run.cjs --verify` prints since #699; a hand-edited `line` needs its digest recomputed, `publish-fixture.cjs` does it) or the former `VERIFY ok line=<line>`, still accepted. A string answers a schema-less call
   (the engine's own parser runs on it), an object answers a schema call. An array is consumed
   in call order (one entry per round).
 - Probe fixtures need `args.pluginRoot` (any absolute string, e.g. `/plugin`) or `config.probeRunPath`; without it
