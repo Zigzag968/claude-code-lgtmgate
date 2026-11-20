@@ -1130,6 +1130,24 @@ await testCase('T25 planCheck NOT_CONFORMING x2 (maxPlanAttempts) → escalate p
   return (error1 || error2) ? (error1 || error2) : { ok: true }
 })
 
+// T624b (#624) — replays a plan-with-an-unneeded-mechanism verdict through the gate (the simulate seam stands in
+// for the haiku judge; no new seam): NOT_CONFORMING x2 escalates and the issues name the mechanism.
+await testCase('T624b unneeded-mechanism MINIMALITY verdict x2 → escalate plan-not-conforming naming the mechanism (#624)', async () => {
+  const verdict = { verdict: 'NOT_CONFORMING', issues: ['MINIMALITY: mechanism "lexicon guard" has no traceable need'] }
+  const r = await run({
+    mode: 'auto',
+    simulate: {
+      sam: 'GO',
+      planCheck: { 1: verdict, 2: verdict },
+      morgan: [{ verdict: 'LGTM' }],
+    },
+  })
+  const error1 = eq('status', r.status, 'escalate')
+  const error2 = eq('reason', r.reason, 'plan-not-conforming')
+  const error3 = includes('issues name the mechanism', (r.planCheckIssues || []).join(' '), 'lexicon guard')
+  return (error1 || error2 || error3) ? (error1 || error2 || error3) : { ok: true }
+})
+
 // 26. T26 (#308) — resumed run: semi + proceedThrough:'plan' MUST stop at plan-ready,
 //     never chaining Dev/Review (the #295 incident that opened PR #302).
 await testCase('T26 semi / proceedThrough:plan → plan-ready, no Dev/Review chained', async () => {
@@ -5998,6 +6016,25 @@ await testCase('T479b READ_ONLY_CONFIRMATION_RULE is shared by Sam and the plan 
     includes('plan check returns the rewritten item', planCheck, 'put the REWRITTEN item'),
     eq('old remedy "Write this line in the artifact" occurrences', source.split('Write this line in the artifact').length - 1, 0),
     includes('pointer refusal names the plan field', source, 'is a summary/pointer, not the full plan'),
+  ]
+  const bad = checks.filter((c) => c)
+  return bad.length ? { ok: false, msg: bad.map((b) => b.msg.slice(0, 90)).join(' | ') } : { ok: true }
+})
+
+// T624a (#624) — the plan check carries a MINIMALITY criterion: a mechanism with no traceable stated need makes the
+// verdict NOT_CONFORMING. Source-level; the criterion appears exactly once.
+await testCase('T624a plan check carries the MINIMALITY criterion with its NOT_CONFORMING consequence (#624)', async () => {
+  const source = SUITE_ARGS.fpSource
+  if (!source) {
+    log('SKIP — T624a: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const line = source.split('\n').find((l) => l.includes('(6) MINIMALITY')) || ''
+  const checks = [
+    includes('MINIMALITY text', line, 'MINIMALITY'),
+    includes('NOT_CONFORMING consequence', line, 'NOT_CONFORMING'),
+    includes('stated need', line, 'stated need'),
+    eq('MINIMALITY occurrences', source.split('MINIMALITY').length - 1, 1),
   ]
   const bad = checks.filter((c) => c)
   return bad.length ? { ok: false, msg: bad.map((b) => b.msg.slice(0, 90)).join(' | ') } : { ok: true }
