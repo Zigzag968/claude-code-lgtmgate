@@ -342,6 +342,25 @@ refusal_case "when the baseline is stable for two replays but not three" "not de
 
 D12="$(newdir out-path)"
 refusal_case "when redaction changes the outcome" "outcome changed after redaction" "$D12" "$RAWD/125-path.json" --fp "$TMP/stub-path.js" --out-dir "$D12"
+case "$ERR" in
+  *'status'*'args.p'*) if printf '%s\n' "$ERR" | grep -q 'zzz-secret'; then bad "redaction refusal names the value"; else ok "redaction refusal names the slot and the leaf, never the value"; fi;;
+  *) bad "redaction refusal does not name the slot and the leaf: $ERR";;
+esac
+
+# an engine that only echoes a redactable path into result.reason is published and replays strictly
+printf '%s\n' "return { status: 'a', reason: args.p }" > "$TMP/stub-echo.js"
+printf '{"name":"1-s","args":{"p":"/opt/zzz-echo"},"calls":{},"expect":{"status":"a"}}\n' > "$RAWD/125-echo.json"
+D12e="$(newdir out-echo)"
+pub "$RAWD/125-echo.json" 125-echo --fp "$TMP/stub-echo.js" --out-dir "$D12e"
+echo_strict=$(OFFLINE_STRICT=1 node scripts/run-offline.cjs "$D12e/125-echo.json" --fp "$TMP/stub-echo.js" 2>&1 | tail -n 1)
+if [ "$RC" -eq 0 ] && [[ "$(last_line)" == "[publish-fixture] status=ok"* ]] \
+   && [ "$(jsf "$D12e/125-echo.json" 'typeof f.expect.reason === "string" && f.expect.reason.length > 0')" = "true" ] \
+   && ! grep -q 'zzz-echo' "$D12e/125-echo.json" \
+   && [ "$echo_strict" = "[offline] status=ok passed=1 failed=0" ]; then
+  ok "an engine that echoes a redactable path into result.reason is published and replays strictly"
+else
+  bad "echo publication: rc=$RC last='$(last_line)' strict='$echo_strict' err=$ERR"
+fi
 
 BADRAW="$RAWD/126-badstatus.json"
 node "$TMP/gen.cjs" "$BADRAW" badstatus
