@@ -1,8 +1,0 @@
-{
-  "templates/test-deliver-pipeline.js": {
-    "max-lines": 1
-  },
-  "workflows/deliver-pipeline.js": {
-    "max-lines": 1
-  }
-}

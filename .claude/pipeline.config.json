@@ -1,36 +1,16 @@
 {
-  "ghProject": { "owner": "Zigzag968", "projectNumber": 1 },
-  "repo": "Zigzag968/claude-code-lgtmgate",
+  "projectSpecifics": "docs/agent",
   "baseBranch": "main",
   "branchPrefix": "feat/",
-  "worktreeRoot": "../worktrees/lgtmgate",
   "commands": {
-    "build": "echo 'no build step (agent/command/hook definitions + JS/shell templates, no compiled artifact)'",
-    "test": "export PATH=\"$PWD/.venv/bin:$PATH\" && bash tests/templates/test-canonical-guards.sh && node scripts/run-flow-suite.cjs",
-    "format": "echo 'no formatter configured'"
+    "build": "make build",
+    "test": "make test",
+    "format": "make format"
   },
-  "ciChecks": ["guards", "smoke-install"],
-  "oneWayDoorKinds": ["status", "agent", "hook", "seam"],
-  "engineRepo": true,
-  "r2Scope": { "issueType": "bug", "paths": ["workflows/"], "fixtureDir": "fixtures/incidents" },
-  "oneWayDoorPaths": [
-    "hooks/**",
-    "!hooks/test-*",
-    "docs/critical-paths.md"
+  "ciChecks": [
+    "build",
+    "test",
+    "lint"
   ],
-  "provision": {
-    "extraLinks": [
-      { "src": "node_modules", "dst": "node_modules" },
-      { "src": ".venv", "dst": ".venv" }
-    ]
-  },
-  "preflight": {
-    "canonicalStringBan": [],
-    "envSymlink": "ignore"
-  },
-  "regressionGuard": {
-    "testGlob": "",
-    "testFnPattern": "",
-    "baselineCmd": ""
-  }
+  "notes": "plan commit agent merge launch report review stage test test scope stable launch status config plan clean record stage change diff source cache stable target guard test owner repeat diff test change branch rule merge bounded target worktree verify stage check proof branch script record explicit script small check stable agent rule review explicit change record review verify agent issue proof module result launch config folder script record guard launch clean plan worktree cache stage result launch owner worktree verify commit folder clean verify issue verify issue module clean rule worktree report scope folder owner script small ready bounded stable config merge folder small report agent explicit stage limit plan build stable build test agent scope record test issue stage scope small change merge guard ready source clean module launch cache clean check guard record issue source status target source build worktree limit plan record report launch stable stage report merge scope source cache change record bounded cache limit proof guard stable check explicit stage issue target stable change branch stage test scope result stage launch launch agent proof rule issue owner result report stable stage guard rule proof module guard guard diff source scope merge stage explicit branch proof build check clean check report launch ready ready owner clean module ready change scope worktree change verify verify module module source source diff source build bounded issue build source config target script build plan merge scope clean result target scope report worktree limit limit owner config check module test script launch review target folder branch issue commit result clean bounded folder limit scope rule proof diff guard issue status build check change repeat repeat small source rule module check scope scope check rule stage launch merge bounded script diff ready status worktree cache source scope explicit cache stable check bounded stable scope script guard config small verify stable source ready limit module report cache rule change guard worktree config owner plan branch clean stage repeat module record record stage folder diff diff report agent guard report stage report config review build guard owner owner scope bounded rule issue plan script proof test branch review status script verify worktree bounded limit launch diff stable record check scope report bounded commit issue bounded commit report scope limit change verify change plan check plan test cache clean script issue agent result limit script target repeat worktree small check target stable record status change status clean stable build owner proof result bounded repeat target check verify stable stable test config explicit target stable review change module check merge branch verify record branch issue change ready module rule change sta"
 }
