@@ -316,6 +316,43 @@ mk "$P3" lgtmgate:Morgan "$BARE" - true | withcwd "$D" | run_pd "$D"
 [ "$(rec_lines)" = "0" ] && ok=1 || ok=0
 check "[662] run_in_background true records nothing" "$ok"
 
+# ---- [635] prune
+age() { perl -e 'my $t = time - $ARGV[0]*86400; utime $t, $t, $ARGV[1]' "$1" "$2"; }
+fresh
+echo '{}' > "$CPD/review-attest-aaaaaaaaaaaaaaaa.jsonl"; age 40 "$CPD/review-attest-aaaaaaaaaaaaaaaa.jsonl"
+echo '{}' > "$CPD/review-attest-bbbbbbbbbbbbbbbb.jsonl"
+mk "$P3" lgtmgate:Morgan "$(box_cmd 'echo ok')" | run_hook
+[ ! -e "$CPD/review-attest-aaaaaaaaaaaaaaaa.jsonl" ] && [ -e "$CPD/review-attest-bbbbbbbbbbbbbbbb.jsonl" ] && [ "$(rec_lines)" = "1" ] && ok=1 || ok=0
+check "[635] prune: a record older than 30 days is removed, a fresh record and the new window's record are kept" "$ok"
+fresh
+echo '{}' > "$CPD/review-attest-aaaaaaaaaaaaaaaa.jsonl"; age 29 "$CPD/review-attest-aaaaaaaaaaaaaaaa.jsonl"
+mk "$P3" lgtmgate:Morgan "$(box_cmd 'echo ok')" | run_hook
+[ -e "$CPD/review-attest-aaaaaaaaaaaaaaaa.jsonl" ] && ok=1 || ok=0
+check "[635] prune: a record 29 days old is kept" "$ok"
+fresh
+echo '{}' > "$CPD/other.jsonl"; age 40 "$CPD/other.jsonl"
+mk "$P3" lgtmgate:Morgan "$(box_cmd 'echo ok')" | run_hook
+[ -e "$CPD/other.jsonl" ] && ok=1 || ok=0
+check "[635] prune: a file outside review-attest-*.jsonl is kept" "$ok"
+fresh
+echo '{}' > "$REC"; age 40 "$REC"
+mk "$P3" lgtmgate:Morgan "$(box_cmd 'echo ok')" | run_hook
+[ -e "$REC" ] && [ "$(rec_lines)" = "2" ] && ok=1 || ok=0
+check "[635] prune: the file of the window being appended is never removed" "$ok"
+if [ "$(id -u)" = "0" ]; then skip "[635] prune: unwritable record directory (root)"; else
+  fresh
+  echo '{}' > "$CPD/review-attest-aaaaaaaaaaaaaaaa.jsonl"; age 40 "$CPD/review-attest-aaaaaaaaaaaaaaaa.jsonl"
+  chmod 555 "$CPD"
+  OUT="$(mk "$P3" lgtmgate:Morgan "$(box_cmd 'echo ok')" | run_hook 2>&1)"; RC=$?
+  chmod 755 "$CPD"
+  [ "$RC" -eq 0 ] && [ -z "$OUT" ] && [ -e "$CPD/review-attest-aaaaaaaaaaaaaaaa.jsonl" ] && ok=1 || ok=0
+  check "[635] prune: an unwritable record directory exits 0, prints nothing and removes nothing" "$ok"
+fi
+fresh
+mk "$P3" lgtmgate:Morgan "$(box_cmd 'echo ok')" | run_hook
+[ "$(ls "$CPD" | wc -l | tr -d ' ')" = "1" ] && [ "$(rec_lines)" = "1" ] && ok=1 || ok=0
+check "[635] prune: no matching file exits 0 and writes only the window record" "$ok"
+
 # ---- registration
 jq -e '.hooks.PostToolUse[] | select(.matcher == "Bash") | .hooks[] | select(.command | contains("PostToolUse-review-attest.sh"))' "$REG" >/dev/null 2>&1 && ok=1 || ok=0
 check "[631] plugin-hooks.json registers the review hook under PostToolUse (matcher Bash)" "$ok"

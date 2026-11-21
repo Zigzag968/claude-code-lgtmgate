@@ -15,7 +15,7 @@
 # Resistance to forgery: the record resists a reviewer only under an enabled Bash sandbox with the unsandboxed retry
 # denied (allowUnsandboxedCommands false, or dontAsk) and no excludedCommands pattern over a writing command;
 # otherwise it only witnesses that a call ran.
-# DEBT(#635): one small file per review window stays in the plugin data directory (kept across updates, removed on uninstall).
+# Prune: each append removes review-attest-*.jsonl files in the record directory older than 30 days (find -mtime +30); a run resumed later finds no record and demotes its bound boxes (fail closed) (#635).
 # DEBT(#636): an unsandboxed retry of the reviewer's call is not detected.
 # DEBT(#640): a foreground call moved to the background at its timeout may be recorded before it exits (payload unobserved).
 # Never blocks: every failed test is a silent exit 0 with nothing written.
@@ -120,4 +120,5 @@ ENTRY="$(jq -cn --arg n "$NONCE" --arg a "$(jqi -r '.agent_id // empty')" --arg 
   '{nonce:$n, agent_id:$a, agent_type:$at, tool_use_id:$t, key:$k, event:$ev, exit:$x, ts:$ts}' 2>/dev/null)" || exit 0
 [ -n "$ENTRY" ] || exit 0
 printf '%s\n' "$ENTRY" >> "$RD/review-attest-$NONCE.jsonl" 2>/dev/null
+find "$RD" -maxdepth 1 -type f -name 'review-attest-*.jsonl' -mtime +30 -delete 2>/dev/null
 exit 0
