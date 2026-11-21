@@ -92,22 +92,22 @@
         {
           "text": "`node scripts/check-1.cjs; echo $?` prints `0`",
           "humanGate": false,
-          "command": "_"
+          "command": "node scripts/check-1.cjs; echo $?"
         },
         {
           "text": "`node scripts/check-2.cjs; echo $?` prints `0`",
           "humanGate": false,
-          "command": "_"
+          "command": "node scripts/check-2.cjs; echo $?"
         },
         {
           "text": "`node scripts/check-3.cjs; echo $?` prints `0`",
           "humanGate": false,
-          "command": "_"
+          "command": "node scripts/check-3.cjs; echo $?"
         },
         {
           "text": "`node scripts/check-4.cjs; echo $?` prints `0`",
           "humanGate": false,
-          "command": "_"
+          "command": "node scripts/check-4.cjs; echo $?"
         },
         {
           "text": "the maintainer approves the one-way door 5",
@@ -116,22 +116,22 @@
         {
           "text": "`node scripts/check-6.cjs; echo $?` prints `0`",
           "humanGate": false,
-          "command": "_"
+          "command": "node scripts/check-6.cjs; echo $?"
         },
         {
           "text": "`node scripts/check-7.cjs; echo $?` prints `0`",
           "humanGate": false,
-          "command": "_"
+          "command": "node scripts/check-7.cjs; echo $?"
         },
         {
           "text": "`node scripts/check-8.cjs; echo $?` prints `0`",
           "humanGate": false,
-          "command": "_"
+          "command": "node scripts/check-8.cjs; echo $?"
         },
         {
           "text": "`node scripts/check-9.cjs; echo $?` prints `0`",
           "humanGate": false,
-          "command": "_"
+          "command": "node scripts/check-9.cjs; echo $?"
         },
         {
           "text": "the maintainer approves the one-way door 10",
@@ -140,33 +140,43 @@
         {
           "text": "`node scripts/check-11.cjs; echo $?` prints `0`",
           "humanGate": false,
-          "command": "_"
+          "command": "node scripts/check-11.cjs; echo $?"
         },
         {
           "text": "`node scripts/check-12.cjs; echo $?` prints `0`",
           "humanGate": false,
-          "command": "_"
+          "command": "node scripts/check-12.cjs; echo $?"
         },
         {
           "text": "`node scripts/check-13.cjs; echo $?` prints `0`",
           "humanGate": false,
-          "command": "_"
+          "command": "node scripts/check-13.cjs; echo $?"
         },
         {
           "text": "`node scripts/check-14.cjs; echo $?` prints `0`",
           "humanGate": false,
-          "command": "_"
+          "command": "node scripts/check-14.cjs; echo $?"
         }
       ],
-      "plan": "Plan of the long checklist.\n\n## Acceptance checklist\n- [ ] <!-- ac:1 --> `node scripts/check-1.cjs; echo $?` prints `0`\n- [ ] <!-- ac:2 --> `node scripts/check-2.cjs; echo $?` prints `0`\n- [ ] <!-- ac:3 --> `node scripts/check-3.cjs; echo $?` prints `0`\n- [ ] <!-- ac:4 --> `node scripts/check-4.cjs; echo $?` prints `0`\n- [ ] <!-- ac:5 --> [human-gate] the maintainer approves the one-way door 5\n- [ ] <!-- ac:6 --> `node scripts/check-6.cjs; echo $?` prints `0`\n- [ ] <!-- ac:7 --> `node scripts/check-7.cjs; echo $?` prints `0`\n- [ ] <!-- ac:8 --> `node scripts/check-8.cjs; echo $?` prints `0`\n- [ ] <!-- ac:9 --> `node scripts/check-9.cjs; echo $?` prints `0`\n- [ ] <!-- ac:10 --> [human-gate] the maintainer approves the one-way door 10\n- [ ] <!-- ac:11 --> `node scripts/check-11.cjs; echo $?` prints `0`\n- [ ] <!-- ac:12 --> `node scripts/check-12.cjs; echo $?` prints `0`\n- [ ] <!-- ac:13 --> `node scripts/check-13.cjs; echo $?` prints `0`\n- [ ] <!-- ac:14 --> `node scripts/check-14.cjs; echo $?` prints `0`\n"
+      "plan": "Plan of the long checklist.\n\n## Acceptance checklist\n- [ ] <!-- ac:1 --> `node scripts/check-1.cjs; echo $?` prints `0`\n- [ ] <!-- ac:2 --> `node scripts/check-2.cjs; echo $?` prints `0`\n- [ ] <!-- ac:3 --> `node scripts/check-3.cjs; echo $?` prints `0`\n- [ ] <!-- ac:4 --> `node scripts/check-4.cjs; echo $?` prints `0`\n- [ ] <!-- ac:5 --> [human-gate] the maintainer approves the one-way door 5\n- [ ] <!-- ac:6 --> `node scripts/check-6.cjs; echo $?` prints `0`\n- [ ] <!-- ac:7 --> `node scripts/check-7.cjs; echo $?` prints `0`\n- [ ] <!-- ac:8 --> `node scripts/check-8.cjs; echo $?` prints `0`\n- [ ] <!-- ac:9 --> `node scripts/check-9.cjs; echo $?` prints `0`\n- [ ] <!-- ac:10 --> [human-gate] the maintainer approves the one-way door 10\n- [ ] <!-- ac:11 --> `node scripts/check-11.cjs; echo $?` prints `0`\n- [ ] <!-- ac:12 --> `node scripts/check-12.cjs; echo $?` prints `0`\n- [ ] <!-- ac:13 --> `node scripts/check-13.cjs; echo $?` prints `0`\n- [ ] <!-- ac:14 --> `node scripts/check-14.cjs; echo $?` prints `0`\n\nproof-command ac:1: node scripts/check-1.cjs; echo $?\nproof-command ac:2: node scripts/check-2.cjs; echo $?\nproof-command ac:3: node scripts/check-3.cjs; echo $?\nproof-command ac:4: node scripts/check-4.cjs; echo $?\nproof-command ac:6: node scripts/check-6.cjs; echo $?\nproof-command ac:7: node scripts/check-7.cjs; echo $?\nproof-command ac:8: node scripts/check-8.cjs; echo $?\nproof-command ac:9: node scripts/check-9.cjs; echo $?\nproof-command ac:11: node scripts/check-11.cjs; echo $?\nproof-command ac:12: node scripts/check-12.cjs; echo $?\nproof-command ac:13: node scripts/check-13.cjs; echo $?\nproof-command ac:14: node scripts/check-14.cjs; echo $?\n"
     },
+    "probe-257-lines-plan-artifact-r0": [
+      {
+        "line": "",
+        "verify": "_"
+      },
+      {
+        "line": "",
+        "verify": "_"
+      }
+    ],
     "plan-check-257-1": {
       "verdict": "CONFORMING",
       "issues": []
     },
     "probe-257-preflight-dev-r0": {
-      "line": "PROBE name=preflight exit=0 sha=5cb984bc5618fc5f042965705e1dac42914fd6aedfdac92d26681085dc782d45 cmd=9675d9ef114afdb7f56c978ee0ec32c198204ec50ff51e562f8d60599e4825c9 json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/Volumes/<disk>/Dev/Apps/claude-code-lgtmgate/.git/worktrees/issue-257\",\"writable\":true}",
-      "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=5cb984bc5618fc5f042965705e1dac42914fd6aedfdac92d26681085dc782d45 cmd=9675d9ef114afdb7f56c978ee0ec32c198204ec50ff51e562f8d60599e4825c9 json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/Volumes/<disk>/Dev/Apps/claude-code-lgtmgate/.git/worktrees/issue-257\",\"writable\":true}"
+      "line": "PROBE name=preflight exit=0 sha=5cb984bc5618fc5f042965705e1dac42914fd6aedfdac92d26681085dc782d45 cmd=b24cbfdaeee0f8b9f7d6824d4f34c01e039e3644dae5f45572a008e31c596bbb json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/Volumes/<disk>/Dev/Apps/claude-code-lgtmgate/.git/worktrees/issue-257\",\"writable\":true}",
+      "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=5cb984bc5618fc5f042965705e1dac42914fd6aedfdac92d26681085dc782d45 cmd=b24cbfdaeee0f8b9f7d6824d4f34c01e039e3644dae5f45572a008e31c596bbb json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/Volumes/<disk>/Dev/Apps/claude-code-lgtmgate/.git/worktrees/issue-257\",\"writable\":true}"
     },
     "nick-issue-257": {
       "prNumber": 206,
@@ -198,8 +208,8 @@
       "testCommandRun": "cd \"/Volumes/<disk>/Dev/Worktrees/claude-code-lgtmgate/issue-257\" && bash templates/test-canonical-guards.sh && node scripts/run-flow-suite.cjs"
     },
     "probe-257-pr-state-window-start-r0": {
-      "line": "PROBE name=pr-state exit=0 sha=ce2e8943f842dd7d2bed076a624f8e9c732727557397ee99985a198c021b587d cmd=350c4484f5893cfe5f4b7d467590a67a5ec752e13c6191b84e14ef9ff8b1cf9c json={\"now\":\"2026-10-03T17:39:56Z\",\"headRefName\":\"feat/issue-257\",\"headRefOid\":\"a996535df7d4c4b7b66f0ffa37c7a503c78b5990\",\"bodyDigest\":\"5a0fdef5ceaa\",\"acceptanceChecked\":[],\"decisionLog\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-10-03T17:29:04Z\",\"commitCount\":2,\"reviewCommentIds\":[],\"openIssues\":null,\"openIssuesTruncated\":false}",
-      "verify": "VERIFY ok line=PROBE name=pr-state exit=0 sha=ce2e8943f842dd7d2bed076a624f8e9c732727557397ee99985a198c021b587d cmd=350c4484f5893cfe5f4b7d467590a67a5ec752e13c6191b84e14ef9ff8b1cf9c json={\"now\":\"2026-10-03T17:39:56Z\",\"headRefName\":\"feat/issue-257\",\"headRefOid\":\"a996535df7d4c4b7b66f0ffa37c7a503c78b5990\",\"bodyDigest\":\"5a0fdef5ceaa\",\"acceptanceChecked\":[],\"decisionLog\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-10-03T17:29:04Z\",\"commitCount\":2,\"reviewCommentIds\":[],\"openIssues\":null,\"openIssuesTruncated\":false}"
+      "line": "PROBE name=pr-state exit=0 sha=ce2e8943f842dd7d2bed076a624f8e9c732727557397ee99985a198c021b587d cmd=116a8fb9693c348e67bd837fe9fd719196d385e176259a98379e31688ed2b057 json={\"now\":\"2026-10-03T17:39:56Z\",\"headRefName\":\"feat/issue-257\",\"headRefOid\":\"a996535df7d4c4b7b66f0ffa37c7a503c78b5990\",\"bodyDigest\":\"5a0fdef5ceaa\",\"acceptanceChecked\":[],\"decisionLog\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-10-03T17:29:04Z\",\"commitCount\":2,\"reviewCommentIds\":[],\"openIssues\":null,\"openIssuesTruncated\":false,\"nonce\":\"a1b2c3d4e5f60718\",\"forgeable\":false}",
+      "verify": "VERIFY ok line=PROBE name=pr-state exit=0 sha=ce2e8943f842dd7d2bed076a624f8e9c732727557397ee99985a198c021b587d cmd=116a8fb9693c348e67bd837fe9fd719196d385e176259a98379e31688ed2b057 json={\"now\":\"2026-10-03T17:39:56Z\",\"headRefName\":\"feat/issue-257\",\"headRefOid\":\"a996535df7d4c4b7b66f0ffa37c7a503c78b5990\",\"bodyDigest\":\"5a0fdef5ceaa\",\"acceptanceChecked\":[],\"decisionLog\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-10-03T17:29:04Z\",\"commitCount\":2,\"reviewCommentIds\":[],\"openIssues\":null,\"openIssuesTruncated\":false,\"nonce\":\"a1b2c3d4e5f60718\",\"forgeable\":false}"
     },
     "morgan-pr-257-206-r0": {
       "verdict": "LGTM",
@@ -269,16 +279,16 @@
       ]
     },
     "probe-257-pr-state-window-end-r0": {
-      "line": "PROBE name=pr-state exit=0 sha=ef588e8a052fe426c596adf12f33c625c9966b19848adb1c9578281ac7573f02 cmd=0823de1bfb500facc3b5cd32a24d6009454520d812af5b0abd4ece207947cedb json={\"now\":\"2026-10-03T17:42:40Z\",\"headRefName\":\"feat/issue-257\",\"headRefOid\":\"a996535df7d4c4b7b66f0ffa37c7a503c78b5990\",\"bodyDigest\":\"5a0fdef5ceaa\",\"acceptanceChecked\":[],\"decisionLog\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-10-03T17:29:04Z\",\"commitCount\":2,\"reviewCommentIds\":[\"IC_kwDOUzMNuc8AAAABY_IDVQ\"],\"openIssues\":[],\"openIssuesTruncated\":false}",
-      "verify": "VERIFY ok line=PROBE name=pr-state exit=0 sha=ef588e8a052fe426c596adf12f33c625c9966b19848adb1c9578281ac7573f02 cmd=0823de1bfb500facc3b5cd32a24d6009454520d812af5b0abd4ece207947cedb json={\"now\":\"2026-10-03T17:42:40Z\",\"headRefName\":\"feat/issue-257\",\"headRefOid\":\"a996535df7d4c4b7b66f0ffa37c7a503c78b5990\",\"bodyDigest\":\"5a0fdef5ceaa\",\"acceptanceChecked\":[],\"decisionLog\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-10-03T17:29:04Z\",\"commitCount\":2,\"reviewCommentIds\":[\"IC_kwDOUzMNuc8AAAABY_IDVQ\"],\"openIssues\":[],\"openIssuesTruncated\":false}"
+      "line": "PROBE name=pr-state exit=0 sha=ef588e8a052fe426c596adf12f33c625c9966b19848adb1c9578281ac7573f02 cmd=ee4e27b29728e7f86cac291ee6ef1c4a069daa535b05b0d6a3424a8db0fcdb0a json={\"now\":\"2026-10-03T17:42:40Z\",\"headRefName\":\"feat/issue-257\",\"headRefOid\":\"a996535df7d4c4b7b66f0ffa37c7a503c78b5990\",\"bodyDigest\":\"5a0fdef5ceaa\",\"acceptanceChecked\":[],\"decisionLog\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-10-03T17:29:04Z\",\"commitCount\":2,\"reviewCommentIds\":[\"IC_kwDOUzMNuc8AAAABY_IDVQ\"],\"openIssues\":[],\"openIssuesTruncated\":false,\"reviewKeys\":[\"097fdd4514b74e18\",\"0f41ad2bc646d963\",\"1d8b9eca9daa2869\",\"27be574833df557e\",\"4355ef2b9628b00c\",\"5b2fa4d4f72c3c09\",\"5ea25c68c1737280\",\"844b7e159f44f49c\",\"a9280b6108c7f0ed\",\"a9f18235a8c7331e\",\"b181605e1dbc6bf4\",\"eb3795bd50c7426d\"]}",
+      "verify": "VERIFY ok line=PROBE name=pr-state exit=0 sha=ef588e8a052fe426c596adf12f33c625c9966b19848adb1c9578281ac7573f02 cmd=ee4e27b29728e7f86cac291ee6ef1c4a069daa535b05b0d6a3424a8db0fcdb0a json={\"now\":\"2026-10-03T17:42:40Z\",\"headRefName\":\"feat/issue-257\",\"headRefOid\":\"a996535df7d4c4b7b66f0ffa37c7a503c78b5990\",\"bodyDigest\":\"5a0fdef5ceaa\",\"acceptanceChecked\":[],\"decisionLog\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-10-03T17:29:04Z\",\"commitCount\":2,\"reviewCommentIds\":[\"IC_kwDOUzMNuc8AAAABY_IDVQ\"],\"openIssues\":[],\"openIssuesTruncated\":false,\"reviewKeys\":[\"097fdd4514b74e18\",\"0f41ad2bc646d963\",\"1d8b9eca9daa2869\",\"27be574833df557e\",\"4355ef2b9628b00c\",\"5b2fa4d4f72c3c09\",\"5ea25c68c1737280\",\"844b7e159f44f49c\",\"a9280b6108c7f0ed\",\"a9f18235a8c7331e\",\"b181605e1dbc6bf4\",\"eb3795bd50c7426d\"]}"
     },
     "probe-257-pr-write-acceptance-tick-r0": {
       "line": "PROBE name=pr-write exit=0 sha=db2f30184e8065f3d07db54de61195197fdc381c47b9ebb2b27e38b0c62b0499 cmd=2802f2e66e6820d276fa8b9e471b189c60a0a00507f49549c93069a2ce354d60 json={\"op\":\"body-splice\",\"result\":\"written\",\"reason\":null,\"bytes\":3728}",
       "verify": "_"
     },
     "probe-257-pr-write-acceptance-tick-retry-r0": {
-      "line": "PROBE name=pr-write exit=0 sha=db2f30184e8065f3d07db54de61195197fdc381c47b9ebb2b27e38b0c62b0499 cmd=eebce2cc9c717d305dec3ed3e5282ed2d044aefbde54abcec101339c08fa0308 json={\"op\":\"body-splice\",\"result\":\"written\",\"reason\":null,\"bytes\":3728}",
-      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=db2f30184e8065f3d07db54de61195197fdc381c47b9ebb2b27e38b0c62b0499 cmd=eebce2cc9c717d305dec3ed3e5282ed2d044aefbde54abcec101339c08fa0308 json={\"op\":\"body-splice\",\"result\":\"written\",\"reason\":null,\"bytes\":3728}"
+      "line": "PROBE name=pr-write exit=0 sha=db2f30184e8065f3d07db54de61195197fdc381c47b9ebb2b27e38b0c62b0499 cmd=a6edec0d676e6536bbf479908d3dfab3c37cd967ed8a1e10dba9f68a4d1d6c6c json={\"op\":\"body-splice\",\"result\":\"written\",\"reason\":null,\"bytes\":3728}",
+      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=db2f30184e8065f3d07db54de61195197fdc381c47b9ebb2b27e38b0c62b0499 cmd=a6edec0d676e6536bbf479908d3dfab3c37cd967ed8a1e10dba9f68a4d1d6c6c json={\"op\":\"body-splice\",\"result\":\"written\",\"reason\":null,\"bytes\":3728}"
     },
     "probe-257-pr-write-decision-log-r0": {
       "line": "_",
@@ -312,6 +322,9 @@
       "probe:provision:haiku",
       "probe:provision-freshness:haiku",
       "probe:pr-write:haiku",
+      "probe:lines:haiku",
+      "probe:lines:haiku",
+      "plan-artifact-unreadable",
       "probe:pr-write:haiku",
       "probe:preflight:haiku",
       "probe:preflight:haiku",
@@ -336,6 +349,8 @@
       "probe-257-pr-write-run-state-plan-r0",
       "diagnose-issue-257",
       "scout-issue-257-1",
+      "probe-257-lines-plan-artifact-r0",
+      "probe-257-lines-plan-artifact-r0",
       "plan-check-257-1",
       "probe-257-pr-write-run-state-dev-r0",
       "probe-257-preflight-dev-r0",
