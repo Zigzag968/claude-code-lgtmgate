@@ -111,8 +111,8 @@ export const meta = {
 // result); it does NOT claim to rescue an out-of-band harness abort, which stays an upstream fix
 // tracked as a known upstream limitation.
 //
-// Diagnose stage (Theo) — MANDATORY, no opt-out (human decision, 2026-07-24: "every
-// nightly run is diagnosed by Theo"). Runs before Plan on every fresh dispatch
+// Diagnose stage (Theo) — MANDATORY, no opt-out (human decision, 2026-07-24: every
+// run is diagnosed by Theo). Runs before Plan on every fresh dispatch
 // (entryStage='plan'): Theo qualifies the issue before Sam ever plans a fix on top of an
 // unverified premise. For a bug/pain-derived issue that names a cause, Theo reproduces it
 // for real and confirms/refutes the cause. For a feature/chore ask with no claimed bug,
