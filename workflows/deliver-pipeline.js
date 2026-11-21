@@ -132,7 +132,7 @@ export const meta = {
 // `version`, checked against plugin.json by tests/templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '1.6.0-beta.27', cutFrom: '3c101db' }
+const BUILD = { plugin: 'lgtmgate', version: '1.6.0-beta.28', cutFrom: '09018c8' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -3494,7 +3494,7 @@ if (after('plan', entryStage)) {
       `DESIGN-STEP-TRIGGER CLASSIFICATION: independently classify this issue's ACTUAL scope from the real code — never trust the issue's own stated risk tag, or its silence, as ground truth. Set each signal only on evidence you checked (same bar as confirmed/evidence): ` +
       `persistentStateSignal (creates/modifies data with a multi-request lifecycle), authSecurityBoundarySignal (decides who may do what, or opens new attack surface), deployConfigSignal (touches infra/production config whose blast radius is the whole service), immatureVendorApiSignal (depends on a vendor/API primitive a CITED source calls preview/beta/not-production-ready, or one nothing in this codebase has used in production before). Cite the code/doc grounding each true signal in designStepSignalEvidence. ` +
       `If your independent read disagrees with what the issue states (or the issue states nothing about this), set issueClassificationMismatch=true and correct the record AT THE SOURCE: look for an existing marked comment with ` +
-      `\`gh api repos/{owner}/{repo}/issues/${issue}/comments --jq '.[]|select(.body|startswith("${designStepMarker}"))|.id'\` — if an id comes back, EDIT it in place with ` +
+      `\`gh api repos/{owner}/{repo}/issues/${issue}/comments --paginate --jq '.[]|select(.body|startswith("${designStepMarker}"))|.id'\` — if an id comes back, EDIT it in place with ` +
       `\`gh api -X PATCH repos/{owner}/{repo}/issues/comments/<id> -F body=@.pipeline/issue-${issue}-design-step.md\`; otherwise create it with \`gh issue comment ${issue} --body-file .pipeline/issue-${issue}-design-step.md\`. The comment body is exactly: ${designStepMarker} on its first line, then the four signals with your evidence, one line each. Never stack a second one.\n` +
       `BLAST-RADIUS: no destructive git (git clean, reset --hard, checkout -- <path>, forced -f/-D deletes) — you diagnose, you never reset the shared worktree's state. ` +
       `Never read/probe a real credential path (~/.ssh/*, ~/.aws/*, .env*, **/*secret*, keychains) — to verify a sandbox deny-rule empirically, create a SYNTHETIC file in $TMPDIR named after the pattern, never the real one. ` +
