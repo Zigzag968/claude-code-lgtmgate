@@ -51,6 +51,10 @@
 #       watchdog and the SessionStart stub read. S is lowercase letters and hyphens. The main checkout is the parent of the git
 #       common dir; when that is not writable (a worktree session's sandbox, #663) the file goes to the worktree's own .pipeline,
 #       which is what a session started there scans; outside git it is the directory itself. Atomic: temp file then mv.
+#   phase --issue N --status S --project-number P --project-id ID --field-id F --option-id O
+#       (#614) one phase transition in ONE call: the `status` write (the project args) then the `run-state` write (--status S is the
+#       run-state value). Both always run, results independent (a failed status read never suppresses the local run-state file).
+#       Prints ONE line, op `phase`: the first failed of (status, run-state), else the status line (skipped/written).
 #   comment ops: on a thread of >= 100 comments the marker lookup re-reads ALL comments through REST.
 # pii-guard (#167): issue-comment, pr-comment and body-splice (decision-log|acceptance|tick) pipe their text to pii-guard.sh; a match of a
 #   pattern of the repository's .pii-patterns file -> failed/pii-refused:<name>, nothing read from or written to GitHub. No file = no effect.
@@ -209,6 +213,15 @@ status_op() {
   fi
 }
 
+# phase (#614): status then run-state, both always; one aggregate line (first failed, else the status line).
+phase_op() {
+  local s r
+  s="$(status_op)"; r="$(run_state_op)"
+  if [ "$(printf '%s' "$s" | jq -r .result 2>/dev/null)" = failed ]; then printf '%s\n' "$s"
+  elif [ "$(printf '%s' "$r" | jq -r .result 2>/dev/null)" = failed ]; then printf '%s\n' "$r"
+  else printf '%s\n' "$s"; fi
+}
+
 body_digest() { printf '%s\n' "$(cat "$1")" | { shasum -a 256 2>/dev/null || sha256sum; } | cut -c1-12; }
 
 body_splice_op() {
@@ -264,6 +277,7 @@ main() {
     minimize) minimize_op ;;
     status) status_op ;;
     run-state) run_state_op ;;
+    phase) phase_op ;;
     body-splice) body_splice_op ;;
     *) emit failed bad-args ;;
   esac
