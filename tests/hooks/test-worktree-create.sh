@@ -77,6 +77,19 @@ run_hook issue-9
 check "issue-9 again: exit 0 and the same path" \
   "$([ "$RC" -eq 0 ] && [ "$STDOUT" = "$EXPECT_PATH" ] && echo 1 || echo 0)"
 
+# 2b. idempotent with a worktreeRoot reached through a symlink (git lists the real path)
+REAL="$WORK/real-root"
+LINK="$WORK/link-root"
+mkdir -p "$REAL"
+ln -s "$REAL" "$LINK"
+write_config "{\"baseBranch\":\"$BASE\",\"branchPrefix\":\"$PREFIX\",\"worktreeRoot\":\"$LINK\"}"
+run_hook issue-15
+RC1=$RC
+run_hook issue-15
+check "symlinked root: second run exits 0 and prints the same path" \
+  "$([ "$RC1" -eq 0 ] && [ "$RC" -eq 0 ] && [ "$STDOUT" = "$LINK/issue-15" ] && echo 1 || echo 0)"
+write_config "{\"baseBranch\":\"$BASE\",\"branchPrefix\":\"$PREFIX\",\"worktreeRoot\":\"$WTROOT\"}"
+
 # 3. branch exists without a worktree (half-done state)
 git -C "$REPO" branch "${PREFIX}issue-11" "origin/$BASE"
 run_hook issue-11
