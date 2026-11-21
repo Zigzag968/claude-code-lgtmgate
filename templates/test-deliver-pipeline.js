@@ -8420,6 +8420,22 @@ await testCase('T622a the Sam plan-comment lookup passes --paginate (#622)', asy
   return error1 || error2 || error3 || { ok: true }
 })
 
+// T681 (#681) — the Theo design-step comment lookup is paginated too (same defect as T622a, other copy). Anchored on
+// the prompt template source: no prompt preview seam exists and none is added (a new seam is a one-way door).
+await testCase('T681 the design-step comment lookup passes --paginate (#681)', async () => {
+  const source = SUITE_ARGS.fpSource
+  if (!source) {
+    log('SKIP — T681: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const at = source.indexOf('startswith("${designStepMarker}")')
+  const window = at < 0 ? '' : source.slice(Math.max(0, at - 200), at + 80)
+  const error1 = eq('design-step lookup found', window.length > 0, true)
+  const error2 = includes('paginated design-step lookup', window, `comments --paginate --jq '.[]|select(.body|startswith("\${designStepMarker}"))|.id'`)
+  const error3 = eq('no unpaginated lookup left in the workflow', source.includes('comments --jq'), false)
+  return error1 || error2 || error3 || { ok: true }
+})
+
 // T123 (#42) — every test ID is unique across the suite. Must stay the LAST case so `results`
 // holds every other case name. Includes a negative control proving the detector really detects.
 // T533 (#533) — a plan reference instead of a retyped planText. The engine pins the sha256 of the plan artifact when it
