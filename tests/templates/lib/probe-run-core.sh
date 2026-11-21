@@ -115,8 +115,8 @@ check "verify no-attestation: no attest file" "$ok"
 
 node -e 'console.log(JSON.stringify({agent_id:"a",tool_use_id:"t",kind:"probe",label:"vt",round:0,line:process.argv[1],ts:new Date().toISOString()}))' "$VLINE" > "$ATT"
 VOUT="$(node "$PR" --verify --label vt --round 0 --out "$VD" --parser lines --attest "$ATT")"
-ok=0; [ "$VOUT" = "VERIFY ok line=$VLINE" ] && ok=1
-check "verify ok: attested line equals the recomputed one (entry bound to label and round)" "$ok"
+ok=0; [ "$VOUT" = "VERIFY ok linesha=$(node -e 'process.stdout.write(require("crypto").createHash("sha256").update(process.argv[1]).digest("hex"))' "$VLINE")" ] && ok=1
+check "verify ok: attested line equals the recomputed one, VERIFY carries its sha256 not the line (entry bound to label and round, #699)" "$ok"
 
 # the attestation is bound to the call (#83): the same line attested for another label or round does not verify
 cp "$VD/vt-r0.json" "$VD/vt-r1.json"; cp "$VD/vt-r0.json" "$VD/other-r0.json"
@@ -170,7 +170,7 @@ ok=0; [ "$SOUT" = "VERIFY fail reason=stale-attestation" ] && ok=1
 check "verify: an attestation older than the record does not satisfy VERIFY" "$ok"
 node -e 'const l=process.argv[1];const e=(ts,line)=>JSON.stringify({agent_id:"a",tool_use_id:"t",kind:"probe",label:"sv",round:0,line,ts});console.log(e("2000-01-01T00:00:00Z",l));console.log(e(new Date().toISOString(),l))' "$SL" > "$SA"
 SOUT="$(node "$PR" --verify --label sv --round 0 --out "$SD" --parser lines --attest "$SA")"
-ok=0; [ "$SOUT" = "VERIFY ok line=$SL" ] && ok=1
+ok=0; [ "$SOUT" = "VERIFY ok linesha=$(node -e 'process.stdout.write(require("crypto").createHash("sha256").update(process.argv[1]).digest("hex"))' "$SL")" ] && ok=1
 check "verify: a fresh latest attestation after an old one passes" "$ok"
 node -e 'const l=process.argv[1];const e=(ts,line)=>JSON.stringify({agent_id:"a",tool_use_id:"t",kind:"probe",label:"sv",round:0,line,ts});console.log(e(new Date().toISOString(),l));console.log(e(new Date().toISOString(),"PROBE name=lines exit=0 sha=0 json={}"))' "$SL" > "$SA"
 SOUT="$(node "$PR" --verify --label sv --round 0 --out "$SD" --parser lines --attest "$SA")"

@@ -18,6 +18,7 @@
 const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')
+const { digestAnswer, syncLineDigest } = require('./line-digest.cjs')
 const { stripExports, buildPipelineRunner, replayFixture, commandOfPrompt, firstCommandHash, setCommandHash } = require('../run-offline.cjs')
 
 const MAX_PASSES = 8
@@ -89,6 +90,8 @@ function rewritePass(calls, store, coupled) {
     const want = sha256(command)
     entry.line = setCommandHash(entry.line, want)
     if (typeof entry.verify === 'string' && firstCommandHash(entry.verify) === current) entry.verify = setCommandHash(entry.verify, want)
+    // #699: the digest form of VERIFY follows its line
+    syncLineDigest(entry)
     changed = true
   })
   return changed
@@ -134,7 +137,20 @@ function collectPairs(original, work, coupled, pairs, label) {
     if (!oldHash || !newHash || oldHash === newHash) continue
     if (pairs.has(oldHash) && pairs.get(oldHash) !== newHash) throw new Error(`${label}: digest ${oldHash} maps to two new digests`)
     pairs.set(oldHash, newHash)
+    // #699: a digest-form VERIFY carries the sha256 of the old line: it becomes the one of the new line
+    const oldEntry = entryOfKey(original, key)
+    const newEntry = entryOfKey(work, key)
+    if (isObject(oldEntry) && isObject(newEntry) && oldEntry.verify === digestAnswer(oldEntry.line)) {
+      pairs.set(sha256(oldEntry.line), sha256(newEntry.line))
+    }
   }
+}
+
+// The call entry a key `name` or `name[occurrence]` names (undefined when absent).
+function entryOfKey(store, key) {
+  const match = /^(.*)\[(\d+)\]$/.exec(key)
+  const name = match ? match[1] : key
+  return match ? (Array.isArray(store[name]) ? store[name][Number(match[2])] : undefined) : store[name]
 }
 
 async function digestPairs(fixture, before, after, name) {

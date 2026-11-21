@@ -1,0 +1,331 @@
+{
+  "name": "699-attest-demoted-parks-no-nick",
+  "args": {
+    "issue": 624,
+    "brief": "_",
+    "worktreePath": "_",
+    "mode": "auto",
+    "pmReview": false,
+    "config": {
+      "ghProject": {
+        "owner": "_",
+        "projectNumber": 1
+      },
+      "repo": "_",
+      "baseBranch": "_",
+      "branchPrefix": "feat/",
+      "worktreeRoot": "_",
+      "commands": {
+        "build": "_",
+        "test": "_",
+        "format": "_"
+      },
+      "ciChecks": [
+        "_",
+        "_"
+      ],
+      "oneWayDoorKinds": [
+        "status",
+        "agent",
+        "hook",
+        "seam"
+      ],
+      "engineRepo": true,
+      "r2Scope": {
+        "issueType": "_",
+        "paths": [
+          "_"
+        ],
+        "fixtureDir": "_"
+      },
+      "oneWayDoorPaths": [
+        "hooks/**",
+        "!hooks/test-*",
+        "docs/critical-paths.md"
+      ],
+      "provision": {
+        "extraLinks": [
+          {
+            "src": "_",
+            "dst": "_"
+          },
+          {
+            "src": "_",
+            "dst": "_"
+          }
+        ]
+      },
+      "preflight": {
+        "canonicalStringBan": [],
+        "envSymlink": "ignore"
+      },
+      "regressionGuard": {
+        "testGlob": "",
+        "testFnPattern": "",
+        "baselineCmd": ""
+      }
+    },
+    "configLocal": {
+      "worktreeRoot": "_"
+    },
+    "pluginRoot": "_",
+    "sessionRoot": "_",
+    "issueType": "feature"
+  },
+  "calls": {
+    "probe-624-provision-provision-r0": {
+      "line": "PROBE name=provision exit=0 sha=4d92447c1231bc682cf29d4d5f85736a8470e7370052ea69f089d2969ad9da16 cmd=b682d374969f61b09bdf7f8b1763aeecbd0b0ef69e20c82a7ba0a3feda832f34 json={\"version\":2,\"linked\":[\"node_modules\",\".venv\"],\"missing\":[],\"skipped\":false}",
+      "verify": "VERIFY ok linesha=6d59fb1ad5a594955082cc87f751043cebc5af0e41a276b9e03dd58affff3a4c"
+    },
+    "probe-624-provision-freshness-provision-freshness-r0": {
+      "line": "PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b cmd=5430d2285cdf1982f619b08cf794226d4a3e082cac2ffdb9d7944e1ef1cbccc9 json={\"state\":\"fresh\",\"behind\":0,\"own\":0}",
+      "verify": "VERIFY ok linesha=266eec0b3daca9110e6db19ae82b3a486d2a732002c5f40fabb68611876c50e6"
+    },
+    "probe-624-pr-write-run-state-plan-r0": {
+      "line": "PROBE name=pr-write exit=0 sha=fa2ae683daf2caaf3daf965d6da084106bbdee3b21836b037712f74fa7bc8a3b cmd=ca051b40bbf8e8dc9f280c3deef02e0145ee619ca7aa49ebec72c8f5997a2d75 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":69}",
+      "verify": "VERIFY ok linesha=f36cbc4e7d755da1e44cc4271dec0feff562476fbbb8b5adbfe5af63dd30c51f"
+    },
+    "diagnose-issue-624": {
+      "confirmed": true,
+      "evidence": "_",
+      "actualCause": "",
+      "persistentStateSignal": false,
+      "authSecurityBoundarySignal": false,
+      "deployConfigSignal": false,
+      "immatureVendorApiSignal": false,
+      "designStepSignalEvidence": "_",
+      "issueClassificationMismatch": false,
+      "lanes": [],
+      "laneEvidence": "_"
+    },
+    "scout-issue-624-1": {
+      "decision": "_",
+      "rationale": "_",
+      "planPath": "_",
+      "targetFiles": [
+        "_",
+        "_"
+      ],
+      "acceptanceItems": [
+        {
+          "text": "`grep -n \"MINIMALITY\" workflows/deliver-pipeline.js` shows the criterion in the plan-check prompt (written as `command grep -nF \"MINIMALITY\" workflows/deliver-pipeline.js`).",
+          "humanGate": false,
+          "command": "command grep -nF \"MINIMALITY\" workflows/deliver-pipeline.js"
+        },
+        {
+          "text": "A prompt-preview test T624a in `templates/test-deliver-pipeline.js` asserts the MINIMALITY text and the NOT_CONFORMING consequence are in the plan-check prompt source.",
+          "humanGate": false,
+          "command": "command grep -nF \"T624a\" templates/test-deliver-pipeline.js"
+        },
+        {
+          "text": "A fixture test T624b replays an unneeded-mechanism verdict and the gate returns NOT_CONFORMING (escalate plan-not-conforming) naming the mechanism.",
+          "humanGate": false,
+          "command": "command grep -nF \"T624b\" templates/test-deliver-pipeline.js"
+        },
+        {
+          "text": "The model-call ratchet check still passes (no new model call added).",
+          "humanGate": false,
+          "command": "env GUARDS_ONLY=r1 node scripts/guards.cjs"
+        },
+        {
+          "text": "The full offline test suite passes on the branch.",
+          "humanGate": false,
+          "command": "node scripts/run-flow-suite.cjs"
+        }
+      ],
+      "plan": "_\n\n_\n\n_\n\n_\n\n_\n\n_\n\n_\n_\n_\n_\n_\n_\n_\n\n_\n\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n\n_\n\n_\n_\n_\n_\n_\n\n_\n\n_\n\n_\n\n- [ ] <!-- ac:1 --> `grep -n \"MINIMALITY\" workflows/deliver-pipeline.js` shows the criterion in the plan-check prompt (written as `command grep -nF \"MINIMALITY\" workflows/deliver-pipeline.js`).\n- [ ] <!-- ac:2 --> A prompt-preview test T624a in `templates/test-deliver-pipeline.js` asserts the MINIMALITY text and the NOT_CONFORMING consequence are in the plan-check prompt source.\n- [ ] <!-- ac:3 --> A fixture test T624b replays an unneeded-mechanism verdict and the gate returns NOT_CONFORMING (escalate plan-not-conforming) naming the mechanism.\n- [ ] <!-- ac:4 --> The model-call ratchet check still passes (no new model call added).\n- [ ] <!-- ac:5 --> The full offline test suite passes on the branch.\n\nproof-command ac:1: command grep -nF \"MINIMALITY\" workflows/deliver-pipeline.js\nproof-command ac:2: command grep -nF \"T624a\" templates/test-deliver-pipeline.js\nproof-command ac:3: command grep -nF \"T624b\" templates/test-deliver-pipeline.js\nproof-command ac:4: env GUARDS_ONLY=r1 node scripts/guards.cjs\nproof-command ac:5: node scripts/run-flow-suite.cjs\n\n_\n\n_\n\n_\n_\n_\n\n_\n_\n_\n\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n"
+    },
+    "probe-624-lines-plan-artifact-r0": [
+      {
+        "line": "",
+        "verify": "_"
+      },
+      {
+        "line": "",
+        "verify": "_"
+      }
+    ],
+    "plan-check-624-1": {
+      "verdict": "CONFORMING",
+      "issues": []
+    },
+    "probe-624-pr-write-run-state-dev-r0": {
+      "line": "PROBE name=pr-write exit=0 sha=a90230a94ac016f9d672573f826abd1c688a53982c5a6cf50207c719d3c39377 cmd=333fd6c75261962c6981182c165d470ece8da639cb2a1f0a0dcbf40455016069 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":68}",
+      "verify": "VERIFY ok linesha=ac409f6c137c37397115ca540be338b00737134dcb871017dc7eca9563bf5cb3"
+    },
+    "probe-624-preflight-dev-r0": [
+      {
+        "line": "PROBE name=preflight exit=0 sha=5f241cbd7be7a3c76cfed6c9494f4a575b624b840d7edca30377d09aa8e8369a cmd=d70943248919d2153a01e96a013616cf27900bf660b7dd5c226e508efb62357c json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/wt/root/.git/worktrees/issue-624\",\"writable\":true,\"layout\":{\"verdict\":\"CONFORMING\",\"issues\":[]}}",
+        "verify": "VERIFY ok linesha=507b8bdb5dee4021692925a5c39ac3840ad49ce6f1d9e4e8753bfd0ca88485dc"
+      }
+    ],
+    "nick-issue-624": {
+      "prNumber": 693,
+      "branch": "_",
+      "testsPass": true,
+      "summary": "_"
+    },
+    "probe-624-preflight-branch-r0": {
+      "line": "PROBE name=preflight exit=0 sha=765d4e26ff5d254917cb9d9290fdc2c82ccc2ba73412245724601d9b31943523 cmd=9356936e30d42d2f86c6a6c7af13e1c9bec58c6ccad2f38f21ecc49f7f591c41 json={\"mode\":\"branch\",\"headRef\":\"feat/issue-624\",\"branchPrefix\":\"feat/\"}",
+      "verify": "VERIFY ok linesha=99584f1b8f0a88179125e2efd89c3844a8c456b8a5eb44c50b01ba09ac195132"
+    },
+    "probe-624-pr-write-run-state-review-r0": {
+      "line": "PROBE name=pr-write exit=0 sha=86cd7a1843012fa0c26609293006f692967dfdc14c582de737215fe713bf73db cmd=36420ab2cf505186db77e5680834d93725313d19ea777f5825ecf846e8c5c323 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":71}",
+      "verify": "VERIFY ok linesha=7ac02aa70ce3afdf2fc7be439cd282583f533bedc3bc32243922809b060aab98"
+    },
+    "probe-624-git-rev-list-count-worktree-behind-693-r0": [
+      {
+        "line": "",
+        "verify": ""
+      },
+      {
+        "line": "",
+        "verify": ""
+      }
+    ],
+    "preflight-624-693-0": {
+      "pass": true,
+      "issues": [
+        "_",
+        "_",
+        "_",
+        "_",
+        "_"
+      ],
+      "testCommandRun": "_",
+      "failedChecks": []
+    },
+    "probe-624-pr-state-window-start-r0": [
+      {
+        "line": "_",
+        "verify": "_"
+      },
+      {
+        "line": "PROBE name=pr-state exit=0 sha=daf414b7547f65b2f07ada78a1f1377c4e74b62dc8f353b1683cfbbf0d149c4d cmd=fab5d2f80d44a5c26c240299ef7d2a33ab3a76297577416e87586bb762e91f83 json={\"now\":\"2026-11-20T16:59:37Z\",\"headRefName\":\"feat/issue-624\",\"headRefOid\":\"348bd43fd3dd5a8d637ba77048002a9e89425687\",\"bodyDigest\":\"ed6039ae3ac1\",\"acceptanceChecked\":[],\"decisionLog\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"BLOCKED\",\"lastCommitDate\":\"2026-11-20T16:56:59Z\",\"commitCount\":1,\"ciState\":\"pending\",\"ciChecks\":{\"Analyze (actions)\":\"green\",\"Analyze (javascript-typescript)\":\"green\",\"Analyze (python)\":\"green\",\"CodeQL\":\"green\",\"guards\":\"pending\",\"smoke-install\":\"green\"},\"reviewCommentIds\":[],\"openIssues\":null,\"openIssuesTruncated\":false,\"files\":[\"README.md\",\"templates/test-deliver-pipeline.js\",\"workflows/deliver-pipeline.js\"],\"acceptanceOpen\":5,\"nonce\":\"50ac10fe42b82c55\",\"forgeable\":false}",
+        "verify": "VERIFY ok linesha=e9a8de8fba0312aa5d6fd37082f0c46ebc3b159e06f1d596a6ef141d55f02222"
+      }
+    ],
+    "morgan-pr-624-693-r0": {
+      "verdict": "LGTM",
+      "items": [],
+      "ciGreen": true,
+      "boxes": [
+        {
+          "id": 1,
+          "proven": true,
+          "proof": "_"
+        },
+        {
+          "id": 2,
+          "proven": true,
+          "proof": "_"
+        },
+        {
+          "id": 3,
+          "proven": true,
+          "proof": "_"
+        },
+        {
+          "id": 4,
+          "proven": true,
+          "proof": "_"
+        },
+        {
+          "id": 5,
+          "proven": true,
+          "proof": "_"
+        }
+      ]
+    },
+    "probe-624-pr-state-window-end-r0": {
+      "line": "PROBE name=pr-state exit=0 sha=9a8dac74a1e048bf3a30bfebee68d8286923f80986fc5deb34591a3780e54faf cmd=a2090929c726f187729216a2abf77964d20740a1ee8598ca34db91eb74da65c5 json={\"now\":\"2026-11-20T17:06:40Z\",\"headRefName\":\"feat/issue-624\",\"headRefOid\":\"348bd43fd3dd5a8d637ba77048002a9e89425687\",\"bodyDigest\":\"ed6039ae3ac1\",\"acceptanceChecked\":[],\"decisionLog\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-11-20T16:56:59Z\",\"commitCount\":1,\"ciState\":\"green\",\"ciChecks\":{\"Analyze (actions)\":\"green\",\"Analyze (javascript-typescript)\":\"green\",\"Analyze (python)\":\"green\",\"CodeQL\":\"green\",\"guards\":\"green\",\"smoke-install\":\"green\"},\"reviewCommentIds\":[\"IC_kwDOUzMNuc8AAAABo_QR8w\"],\"openIssues\":null,\"openIssuesTruncated\":false,\"files\":[\"README.md\",\"templates/test-deliver-pipeline.js\",\"workflows/deliver-pipeline.js\"],\"acceptanceOpen\":5}",
+      "verify": "VERIFY ok linesha=b5f45dac8a684484ab307ea9f73c197d01a06f3061471da2873fc8c55e81e95e"
+    },
+    "probe-624-pr-write-acceptance-tick-r0": {
+      "line": "PROBE name=pr-write exit=0 sha=a0b04e5d0d1076286e39f0e26acdf3881b38ca7416d035f3add24ef59190ebe2 cmd=91e46096e0ccb6777eefc3754fc2b19bd329179b71d6d15d82f60f0baa1be387 json={\"op\":\"body-splice\",\"result\":\"skipped\",\"reason\":\"unchanged\",\"bytes\":null}",
+      "verify": "VERIFY ok linesha=8164cb6bdbfc0c9d0eb474ea8f67bce1cc08bec21b7cdf0c9b40cbc19518fb46"
+    },
+    "probe-624-lines-plugin-version-r0": {
+      "line": "PROBE name=lines exit=0 sha=4c94485e0c21ae6c41ce1dfe7b6bfaceea5ab68e40a2476f50208e526f506080 cmd=4ecc52a6072c98feaf1a76e8937f1ee538d8dcf775794e2cca42c443ee2a2818 json={\"lines\":[\"PLUGIN-VERSION:@@ENGINE_VERSION@@\"]}",
+      "verify": "VERIFY ok line=PROBE name=lines exit=0 sha=4c94485e0c21ae6c41ce1dfe7b6bfaceea5ab68e40a2476f50208e526f506080 cmd=4ecc52a6072c98feaf1a76e8937f1ee538d8dcf775794e2cca42c443ee2a2818 json={\"lines\":[\"PLUGIN-VERSION:@@ENGINE_VERSION@@\"]}"
+    },
+    "probe-624-lines-session-root-r0": {
+      "line": "PROBE name=lines exit=0 sha=043a718774c572bd8a25adbeb1bfcd5c0256ae11cecf9f9c3f925d0e52beaf89 cmd=1aca4c217eb4ceb0ed115a6e18db676022789d56dec6f828669b8a29a9d69534 json={\"lines\":[\"SESSION-ROOT:same\"]}",
+      "verify": "VERIFY ok linesha=569352ebfb9c8eb70e32d0439216844acce042de1ebc04a39737a030a5871123"
+    },
+    "probe-624-pr-write-run-state-verified-untickable-r0": {
+      "line": "PROBE name=pr-write exit=0 sha=78ed42353e70f3894fcf770eb575470551e302680198d76eb9f14fe97822d7fc cmd=e2ade97c79cc3365b6829a81fb08fd69e57d6de00e5a82bc34277ca4fe1e3218 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":73}",
+      "verify": "VERIFY ok linesha=548d9231e14bbbe1e08ed5953470aa9e8659de9a2719eebf17304e62b5b81620"
+    },
+    "probe-624-pr-write-decision-log-r0": {
+      "line": "PROBE name=pr-write exit=0 sha=78ed42353e70f3894fcf770eb575470551e302680198d76eb9f14fe97822d7fc cmd=bb9d9d0fc5c2e4d6f1474141cf3dcc03cae32c5c4dfd857115490609715297c5 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":73}",
+      "verify": "VERIFY ok linesha=107720177a3ca0a8b60ed83a9ab1e83fc80b3025ca068473a95f49947c9aee1e"
+    }
+  },
+  "expect": {
+    "status": "verified-untickable",
+    "trace": [
+      "probe:lines:haiku",
+      "probe:lines:haiku",
+      "probe:provision:haiku",
+      "probe:provision-freshness:haiku",
+      "probe:pr-write:haiku",
+      "probe:lines:haiku",
+      "probe:lines:haiku",
+      "plan-artifact-unreadable",
+      "probe:pr-write:haiku",
+      "probe:preflight:haiku",
+      "probe:preflight:haiku",
+      "probe:pr-write:haiku",
+      "probe:git-rev-list-count:haiku",
+      "probe:git-rev-list-count:haiku",
+      "probe:pr-state:haiku",
+      "probe:pr-state:haiku",
+      "probe:pr-state:haiku",
+      "box-unattested:1",
+      "box-unattested:2",
+      "box-unattested:3",
+      "box-unattested:4",
+      "box-unattested:5",
+      "review-record-empty:0",
+      "probe:pr-write:haiku",
+      "acceptance-open-lgtm:0",
+      "attest-parked:1",
+      "attest-parked:2",
+      "attest-parked:3",
+      "attest-parked:4",
+      "attest-parked:5",
+      "probe:pr-write:haiku",
+      "verified-untickable:0",
+      "probe:pr-write:haiku"
+    ],
+    "traceExact": true,
+    "callLabels": [
+      "probe-624-lines-plugin-version-r0",
+      "probe-624-lines-session-root-r0",
+      "probe-624-provision-provision-r0",
+      "probe-624-provision-freshness-provision-freshness-r0",
+      "probe-624-pr-write-run-state-plan-r0",
+      "diagnose-issue-624",
+      "scout-issue-624-1",
+      "probe-624-lines-plan-artifact-r0",
+      "probe-624-lines-plan-artifact-r0",
+      "plan-check-624-1",
+      "probe-624-pr-write-run-state-dev-r0",
+      "probe-624-preflight-dev-r0",
+      "nick-issue-624",
+      "probe-624-preflight-branch-r0",
+      "probe-624-pr-write-run-state-review-r0",
+      "probe-624-git-rev-list-count-worktree-behind-693-r0",
+      "probe-624-git-rev-list-count-worktree-behind-693-r0",
+      "preflight-624-693-0",
+      "probe-624-pr-state-window-start-r0",
+      "probe-624-pr-state-window-start-r0",
+      "morgan-pr-624-693-r0",
+      "probe-624-pr-state-window-end-r0",
+      "probe-624-pr-write-acceptance-tick-r0",
+      "probe-624-pr-write-decision-log-r0",
+      "probe-624-pr-write-run-state-verified-untickable-r0"
+    ]
+  }
+}

@@ -137,8 +137,8 @@ for d in "$ROOT"/evals/probe-*/ "$B64CASE/"; do
   node "$WORK/grade.cjs" attest "$run/.pipeline/probe-attest.jsonl" "$label" "$LINE"
   VERIFY="$(cd "$run" && EVAL_PLUGIN_ROOT="$ROOT" bash "$run/verify.sh" 2>/dev/null)"
   ok=0
-  [ -n "$VERIFY" ] && [ "$VERIFY" = "VERIFY ok line=$LINE" ] && ok=1
-  check "$name: --verify prints VERIFY ok line=<the real PROBE line>" "$ok"
+  [ -n "$VERIFY" ] && [ "$VERIFY" = "VERIFY ok linesha=$(node -e 'process.stdout.write(require("crypto").createHash("sha256").update(process.argv[1]).digest("hex"))' "$LINE")" ] && ok=1
+  check "$name: --verify prints VERIFY ok linesha=<sha256 of the real PROBE line>" "$ok"
   ok=0; node "$WORK/grade.cjs" verify-ok "$d/graders/verify-ok.md" "$VERIFY" 2>/dev/null && ok=1
   check "$name: verify-ok grader matches the real VERIFY line as a tool_result, not as agent prose, not corrupted" "$ok"
 done
