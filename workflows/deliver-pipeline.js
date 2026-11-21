@@ -132,7 +132,7 @@ export const meta = {
 // `version`, checked against plugin.json by tests/templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '1.6.0-beta.33', cutFrom: 'be604e5' }
+const BUILD = { plugin: 'lgtmgate', version: '1.6.0-beta.34', cutFrom: 'd4ff74a' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -4285,7 +4285,7 @@ if (after('dev', entryStage)) {
         `Implement the plan on that branch. Write meaningful tests and get the green bar: build via \`${buildCommand}\`, run unit tests via \`${testCommand}\`, and format each modified file via \`${formatCommand}\`. ` +
       `When deleting repo-tracked files, use \`git rm <file>\` instead of bare \`rm\` — bare rm is sandbox-denied and burns permission rounds. ` +
       `${SANDBOX_INSTALL_HINT} ` +
-      `Push the branch explicitly before opening the PR: \`git push origin ${expectedBranchName}\` (no upstream flag — the sandbox cannot write the worktree's .git/config, CC bug #51818; see .claude/rules/git-workflow.md). ` +
+      `Push the branch explicitly before opening the PR: \`git push origin ${expectedBranchName}\` (no upstream flag — the sandbox cannot write the worktree's .git/config; see .claude/rules/git-workflow.md). ` +
       `If that push fails because the SSH remote is unreachable in the sandbox (\`ssh_dispatch_run_fatal\`, \`Broken pipe\`, \`Connection refused\`, \`Could not resolve hostname\`; CC issues #30619, #33300), retry ONCE over HTTPS through the gh credential helper (github.com:443 is reachable, SSH is not): \`${httpsPushCommandFor(expectedBranchName)}\` (explicit refspec, no upstream flag, no sandbox bypass). If the HTTPS push fails too, do not bypass the sandbox and do not open a PR: stop, return prNumber 0 with a summary that quotes the failing command and its error. ` +
       `Open a PR (draft) with EXPLICIT refs — gh resolves HEAD from the invoking cwd, not the worktree branch: \`gh pr create --draft${prFlag} --base ${baseBranch} --head ${expectedBranchName} ...\`. ` +
       `${r2Note}` +

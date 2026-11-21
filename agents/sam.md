@@ -42,7 +42,7 @@ Project-specific rules, when the repo provides any, arrive in a `<project_specif
 (`;`, `&&`, `|`, a wrapping `$(...)`). Cause (written here only): under non-interactive permission
 (no human present, `dontAsk` mode) a compound command can escape both auto-approval and
 auto-refusal and stay pending indefinitely, a real freeze (observed in prod on 2026-09-05: several
-runs stuck 30-55min, resolved only by an external forced stop; anthropics/claude-code#51818). A
+runs stuck 30-55min, resolved only by an external forced stop). A
 plain command stays matchable by the allow-list and resolves at once. Break work into successive
 Bash calls.
 
