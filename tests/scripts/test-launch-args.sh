@@ -9,7 +9,7 @@ set -u
 cd "$(dirname "$0")/../.." || exit 1
 ROOT=$(pwd)
 LA="$ROOT/scripts/runtime/launch-args.cjs"
-GEN="$ROOT/scripts/gen-launch-fixtures.cjs"
+GEN="${LAUNCH_GEN:-$ROOT/scripts/gen-launch-fixtures.cjs}"
 PASS=0; FAIL=0
 ok()  { PASS=$((PASS+1)); echo "ok: $1"; }
 bad() { FAIL=$((FAIL+1)); echo "FAIL: $1"; }
@@ -95,6 +95,34 @@ refused "unknown flag is refused" --root "$TREE" --stage plan --bogus
 mkdir -p "$TMP/plain/.claude"
 cp "$TREE/.claude/pipeline.config.json" "$TMP/plain/.claude/pipeline.config.json"
 refused "a root that is not a git tree is refused" --root "$TMP/plain" --stage plan
+
+# The builders must ignore the repo-scoped git variables a git hook exports (the pre-commit hook runs this suite).
+HOST="$TMP/host"
+git init -q "$HOST"
+git -C "$HOST" -c user.name=t -c user.email=t@t -c commit.gpgsign=false commit -q --allow-empty -m host
+host_snapshot() { printf '%s|%s|%s' "$(git -C "$HOST" rev-parse HEAD)" "$(git -C "$HOST" for-each-ref)" "$(git -C "$HOST" rev-list --count --all)"; }
+BEFORE=$(host_snapshot)
+GIT_DIR="$HOST/.git" GIT_INDEX_FILE="$HOST/.git/index" node -e 'require(process.argv[1]).makeTree(process.argv[2], "4k")' "$GEN" "$TMP/leak" >/dev/null 2>&1
+AFTER=$(host_snapshot)
+if [ "$BEFORE" = "$AFTER" ]; then
+  ok "host repo untouched under a dummy GIT_DIR and GIT_INDEX_FILE (HEAD, refs, commit count)"
+else
+  bad "host repo moved under a dummy GIT_DIR and GIT_INDEX_FILE (before=$BEFORE after=$AFTER)"
+fi
+if git -C "$TMP/leak" rev-parse -q --verify refs/remotes/origin/main >/dev/null 2>&1; then
+  ok "the fixture tree holds its own refs/remotes/origin/main"
+else
+  bad "the fixture tree has no refs/remotes/origin/main"
+fi
+if node -e '
+const { suiteEnvironment } = require(process.argv[1])
+const e = suiteEnvironment({ GIT_DIR: "x", GIT_INDEX_FILE: "y", GIT_WORK_TREE: "z", GIT_AUTHOR_NAME: "a", PATH: process.env.PATH })
+const bad = ["GIT_DIR", "GIT_INDEX_FILE", "GIT_WORK_TREE"].some((k) => k in e) || e.PYTHONDONTWRITEBYTECODE !== "1" || e.GIT_AUTHOR_NAME !== "a"
+process.exit(bad ? 1 : 0)' "$ROOT/scripts/lib/count-tests.cjs"; then
+  ok "countAll child env drops the repo-scoped GIT_ variables"
+else
+  bad "countAll child env keeps a repo-scoped GIT_ variable or loses another"
+fi
 
 STATUS=ok; [ "$FAIL" -eq 0 ] || STATUS=fail
 echo "[test-launch-args] status=${STATUS} passed=${PASS} failed=${FAIL}"

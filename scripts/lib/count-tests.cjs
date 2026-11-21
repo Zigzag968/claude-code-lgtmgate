@@ -4,6 +4,7 @@
 // The canonical guard net (tests/templates/test-canonical-guards.sh) is NOT counted: it runs scripts/guards.cjs, which would recurse.
 
 const { spawnSync } = require('child_process')
+const { cleanGitEnvironment } = require('./git-env.cjs')
 
 // pattern: first group = passed count; second group (when present) must equal the first. needsOk: the stream must also hold a line starting with OK.
 const SUITES = [
@@ -25,13 +26,18 @@ function parse(suite, result) {
   return { count: Number(match[1]) }
 }
 
+// suiteEnvironment(environment) -> the child env of a suite: the repo-scoped git variables dropped, no bytecode files.
+function suiteEnvironment(environment = process.env) {
+  return { ...cleanGitEnvironment(environment), PYTHONDONTWRITEBYTECODE: '1' }
+}
+
 // countAll(root) -> { counts: { <label>: n }, total }; throws Error('<label>: <reason>') on the first suite that fails.
 function countAll(root) {
   const counts = {}
   let total = 0
   for (const suite of SUITES) {
     const [command, ...rest] = suite.argv
-    const ran = spawnSync(command, rest, { cwd: root, encoding: 'utf8', timeout: 300000, maxBuffer: 1 << 26, env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1' } })
+    const ran = spawnSync(command, rest, { cwd: root, encoding: 'utf8', timeout: 300000, maxBuffer: 1 << 26, env: suiteEnvironment() })
     const parsed = parse(suite, { status: ran.error ? null : ran.status, stdout: ran.stdout, stderr: ran.stderr })
     if (parsed.error) throw new Error(`${suite.label}: ${parsed.error}`)
     counts[suite.label] = parsed.count
@@ -45,4 +51,4 @@ function endpointJson(total) {
   return { schemaVersion: 1, label: 'tests', message: `${total} offline`, color: 'brightgreen' }
 }
 
-module.exports = { SUITES, parse, countAll, endpointJson }
+module.exports = { SUITES, parse, countAll, endpointJson, suiteEnvironment }

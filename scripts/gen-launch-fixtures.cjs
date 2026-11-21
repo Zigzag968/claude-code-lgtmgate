@@ -13,6 +13,7 @@ const fs = require('fs')
 const nodePath = require('path')
 const { execFileSync } = require('child_process')
 const { checkContent } = require('./lib/agent-context-text.cjs')
+const { cleanGitEnvironment } = require('./lib/git-env.cjs')
 
 const SEED = 527
 const SIZES = { '4k': 4, '22k': 22, '60k': 60 }
@@ -102,7 +103,7 @@ function files(size) {
 }
 
 function gitRun(directory, arguments_) {
-  execFileSync('git', ['-C', directory, '-c', 'user.name=t', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', ...arguments_], { stdio: 'ignore' })
+  execFileSync('git', ['-C', directory, '-c', 'user.name=t', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', ...arguments_], { stdio: 'ignore', env: cleanGitEnvironment(process.env) })
 }
 
 // makeTree(directory, size): a git tree with one commit and refs/remotes/origin/main on it.
