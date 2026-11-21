@@ -3247,6 +3247,29 @@ async function runState(state) {
   }
 }
 
+// phaseTransition (#614): the adjacent status + run-state writes of one phase in ONE pr-write `phase` call. Any disabled side
+// (simulate, unknown option, incomplete ghProject, dryRun, probeOnly, repeated run-state) falls back to the two single calls.
+async function phaseTransition(statusName, runStateName) {
+  const optionId = PROJECT_STATUS_OPTIONS[statusName]
+  if (simulate || dryRun || probeOnly || !optionId || runStateName === lastRunState
+    || !ghProject.projectId || !ghProject.fieldId || !ghProject.owner || !ghProject.projectNumber) {
+    await updateStatus(statusName)
+    await runState(runStateName)
+    return
+  }
+  trace.push(statusName)
+  lastRunState = runStateName
+  runStateStarted = true
+  const savedFailure = prWriteFailure
+  try {
+    await prWrite('phase', 'phase-' + sanitizeProbeToken(statusName), 0,
+      ['--issue', issue, '--project-number', ghProject.projectNumber, '--project-id', ghProject.projectId,
+        '--field-id', ghProject.fieldId, '--option-id', optionId, '--status', runStateName])
+  } finally {
+    prWriteFailure = savedFailure
+  }
+}
+
 // #581: a Setup answer the expansion hook computed (args.launchFacts) replaces the probe agent for that check, only when its
 // `for` digest equals the binding of THIS launch. -> the probe-shaped answer { exit, json: { lines } }, or null (probe as before).
 function launchFactFor(name, binding) {
@@ -4164,8 +4187,7 @@ const assertBranchConformance = async (pullRequestNumber, nickBranchFallback) =>
 
 if (after('dev', entryStage)) {
   phase(PHASE_TITLES.dev)
-  await updateStatus('Dev')
-  await runState('dev')
+  await phaseTransition('Dev', 'dev')
 
   // Plan-freshness probe (#103) — best-effort, read-only (fetch + diff only, never checkout/
   // reset/rebase/pull/merge). Diffs Sam's declared target files against origin/<baseBranch> so a
@@ -4311,8 +4333,7 @@ if (after('dev', entryStage)) {
 
 if (after('review', entryStage)) {
   phase(PHASE_TITLES.review)
-  await updateStatus('Review')
-  await runState('review')
+  await phaseTransition('Review', 'review')
 
   const pr = nick?.prNumber ?? prNumber
   if (!pr) {

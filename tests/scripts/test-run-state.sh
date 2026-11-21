@@ -87,5 +87,38 @@ CLAUDE_PROJECT_DIR="$REPO" CLAUDE_PROJECTS_DIR="$AREA/projects" bash "$HOOK" >/d
 [ "$rc" = 0 ] && ok=1 || ok=0
 named "Stop hook ignores terminal engine state file" "$ok"
 
+# phase (#614): status + run-state in one call, with a gh stub on PATH (no network)
+STUB="$AREA/ghstub"; mkdir -p "$STUB"
+cat > "$STUB/gh" <<'STUBEOF'
+#!/bin/bash
+echo "$*" >> "$GH_STUB_LOG"
+case "$1 $2" in
+  "api graphql")
+    if [ "$GH_STUB_MODE" = fail ]; then echo "HTTP 401" >&2; exit 1; fi
+    echo '{"data":{"repository":{"issue":{"projectItems":{"nodes":[{"id":"ITEM1","project":{"number":3},"fieldValues":{"nodes":[{"optionId":"OLD","field":{"id":"F1"}}]}}]}}}}}' ;;
+  "project item-edit") exit 0 ;;
+  *) exit 0 ;;
+esac
+STUBEOF
+chmod +x "$STUB/gh"
+PH="$AREA/phase"; mkdir -p "$PH"; git -C "$PH" init -q 2>/dev/null
+PHARGS="--issue 21 --status dev --project-number 3 --project-id PID --field-id F1 --option-id NEW --repo o/r --worktree $PH"
+export GH_STUB_LOG="$AREA/gh-stub.log"; : > "$GH_STUB_LOG"
+out="$(PATH="$STUB:$PATH" GH_STUB_MODE=fail bash "$PW" phase $PHARGS)"
+[ "$(printf '%s' "$out" | jq -r '.op + "/" + .result + "/" + .reason')" = "phase/failed/read-failed" ] \
+  && ! grep -q 'item-edit' "$GH_STUB_LOG" && [ "$(jq -r .status "$PH/.pipeline/issue-21.json" 2>/dev/null)" = dev ] && ok=1 || ok=0
+named "phase: status read fails, zero edit issued, run-state still written (rule i)" "$ok"
+
+: > "$GH_STUB_LOG"; rm_state="$PH/.pipeline/issue-21.json"; echo '{}' > "$rm_state"
+out="$(PATH="$STUB:$PATH" GH_STUB_MODE=ok bash "$PW" phase $PHARGS)"
+[ "$(printf '%s' "$out" | jq -r '.op + "/" + .result')" = "phase/written" ] \
+  && [ "$(grep -c 'item-edit' "$GH_STUB_LOG")" = 1 ] && [ "$(jq -r .status "$rm_state" 2>/dev/null)" = dev ] && ok=1 || ok=0
+named "phase: happy path issues one item-edit and writes run-state" "$ok"
+
+PHB="$AREA/phasebad"; mkdir -p "$PHB"; git -C "$PHB" init -q 2>/dev/null
+out="$(PATH="$STUB:$PATH" GH_STUB_MODE=ok bash "$PW" phase --issue x --status dev --project-number 3 --project-id PID --field-id F1 --option-id NEW --worktree "$PHB")"
+[ "$(printf '%s' "$out" | jq -r '.result + "/" + .reason')" = "failed/bad-args" ] && [ ! -e "$PHB/.pipeline/issue-x.json" ] && ok=1 || ok=0
+named "phase: bad args -> failed/bad-args and no file" "$ok"
+
 echo "[test-run-state] status=$([ "$fail" = 0 ] && echo ok || echo fail) passed=$pass failed=$fail"
 [ "$fail" = 0 ]
