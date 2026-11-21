@@ -5695,7 +5695,7 @@ await testCase('T267a config.branchPrefix absent → expectedBranch defaults, tr
     entryStage: 'review',
     prNumber: 777,
     config: { ...CONFIG, branchPrefix: undefined },
-    simulate: { branchCheckRaw: 'nightly-issue-1', morgan: [{ verdict: 'LGTM' }] },
+    simulate: { branchCheckRaw: 'wrong-branch-1', morgan: [{ verdict: 'LGTM' }] },
   })
   const error1 = eq('expectedBranch', r.expectedBranch, 'features/issue-1')
   const error2 = (r.trace || []).includes('branch-prefix-fallback-default') ? null : { ok: false, msg: `trace missing branch-prefix-fallback-default: ${JSON.stringify(r.trace)}` }
@@ -5713,7 +5713,7 @@ await testCase('T267b config.branchPrefix absent + top-level branchPrefix arg �
     prNumber: 777,
     branchPrefix: 'feat/',
     config: { ...CONFIG, branchPrefix: undefined },
-    simulate: { branchCheckRaw: 'nightly-issue-1', morgan: [{ verdict: 'LGTM' }] },
+    simulate: { branchCheckRaw: 'wrong-branch-1', morgan: [{ verdict: 'LGTM' }] },
   })
   const error1 = eq('expectedBranch', r.expectedBranch, 'features/issue-1')
   const error2 = (r.trace || []).includes('branch-prefix-fallback-default') ? null : { ok: false, msg: `trace missing branch-prefix-fallback-default: ${JSON.stringify(r.trace)}` }
@@ -5730,7 +5730,7 @@ await testCase('T267c config.branchPrefix genuinely set to "features/" → no fa
     entryStage: 'review',
     prNumber: 777,
     config: { ...CONFIG, branchPrefix: 'features/' },
-    simulate: { branchCheckRaw: 'nightly-issue-1', morgan: [{ verdict: 'LGTM' }] },
+    simulate: { branchCheckRaw: 'wrong-branch-1', morgan: [{ verdict: 'LGTM' }] },
   })
   const bad = (r.trace || []).includes('branch-prefix-fallback-default')
   return bad ? { ok: false, msg: `trace must not include branch-prefix-fallback-default when config.branchPrefix is set: ${JSON.stringify(r.trace)}` } : { ok: true }
