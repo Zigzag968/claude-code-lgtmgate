@@ -47,8 +47,11 @@ else
 fi
 branch="${prefix}${name}"
 
-# Idempotent: a path that is already a registered worktree is returned as is.
-if git worktree list --porcelain 2>/dev/null | grep -Fxq "worktree $path"; then
+# Idempotent: a path that is already a registered worktree is returned as is. git lists real paths, so the
+# check compares the resolved path (a root reached through a symlink); the printed path stays as built.
+real_path="$(cd "$path" 2>/dev/null && pwd -P)"
+[ -n "$real_path" ] || real_path="$path"
+if git worktree list --porcelain 2>/dev/null | grep -Fxq "worktree $real_path"; then
   printf '%s\n' "$path"
   exit 0
 fi
