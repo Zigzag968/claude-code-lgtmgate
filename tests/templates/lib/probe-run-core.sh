@@ -186,7 +186,7 @@ if command -v jq >/dev/null 2>&1 && command -v git >/dev/null 2>&1; then
 case "$*" in
   *"pr view"*) [ -n "${GH_FAIL:-}" ] && { [ -n "${GH_ERR:-}" ] && printf '%s\n' "$GH_ERR" >&2; exit 1; }; echo "feat/issue-83" ;;
   *"issue view"*) [ -n "${GH_FAIL:-}" ] && exit 1; echo "${GH_TOTAL:-0}" ;;
-  *"sub_issues"*) printf '12\n15\n' ;;
+  *"sub_issues"*) DEF='[{"number":12,"state":"open","body":"a"},{"number":15,"state":"open","body":"b"},{"number":99,"state":"closed","body":"c"}]'; printf '%s\n' "${GH_SUBS:-$DEF}" ;;
   *) exit 1 ;;
 esac
 GHEOF
@@ -234,6 +234,12 @@ GHEOF
   ok=0
   [ "$(printf '%s' "$OUT" | jq -c '[.planStale, .openSubIssues]')" = '[null,["12","15"]]' ] && ok=1
   check "preflight.sh dev: empty targets -> planStale null, open sub-issues listed" "$ok"
+
+  SUBS='[{"number":20,"state":"open","body":"<!-- pipeline-followup:issue-83:slug -->\nx"},{"number":21,"state":"open","body":"pipeline-followup:issue-8:slug"},{"number":22,"state":"open","body":"plain"},{"number":23,"state":"open","body":null}]'
+  OUT="$(PATH="$PFD/bin:$PATH" GH_TOTAL=4 GH_SUBS="$SUBS" bash "$PF" dev --worktree "$PFD/repo" --issue 83 --base main --repo o/r --targets '')"
+  ok=0
+  [ "$(printf '%s' "$OUT" | jq -c '.openSubIssues')" = '["21","22","23"]' ] && ok=1
+  check "preflight.sh dev: the run's own follow-up is not an open sub-issue (own follow-up is not an open sub-issue)" "$ok"
 
   OUT="$(GH_FAIL=1 PATH="$PFD/bin:$PATH" bash "$PF" dev --worktree "$PFD/repo" --issue 83 --base main --repo o/r --targets 'a.txt')"
   ok=0

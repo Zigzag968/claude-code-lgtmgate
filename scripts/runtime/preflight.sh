@@ -55,7 +55,7 @@ if [ -f "$SD/gh-read-class.sh" ]; then . "$SD/gh-read-class.sh"; else gh_read_cl
 lines_json() { jq -Rsc 'split("\n") | map(select(length > 0))'; }
 
 dev() {
-  local plan_stale="null" subs="null" gitdir="null" writable="null" layout="null" out total repo gd probe d bin t lout lrc tlist werr=""
+  local plan_stale="null" subs="null" gitdir="null" writable="null" layout="null" out raw total repo gd probe d bin t lout lrc tlist werr=""
   local -a target_paths
 
   # planStale: files of the plan targets that moved on origin/<base> since the frozen base.
@@ -87,7 +87,8 @@ dev() {
     fi
   fi
 
-  # openSubIssues: open sub-issue numbers of the epic (as strings).
+  # openSubIssues: open sub-issue numbers of the epic (as strings). The run's own follow-up (body marker
+  # pipeline-followup:issue-<N>:, trailing colon so 8 never matches 83) is not a child left uncovered (#685).
   if [ -n "$ISSUE" ]; then
     repo="$REPO"
     if [ -z "$repo" ] && [ -n "$WORKTREE" ]; then
@@ -96,8 +97,10 @@ dev() {
     if [ -n "$repo" ] && total="$(gh issue view "$ISSUE" -R "$repo" --json subIssuesSummary --jq '.subIssuesSummary.total // 0' 2>/dev/null)"; then
       if [ "$total" = "0" ]; then
         subs="[]"
-      elif out="$(gh api "repos/$repo/issues/$ISSUE/sub_issues" --jq '.[] | select(.state=="open") | .number' 2>/dev/null)"; then
-        subs="$(printf '%s\n' "$out" | lines_json)"
+      elif raw="$(gh api "repos/$repo/issues/$ISSUE/sub_issues" 2>/dev/null)" \
+        && out="$(printf '%s' "$raw" | jq -c --arg m "pipeline-followup:issue-$ISSUE:" \
+          '[.[] | select(.state=="open") | select(((.body // "") | contains($m)) | not) | .number | tostring]' 2>/dev/null)"; then
+        subs="$out"
       fi
     fi
   fi
