@@ -1198,7 +1198,7 @@ await testCase('Diagnose (mandatory) / Theo confirms → falls through to Plan, 
 
 // 29. Diagnose stage — no arg/tag needed at all: default `simFixture('theo')` (confirmed:true)
 //     transparently passes through to the normal ready flow. Regression guard that the
-//     mandatory gate never requires special-casing by the caller (nightly or otherwise).
+//     mandatory gate never requires special-casing by the caller (unattended or interactive).
 await testCase('Diagnose (mandatory) / no theo fixture supplied → default-confirms, unchanged ready flow', async () => {
   const r = await run({ mode: 'auto', simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] } })
   const error1 = eq('status', r.status, 'ready')
