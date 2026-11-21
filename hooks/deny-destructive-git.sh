@@ -11,6 +11,9 @@
 # directories) lives at the bottom of THIS file: there is no separate deny-bare-rm.sh
 # in hooks/.
 #
+# Scope: a no-op outside a pipeline session (no pipeline config in the tree), so the plugin
+# enabled at user scope does not guard unrelated repos (#692).
+#
 # See agents/theo.md (blast-radius interdits) and .claude/rules/pr-acceptance.md
 # (Autonomy in unsupervised sessions).
 #
@@ -26,6 +29,25 @@ deny() {
   printf '%s\n' "$1" >&2
   exit 2
 }
+
+# Pipeline-session gate (#692): the guard is registered at plugin level, so it would fire in every
+# session once the plugin is enabled at user scope. It is a no-op unless the working tree (git
+# toplevel, else $PWD) or the main tree of its worktree list holds a pipeline config file (same
+# files and tree pair as lib-worktree-root.sh:resolve_config_value). Gate sits before the jq check.
+in_pipeline_session() {
+  local top main d
+  top="$(git rev-parse --show-toplevel 2>/dev/null)" || top=""
+  [ -n "$top" ] || top="$(pwd)"
+  main="$(git worktree list 2>/dev/null | head -n 1 | sed -E 's/[[:space:]]+[0-9a-f]{7,}[[:space:]].*$//')"
+  for d in "$top" "$main"; do
+    [ -n "$d" ] || continue
+    if [ -f "$d/.claude/pipeline.config.json" ] || [ -f "$d/.claude/pipeline.config.local.json" ]; then
+      return 0
+    fi
+  done
+  return 1
+}
+in_pipeline_session || exit 0
 
 command -v jq >/dev/null 2>&1 || deny "jq is required to inspect tool_input but is not on PATH — fail-closed (a command that could not be checked is never silently allowed). Install jq: https://jqlang.github.io/jq/."
 

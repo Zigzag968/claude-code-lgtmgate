@@ -22,12 +22,27 @@ total=0
 
 # run_hook <command-string> -> prints exit code; stdout discarded, stderr kept in $MSG_FILE for message checks
 MSG_FILE="$(mktemp "${TMPDIR:-/tmp}/deny-destructive-git-msg.XXXXXX")"
-trap 'rm -f "$MSG_FILE"' EXIT
-run_hook() {
-  local command="$1"
-  printf '%s' "{\"tool_input\":{\"command\":$(printf '%s' "$command" | jq -Rs .)}}" \
-    | bash "$HOOK" >/dev/null 2>"$MSG_FILE"
+MARKER_DIR="$(mktemp -d "${TMPDIR:-/tmp}/deny-destructive-git-marker.XXXXXX")"
+LOCAL_MARKER_DIR="$(mktemp -d "${TMPDIR:-/tmp}/deny-destructive-git-local.XXXXXX")"
+EMPTY_DIR="$(mktemp -d "${TMPDIR:-/tmp}/deny-destructive-git-empty.XXXXXX")"
+mkdir -p "$MARKER_DIR/.claude" "$LOCAL_MARKER_DIR/.claude"
+printf '{}' > "$MARKER_DIR/.claude/pipeline.config.json"
+printf '{}' > "$LOCAL_MARKER_DIR/.claude/pipeline.config.local.json"
+trap 'rm -f "$MSG_FILE"; rm -rf "$MARKER_DIR" "$LOCAL_MARKER_DIR" "$EMPTY_DIR"' EXIT
+
+# run_hook_in <dir> <command-string>: hook runs with cwd = <dir>
+run_hook_in() {
+  local dir="$1" command="$2"
+  (
+    cd "$dir" || exit 99
+    printf '%s' "{\"tool_input\":{\"command\":$(printf '%s' "$command" | jq -Rs .)}}" \
+      | bash "$HOOK" >/dev/null 2>"$MSG_FILE"
+  )
   echo "$?"
+}
+# run_hook: pipeline-session case (cwd = marker dir), independent of where the test is launched
+run_hook() {
+  run_hook_in "$MARKER_DIR" "$1"
 }
 
 assert_exit() {
@@ -213,6 +228,14 @@ assert_exit "#111 bash -c executed phrase denied" 2 "$(run_hook "bash -c \"$RS\"
 assert_exit "#111 command substitution in -m denied" 2 "$(run_hook "git commit -m \"\$($RS)\"")"
 assert_exit "#111 shell heredoc body denied" 2 "$(run_hook "bash <<'EOF'${NL}$RS${NL}EOF")"
 assert_exit "#111 command after heredoc terminator denied" 2 "$(run_hook "cat <<'EOF'${NL}text${NL}EOF${NL}$RS")"
+
+# --- #692: pipeline-session gate -----------------------------------------
+
+RD="git push origin --delete x"
+assert_exit "no marker: remote delete allowed" 0 "$(run_hook_in "$EMPTY_DIR" "$RD")"
+assert_exit "no marker: reset hard allowed" 0 "$(run_hook_in "$EMPTY_DIR" "$RS")"
+assert_exit "marker present: remote delete denied" 2 "$(run_hook_in "$MARKER_DIR" "$RD")"
+assert_exit "marker present via local config: remote delete denied" 2 "$(run_hook_in "$LOCAL_MARKER_DIR" "$RD")"
 
 # --- summary -------------------------------------------------------------
 
