@@ -1,0 +1,6 @@
+{
+  "name": "run-view-mod",
+  "version": "0.0.0",
+  "description": "Throwaway read-only experiment: shows a delivery run's agents and per-agent usage on the status line. Loaded with --plugin-dir only, never shipped.",
+  "author": { "name": "lgtmgate maintainers" }
+}

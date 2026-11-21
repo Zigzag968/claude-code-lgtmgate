@@ -3,6 +3,7 @@ node_modules
 .venv
 *.log
 .pipeline/
+plugins/run-view-mod/state/
 evals/results/
 .probes/
 .claude/pipeline.config.local.json
