@@ -132,7 +132,7 @@ export const meta = {
 // `version`, checked against plugin.json by tests/templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '1.6.0-beta.21', cutFrom: '6d1e174' }
+const BUILD = { plugin: 'lgtmgate', version: '1.6.0-beta.22', cutFrom: 'e09d6ec' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -1293,6 +1293,13 @@ function attestDemotions(boxes, items, keys, keyOf, worktree) {
     if (!known.includes(keyOf(reviewLine(worktree, item.command)))) ids.push(b.id)
   }
   return ids
+}
+// #699: the `untickable` entries ({ id, item, proof }) of the open boxes Morgan proved but the attestation demoted: nothing in
+// the code is wrong (her proof is real, the engine could not read the record), so Nick has nothing to fix. `demoted` holds
+// { id, proof } of the demoted boxes (attestDemotions ids joined to her proofs); the order of `open` is kept.
+function attestUntickable(open, demoted) {
+  const byId = new Map((Array.isArray(demoted) ? demoted : []).map((d) => [d.id, d]))
+  return (Array.isArray(open) ? open : []).filter((item) => byId.has(item.id)).map((item) => ({ id: item.id, item: renderLine(item), proof: byId.get(item.id).proof }))
 }
 // box-unbound:<id> for each proven, non-gate box whose item has no command (bound runs only).
 function unboundTraces(boxes, items) {
@@ -2694,6 +2701,7 @@ const PROBE_SCHEMA = {
 const PROBE_LINE = /^PROBE name=(\S+) exit=(-?\d+) sha=([0-9a-f]{64}) cmd=([0-9a-f]{64}) json=(.*)$/
 const sanitizeProbeToken = (s) => String(s).replace(/[^A-Za-z0-9._-]/g, '-')
 const VERIFY_OK = /^VERIFY ok line=(PROBE .*)$/
+const VERIFY_OK_DIGEST = /^VERIFY ok linesha=([0-9a-f]{64})$/
 const VERIFY_FAIL = /^VERIFY fail reason=([a-z-]+)$/
 const SAFE_PROBE_TOKEN = /^[A-Za-z0-9._-]+$/
 function parseProbeLine(line) {
@@ -2709,6 +2717,8 @@ function parseVerifyLine(line) {
   const t = line.trim()
   const ok = t.match(VERIFY_OK)
   if (ok) return { ok: true, line: ok[1] }
+  const digest = t.match(VERIFY_OK_DIGEST)
+  if (digest) return { ok: true, lineSha: digest[1] }
   const bad = t.match(VERIFY_FAIL)
   return bad ? { ok: false, reason: bad[1] } : null
 }
@@ -3072,6 +3082,10 @@ async function probe(name, command, { label, round = 0, onFail, noReuse = false,
     const verified = parseVerifyLine(result && result.verify)
     if (!verified) return { reason: 'unparseable-verify' }
     if (!verified.ok) return { reason: verified.reason === 'no-attestation' ? 'no-attestation' : `verify-${verified.reason}` }
+    // #699: the digest form carries the sha256 of the recorded PROBE line; the copied line (already checked for name and cmd above) must hash to it
+    if (verified.lineSha !== undefined) {
+      return verified.lineSha === sha256Hex(String(result.line).trim()) ? { parsed } : { reason: 'line-mismatch' }
+    }
     const vp = parseProbeLine(verified.line)
     if (!vp || vp.sha !== parsed.sha) return { reason: 'sha-mismatch' }
     if (vp.cmd !== want) return { reason: 'cmd-mismatch' }
@@ -4398,6 +4412,8 @@ if (after('review', entryStage)) {
   let windowTickedIds = []
   // #631: the nonce minted at the window start (null: no bound run, or no mint), stamped by the review hook, read back at the window end.
   let windowNonce = null
+  // #699: { id, proof } of the boxes of the last review the attestation demoted (set by mapMorganBoxes, read by tickAcceptanceBoxes).
+  let attestDemoted = []
   const attestBound = () => !simulate && (samAcceptanceItems || []).some((item) => !item.humanGate && typeof item.command === 'string' && item.command !== '')
   const reviewerWindowStart = async (round) => {
     windowNonce = null
@@ -4549,6 +4565,7 @@ if (after('review', entryStage)) {
   const mapMorganBoxes = (v, endState, round) => {
     boxesMapped = null
     boxesGates = []
+    attestDemoted = []
     if (samAcceptanceItems) {
       // A verdict with no `boxes` is a verdict with no box proven: a non-gate box is settled by the proof Morgan returns
       // in this round only. The ids ticked in the body (read now, after Morgan ran) matter for the human gates alone.
@@ -4566,6 +4583,7 @@ if (after('review', entryStage)) {
         const keys = endState && endState.reviewKeys
         const demoted = attestDemotions(mapped.boxes, samAcceptanceItems, keys, (text) => sha256Hex(text).slice(0, 16), worktreePath)
         boxesMapped = mapped.boxes.map((b) => (demoted.includes(b.id) ? { ...b, proven: false } : b))
+        attestDemoted = mapped.boxes.filter((b) => demoted.includes(b.id)).map((b) => ({ id: b.id, proof: b.proof }))
         for (const id of demoted) {
           trace.push(`box-unattested:${id}`)
           log(`Round ${round}: box ac:${id} claims a proof but its exact command is not in the review record — not proven`)
@@ -4745,6 +4763,8 @@ if (after('review', entryStage)) {
       reason = await tryTick('acceptance-tick-retry')
     }
     let verdict = v.verdict
+    let untickable
+    let tickReason
     const items = Array.isArray(v.items) ? [...v.items] : []
     let changed = false
     const addLine = (item) => { if (!items.some((l) => lineKey(l) === 'ac:' + item.id)) { items.push(renderLine(item)); changed = true } }
@@ -4757,6 +4777,11 @@ if (after('review', entryStage)) {
         verdict = 'REQUIRED_CHANGES'
         changed = true
         open.forEach(addLine)
+        // #699: an open box whose only fault is the missing attestation parks the run (verified-untickable) once nothing else blocks
+        const unattested = attestUntickable(open, attestDemoted)
+        for (const entry of unattested) trace.push(`attest-parked:${entry.id}`)
+        untickable = [...(untickable || []), ...unattested]
+        if (unattested.length > 0) tickReason = tickReason || 'box-unattested'
       }
     }
     // DEBT(#240): no replayed fixture (the incident capture ends before the LGTM path); proven by flow-suite cases T249 and T249b
@@ -4768,8 +4793,6 @@ if (after('review', entryStage)) {
       samAcceptanceItems.every((item) => item.humanGate || tickIds.includes(item.id))) {
       verdict = 'LGTM'
     }
-    let untickable
-    let tickReason
     if (reason === null) {
       if (tickIds.length > 0) trace.push(`acceptance-ticked:round=${round},n=${tickIds.length}`)
     } else if (tickBoxes.length > 0) {
@@ -4778,11 +4801,10 @@ if (after('review', entryStage)) {
       log(`tickAcceptanceBoxes round ${round}: the tick of box(es) ${tickIds.join(',')} was refused (${reason}${tickDetail ? ' — ' + tickDetail : ''}) — parking for the Lead`)
       if (verdict === 'LGTM') { verdict = 'REQUIRED_CHANGES'; changed = true }
       tickReason = reason
-      untickable = tickBoxes.map((b) => {
-        const item = samAcceptanceItems.find((item_) => item_.id === b.id)
-        addLine(item)
+      untickable = [...(untickable || []), ...tickBoxes.map((b) => {
+        const item = samAcceptanceItems.find((item_) => item_.id === b.id); addLine(item)
         return { id: b.id, item: renderLine(item), proof: b.proof }
-      })
+      })]
     }
     return changed || untickable ? { ...v, verdict, items, ...(untickable ? { untickable, tickReason, ...(tickDetail ? { tickDetail } : {}) } : {}) } : v
   }

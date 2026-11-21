@@ -31,22 +31,19 @@
 //      included (a private first name or password can equal a literal of the engine file). A weak oracle (status plus trace) silently
 //      drops behaviour (probes became placeholders and the engine took fail-open paths), hence the strict one.
 //      The sites and the ordered labels pin the engine's path (every agent() call resolves to one site, callAgent).
-//   3b. ENGINE VERSION (#195): the answer of the plugin version probe that names the engine under test (its BUILD version)
-//      is stored as the token `@@ENGINE_VERSION@@` before the baseline, and so is that version in a published
-//      `plugin-version-*` reason: lead-merge bumps the version at every merge, a literal would go red at the next one. The
-//      replay resolves the token to the same string, so the outcome is unchanged; the answer of a stale root stays literal.
-//   4. COUPLED PROBES: a `probe-*` answer whose `cmd=` hash is the SHA-256 of the command the engine composed is
-//      re-hashed after every change of args (the command is parsed from the prompt the engine already builds).
-//   5. scripts/redact-fixture.cjs (exit 3 refuses on residue), re-hash, `--check`, a strict replay (in process, then
-//      run-offline.cjs with OFFLINE_STRICT=1): the outcome must still be the baseline's.
+//   3b. ENGINE VERSION (#195): the plugin version probe's answer naming the engine under test (its BUILD version) is stored as the
+//      token `@@ENGINE_VERSION@@` before the baseline, and so is that version in a published `plugin-version-*` reason (lead-merge bumps
+//      it at every merge). The replay resolves the token to the same string; the answer of a stale root stays literal.
+//   4. COUPLED PROBES: a `probe-*` answer whose `cmd=` is the SHA-256 of the command the engine composed is re-hashed after every change
+//      of args; #699: a digest-form VERIFY (`linesha=`) follows its PROBE line after every rewrite (a minimizer change, the redaction).
+//   5. scripts/redact-fixture.cjs (exit 3 refuses on residue), re-hash, `--check`, a strict replay (in process, then run-offline.cjs OFFLINE_STRICT=1): same outcome.
 //   6. the entries of `calls` the final replay never consumed are dropped, the file is written, and what remains is
 //      printed as JSON paths and character counts, never values: kept strings (free text flagged: plan lines, paths,
 //      protected fields with a path, PROBE / VERIFY lines whose `json=` payload holds a space or a path separator, and
 //      the published expect.reason), then the number of key names and non-string scalars kept as they are (never
 //      neutralized) and the number of entries pruned. The report counts what it flags; it does not judge it.
-// The outcome also holds the values of the result keys the capture names in expect.resultIncludes and whether each
-// expect.logsInclude needle appears in a log line (no other expect key is kept). The published `expect` is built from the baseline: status, reason (if any), trace with traceExact, callLabels, plus those two
-// keys (free text, reported by path and length). Nothing here calls a model, the network or the Claude Code projects directory.
+// The outcome also holds the values of the result keys the capture names in expect.resultIncludes and whether each expect.logsInclude needle appears in a log
+// line. The published `expect` is built from the baseline: status, reason (if any), trace with traceExact, callLabels, plus those two keys (free text, reported by path and length). No model, network or projects directory.
 
 const fs = require('fs')
 const os = require('os')
@@ -55,6 +52,7 @@ const crypto = require('crypto')
 const { spawnSync } = require('child_process')
 const { stripExports, buildPipelineRunner, replayFixture, tokenizeVersionProbes, ENGINE_VERSION_TOKEN, ENGINE_CHANNEL_TOKEN, channelOfVersion, commandOfPrompt, firstCommandHash, setCommandHash } = require('./run-offline.cjs')
 
+const { syncLineDigest, syncCalls } = require('./lib/line-digest.cjs')
 const REPO = path.resolve(__dirname, '..')
 const NAME_RE = /^[0-9]+-[a-z0-9][a-z0-9-]*(\.json)?$/
 const USAGE = 'usage: node scripts/publish-fixture.cjs <raw capture> [<out name>] [--out-dir DIR] [--fp FILE]'
@@ -157,7 +155,7 @@ function shapeOf(v) {
 }
 
 // The fixed words of a PROBE / VERIFY answer line before its `json=` payload (see scripts/runtime/probe-run.cjs).
-const PROBE_ENVELOPE_TOKEN = /^(PROBE|VERIFY|ok|fail|line=PROBE|name=[A-Za-z0-9._-]+|exit=-?\d+|sha=[0-9a-f]+|cmd=[0-9a-f]+|reason=[A-Za-z0-9._-]+)$/
+const PROBE_ENVELOPE_TOKEN = /^(PROBE|VERIFY|ok|fail|line=PROBE|name=[A-Za-z0-9._-]+|exit=-?\d+|sha=[0-9a-f]+|linesha=[0-9a-f]+|cmd=[0-9a-f]+|reason=[A-Za-z0-9._-]+)$/
 
 // ---- leaves and neutral tokens -------------------------------------------------------------
 
@@ -341,6 +339,7 @@ function makeMinimizer(session) {
   const put = (parent, key, value) => {
     if (session.journal) session.journal.push([parent, key, parent[key]])
     parent[key] = value
+    if (key === 'line') syncLineDigest(parent, put)   // #699: a digest-form VERIFY follows its line
   }
   const rehash = async (fx) => {
     for (let pass = 0; pass < MAX_REHASH; pass++) {
@@ -439,6 +438,7 @@ async function redactAndCheck(session, rehash, outName, fp) {
     if (red.status !== 0) refuse(`redact-fixture exited ${red.status === null ? 'abnormally' : red.status}`)
 
     const redacted = JSON.parse(fs.readFileSync(temporary, 'utf8'))
+    syncCalls(redacted.calls)   // #699: the redaction rewrote PROBE lines, their digest-form VERIFY follows
     const fx2 = { name: outName, args: redacted.args, calls: redacted.calls, expect: redacted.expect }
     const settled = await rehash(fx2)
     if (settled === null) refuse('coupled PROBE hashes did not settle after redaction')

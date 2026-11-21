@@ -749,7 +749,7 @@ const t182Block = () => {
   if (!source) return null
   const block = extractBetween(source, '// --- acceptanceItems:start ---', '// --- acceptanceItems:end ---')
   if (!block) throw new Error('acceptanceItems:start/:end markers not found in the pipeline source')
-  return new Function(block + '\nreturn { tickIdsArgv, numberItems, renderLine, renderChecklist, parseChecklist, itemsFromPlan, validateAcceptanceItems, planLacksItems, mapBoxes, reviewLine, proofLinesText, proofLinesOf, commandsFromPlan, withCommands, commandsDigest, bindCommands, contractAbsent, proofCommandIssues, attestDemotions, unboundTraces, windowStartTraces, recordEmptyTraces, blockDigestText, reviewAttestNote, nickBlockNote, morganBoxesNote, boxLineId, lineKey, humanGateLine, onlyHumanGateLines, parkUntickable, morganItemsRule, reviewProgress, ciScope, ciAbsent, ciBlocker, redChecks, verdictProblem }')()
+  return new Function(block + '\nreturn { tickIdsArgv, numberItems, renderLine, renderChecklist, parseChecklist, itemsFromPlan, validateAcceptanceItems, planLacksItems, mapBoxes, reviewLine, proofLinesText, proofLinesOf, commandsFromPlan, withCommands, commandsDigest, bindCommands, contractAbsent, proofCommandIssues, attestDemotions, attestUntickable, unboundTraces, windowStartTraces, recordEmptyTraces, blockDigestText, reviewAttestNote, nickBlockNote, morganBoxesNote, boxLineId, lineKey, humanGateLine, onlyHumanGateLines, parkUntickable, morganItemsRule, reviewProgress, ciScope, ciAbsent, ciBlocker, redChecks, verdictProblem }')()
 }
 const T182_ITEMS = [
   { text: '`node scripts/guards.cjs; echo $?` prints `0` as its last line', humanGate: false },
@@ -2901,6 +2901,76 @@ await testCase('T678c probe(): two copy-mismatches end fail-open naming the reas
     eq('the prState onFail pushes the reason to the trace', onFailBody.includes('probe-failed:pr-state:') && onFailBody.includes('trace.push'), true),
   ]
   return checks.find(c => c) || { ok: true }
+})
+
+// T699 (#699) — the VERIFY line carries the sha256 of the PROBE line instead of repeating it, so only one long copy is left to a
+// model; the former `VERIFY ok line=` form still parses. The two window-start PROBE lines are those of the #624 incident (the
+// nonces 23390997b672f26e and 50ac10fe42b82c55 on the same read).
+const T699_JSON = (nonce, now) => '{"now":"' + now + '","headRefName":"feat/issue-624","bodyDigest":"ed6039ae3ac1","acceptanceChecked":[],' +
+  '"files":["README.md","templates/test-deliver-pipeline.js","workflows/deliver-pipeline.js"],"acceptanceOpen":5,"nonce":"' + nonce + '","forgeable":false}'
+await testCase('T699a probe(): a digest VERIFY keeps the nonce, a PROBE line altered by one character is refused, the former form still passes (#699)', async () => {
+  const source = SUITE_ARGS.fpSource
+  if (!source) {
+    log('SKIP — T699a: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
+    return { ok: true }
+  }
+  const command = "bash '/plugin/scripts/runtime/pr-state.sh' '--pr' '693' '--worktree' '/wt' '--mint-nonce' '1'"
+  const h0 = t678Harness(source, [{}])
+  if (!h0) return { ok: false, msg: 'probe harness blocks not found in pipeline source' }
+  const first = t678Line(h0.sha256Hex, command, T699_JSON('23390997b672f26e', '2026-11-20T16:59:21Z'))
+  const second = t678Line(h0.sha256Hex, command, T699_JSON('50ac10fe42b82c55', '2026-11-20T16:59:37Z'))
+  const digest = (line) => 'VERIFY ok linesha=' + h0.sha256Hex(line)
+  const alter = (line) => line.replace('16:59:37Z', '16:59:38Z')
+  const replay = async (scripted) => {
+    const h = t678Harness(source, scripted)
+    const reasons = []
+    const result = await h.probe('pr-state', command, { label: 'window-start', round: 0, noReuse: true, onFail: (r) => { reasons.push(r); return null } })
+    return { calls: h.state.calls, reasons, nonce: result && result.json && result.json.nonce }
+  }
+  const exact = await replay([{ line: first, verify: digest(first) }])
+  const oneChar = await replay([{ line: alter(second), verify: digest(second) }])
+  const retried = await replay([{ line: alter(second), verify: digest(second) }, { line: second, verify: digest(second) }])
+  const former = await replay([{ line: second, verify: 'VERIFY ok line=' + second }])
+  const parse = new Function(source.slice(source.indexOf('const PROBE_LINE ='), source.indexOf('// guards:parser-end', source.indexOf('const PROBE_LINE '))) + '\nreturn { parseVerifyLine }')()
+  const sha = h0.sha256Hex(second)
+  const checks = [
+    eq('the exact first line with its digest: one call, the nonce 23390997b672f26e', [exact.calls, exact.reasons, exact.nonce], [1, [], '23390997b672f26e']),
+    eq('a line altered by one character twice: line-mismatch, two calls, no nonce', [oneChar.calls, oneChar.reasons, oneChar.nonce], [2, ['line-mismatch'], undefined]),
+    eq('altered then exact: one retry, the nonce 50ac10fe42b82c55', [retried.calls, retried.reasons, retried.nonce], [2, [], '50ac10fe42b82c55']),
+    eq('the former VERIFY ok line= form is accepted', [former.calls, former.reasons, former.nonce], [1, [], '50ac10fe42b82c55']),
+    eq('parseVerifyLine reads the digest form', parse.parseVerifyLine('VERIFY ok linesha=' + sha), { ok: true, lineSha: sha }),
+    eq('a short, upper-case or padded digest does not parse', ['VERIFY ok linesha=' + sha.slice(1), 'VERIFY ok linesha=' + sha.toUpperCase(), 'VERIFY ok linesha= ' + sha].map((t) => parse.parseVerifyLine(t)), [null, null, null]),
+    eq('the former form still parses', parse.parseVerifyLine('VERIFY ok line=' + second), { ok: true, line: second }),
+  ]
+  return checks.find(c => c) || { ok: true }
+})
+await testCase('T699b boxes demoted only by the attestation park the run, they do not launch a Nick round (#699)', async () => {
+  const f = t182Block()
+  const source = SUITE_ARGS.fpSource
+  if (!f || !source) return t182Skip('T699b')
+  const items = [
+    { id: 1, text: 'a', humanGate: false, command: 'bash a.sh' }, { id: 2, text: 'b', humanGate: false, command: 'bash b.sh' },
+    { id: 3, text: 'c', humanGate: false, command: 'bash c.sh' },
+  ]
+  const demoted = [{ id: 3, proof: 'p3' }, { id: 1, proof: 'p1' }]
+  const parked = f.attestUntickable(items, demoted)
+  const check1 = eq('the open boxes the attestation demoted, in the order of the open boxes, with her proof', parked.map((entry) => [entry.id, entry.proof]), [[1, 'p1'], [3, 'p3']])
+  const check2 = eq('each entry carries the canonical line of its box', parked.map((entry) => entry.item), [f.renderLine(items[0]), f.renderLine(items[2])])
+  const check3 = eq('nothing demoted, or not a list: nothing parked', [f.attestUntickable(items, []), f.attestUntickable(items, undefined), f.attestUntickable(undefined, demoted)], [[], [], []])
+  const check4 = eq('a demoted box that is not open is ignored', f.attestUntickable([items[1]], demoted), [])
+  // reviewParkedTerminal parks from `untickable`: the entries land in the verdict, with the reason, after the LGTM turned REQUIRED_CHANGES
+  const a = source.indexOf('const tickAcceptanceBoxes = async')
+  const body = source.slice(a, source.indexOf('// Regression guard', a))
+  const indexOpen = body.indexOf('open.forEach(addLine)')
+  const indexPark = body.indexOf('attestUntickable(open, attestDemoted)')
+  const indexReturn = body.indexOf('return changed || untickable')
+  const check5 = eq('the park comes after the LGTM was demoted and before the verdict is returned', indexOpen > 0 && indexOpen < indexPark && indexPark < indexReturn, true)
+  const check6 = eq('untickable and tickReason are declared before the LGTM branch', body.indexOf('let untickable') > 0 && body.indexOf('let untickable') < indexOpen && body.indexOf('let tickReason') < indexOpen, true)
+  const check7 = eq('the reason is box-unattested unless a refused tick named another', body.includes("tickReason = tickReason || 'box-unattested'"), true)
+  const map = source.indexOf('const mapMorganBoxes = ')
+  const mapBody = source.slice(map, source.indexOf('const callMorganGuarded', map))
+  const check8 = eq('the demoted boxes are reset each review and set from the attestation demotion', mapBody.includes('attestDemoted = []') && mapBody.includes('attestDemoted = mapped.boxes.filter((b) => demoted.includes(b.id))'), true)
+  return check1 || check2 || check3 || check4 || check5 || check6 || check7 || check8 || { ok: true }
 })
 
 // T485a (#485) — the composed plugin-version probe command does not end with the long base64 token: a stray closing
