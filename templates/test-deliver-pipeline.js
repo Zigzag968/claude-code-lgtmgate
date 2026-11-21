@@ -5954,6 +5954,16 @@ await testCase('T109j worktreeFreshnessNote: behind:100 → plural "commits"', a
   return { ok: true }
 })
 
+// T623b — the note ends with a space: the next prompt chunk never glues to "deliberate."
+await testCase('T623b worktreeFreshnessNote: ends with a space, never glues to the next chunk', async () => {
+  if (!worktreeFreshnessNote) return SUITE_ARGS.fpSource ? { ok: false, msg: 'worktreeFreshnessNote markers not found in pipeline source' } : t182Skip('T623b')
+  const note = worktreeFreshnessNote(1, 'main')
+  if (!note.endsWith(' ')) return { ok: false, msg: `note must end with a space, got: ...${JSON.stringify(note.slice(-20))}` }
+  if ((note + 'run the REGRESSION GUARD').includes('deliberate.run')) return { ok: false, msg: 'glue "deliberate.run" found' }
+  if ((note + 'Then post the new verdict').includes('deliberate.Then')) return { ok: false, msg: 'glue "deliberate.Then" found' }
+  return { ok: true }
+})
+
 // T9030 (#30) — Morgan's initial AND re-review prompts treat an absent or empty acceptance block as
 // REQUIRED_CHANGES. Source-level: the shared ACCEPTANCE_PRESENCE_RULE literal is present and is
 // interpolated into both Morgan prompts.
@@ -8154,6 +8164,20 @@ await testCase('T184g the CI half of the ready gate: a red CI at LGTM is REQUIRE
   const error15 = eq('absent wins over a Morgan true and is stable', callback('absent', true, ['build', 'deploy']), callback('absent', false, ['build', 'deploy']))
   const error16 = eq('absent is not the pending sentence', abs === callback('pending', true, ['build']) ? 'same' : 'distinct', 'distinct')
   return error1 || error2 || error3 || error4 || error5 || error6 || error7 || error8 || error9 || error10 || error11 || error12 || error12b || error12c || error12d || error13 || error14 || error15 || error16 || { ok: true }
+})
+
+await testCase('T623a ciBlocker: the unproven CI line names action_required and the approve gesture', async () => {
+  const fns = t182Block()
+  if (!fns) return t182Skip('T623a')
+  const callback = fns.ciBlocker
+  const named = (label, x) => (typeof x === 'string' && x.includes('action_required') && x.includes('actions/runs/<run-id>/approve') ? null : { ok: false, msg: `${label} must name action_required and the approve gesture, got ${JSON.stringify(x)}` })
+  const error1 = named('none + false', callback('none', false))
+  const error2 = named('null + undefined', callback(null, undefined))
+  const failing = callback('failing', true)
+  const error3 = typeof failing === 'string' && !failing.includes('action_required') ? null : { ok: false, msg: `failing line must not name action_required, got ${JSON.stringify(failing)}` }
+  const error4 = eq('green + false -> null', callback('green', false), null)
+  const error5 = eq('none + true -> null', callback('none', true), null)
+  return error1 || error2 || error3 || error4 || error5 || { ok: true }
 })
 
 await testCase('T184h ciScope: the CI state is judged over config.ciChecks only, else the overall state', async () => {

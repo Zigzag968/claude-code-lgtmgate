@@ -1043,13 +1043,13 @@ function ciAbsent(checks, names) {
 // 'absent' (ciAbsent's names are `absentNames`) is its own line naming the configured checks GitHub does not report. 'none' means
 // the probe answered: the head has no check, Morgan's word decides (a blocker only when she reported ciGreen false). null or
 // absent means the probe gave no evidence (it failed, or is an older script): CI is unproven, a blocker unless Morgan reported
-// ciGreen true.
+// ciGreen true. The unproven line also names action_required (bot-pushed head, workflow run never approved) and its approve gesture.
 function ciBlocker(ciState, morganCiGreen, absentNames) {
   if (ciState === 'green') return null
   if (ciState === 'failing' || ciState === 'pending') return `CI is not green on the PR head (live pr-state read: ${ciState})`
   if (ciState === 'absent') return `config.ciChecks names check(s) not reported on the PR head: ${(Array.isArray(absentNames) ? absentNames : []).join(', ')}`
   const unproven = ciState === 'none' ? morganCiGreen === false : morganCiGreen !== true
-  return unproven ? 'CI is not green on the PR head (reported by the review)' : null
+  return unproven ? 'CI is not green on the PR head (reported by the review). If no check ran, a bot-pushed commit may have left its workflow run at action_required: approve it with gh api -X POST repos/<owner>/<repo>/actions/runs/<run-id>/approve' : null
 }
 // redChecks(items, names): the red configured checks behind a `nick-no-op` (#459). [] unless `items` and `names` are non-empty arrays
 // AND EVERY item contains at least one non-empty configured check name (first match in config order, a plain substring test, no
@@ -1945,6 +1945,7 @@ function resolveWorktreeRoot({ env: environment = {}, configLocal: localConfig =
 // Composes the reviewer-facing staleness warning for a shared worktree whose base is behind the
 // remote base branch. Pure: no I/O, no closure over simulate/config/trace. Returns '' when
 // the worktree is fresh or the count is unknown — so a fresh run's prompts are byte-identical.
+// A non-empty note ends with a space so the next prompt chunk never glues to it.
 function worktreeFreshnessNote(behind, baseBranchName) {
   const n = Number(behind)
   if (!Number.isFinite(n) || n <= 0) return ''
@@ -1960,7 +1961,7 @@ function worktreeFreshnessNote(behind, baseBranchName) {
     `3) when local and CI disagree, the CI raw log is the source of truth (gh run view <run-id> --log), ` +
     `not the local count; ` +
     `4) do not rebase, reset or otherwise move the worktree to reconcile the numbers — the frozen base ` +
-    `is deliberate.`
+    `is deliberate. `
   )
 }
 // --- worktreeFreshnessNote:end ---
