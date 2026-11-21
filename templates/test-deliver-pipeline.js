@@ -1198,7 +1198,7 @@ await testCase('Diagnose (mandatory) / Theo confirms → falls through to Plan, 
 
 // 29. Diagnose stage — no arg/tag needed at all: default `simFixture('theo')` (confirmed:true)
 //     transparently passes through to the normal ready flow. Regression guard that the
-//     mandatory gate never requires special-casing by the caller (nightly or otherwise).
+//     mandatory gate never requires special-casing by the caller (unattended or interactive).
 await testCase('Diagnose (mandatory) / no theo fixture supplied → default-confirms, unchanged ready flow', async () => {
   const r = await run({ mode: 'auto', simulate: { sam: 'GO', morgan: [{ verdict: 'LGTM' }] } })
   const error1 = eq('status', r.status, 'ready')
@@ -3020,12 +3020,12 @@ await testCase('T490a every composed probe b64 value is at most 200 characters (
     log('SKIP — T490a: SUITE_ARGS.fpSource absent (suite not run via scripts/run-flow-suite.cjs)')
     return { ok: true }
   }
-  const blocks = ['probeCommands', 'base64Utf8', 'pluginVersion', 'sessionRoot', 'sha256Hex'].map((n) => extractBetween(source, `// --- ${n}:start ---`, `// --- ${n}:end ---`))
-  if (blocks.some((b) => !b)) return { ok: false, msg: 'probeCommands, base64Utf8, pluginVersion, sessionRoot or sha256Hex block not found in pipeline source' }
-  const engine = new Function(blocks.join('\n') + '\nreturn { probeCommands, base64Utf8, pluginVersionCommand, sessionRootCommand, sha256Hex }')()
+  const blocks = ['probeCommands', 'base64Utf8', 'pluginVersion', 'sessionRoot', 'planDigest', 'sha256Hex'].map((n) => extractBetween(source, `// --- ${n}:start ---`, `// --- ${n}:end ---`))
+  if (blocks.some((b) => !b)) return { ok: false, msg: 'probeCommands, base64Utf8, pluginVersion, sessionRoot, planDigest or sha256Hex block not found in pipeline source' }
+  const engine = new Function(blocks.join('\n') + '\nreturn { probeCommands, base64Utf8, pluginVersionCommand, sessionRootCommand, planDigestCommand, sha256Hex }')()
   const plugin = '/opt/tools/plugins/cache/market/lgtmgate/1.3.0-beta.54'   // 55 characters
   const session = '/work/apps/some-long-repository-name/main-checkout'         // 43+ characters
-  const commands = [engine.pluginVersionCommand(plugin), engine.sessionRootCommand(session)]
+  const commands = [engine.pluginVersionCommand(plugin), engine.sessionRootCommand(session), engine.planDigestCommand(490)]
   const checks = []
   for (const command of commands) {
     const token = engine.base64Utf8(command)
@@ -3033,7 +3033,8 @@ await testCase('T490a every composed probe b64 value is at most 200 characters (
     checks.push(eq(`b64 of ${command.slice(0, 40)}... is at most 200 characters (got ${token.length})`, token.length <= 200, true))
     checks.push(eq('the run line ends with --model haiku', line.endsWith(' --model haiku'), true))
   }
-  checks.push(eq('neither command is an inline program', commands.some((c) => c.includes(' -e ')), false))
+  checks.push(eq('no command is an inline program', commands.some((c) => c.includes(' -e ')), false))
+  checks.push(eq('the plan-digest b64 is at most 64 characters (#700)', engine.base64Utf8(engine.planDigestCommand(490)).length <= 64, true))
   return checks.find(c => c) || { ok: true }
 })
 
@@ -8766,27 +8767,37 @@ await testCase('T631c plan gate: no line is unbound, a partial contract is refus
   const exact = await run({ mode: 'semi', simulate: { sam: { 1: t631Plan(T631_PLAN_ITEMS, lines2) }, planCheck: T182_CONFORMING } })
   const check4 = eq('exact lines: no refusal', refusals(exact), [])
   const check5 = eq('exact lines pin the digest', exact.planRef && exact.planRef.commandsDigest, sha(lines2))
-  // the real PLAN_ARTIFACT_JS with a stub fs and a stub crypto backed by sha256Hex
-  const start = source.indexOf('const PLAN_ARTIFACT_JS = ')
-  const js = new Function(source.slice(start, source.indexOf('\n', start)) + '\nreturn PLAN_ARTIFACT_JS')()
-  const runJs = (fileText, fail) => {
-    const out = []
-    const fsStub = { readFileSync: () => { if (fail) throw new Error('nope'); return { toString: () => fileText, text: fileText } } }
-    const hashStub = { createHash: () => { const o = { data: '', update(b) { o.data = typeof b === 'string' ? b : b.text; return o }, digest() { return sha(o.data) } }; return o } }
-    new Function('require', 'process', 'console', js)((m) => (m === 'fs' ? fsStub : hashStub), { argv: ['node', 'p.md'] }, { log: (x) => out.push(x) })
-    return out
+  // #700: the real templates/plan-digest.cjs, run in a temp dir that holds .pipeline/plans/issue-7-sam.md
+  const cp = process.getBuiltinModule('child_process')
+  const fsm = process.getBuiltinModule('fs')
+  const osm = process.getBuiltinModule('os')
+  const pathm = process.getBuiltinModule('path')
+  const templatesDirectory = pathm.join(pathm.dirname(pathm.dirname(SUITE_ARGS.fpScriptPath)), 'templates')
+  const temporary = fsm.mkdtempSync(pathm.join(osm.tmpdir(), 't631c-'))
+  const emptyDirectory = fsm.mkdtempSync(pathm.join(osm.tmpdir(), 't631c-empty-'))
+  try {
+    fsm.mkdirSync(pathm.join(temporary, '.pipeline', 'plans'), { recursive: true })
+    const runScript = (directory, argument) => cp.execFileSync('node', [pathm.join(templatesDirectory, 'plan-digest.cjs'), argument], { cwd: directory, encoding: 'utf8' }).split('\n').filter((l) => l !== '')
+    const art = 'x\n' + lines2 + '\n'
+    fsm.writeFileSync(pathm.join(temporary, '.pipeline', 'plans', 'issue-7-sam.md'), art)
+    const same = runScript(temporary, '7')
+    fsm.writeFileSync(pathm.join(temporary, '.pipeline', 'plans', 'issue-7-sam.md'), art.replace('bash t.sh', 'bash t.sh '))
+    const diff = runScript(temporary, '7')
+    const check6 = eq('lines digest equals the plan\'s', same, [sha(art), sha(lines2)])
+    const check7 = eq('one byte differs', diff[1] !== same[1], true)
+    const check8 = eq('read failure (no file)', runScript(emptyDirectory, '7'), ['PLAN-DIGEST-ERROR'])
+    const check8b = eq('a non-numeric argument', [runScript(temporary, '../7'), runScript(temporary, '')], [['PLAN-DIGEST-ERROR'], ['PLAN-DIGEST-ERROR']])
+    const check8c = eq('the engine plan path is the one the script reads', source.includes('const planPath = `.pipeline/plans/issue-${issue}-sam.md`'), true)
+    const check8d = eq('the engine holds no inline plan program', source.includes('PLAN_ARTIFACT_JS'), false)
+    const indexCheck = source.indexOf('await checkProofLines(samAcceptanceItems, sam.plan)')
+    const indexPlanCheck = source.indexOf('const planCheck = scriptIssues.length > 0')
+    const check9 = eq('checkProofLines awaited before the plan check, its issues join scriptIssues', indexCheck > 0 && indexCheck < indexPlanCheck && source.includes('itemIssues.concat(targetIssues, proofIssues)'), true)
+    const check10 = eq('planDigestPinned is read by planReferenceFor', source.includes('planDigestPinned !== null'), true)
+    return check1 || check1b || check2 || check3 || check4 || check5 || check6 || check7 || check8 || check8b || check8c || check8d || check9 || check10 || { ok: true }
+  } finally {
+    fsm.rmSync(temporary, { recursive: true, force: true })
+    fsm.rmSync(emptyDirectory, { recursive: true, force: true })
   }
-  const art = 'x\n' + lines2 + '\n'
-  const same = runJs(art, false)
-  const diff = runJs(art.replace('bash t.sh', 'bash t.sh '), false)
-  const check6 = eq('lines digest equals the plan\'s', same, [sha(art), sha(lines2)])
-  const check7 = eq('one byte differs', diff[1] !== same[1], true)
-  const check8 = eq('read failure', runJs('', true), ['PLAN-DIGEST-ERROR'])
-  const indexCheck = source.indexOf('await checkProofLines(samAcceptanceItems, sam.plan)')
-  const indexPlanCheck = source.indexOf('const planCheck = scriptIssues.length > 0')
-  const check9 = eq('checkProofLines awaited before the plan check, its issues join scriptIssues', indexCheck > 0 && indexCheck < indexPlanCheck && source.includes('itemIssues.concat(targetIssues, proofIssues)'), true)
-  const check10 = eq('planDigestPinned is read by planReferenceFor', source.includes('planDigestPinned !== null'), true)
-  return check1 || check1b || check2 || check3 || check4 || check5 || check6 || check7 || check8 || check9 || check10 || { ok: true }
 })
 
 await testCase('T631d demotion: a proven bound box whose exact command is not in reviewKeys is demoted', async () => {
