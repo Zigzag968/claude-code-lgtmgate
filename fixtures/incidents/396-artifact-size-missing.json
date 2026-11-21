@@ -108,46 +108,64 @@
         {
           "text": "`grep -c 'REQUEST_PIN' workflows/deliver-pipeline.js` prints `2` (definition plus the `callAgent` use).",
           "humanGate": false,
-          "command": "_"
+          "command": "grep -c 'REQUEST_PIN' workflows/deliver-pipeline.js"
         },
         {
           "text": "`grep -c 'unrelated context' workflows/deliver-pipeline.js agents/theo.md` prints `workflows/deliver-pipeline.js:2` and `agents/theo.md:1` (the constant and `THEO_PERSONA`).",
           "humanGate": false,
-          "command": "_"
+          "command": "grep -c 'unrelated context' workflows/deliver-pipeline.js agents/theo.md"
         },
         {
           "text": "`node scripts/run-flow-suite.cjs > $TMPDIR/out.txt 2>&1; grep -c 'PASS — T9010 ' $TMPDIR/out.txt` prints `1` (T9010 is free on main), and `tail -n 1 $TMPDIR/out.txt` prints `[flow-suite] status=test-ok passed=340 failed=0` (339 measured on main plus 1).",
           "humanGate": false,
-          "command": "_"
+          "command": "node scripts/run-flow-suite.cjs > $TMPDIR/out.txt 2>&1; grep -c 'PASS — T9010 ' $TMPDIR/out.txt; tail -n 1 $TMPDIR/out.txt"
         },
         {
           "text": "`OFFLINE_STRICT=1 node scripts/run-offline.cjs --all fixtures > $TMPDIR/out.txt 2>&1; echo rc=$?; tail -n 1 $TMPDIR/out.txt` prints `rc=0` then `[offline] status=ok passed=65 failed=0` (64 measured on main plus the one R2 fixture of ac:8), and `git diff --name-status origin/main...HEAD -- fixtures` prints exactly `A<TAB>fixtures/incidents/10-request-pin.json` (no existing fixture changes: every replay still answers by label).",
           "humanGate": false,
-          "command": "_"
+          "command": "OFFLINE_STRICT=1 node scripts/run-offline.cjs --all fixtures > $TMPDIR/out.txt 2>&1; echo rc=$?; tail -n 1 $TMPDIR/out.txt; git diff --name-status origin/main...HEAD -- fixtures"
         },
         {
           "text": "`node scripts/guards.cjs > $TMPDIR/out.txt 2>&1; echo rc=$?` prints `rc=0`, and `bash tests/templates/test-canonical-guards.sh > $TMPDIR/out.txt 2>&1; echo rc=$?; tail -n 1 $TMPDIR/out.txt` prints `rc=0` then a line ending `failed=0` (R1 counters unchanged).",
           "humanGate": false,
-          "command": "_"
+          "command": "node scripts/guards.cjs > $TMPDIR/out.txt 2>&1; echo rc=$?; bash tests/templates/test-canonical-guards.sh > $TMPDIR/out.txt 2>&1; echo rc=$?; tail -n 1 $TMPDIR/out.txt"
         },
         {
           "text": "`node scripts/audit.cjs --check` prints `PASS: audit:` and exits 0, and `git diff -- scripts/audit-baseline.json` prints nothing.",
           "humanGate": false,
-          "command": "_"
+          "command": "node scripts/audit.cjs --check; git diff -- scripts/audit-baseline.json"
         },
         {
           "text": "`git diff --name-only origin/main...HEAD` lists only `workflows/deliver-pipeline.js` (the constant, the `callAgent` prefix, `THEO_PERSONA`), `agents/theo.md` (the rule), `templates/test-deliver-pipeline.js` (flow-suite case T9010) and `fixtures/incidents/10-request-pin.json` (R2 incident fixture); no template holds a byte-identical copy of the touched engine block, and `bash tests/templates/test-probe-run.sh` last line stays `[probe-run] status=ok passed=198 failed=0`.",
           "humanGate": false,
-          "command": "_"
+          "command": "git diff --name-only origin/main...HEAD; bash tests/templates/test-probe-run.sh | tail -n 1"
         },
         {
           "text": "`node scripts/run-offline.cjs fixtures/incidents/10-request-pin.json; echo rc=$?` prints `[offline] status=ok passed=1 failed=0` then `rc=0` (R2 replay: green on the branch, red on main for the reason shown in the proof log).",
           "humanGate": false,
-          "command": "_"
+          "command": "node scripts/run-offline.cjs fixtures/incidents/10-request-pin.json; echo rc=$?"
         }
       ],
-      "plan": "_\n\n_\n\n_\n\n_\n\n_\n_\n\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n\n_\n\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n\n_\n\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n- [ ] <!-- ac:1 --> `grep -c 'REQUEST_PIN' workflows/deliver-pipeline.js` prints `2` (definition plus the `callAgent` use).\n- [ ] <!-- ac:2 --> `grep -c 'unrelated context' workflows/deliver-pipeline.js agents/theo.md` prints `workflows/deliver-pipeline.js:2` and `agents/theo.md:1` (the constant and `THEO_PERSONA`).\n- [ ] <!-- ac:3 --> `node scripts/run-flow-suite.cjs > $TMPDIR/out.txt 2>&1; grep -c 'PASS — T9010 ' $TMPDIR/out.txt` prints `1` (T9010 is free on main), and `tail -n 1 $TMPDIR/out.txt` prints `[flow-suite] status=test-ok passed=340 failed=0` (339 measured on main plus 1).\n- [ ] <!-- ac:4 --> `OFFLINE_STRICT=1 node scripts/run-offline.cjs --all fixtures > $TMPDIR/out.txt 2>&1; echo rc=$?; tail -n 1 $TMPDIR/out.txt` prints `rc=0` then `[offline] status=ok passed=65 failed=0` (64 measured on main plus the one R2 fixture of ac:8), and `git diff --name-status origin/main...HEAD -- fixtures` prints exactly `A<TAB>fixtures/incidents/10-request-pin.json` (no existing fixture changes: every replay still answers by label).\n- [ ] <!-- ac:5 --> `node scripts/guards.cjs > $TMPDIR/out.txt 2>&1; echo rc=$?` prints `rc=0`, and `bash tests/templates/test-canonical-guards.sh > $TMPDIR/out.txt 2>&1; echo rc=$?; tail -n 1 $TMPDIR/out.txt` prints `rc=0` then a line ending `failed=0` (R1 counters unchanged).\n- [ ] <!-- ac:6 --> `node scripts/audit.cjs --check` prints `PASS: audit:` and exits 0, and `git diff -- scripts/audit-baseline.json` prints nothing.\n- [ ] <!-- ac:7 --> `git diff --name-only origin/main...HEAD` lists only `workflows/deliver-pipeline.js` (the constant, the `callAgent` prefix, `THEO_PERSONA`), `agents/theo.md` (the rule), `templates/test-deliver-pipeline.js` (flow-suite case T9010) and `fixtures/incidents/10-request-pin.json` (R2 incident fixture); no template holds a byte-identical copy of the touched engine block, and `bash tests/templates/test-probe-run.sh` last line stays `[probe-run] status=ok passed=198 failed=0`.\n- [ ] <!-- ac:8 --> `node scripts/run-offline.cjs fixtures/incidents/10-request-pin.json; echo rc=$?` prints `[offline] status=ok passed=1 failed=0` then `rc=0` (R2 replay: green on the branch, red on main for the reason shown in the proof log).\n_\n\n_\n\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n"
+      "plan": "_\n\n_\n\n_\n\n_\n\n_\n_\n\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n\n_\n\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n\n_\n\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n- [ ] <!-- ac:1 --> `grep -c 'REQUEST_PIN' workflows/deliver-pipeline.js` prints `2` (definition plus the `callAgent` use).\n- [ ] <!-- ac:2 --> `grep -c 'unrelated context' workflows/deliver-pipeline.js agents/theo.md` prints `workflows/deliver-pipeline.js:2` and `agents/theo.md:1` (the constant and `THEO_PERSONA`).\n- [ ] <!-- ac:3 --> `node scripts/run-flow-suite.cjs > $TMPDIR/out.txt 2>&1; grep -c 'PASS — T9010 ' $TMPDIR/out.txt` prints `1` (T9010 is free on main), and `tail -n 1 $TMPDIR/out.txt` prints `[flow-suite] status=test-ok passed=340 failed=0` (339 measured on main plus 1).\n- [ ] <!-- ac:4 --> `OFFLINE_STRICT=1 node scripts/run-offline.cjs --all fixtures > $TMPDIR/out.txt 2>&1; echo rc=$?; tail -n 1 $TMPDIR/out.txt` prints `rc=0` then `[offline] status=ok passed=65 failed=0` (64 measured on main plus the one R2 fixture of ac:8), and `git diff --name-status origin/main...HEAD -- fixtures` prints exactly `A<TAB>fixtures/incidents/10-request-pin.json` (no existing fixture changes: every replay still answers by label).\n- [ ] <!-- ac:5 --> `node scripts/guards.cjs > $TMPDIR/out.txt 2>&1; echo rc=$?` prints `rc=0`, and `bash tests/templates/test-canonical-guards.sh > $TMPDIR/out.txt 2>&1; echo rc=$?; tail -n 1 $TMPDIR/out.txt` prints `rc=0` then a line ending `failed=0` (R1 counters unchanged).\n- [ ] <!-- ac:6 --> `node scripts/audit.cjs --check` prints `PASS: audit:` and exits 0, and `git diff -- scripts/audit-baseline.json` prints nothing.\n- [ ] <!-- ac:7 --> `git diff --name-only origin/main...HEAD` lists only `workflows/deliver-pipeline.js` (the constant, the `callAgent` prefix, `THEO_PERSONA`), `agents/theo.md` (the rule), `templates/test-deliver-pipeline.js` (flow-suite case T9010) and `fixtures/incidents/10-request-pin.json` (R2 incident fixture); no template holds a byte-identical copy of the touched engine block, and `bash tests/templates/test-probe-run.sh` last line stays `[probe-run] status=ok passed=198 failed=0`.\n- [ ] <!-- ac:8 --> `node scripts/run-offline.cjs fixtures/incidents/10-request-pin.json; echo rc=$?` prints `[offline] status=ok passed=1 failed=0` then `rc=0` (R2 replay: green on the branch, red on main for the reason shown in the proof log).\n\nproof-command ac:1: grep -c 'REQUEST_PIN' workflows/deliver-pipeline.js\nproof-command ac:2: grep -c 'unrelated context' workflows/deliver-pipeline.js agents/theo.md\nproof-command ac:3: node scripts/run-flow-suite.cjs > $TMPDIR/out.txt 2>&1; grep -c 'PASS — T9010 ' $TMPDIR/out.txt; tail -n 1 $TMPDIR/out.txt\nproof-command ac:4: OFFLINE_STRICT=1 node scripts/run-offline.cjs --all fixtures > $TMPDIR/out.txt 2>&1; echo rc=$?; tail -n 1 $TMPDIR/out.txt; git diff --name-status origin/main...HEAD -- fixtures\nproof-command ac:5: node scripts/guards.cjs > $TMPDIR/out.txt 2>&1; echo rc=$?; bash tests/templates/test-canonical-guards.sh > $TMPDIR/out.txt 2>&1; echo rc=$?; tail -n 1 $TMPDIR/out.txt\nproof-command ac:6: node scripts/audit.cjs --check; git diff -- scripts/audit-baseline.json\nproof-command ac:7: git diff --name-only origin/main...HEAD; bash tests/templates/test-probe-run.sh | tail -n 1\nproof-command ac:8: node scripts/run-offline.cjs fixtures/incidents/10-request-pin.json; echo rc=$?\n_\n\n_\n\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n"
     },
+    "probe-10-lines-plan-artifact-r0": [
+      {
+        "line": "",
+        "verify": "_"
+      },
+      {
+        "line": "",
+        "verify": "_"
+      },
+      {
+        "line": "",
+        "verify": "_"
+      },
+      {
+        "line": "",
+        "verify": "_"
+      }
+    ],
     "plan-check-10-1": {
       "verdict": "_",
       "issues": [
@@ -169,45 +187,45 @@
         {
           "text": "`grep -c 'REQUEST_PIN' workflows/deliver-pipeline.js` prints `2` (definition plus the `callAgent` use).",
           "humanGate": false,
-          "command": "_"
+          "command": "grep -c 'REQUEST_PIN' workflows/deliver-pipeline.js"
         },
         {
           "text": "`grep -c 'unrelated context' workflows/deliver-pipeline.js agents/theo.md` prints `workflows/deliver-pipeline.js:2` and `agents/theo.md:1` (the constant and `THEO_PERSONA`).",
           "humanGate": false,
-          "command": "_"
+          "command": "grep -c 'unrelated context' workflows/deliver-pipeline.js agents/theo.md"
         },
         {
           "text": "`node scripts/run-flow-suite.cjs > $TMPDIR/out.txt 2>&1; grep -c 'PASS — T9010 ' $TMPDIR/out.txt` prints `1` (T9010 is free on main), and `tail -n 1 $TMPDIR/out.txt` prints `[flow-suite] status=test-ok passed=340 failed=0` (339 measured on main plus 1).",
           "humanGate": false,
-          "command": "_"
+          "command": "node scripts/run-flow-suite.cjs > $TMPDIR/out.txt 2>&1; grep -c 'PASS — T9010 ' $TMPDIR/out.txt; tail -n 1 $TMPDIR/out.txt"
         },
         {
           "text": "`OFFLINE_STRICT=1 node scripts/run-offline.cjs --all fixtures > $TMPDIR/out.txt 2>&1; echo rc=$?; tail -n 1 $TMPDIR/out.txt` prints `rc=0` then `[offline] status=ok passed=65 failed=0` (64 measured on main plus the one R2 fixture of ac:8), and `git diff --name-status origin/main...HEAD -- fixtures` prints exactly `A<TAB>fixtures/incidents/10-request-pin.json` (no existing fixture changes: every replay still answers by label).",
           "humanGate": false,
-          "command": "_"
+          "command": "OFFLINE_STRICT=1 node scripts/run-offline.cjs --all fixtures > $TMPDIR/out.txt 2>&1; echo rc=$?; tail -n 1 $TMPDIR/out.txt; git diff --name-status origin/main...HEAD -- fixtures"
         },
         {
           "text": "`node scripts/guards.cjs > $TMPDIR/out.txt 2>&1; echo rc=$?` prints `rc=0`, and `bash tests/templates/test-canonical-guards.sh > $TMPDIR/out.txt 2>&1; echo rc=$?; tail -n 1 $TMPDIR/out.txt` prints `rc=0` then a line ending `failed=0` (R1 counters unchanged).",
           "humanGate": false,
-          "command": "_"
+          "command": "node scripts/guards.cjs > $TMPDIR/out.txt 2>&1; echo rc=$?; bash tests/templates/test-canonical-guards.sh > $TMPDIR/out.txt 2>&1; echo rc=$?; tail -n 1 $TMPDIR/out.txt"
         },
         {
           "text": "`node scripts/audit.cjs --check` prints `PASS: audit:` and exits 0, and `git diff -- scripts/audit-baseline.json` prints nothing.",
           "humanGate": false,
-          "command": "_"
+          "command": "node scripts/audit.cjs --check; git diff -- scripts/audit-baseline.json"
         },
         {
           "text": "`git diff --name-only origin/main...HEAD` lists only `workflows/deliver-pipeline.js` (the constant, the `callAgent` prefix, `THEO_PERSONA`), `agents/theo.md` (the rule), `templates/test-deliver-pipeline.js` (flow-suite case T9010) and `fixtures/incidents/10-request-pin.json` (R2 incident fixture); `grep -rlE '^(async )?function (callAgent|composeAgentPrompt)|^const (STRUCTURED_OUTPUT_MANDATE|THEO_PERSONA|REQUEST_PIN) =' templates; echo rc=$?` prints only `rc=1` (no template defines a copy of the touched engine blocks), and `bash tests/templates/test-probe-run.sh` last line stays `[probe-run] status=ok passed=198 failed=0`.",
           "humanGate": false,
-          "command": "_"
+          "command": "git diff --name-only origin/main...HEAD; grep -rlE '^(async )?function (callAgent|composeAgentPrompt)|^const (STRUCTURED_OUTPUT_MANDATE|THEO_PERSONA|REQUEST_PIN) =' templates; echo rc=$?; bash tests/templates/test-probe-run.sh | tail -n 1"
         },
         {
           "text": "`node scripts/run-offline.cjs fixtures/incidents/10-request-pin.json; echo rc=$?` prints `[offline] status=ok passed=1 failed=0` then `rc=0` (R2 replay: green on the branch, red on main for the reason shown in the proof log).",
           "humanGate": false,
-          "command": "_"
+          "command": "node scripts/run-offline.cjs fixtures/incidents/10-request-pin.json; echo rc=$?"
         }
       ],
-      "plan": "_\n\n_\n\n_\n\n_\n\n_\n_\n\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n\n_\n\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n\n_\n\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n- [ ] <!-- ac:1 --> `grep -c 'REQUEST_PIN' workflows/deliver-pipeline.js` prints `2` (definition plus the `callAgent` use).\n- [ ] <!-- ac:2 --> `grep -c 'unrelated context' workflows/deliver-pipeline.js agents/theo.md` prints `workflows/deliver-pipeline.js:2` and `agents/theo.md:1` (the constant and `THEO_PERSONA`).\n- [ ] <!-- ac:3 --> `node scripts/run-flow-suite.cjs > $TMPDIR/out.txt 2>&1; grep -c 'PASS — T9010 ' $TMPDIR/out.txt` prints `1` (T9010 is free on main), and `tail -n 1 $TMPDIR/out.txt` prints `[flow-suite] status=test-ok passed=340 failed=0` (339 measured on main plus 1).\n- [ ] <!-- ac:4 --> `OFFLINE_STRICT=1 node scripts/run-offline.cjs --all fixtures > $TMPDIR/out.txt 2>&1; echo rc=$?; tail -n 1 $TMPDIR/out.txt` prints `rc=0` then `[offline] status=ok passed=65 failed=0` (64 measured on main plus the one R2 fixture of ac:8), and `git diff --name-status origin/main...HEAD -- fixtures` prints exactly `A<TAB>fixtures/incidents/10-request-pin.json` (no existing fixture changes: every replay still answers by label).\n- [ ] <!-- ac:5 --> `node scripts/guards.cjs > $TMPDIR/out.txt 2>&1; echo rc=$?` prints `rc=0`, and `bash tests/templates/test-canonical-guards.sh > $TMPDIR/out.txt 2>&1; echo rc=$?; tail -n 1 $TMPDIR/out.txt` prints `rc=0` then a line ending `failed=0` (R1 counters unchanged).\n- [ ] <!-- ac:6 --> `node scripts/audit.cjs --check` prints `PASS: audit:` and exits 0, and `git diff -- scripts/audit-baseline.json` prints nothing.\n- [ ] <!-- ac:7 --> `git diff --name-only origin/main...HEAD` lists only `workflows/deliver-pipeline.js` (the constant, the `callAgent` prefix, `THEO_PERSONA`), `agents/theo.md` (the rule), `templates/test-deliver-pipeline.js` (flow-suite case T9010) and `fixtures/incidents/10-request-pin.json` (R2 incident fixture); `grep -rlE '^(async )?function (callAgent|composeAgentPrompt)|^const (STRUCTURED_OUTPUT_MANDATE|THEO_PERSONA|REQUEST_PIN) =' templates; echo rc=$?` prints only `rc=1` (no template defines a copy of the touched engine blocks), and `bash tests/templates/test-probe-run.sh` last line stays `[probe-run] status=ok passed=198 failed=0`.\n- [ ] <!-- ac:8 --> `node scripts/run-offline.cjs fixtures/incidents/10-request-pin.json; echo rc=$?` prints `[offline] status=ok passed=1 failed=0` then `rc=0` (R2 replay: green on the branch, red on main for the reason shown in the proof log).\n_\n\n_\n\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n\n_"
+      "plan": "_\n\n_\n\n_\n\n_\n\n_\n_\n\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n\n_\n\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n\n_\n\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n- [ ] <!-- ac:1 --> `grep -c 'REQUEST_PIN' workflows/deliver-pipeline.js` prints `2` (definition plus the `callAgent` use).\n- [ ] <!-- ac:2 --> `grep -c 'unrelated context' workflows/deliver-pipeline.js agents/theo.md` prints `workflows/deliver-pipeline.js:2` and `agents/theo.md:1` (the constant and `THEO_PERSONA`).\n- [ ] <!-- ac:3 --> `node scripts/run-flow-suite.cjs > $TMPDIR/out.txt 2>&1; grep -c 'PASS — T9010 ' $TMPDIR/out.txt` prints `1` (T9010 is free on main), and `tail -n 1 $TMPDIR/out.txt` prints `[flow-suite] status=test-ok passed=340 failed=0` (339 measured on main plus 1).\n- [ ] <!-- ac:4 --> `OFFLINE_STRICT=1 node scripts/run-offline.cjs --all fixtures > $TMPDIR/out.txt 2>&1; echo rc=$?; tail -n 1 $TMPDIR/out.txt` prints `rc=0` then `[offline] status=ok passed=65 failed=0` (64 measured on main plus the one R2 fixture of ac:8), and `git diff --name-status origin/main...HEAD -- fixtures` prints exactly `A<TAB>fixtures/incidents/10-request-pin.json` (no existing fixture changes: every replay still answers by label).\n- [ ] <!-- ac:5 --> `node scripts/guards.cjs > $TMPDIR/out.txt 2>&1; echo rc=$?` prints `rc=0`, and `bash tests/templates/test-canonical-guards.sh > $TMPDIR/out.txt 2>&1; echo rc=$?; tail -n 1 $TMPDIR/out.txt` prints `rc=0` then a line ending `failed=0` (R1 counters unchanged).\n- [ ] <!-- ac:6 --> `node scripts/audit.cjs --check` prints `PASS: audit:` and exits 0, and `git diff -- scripts/audit-baseline.json` prints nothing.\n- [ ] <!-- ac:7 --> `git diff --name-only origin/main...HEAD` lists only `workflows/deliver-pipeline.js` (the constant, the `callAgent` prefix, `THEO_PERSONA`), `agents/theo.md` (the rule), `templates/test-deliver-pipeline.js` (flow-suite case T9010) and `fixtures/incidents/10-request-pin.json` (R2 incident fixture); `grep -rlE '^(async )?function (callAgent|composeAgentPrompt)|^const (STRUCTURED_OUTPUT_MANDATE|THEO_PERSONA|REQUEST_PIN) =' templates; echo rc=$?` prints only `rc=1` (no template defines a copy of the touched engine blocks), and `bash tests/templates/test-probe-run.sh` last line stays `[probe-run] status=ok passed=198 failed=0`.\n- [ ] <!-- ac:8 --> `node scripts/run-offline.cjs fixtures/incidents/10-request-pin.json; echo rc=$?` prints `[offline] status=ok passed=1 failed=0` then `rc=0` (R2 replay: green on the branch, red on main for the reason shown in the proof log).\n\nproof-command ac:1: grep -c 'REQUEST_PIN' workflows/deliver-pipeline.js\nproof-command ac:2: grep -c 'unrelated context' workflows/deliver-pipeline.js agents/theo.md\nproof-command ac:3: node scripts/run-flow-suite.cjs > $TMPDIR/out.txt 2>&1; grep -c 'PASS — T9010 ' $TMPDIR/out.txt; tail -n 1 $TMPDIR/out.txt\nproof-command ac:4: OFFLINE_STRICT=1 node scripts/run-offline.cjs --all fixtures > $TMPDIR/out.txt 2>&1; echo rc=$?; tail -n 1 $TMPDIR/out.txt; git diff --name-status origin/main...HEAD -- fixtures\nproof-command ac:5: node scripts/guards.cjs > $TMPDIR/out.txt 2>&1; echo rc=$?; bash tests/templates/test-canonical-guards.sh > $TMPDIR/out.txt 2>&1; echo rc=$?; tail -n 1 $TMPDIR/out.txt\nproof-command ac:6: node scripts/audit.cjs --check; git diff -- scripts/audit-baseline.json\nproof-command ac:7: git diff --name-only origin/main...HEAD; grep -rlE '^(async )?function (callAgent|composeAgentPrompt)|^const (STRUCTURED_OUTPUT_MANDATE|THEO_PERSONA|REQUEST_PIN) =' templates; echo rc=$?; bash tests/templates/test-probe-run.sh | tail -n 1\nproof-command ac:8: node scripts/run-offline.cjs fixtures/incidents/10-request-pin.json; echo rc=$?\n_\n\n_\n\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n\n_"
     },
     "plan-check-10-2": {
       "verdict": "CONFORMING",
@@ -238,8 +256,8 @@
       "testCommandRun": "_"
     },
     "probe-10-pr-state-window-start-r0": {
-      "line": "PROBE name=pr-state exit=0 sha=a73d582e80a0bf28c1ba0cfcb3c1af8cfefb0456bc570e0aa921e6e16daf85a4 cmd=a0d9258a4bc5a2d696252916b8a56199c02309bdfde80b97ae5333cf0a585d8e json={\"now\":\"2026-10-10T16:44:48Z\",\"headRefName\":\"feat/issue-10\",\"headRefOid\":\"e46995ddc84b1c966d1a4f5662e43e3183f8f826\",\"bodyDigest\":\"34dd25d18b17\",\"acceptanceChecked\":[],\"decisionLog\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"BLOCKED\",\"lastCommitDate\":\"2026-10-10T16:43:19Z\",\"commitCount\":1,\"ciState\":\"pending\",\"ciChecks\":{\"Analyze (actions)\":\"green\",\"Analyze (javascript-typescript)\":\"pending\",\"Analyze (python)\":\"green\",\"CodeQL\":\"green\",\"guards\":\"pending\",\"smoke-install\":\"green\"},\"reviewCommentIds\":[],\"openIssues\":null,\"openIssuesTruncated\":false,\"files\":[\"agents/theo.md\",\"fixtures/incidents/10-request-pin.json\",\"templates/test-deliver-pipeline.js\",\"workflows/deliver-pipeline.js\"]}",
-      "verify": "VERIFY ok line=PROBE name=pr-state exit=0 sha=a73d582e80a0bf28c1ba0cfcb3c1af8cfefb0456bc570e0aa921e6e16daf85a4 cmd=a0d9258a4bc5a2d696252916b8a56199c02309bdfde80b97ae5333cf0a585d8e json={\"now\":\"2026-10-10T16:44:48Z\",\"headRefName\":\"feat/issue-10\",\"headRefOid\":\"e46995ddc84b1c966d1a4f5662e43e3183f8f826\",\"bodyDigest\":\"34dd25d18b17\",\"acceptanceChecked\":[],\"decisionLog\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"BLOCKED\",\"lastCommitDate\":\"2026-10-10T16:43:19Z\",\"commitCount\":1,\"ciState\":\"pending\",\"ciChecks\":{\"Analyze (actions)\":\"green\",\"Analyze (javascript-typescript)\":\"pending\",\"Analyze (python)\":\"green\",\"CodeQL\":\"green\",\"guards\":\"pending\",\"smoke-install\":\"green\"},\"reviewCommentIds\":[],\"openIssues\":null,\"openIssuesTruncated\":false,\"files\":[\"agents/theo.md\",\"fixtures/incidents/10-request-pin.json\",\"templates/test-deliver-pipeline.js\",\"workflows/deliver-pipeline.js\"]}"
+      "line": "PROBE name=pr-state exit=0 sha=a73d582e80a0bf28c1ba0cfcb3c1af8cfefb0456bc570e0aa921e6e16daf85a4 cmd=a94b76f0f84f04b400ab55d0db046b99ba30a4cbd1c014375710c5be6172b768 json={\"now\":\"2026-10-10T16:44:48Z\",\"headRefName\":\"feat/issue-10\",\"headRefOid\":\"e46995ddc84b1c966d1a4f5662e43e3183f8f826\",\"bodyDigest\":\"34dd25d18b17\",\"acceptanceChecked\":[],\"decisionLog\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"BLOCKED\",\"lastCommitDate\":\"2026-10-10T16:43:19Z\",\"commitCount\":1,\"ciState\":\"pending\",\"ciChecks\":{\"Analyze (actions)\":\"green\",\"Analyze (javascript-typescript)\":\"pending\",\"Analyze (python)\":\"green\",\"CodeQL\":\"green\",\"guards\":\"pending\",\"smoke-install\":\"green\"},\"reviewCommentIds\":[],\"openIssues\":null,\"openIssuesTruncated\":false,\"files\":[\"agents/theo.md\",\"fixtures/incidents/10-request-pin.json\",\"templates/test-deliver-pipeline.js\",\"workflows/deliver-pipeline.js\"],\"nonce\":\"a1b2c3d4e5f60718\",\"forgeable\":false}",
+      "verify": "VERIFY ok line=PROBE name=pr-state exit=0 sha=a73d582e80a0bf28c1ba0cfcb3c1af8cfefb0456bc570e0aa921e6e16daf85a4 cmd=a94b76f0f84f04b400ab55d0db046b99ba30a4cbd1c014375710c5be6172b768 json={\"now\":\"2026-10-10T16:44:48Z\",\"headRefName\":\"feat/issue-10\",\"headRefOid\":\"e46995ddc84b1c966d1a4f5662e43e3183f8f826\",\"bodyDigest\":\"34dd25d18b17\",\"acceptanceChecked\":[],\"decisionLog\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"BLOCKED\",\"lastCommitDate\":\"2026-10-10T16:43:19Z\",\"commitCount\":1,\"ciState\":\"pending\",\"ciChecks\":{\"Analyze (actions)\":\"green\",\"Analyze (javascript-typescript)\":\"pending\",\"Analyze (python)\":\"green\",\"CodeQL\":\"green\",\"guards\":\"pending\",\"smoke-install\":\"green\"},\"reviewCommentIds\":[],\"openIssues\":null,\"openIssuesTruncated\":false,\"files\":[\"agents/theo.md\",\"fixtures/incidents/10-request-pin.json\",\"templates/test-deliver-pipeline.js\",\"workflows/deliver-pipeline.js\"],\"nonce\":\"a1b2c3d4e5f60718\",\"forgeable\":false}"
     },
     "morgan-pr-10-395-r0": {
       "verdict": "LGTM",
@@ -298,8 +316,8 @@
       ]
     },
     "probe-10-pr-state-window-end-r0": {
-      "line": "PROBE name=pr-state exit=0 sha=a8b32cf00378fe91a54034dccde0e3ca94c9910a227cd02b45dcb8ccea6a880c cmd=ca3f12ed370ce2103485408842b2b4852f7f1222d5b999298ebaf1fdd71577fb json={\"now\":\"2026-10-10T16:49:21Z\",\"headRefName\":\"feat/issue-10\",\"headRefOid\":\"e46995ddc84b1c966d1a4f5662e43e3183f8f826\",\"bodyDigest\":\"34dd25d18b17\",\"acceptanceChecked\":[],\"decisionLog\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-10-10T16:43:19Z\",\"commitCount\":1,\"ciState\":\"green\",\"ciChecks\":{\"Analyze (actions)\":\"green\",\"Analyze (javascript-typescript)\":\"green\",\"Analyze (python)\":\"green\",\"CodeQL\":\"green\",\"guards\":\"green\",\"smoke-install\":\"green\"},\"reviewCommentIds\":[\"IC_kwDOUzMNuc8AAAABa5TC5A\"],\"openIssues\":[],\"openIssuesTruncated\":false,\"files\":[\"agents/theo.md\",\"fixtures/incidents/10-request-pin.json\",\"templates/test-deliver-pipeline.js\",\"workflows/deliver-pipeline.js\"]}",
-      "verify": "VERIFY ok line=PROBE name=pr-state exit=0 sha=a8b32cf00378fe91a54034dccde0e3ca94c9910a227cd02b45dcb8ccea6a880c cmd=ca3f12ed370ce2103485408842b2b4852f7f1222d5b999298ebaf1fdd71577fb json={\"now\":\"2026-10-10T16:49:21Z\",\"headRefName\":\"feat/issue-10\",\"headRefOid\":\"e46995ddc84b1c966d1a4f5662e43e3183f8f826\",\"bodyDigest\":\"34dd25d18b17\",\"acceptanceChecked\":[],\"decisionLog\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-10-10T16:43:19Z\",\"commitCount\":1,\"ciState\":\"green\",\"ciChecks\":{\"Analyze (actions)\":\"green\",\"Analyze (javascript-typescript)\":\"green\",\"Analyze (python)\":\"green\",\"CodeQL\":\"green\",\"guards\":\"green\",\"smoke-install\":\"green\"},\"reviewCommentIds\":[\"IC_kwDOUzMNuc8AAAABa5TC5A\"],\"openIssues\":[],\"openIssuesTruncated\":false,\"files\":[\"agents/theo.md\",\"fixtures/incidents/10-request-pin.json\",\"templates/test-deliver-pipeline.js\",\"workflows/deliver-pipeline.js\"]}"
+      "line": "PROBE name=pr-state exit=0 sha=a8b32cf00378fe91a54034dccde0e3ca94c9910a227cd02b45dcb8ccea6a880c cmd=53d072df2e64c3d63ab2d04b8994c79c7a1cb4ebe128c02436a6c5e54db7fda6 json={\"now\":\"2026-10-10T16:49:21Z\",\"headRefName\":\"feat/issue-10\",\"headRefOid\":\"e46995ddc84b1c966d1a4f5662e43e3183f8f826\",\"bodyDigest\":\"34dd25d18b17\",\"acceptanceChecked\":[],\"decisionLog\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-10-10T16:43:19Z\",\"commitCount\":1,\"ciState\":\"green\",\"ciChecks\":{\"Analyze (actions)\":\"green\",\"Analyze (javascript-typescript)\":\"green\",\"Analyze (python)\":\"green\",\"CodeQL\":\"green\",\"guards\":\"green\",\"smoke-install\":\"green\"},\"reviewCommentIds\":[\"IC_kwDOUzMNuc8AAAABa5TC5A\"],\"openIssues\":[],\"openIssuesTruncated\":false,\"files\":[\"agents/theo.md\",\"fixtures/incidents/10-request-pin.json\",\"templates/test-deliver-pipeline.js\",\"workflows/deliver-pipeline.js\"],\"reviewKeys\":[\"466ed1837ecbbf55\",\"4d9c26cac10bf441\",\"754b2c202fc99e7e\",\"98f5bd8ac18046c7\",\"ca04c4d59feba9ee\",\"d4d822d0fa6dea7f\",\"dedb10197371489f\",\"fc59609b25e2a3f9\"]}",
+      "verify": "VERIFY ok line=PROBE name=pr-state exit=0 sha=a8b32cf00378fe91a54034dccde0e3ca94c9910a227cd02b45dcb8ccea6a880c cmd=53d072df2e64c3d63ab2d04b8994c79c7a1cb4ebe128c02436a6c5e54db7fda6 json={\"now\":\"2026-10-10T16:49:21Z\",\"headRefName\":\"feat/issue-10\",\"headRefOid\":\"e46995ddc84b1c966d1a4f5662e43e3183f8f826\",\"bodyDigest\":\"34dd25d18b17\",\"acceptanceChecked\":[],\"decisionLog\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-10-10T16:43:19Z\",\"commitCount\":1,\"ciState\":\"green\",\"ciChecks\":{\"Analyze (actions)\":\"green\",\"Analyze (javascript-typescript)\":\"green\",\"Analyze (python)\":\"green\",\"CodeQL\":\"green\",\"guards\":\"green\",\"smoke-install\":\"green\"},\"reviewCommentIds\":[\"IC_kwDOUzMNuc8AAAABa5TC5A\"],\"openIssues\":[],\"openIssuesTruncated\":false,\"files\":[\"agents/theo.md\",\"fixtures/incidents/10-request-pin.json\",\"templates/test-deliver-pipeline.js\",\"workflows/deliver-pipeline.js\"],\"reviewKeys\":[\"466ed1837ecbbf55\",\"4d9c26cac10bf441\",\"754b2c202fc99e7e\",\"98f5bd8ac18046c7\",\"ca04c4d59feba9ee\",\"d4d822d0fa6dea7f\",\"dedb10197371489f\",\"fc59609b25e2a3f9\"]}"
     },
     "probe-10-pr-write-run-state-plan-r0": {
       "line": "PROBE name=pr-write exit=0 sha=a116a3f7f0cd908c10b1e21a98cedb1996ff96e900d0dc251c789b450c852d9a cmd=2c46f4d46f397cfd887a5ec572915d87a8f6dd6cd45a11210fb6d17040b85238 json={\"op\":\"run-state\",\"result\":\"written\",\"reason\":null,\"bytes\":58}",
@@ -327,6 +345,12 @@
       "probe:provision:haiku",
       "probe:provision-freshness:haiku",
       "probe:pr-write:haiku",
+      "probe:lines:haiku",
+      "probe:lines:haiku",
+      "plan-artifact-unreadable",
+      "probe:lines:haiku",
+      "probe:lines:haiku",
+      "plan-artifact-unreadable",
       "probe:pr-write:haiku",
       "probe:preflight:haiku",
       "probe:preflight:haiku",
@@ -335,6 +359,7 @@
       "probe:git-rev-list-count:haiku",
       "probe:pr-state:haiku",
       "probe:pr-state:haiku",
+      "box-unattested:7",
       "artifact-proof-rejected:artifact-size-missing",
       "probe:pr-write:haiku"
     ],
@@ -347,8 +372,12 @@
       "probe-10-pr-write-run-state-plan-r0",
       "diagnose-issue-10",
       "scout-issue-10-1",
+      "probe-10-lines-plan-artifact-r0",
+      "probe-10-lines-plan-artifact-r0",
       "plan-check-10-1",
       "scout-issue-10-2",
+      "probe-10-lines-plan-artifact-r0",
+      "probe-10-lines-plan-artifact-r0",
       "plan-check-10-2",
       "probe-10-pr-write-run-state-dev-r0",
       "probe-10-preflight-dev-r0",

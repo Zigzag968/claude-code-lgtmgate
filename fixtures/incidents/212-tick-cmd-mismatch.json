@@ -92,43 +92,53 @@
         {
           "text": "`node scripts/run-offline.cjs fixtures/relaunch/dev-after-plan.json | tail -n 1` prints `[offline] status=ok passed=1 failed=0`; that fixture's second run (entryStage dev, plan carried from run 1) asserts phases exactly Setup,Dev, a trace with no provision-freshness probe, and no call label starting diagnose-, scout-, plan-check- or plan-audit-",
           "humanGate": false,
-          "command": "_"
+          "command": "node scripts/run-offline.cjs fixtures/relaunch/dev-after-plan.json | tail -n 1"
         },
         {
           "text": "`bash scripts/test-run-offline.sh | grep -c '^ok: two-run'` prints `2` (the new two-run cases)",
           "humanGate": false,
-          "command": "_"
+          "command": "bash scripts/test-run-offline.sh | grep -c '^ok: two-run'"
         },
         {
           "text": "`bash scripts/test-run-offline.sh > /dev/null; echo $?` prints `0` as its last line",
           "humanGate": false,
-          "command": "_"
+          "command": "bash scripts/test-run-offline.sh > /dev/null; echo $?"
         },
         {
           "text": "`OFFLINE_STRICT=1 node scripts/run-offline.cjs --all fixtures > /dev/null; echo $?` prints `0` as its last line",
           "humanGate": false,
-          "command": "_"
+          "command": "OFFLINE_STRICT=1 node scripts/run-offline.cjs --all fixtures > /dev/null; echo $?"
         },
         {
           "text": "`node scripts/guards.cjs; echo $?` prints `0` as its last line, so no R1 counter is above the base",
           "humanGate": false,
-          "command": "_"
+          "command": "node scripts/guards.cjs; echo $?"
         },
         {
           "text": "`git diff --name-only origin/main...HEAD -- workflows/deliver-pipeline.js | wc -l | tr -d ' '` prints `0` (the engine file is untouched)",
           "humanGate": false,
-          "command": "_"
+          "command": "git diff --name-only origin/main...HEAD -- workflows/deliver-pipeline.js | wc -l | tr -d ' '"
         }
       ],
-      "plan": "_\n\n_\n\n_\n\n_\n\n_\n_\n\n_\n\n_\n\n_\n_\n_\n\n_\n\n_\n_\n_\n_\n_\n_\n\n_\n\n_\n_\n_\n_\n_\n_\n_\n\n_\n\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n\n- [ ] <!-- ac:1 --> `node scripts/run-offline.cjs fixtures/relaunch/dev-after-plan.json | tail -n 1` prints `[offline] status=ok passed=1 failed=0`; that fixture's second run (entryStage dev, plan carried from run 1) asserts phases exactly Setup,Dev, a trace with no provision-freshness probe, and no call label starting diagnose-, scout-, plan-check- or plan-audit-\n- [ ] <!-- ac:2 --> `bash scripts/test-run-offline.sh | grep -c '^ok: two-run'` prints `2` (the new two-run cases)\n- [ ] <!-- ac:3 --> `bash scripts/test-run-offline.sh > /dev/null; echo $?` prints `0` as its last line\n- [ ] <!-- ac:4 --> `OFFLINE_STRICT=1 node scripts/run-offline.cjs --all fixtures > /dev/null; echo $?` prints `0` as its last line\n- [ ] <!-- ac:5 --> `node scripts/guards.cjs; echo $?` prints `0` as its last line, so no R1 counter is above the base\n- [ ] <!-- ac:6 --> `git diff --name-only origin/main...HEAD -- workflows/deliver-pipeline.js | wc -l | tr -d ' '` prints `0` (the engine file is untouched)\n\n_\n\n_\n\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n"
+      "plan": "_\n\n_\n\n_\n\n_\n\n_\n_\n\n_\n\n_\n\n_\n_\n_\n\n_\n\n_\n_\n_\n_\n_\n_\n\n_\n\n_\n_\n_\n_\n_\n_\n_\n\n_\n\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n\n- [ ] <!-- ac:1 --> `node scripts/run-offline.cjs fixtures/relaunch/dev-after-plan.json | tail -n 1` prints `[offline] status=ok passed=1 failed=0`; that fixture's second run (entryStage dev, plan carried from run 1) asserts phases exactly Setup,Dev, a trace with no provision-freshness probe, and no call label starting diagnose-, scout-, plan-check- or plan-audit-\n- [ ] <!-- ac:2 --> `bash scripts/test-run-offline.sh | grep -c '^ok: two-run'` prints `2` (the new two-run cases)\n- [ ] <!-- ac:3 --> `bash scripts/test-run-offline.sh > /dev/null; echo $?` prints `0` as its last line\n- [ ] <!-- ac:4 --> `OFFLINE_STRICT=1 node scripts/run-offline.cjs --all fixtures > /dev/null; echo $?` prints `0` as its last line\n- [ ] <!-- ac:5 --> `node scripts/guards.cjs; echo $?` prints `0` as its last line, so no R1 counter is above the base\n- [ ] <!-- ac:6 --> `git diff --name-only origin/main...HEAD -- workflows/deliver-pipeline.js | wc -l | tr -d ' '` prints `0` (the engine file is untouched)\n\nproof-command ac:1: node scripts/run-offline.cjs fixtures/relaunch/dev-after-plan.json | tail -n 1\nproof-command ac:2: bash scripts/test-run-offline.sh | grep -c '^ok: two-run'\nproof-command ac:3: bash scripts/test-run-offline.sh > /dev/null; echo $?\nproof-command ac:4: OFFLINE_STRICT=1 node scripts/run-offline.cjs --all fixtures > /dev/null; echo $?\nproof-command ac:5: node scripts/guards.cjs; echo $?\nproof-command ac:6: git diff --name-only origin/main...HEAD -- workflows/deliver-pipeline.js | wc -l | tr -d ' '\n\n_\n\n_\n\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n\n_\n_\n_\n_\n_\n\n_\n\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n_\n"
     },
+    "probe-185-lines-plan-artifact-r0": [
+      {
+        "line": "",
+        "verify": "_"
+      },
+      {
+        "line": "",
+        "verify": "_"
+      }
+    ],
     "plan-check-185-1": {
       "verdict": "CONFORMING",
       "issues": []
     },
     "probe-185-preflight-dev-r0": {
-      "line": "PROBE name=preflight exit=0 sha=5cb984bc5618fc5f042965705e1dac42914fd6aedfdac92d26681085dc782d45 cmd=9675d9ef114afdb7f56c978ee0ec32c198204ec50ff51e562f8d60599e4825c9 json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/Volumes/<disk>/Dev/Apps/claude-code-lgtmgate/.git/worktrees/issue-185\",\"writable\":true}",
-      "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=5cb984bc5618fc5f042965705e1dac42914fd6aedfdac92d26681085dc782d45 cmd=9675d9ef114afdb7f56c978ee0ec32c198204ec50ff51e562f8d60599e4825c9 json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/Volumes/<disk>/Dev/Apps/claude-code-lgtmgate/.git/worktrees/issue-185\",\"writable\":true}"
+      "line": "PROBE name=preflight exit=0 sha=5cb984bc5618fc5f042965705e1dac42914fd6aedfdac92d26681085dc782d45 cmd=2f4008831fd9539d822ac76bdf764c427d9225f06ee07f5e86616bacbabfca89 json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/Volumes/<disk>/Dev/Apps/claude-code-lgtmgate/.git/worktrees/issue-185\",\"writable\":true}",
+      "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=5cb984bc5618fc5f042965705e1dac42914fd6aedfdac92d26681085dc782d45 cmd=2f4008831fd9539d822ac76bdf764c427d9225f06ee07f5e86616bacbabfca89 json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/Volumes/<disk>/Dev/Apps/claude-code-lgtmgate/.git/worktrees/issue-185\",\"writable\":true}"
     },
     "nick-issue-185": {
       "prNumber": 206,
@@ -160,8 +170,8 @@
       "testCommandRun": "cd \"/Volumes/<disk>/Dev/Worktrees/claude-code-lgtmgate/issue-185\" && bash templates/test-canonical-guards.sh && node scripts/run-flow-suite.cjs"
     },
     "probe-185-pr-state-window-start-r0": {
-      "line": "PROBE name=pr-state exit=0 sha=ce2e8943f842dd7d2bed076a624f8e9c732727557397ee99985a198c021b587d cmd=350c4484f5893cfe5f4b7d467590a67a5ec752e13c6191b84e14ef9ff8b1cf9c json={\"now\":\"2026-10-03T17:39:56Z\",\"headRefName\":\"feat/issue-185\",\"headRefOid\":\"a996535df7d4c4b7b66f0ffa37c7a503c78b5990\",\"bodyDigest\":\"5a0fdef5ceaa\",\"acceptanceChecked\":[],\"decisionLog\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-10-03T17:29:04Z\",\"commitCount\":2,\"reviewCommentIds\":[],\"openIssues\":null,\"openIssuesTruncated\":false}",
-      "verify": "VERIFY ok line=PROBE name=pr-state exit=0 sha=ce2e8943f842dd7d2bed076a624f8e9c732727557397ee99985a198c021b587d cmd=350c4484f5893cfe5f4b7d467590a67a5ec752e13c6191b84e14ef9ff8b1cf9c json={\"now\":\"2026-10-03T17:39:56Z\",\"headRefName\":\"feat/issue-185\",\"headRefOid\":\"a996535df7d4c4b7b66f0ffa37c7a503c78b5990\",\"bodyDigest\":\"5a0fdef5ceaa\",\"acceptanceChecked\":[],\"decisionLog\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-10-03T17:29:04Z\",\"commitCount\":2,\"reviewCommentIds\":[],\"openIssues\":null,\"openIssuesTruncated\":false}"
+      "line": "PROBE name=pr-state exit=0 sha=ce2e8943f842dd7d2bed076a624f8e9c732727557397ee99985a198c021b587d cmd=116a8fb9693c348e67bd837fe9fd719196d385e176259a98379e31688ed2b057 json={\"now\":\"2026-10-03T17:39:56Z\",\"headRefName\":\"feat/issue-185\",\"headRefOid\":\"a996535df7d4c4b7b66f0ffa37c7a503c78b5990\",\"bodyDigest\":\"5a0fdef5ceaa\",\"acceptanceChecked\":[],\"decisionLog\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-10-03T17:29:04Z\",\"commitCount\":2,\"reviewCommentIds\":[],\"openIssues\":null,\"openIssuesTruncated\":false,\"nonce\":\"a1b2c3d4e5f60718\",\"forgeable\":false}",
+      "verify": "VERIFY ok line=PROBE name=pr-state exit=0 sha=ce2e8943f842dd7d2bed076a624f8e9c732727557397ee99985a198c021b587d cmd=116a8fb9693c348e67bd837fe9fd719196d385e176259a98379e31688ed2b057 json={\"now\":\"2026-10-03T17:39:56Z\",\"headRefName\":\"feat/issue-185\",\"headRefOid\":\"a996535df7d4c4b7b66f0ffa37c7a503c78b5990\",\"bodyDigest\":\"5a0fdef5ceaa\",\"acceptanceChecked\":[],\"decisionLog\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-10-03T17:29:04Z\",\"commitCount\":2,\"reviewCommentIds\":[],\"openIssues\":null,\"openIssuesTruncated\":false,\"nonce\":\"a1b2c3d4e5f60718\",\"forgeable\":false}"
     },
     "morgan-pr-185-206-r0": {
       "verdict": "LGTM",
@@ -201,16 +211,16 @@
       ]
     },
     "probe-185-pr-state-window-end-r0": {
-      "line": "PROBE name=pr-state exit=0 sha=ef588e8a052fe426c596adf12f33c625c9966b19848adb1c9578281ac7573f02 cmd=0823de1bfb500facc3b5cd32a24d6009454520d812af5b0abd4ece207947cedb json={\"now\":\"2026-10-03T17:42:40Z\",\"headRefName\":\"feat/issue-185\",\"headRefOid\":\"a996535df7d4c4b7b66f0ffa37c7a503c78b5990\",\"bodyDigest\":\"5a0fdef5ceaa\",\"acceptanceChecked\":[],\"decisionLog\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-10-03T17:29:04Z\",\"commitCount\":2,\"reviewCommentIds\":[\"IC_kwDOUzMNuc8AAAABY_IDVQ\"],\"openIssues\":[],\"openIssuesTruncated\":false}",
-      "verify": "VERIFY ok line=PROBE name=pr-state exit=0 sha=ef588e8a052fe426c596adf12f33c625c9966b19848adb1c9578281ac7573f02 cmd=0823de1bfb500facc3b5cd32a24d6009454520d812af5b0abd4ece207947cedb json={\"now\":\"2026-10-03T17:42:40Z\",\"headRefName\":\"feat/issue-185\",\"headRefOid\":\"a996535df7d4c4b7b66f0ffa37c7a503c78b5990\",\"bodyDigest\":\"5a0fdef5ceaa\",\"acceptanceChecked\":[],\"decisionLog\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-10-03T17:29:04Z\",\"commitCount\":2,\"reviewCommentIds\":[\"IC_kwDOUzMNuc8AAAABY_IDVQ\"],\"openIssues\":[],\"openIssuesTruncated\":false}"
+      "line": "PROBE name=pr-state exit=0 sha=ef588e8a052fe426c596adf12f33c625c9966b19848adb1c9578281ac7573f02 cmd=ee4e27b29728e7f86cac291ee6ef1c4a069daa535b05b0d6a3424a8db0fcdb0a json={\"now\":\"2026-10-03T17:42:40Z\",\"headRefName\":\"feat/issue-185\",\"headRefOid\":\"a996535df7d4c4b7b66f0ffa37c7a503c78b5990\",\"bodyDigest\":\"5a0fdef5ceaa\",\"acceptanceChecked\":[],\"decisionLog\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-10-03T17:29:04Z\",\"commitCount\":2,\"reviewCommentIds\":[\"IC_kwDOUzMNuc8AAAABY_IDVQ\"],\"openIssues\":[],\"openIssuesTruncated\":false,\"reviewKeys\":[\"064369c1071941ad\",\"1df6500783d9b990\",\"59cea77aafaec730\",\"6e79127bf85dbe19\",\"9fb2266f454ab637\",\"e63e463c4fe76587\"]}",
+      "verify": "VERIFY ok line=PROBE name=pr-state exit=0 sha=ef588e8a052fe426c596adf12f33c625c9966b19848adb1c9578281ac7573f02 cmd=ee4e27b29728e7f86cac291ee6ef1c4a069daa535b05b0d6a3424a8db0fcdb0a json={\"now\":\"2026-10-03T17:42:40Z\",\"headRefName\":\"feat/issue-185\",\"headRefOid\":\"a996535df7d4c4b7b66f0ffa37c7a503c78b5990\",\"bodyDigest\":\"5a0fdef5ceaa\",\"acceptanceChecked\":[],\"decisionLog\":[],\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"lastCommitDate\":\"2026-10-03T17:29:04Z\",\"commitCount\":2,\"reviewCommentIds\":[\"IC_kwDOUzMNuc8AAAABY_IDVQ\"],\"openIssues\":[],\"openIssuesTruncated\":false,\"reviewKeys\":[\"064369c1071941ad\",\"1df6500783d9b990\",\"59cea77aafaec730\",\"6e79127bf85dbe19\",\"9fb2266f454ab637\",\"e63e463c4fe76587\"]}"
     },
     "probe-185-pr-write-acceptance-tick-r0": {
       "line": "PROBE name=pr-write exit=0 sha=db2f30184e8065f3d07db54de61195197fdc381c47b9ebb2b27e38b0c62b0499 cmd=2802f2e66e6820d276fa8b9e471b189c60a0a00507f49549c93069a2ce354d60 json={\"op\":\"body-splice\",\"result\":\"written\",\"reason\":null,\"bytes\":3728}",
       "verify": "_"
     },
     "probe-185-pr-write-acceptance-tick-retry-r0": {
-      "line": "PROBE name=pr-write exit=0 sha=db2f30184e8065f3d07db54de61195197fdc381c47b9ebb2b27e38b0c62b0499 cmd=57bbe0c0aca76404ca9b9c07b9dc936ee8c93a5ffe37edec61d72a840c06f079 json={\"op\":\"body-splice\",\"result\":\"written\",\"reason\":null,\"bytes\":3728}",
-      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=db2f30184e8065f3d07db54de61195197fdc381c47b9ebb2b27e38b0c62b0499 cmd=57bbe0c0aca76404ca9b9c07b9dc936ee8c93a5ffe37edec61d72a840c06f079 json={\"op\":\"body-splice\",\"result\":\"written\",\"reason\":null,\"bytes\":3728}"
+      "line": "PROBE name=pr-write exit=0 sha=db2f30184e8065f3d07db54de61195197fdc381c47b9ebb2b27e38b0c62b0499 cmd=00c978afb88eafe0daba144de89726b1600b21c4a8de9f8e625dbb8bcfa0d3b0 json={\"op\":\"body-splice\",\"result\":\"written\",\"reason\":null,\"bytes\":3728}",
+      "verify": "VERIFY ok line=PROBE name=pr-write exit=0 sha=db2f30184e8065f3d07db54de61195197fdc381c47b9ebb2b27e38b0c62b0499 cmd=00c978afb88eafe0daba144de89726b1600b21c4a8de9f8e625dbb8bcfa0d3b0 json={\"op\":\"body-splice\",\"result\":\"written\",\"reason\":null,\"bytes\":3728}"
     },
     "probe-185-pr-write-decision-log-r0": {
       "line": "_",
@@ -244,6 +254,9 @@
       "probe:provision:haiku",
       "probe:provision-freshness:haiku",
       "probe:pr-write:haiku",
+      "probe:lines:haiku",
+      "probe:lines:haiku",
+      "plan-artifact-unreadable",
       "probe:pr-write:haiku",
       "probe:preflight:haiku",
       "probe:preflight:haiku",
@@ -268,6 +281,8 @@
       "probe-185-pr-write-run-state-plan-r0",
       "diagnose-issue-185",
       "scout-issue-185-1",
+      "probe-185-lines-plan-artifact-r0",
+      "probe-185-lines-plan-artifact-r0",
       "plan-check-185-1",
       "probe-185-pr-write-run-state-dev-r0",
       "probe-185-preflight-dev-r0",
