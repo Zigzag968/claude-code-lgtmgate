@@ -132,7 +132,7 @@ export const meta = {
 // `version`, checked against plugin.json by tests/templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '1.6.0-beta.29', cutFrom: '5aad13d' }
+const BUILD = { plugin: 'lgtmgate', version: '1.6.0-beta.31', cutFrom: 'cf51c1f' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -3112,10 +3112,15 @@ let planReferenceStale = false
 let planDigestPinned = null
 let commandsDigestPinned = null
 function resetPlanReference() { planReferenceMemo = undefined; planReferenceStale = true; planDigestPinned = null; commandsDigestPinned = null }
-// One node program: sha256 of the artifact bytes, then sha256 of its `proof-command `-prefixed lines (same rule as proofLinesOf).
-const PLAN_ARTIFACT_JS = 'try{var fs=require("fs");var cr=require("crypto");var b=fs.readFileSync(process.argv[1]);var nl=String.fromCharCode(10);var cr13=String.fromCharCode(13);var ls=b.toString("utf8").split(nl).map(function(l){return l.endsWith(cr13)?l.slice(0,-1):l}).filter(function(l){return l.startsWith("proof-command ")}).join(nl);console.log(cr.createHash("sha256").update(b).digest("hex"));console.log(cr.createHash("sha256").update(ls).digest("hex"))}catch(e){console.log("PLAN-DIGEST-ERROR")}'
+// --- planDigest:start --- (pure & self-contained — keep extractable by the flow suite)
+// #700: the plan-artifact and plan-digest reads run templates/plan-digest.cjs by path (#490 remedy, #546 gate path), so the
+// b64 token the probe agent copies stays short; the script reads .pipeline/plans/issue-<N>-sam.md under the probe's cwd.
+function planDigestCommand(issueNumber) {
+  return `node "$LGTMGATE_TEMPLATES/plan-digest.cjs" ${Number(issueNumber)}`
+}
+// --- planDigest:end ---
 async function readPlanArtifact() {
-  const r = await probe('lines', `node -e ${shellSingleQuote(PLAN_ARTIFACT_JS)} ${shellSingleQuote(planPath)}`, { label: 'plan-artifact', noReuse: true, b64: true, onFail: (reason) => ({ probeFailed: reason }) })
+  const r = await probe('lines', planDigestCommand(issue), { label: 'plan-artifact', noReuse: true, b64: true, onFail: (reason) => ({ probeFailed: reason }) })
   const lines = r && !r.probeFailed && r.json && Array.isArray(r.json.lines) ? r.json.lines.map((l) => String(l ?? '').trim()) : []
   return lines.length >= 2 && isHex64(lines[0]) && isHex64(lines[1]) ? { digest: lines[0], linesDigest: lines[1] } : null
 }
@@ -3147,8 +3152,7 @@ async function planReferenceFor(textInHand) {
   } else if (planDigestPinned !== null) {
     digest = planDigestPinned
   } else {
-    const js = 'try{console.log(require("crypto").createHash("sha256").update(require("fs").readFileSync(process.argv[1])).digest("hex"))}catch(e){console.log("PLAN-DIGEST-ERROR")}'
-    const r = await probe('lines', `node -e ${shellSingleQuote(js)} ${shellSingleQuote(planPath)}`, { label: 'plan-digest', noReuse: true, b64: true, onFail: (reason) => ({ probeFailed: reason }) })
+    const r = await probe('lines', planDigestCommand(issue), { label: 'plan-digest', noReuse: true, b64: true, onFail: (reason) => ({ probeFailed: reason }) })
     const line = r && !r.probeFailed && r.json && Array.isArray(r.json.lines) ? String(r.json.lines[0] ?? '').trim() : ''
     if (isHex64(line)) digest = line
   }
