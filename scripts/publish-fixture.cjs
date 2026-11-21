@@ -50,6 +50,7 @@ const os = require('os')
 const path = require('path')
 const crypto = require('crypto')
 const { spawnSync } = require('child_process')
+const { redactionCheck } = require('./lib/publish-fixture-oracle.cjs')
 const { stripExports, buildPipelineRunner, replayFixture, tokenizeVersionProbes, ENGINE_VERSION_TOKEN, ENGINE_CHANNEL_TOKEN, channelOfVersion, commandOfPrompt, firstCommandHash, setCommandHash } = require('./run-offline.cjs')
 
 const { syncLineDigest, syncCalls } = require('./lib/line-digest.cjs')
@@ -214,14 +215,11 @@ function onSignal(sig) {
   process.exit(1)
 }
 
-// The comparable outcome of a replay; null when the replay is not a clean run. Status, reason and trace exactly,
-// the ordered agent() labels, the engine call sites, the form of the rest of the result, the number of log lines, and
-// what `keep` (newSession) asserts: result values and log needles.
-const oracleOf = (r, keep) => {
+const oracleParts = (r, keep) => { // the comparable outcome of a replay (null if not a clean run): the nine slots of ORACLE_SLOTS
   if (r.error || r.missing.length || !r.result || typeof r.result !== 'object') return null
   const rest = {}
   for (const k of Object.keys(r.result)) if (!['status', 'reason', 'trace'].includes(k)) rest[k] = r.result[k]
-  return JSON.stringify([
+  return [
     r.result.status === undefined ? null : r.result.status,
     r.result.reason === undefined ? null : r.result.reason,
     Array.isArray(r.result.trace) ? r.result.trace : [],
@@ -231,8 +229,9 @@ const oracleOf = (r, keep) => {
     r.logs.length,
     Object.keys(keep.values || {}).sort().map((k) => r.result[k]),
     keep.needles.map((n) => r.logs.some((l) => l.includes(n))),
-  ])
+  ]
 }
+const oracleOf = (r, keep) => { const p = oracleParts(r, keep); return p === null ? null : JSON.stringify(p) }
 
 // The session holds what the steps share: the engine runner, the replay budget, the candidate, the baseline outcome, the coupled keys, the journal.
 function newSession(run, raw, outName) {
@@ -285,6 +284,7 @@ async function baseline(session, raw) {
   if (reason !== undefined && reason !== null && typeof reason !== 'string') refuse('baseline replay: result.reason is not a string')
   if (r1.sites.some((s) => /^[LPA]\?/.test(s))) refuse('baseline replay: an engine call site could not be resolved')
   session.base = base
+  session.baseParts = oracleParts(r1, keep)
   return r1
 }
 
@@ -422,7 +422,7 @@ async function pruneAndExpect(session) {
 
 // Step 5: redact, re-hash, check, strict replay (a private 0600 copy, removed in `finally`); returns the text to publish.
 async function redactAndCheck(session, rehash, outName, fp) {
-  const { cand, base } = session
+  const { cand } = session
   const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'publish-fixture-'))
   temporaryDirectoryOut = temporaryDirectory
   try {
@@ -445,7 +445,7 @@ async function redactAndCheck(session, rehash, outName, fp) {
     writeTemporary(fx2)
     const chk = runNode([path.join(__dirname, 'redact-fixture.cjs'), '--check', temporary])
     if (chk.status !== 0) refuse(`redact-fixture --check exited ${chk.status === null ? 'abnormally' : chk.status} on the redacted candidate`)
-    if (oracleOf(settled, session.keep) !== base) refuse('outcome changed after redaction')
+    redactionCheck({ refuse, runNode, redactor: path.join(__dirname, 'redact-fixture.cjs'), directory: temporaryDirectory, baseParts: session.baseParts, got: oracleParts(settled, session.keep), leaves: [...collectLeaves(cand.args, 'args'), ...collectLeaves(cand.calls, 'calls')], fx2, pathOf })
     const strict = runNode([path.join(__dirname, 'run-offline.cjs'), temporary, '--report-unused', '--fp', fp], { ...process.env, OFFLINE_STRICT: '1' })
     const strictOutput = `${strict.stdout || ''}${strict.stderr || ''}`
     if (strict.status !== 0 || !strictOutput.includes('passed=1 failed=0')) {
