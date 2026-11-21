@@ -154,7 +154,7 @@ and rulesets were unavailable on the free private plan; see git history of this 
 state.)
 
 **Publishing (human decision, 2026-08-23, route confirmed 2026-09-12): merging the publish PR
-is the human-only gesture — never an agent, never the unattended nightly runner.** A commit
+is the human-only gesture — never an agent, never an unattended runner.** A commit
 cannot carry its own SHA, so publishing moves `.claude-plugin/marketplace.json`'s `lgtmgate`
 entry's `source.sha` forward to the just-merged release commit via a **separate, one-line PR**,
 never a raw push to `main`:

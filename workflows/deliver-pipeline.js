@@ -111,8 +111,8 @@ export const meta = {
 // result); it does NOT claim to rescue an out-of-band harness abort, which stays an upstream fix
 // tracked as a known upstream limitation.
 //
-// Diagnose stage (Theo) — MANDATORY, no opt-out (human decision, 2026-07-24: "every
-// nightly run is diagnosed by Theo"). Runs before Plan on every fresh dispatch
+// Diagnose stage (Theo) — MANDATORY, no opt-out (human decision, 2026-07-24: every
+// run is diagnosed by Theo). Runs before Plan on every fresh dispatch
 // (entryStage='plan'): Theo qualifies the issue before Sam ever plans a fix on top of an
 // unverified premise. For a bug/pain-derived issue that names a cause, Theo reproduces it
 // for real and confirms/refutes the cause. For a feature/chore ask with no claimed bug,
@@ -132,7 +132,7 @@ export const meta = {
 // `version`, checked against plugin.json by tests/templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '1.6.0-beta.31', cutFrom: 'cf51c1f' }
+const BUILD = { plugin: 'lgtmgate', version: '1.6.0-beta.34', cutFrom: 'd4ff74a' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -1043,13 +1043,13 @@ function ciAbsent(checks, names) {
 // 'absent' (ciAbsent's names are `absentNames`) is its own line naming the configured checks GitHub does not report. 'none' means
 // the probe answered: the head has no check, Morgan's word decides (a blocker only when she reported ciGreen false). null or
 // absent means the probe gave no evidence (it failed, or is an older script): CI is unproven, a blocker unless Morgan reported
-// ciGreen true.
+// ciGreen true. The unproven line also names action_required (bot-pushed head, workflow run never approved) and its approve gesture.
 function ciBlocker(ciState, morganCiGreen, absentNames) {
   if (ciState === 'green') return null
   if (ciState === 'failing' || ciState === 'pending') return `CI is not green on the PR head (live pr-state read: ${ciState})`
   if (ciState === 'absent') return `config.ciChecks names check(s) not reported on the PR head: ${(Array.isArray(absentNames) ? absentNames : []).join(', ')}`
   const unproven = ciState === 'none' ? morganCiGreen === false : morganCiGreen !== true
-  return unproven ? 'CI is not green on the PR head (reported by the review)' : null
+  return unproven ? 'CI is not green on the PR head (reported by the review). If no check ran, a bot-pushed commit may have left its workflow run at action_required: approve it with gh api -X POST repos/<owner>/<repo>/actions/runs/<run-id>/approve' : null
 }
 // redChecks(items, names): the red configured checks behind a `nick-no-op` (#459). [] unless `items` and `names` are non-empty arrays
 // AND EVERY item contains at least one non-empty configured check name (first match in config order, a plain substring test, no
@@ -1945,6 +1945,7 @@ function resolveWorktreeRoot({ env: environment = {}, configLocal: localConfig =
 // Composes the reviewer-facing staleness warning for a shared worktree whose base is behind the
 // remote base branch. Pure: no I/O, no closure over simulate/config/trace. Returns '' when
 // the worktree is fresh or the count is unknown — so a fresh run's prompts are byte-identical.
+// A non-empty note ends with a space so the next prompt chunk never glues to it.
 function worktreeFreshnessNote(behind, baseBranchName) {
   const n = Number(behind)
   if (!Number.isFinite(n) || n <= 0) return ''
@@ -1960,7 +1961,7 @@ function worktreeFreshnessNote(behind, baseBranchName) {
     `3) when local and CI disagree, the CI raw log is the source of truth (gh run view <run-id> --log), ` +
     `not the local count; ` +
     `4) do not rebase, reset or otherwise move the worktree to reconcile the numbers — the frozen base ` +
-    `is deliberate.`
+    `is deliberate. `
   )
 }
 // --- worktreeFreshnessNote:end ---
@@ -4284,7 +4285,7 @@ if (after('dev', entryStage)) {
         `Implement the plan on that branch. Write meaningful tests and get the green bar: build via \`${buildCommand}\`, run unit tests via \`${testCommand}\`, and format each modified file via \`${formatCommand}\`. ` +
       `When deleting repo-tracked files, use \`git rm <file>\` instead of bare \`rm\` — bare rm is sandbox-denied and burns permission rounds. ` +
       `${SANDBOX_INSTALL_HINT} ` +
-      `Push the branch explicitly before opening the PR: \`git push origin ${expectedBranchName}\` (no upstream flag — the sandbox cannot write the worktree's .git/config, CC bug #51818; see .claude/rules/git-workflow.md). ` +
+      `Push the branch explicitly before opening the PR: \`git push origin ${expectedBranchName}\` (no upstream flag — the sandbox cannot write the worktree's .git/config; see .claude/rules/git-workflow.md). ` +
       `If that push fails because the SSH remote is unreachable in the sandbox (\`ssh_dispatch_run_fatal\`, \`Broken pipe\`, \`Connection refused\`, \`Could not resolve hostname\`; CC issues #30619, #33300), retry ONCE over HTTPS through the gh credential helper (github.com:443 is reachable, SSH is not): \`${httpsPushCommandFor(expectedBranchName)}\` (explicit refspec, no upstream flag, no sandbox bypass). If the HTTPS push fails too, do not bypass the sandbox and do not open a PR: stop, return prNumber 0 with a summary that quotes the failing command and its error. ` +
       `Open a PR (draft) with EXPLICIT refs — gh resolves HEAD from the invoking cwd, not the worktree branch: \`gh pr create --draft${prFlag} --base ${baseBranch} --head ${expectedBranchName} ...\`. ` +
       `${r2Note}` +
