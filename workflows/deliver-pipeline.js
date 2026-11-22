@@ -3488,7 +3488,7 @@ if (after('plan', entryStage)) {
   phase(PHASE_TITLES.diagnose)
   diag = await callAgentSafe(
     'theo',
-    `Qualify issue #${issue} before Sam plans anything — this gate runs for EVERY nightly-dispatched issue, no exceptions. Brief: ${brief}\n\n` +
+    `Qualify issue #${issue} before Sam plans anything — this gate runs for EVERY dispatched issue, no exceptions. Brief: ${brief}\n\n` +
       `${ISSUE_BODY_FIRST}\n${RUN_STATE_LINES}` +
       `If this issue claims a root cause or a specific bug behavior: reproduce it for real in worktree "${worktreePath}" (frozen base; never checkout/commit) — ` +
       `a real run/test, never a code-reading guess — and confirm or refute the stated cause.\n` +
