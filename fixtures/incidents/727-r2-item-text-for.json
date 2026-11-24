@@ -1,0 +1,18 @@
+{
+  "name": "727-r2-item-text-for",
+  "blocks": ["acceptanceItems"],
+  "cases": [
+    { "fn": "r2ItemTextFor",
+      "args": [{ "issueType": "bug", "paths": ["workflows/"], "fixtureDir": "fixtures/incidents" }, "bug", 727, ["workflows/deliver-pipeline.js"]],
+      "expect": { "returns": "fixture `fixtures/incidents/727-*.json` present, replayed red on base and green on the branch by `scripts/run-offline.cjs`" } },
+    { "fn": "r2ItemTextFor",
+      "args": [{ "issueType": "bug", "paths": ["workflows/"], "fixtureDir": "fixtures/incidents" }, "feature", 727, ["workflows/deliver-pipeline.js"]],
+      "expect": { "returns": null } },
+    { "fn": "r2ItemTextFor",
+      "args": [{ "issueType": "bug", "paths": ["workflows/"], "fixtureDir": "fixtures/incidents" }, "bug", 727, ["agents/nick.md"]],
+      "expect": { "returns": null } },
+    { "fn": "r2ItemTextFor",
+      "args": [null, "bug", 727, ["workflows/deliver-pipeline.js"]],
+      "expect": { "returns": null } }
+  ]
+}

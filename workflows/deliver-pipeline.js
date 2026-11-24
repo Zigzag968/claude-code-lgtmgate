@@ -875,8 +875,10 @@ function bodyWriteGuardOk(preLength, newBody) {
 // validates them (validateAcceptanceItems), numbers them (numberItems: id = 1-based position), renders them
 // (renderChecklist) and reads a body back (parseChecklist: ids optional, so a body opened before #182 still parses).
 // An item carries `command` only through bindCommands (#631); numberItems never adds it. A human-gate item is written with the literal
-// [human-gate] tag after its id: the tag stays the wire form that scripts/lead-merge.sh and the prompts read until
-// ids replace text detection. String operations only, no regex, so the R1 regex counter is untouched.
+// [human-gate] tag after its id. The tag counts only at the START of the text, after the id comment and the visible id; a mention
+// later in the text is not a gate (#626). scripts/lead-merge.sh, scripts/runtime/pr-body-splice.cjs and the Morgan prompts read it
+// the same way; the three tick copies are pinned by tests/scripts/test-tick-equivalence.sh. String operations only, no regex,
+// so the R1 regex counter is untouched.
 const AC_TAG = '[human-gate]'
 const AC_ID_OPEN = '<!-- ac:'
 const AC_BLOCK_START = '<!-- acceptance:start -->'
@@ -890,6 +892,12 @@ function numberItems(entries) {
 function withR2Item(items, text) {
   if (!items || items.some((item) => item.text === text)) return items
   return [...items, { id: items.length + 1, text, humanGate: false }]
+}
+// #727 — the R2 item text for a scope, an issue type, an issue number and the plan targets; null when R2 does not apply.
+function r2ItemTextFor(scope, kind, issueNumber, targets) {
+  if (!scope || kind !== scope.issueType) return null
+  if (!(targets || []).some((p) => scope.paths.some((q) => String(p).startsWith(q)))) return null
+  return `fixture \`${scope.fixtureDir}/${issueNumber}-*.json\` present, replayed red on base and green on the branch by \`scripts/run-offline.cjs\``
 }
 // With ids the line is the checkbox prefix, the machine id comment, then (visible, default) the id as bold text for the
 // human reader, then the tag. The comment stays first: every id reader requires it right after the checkbox prefix.
@@ -1193,10 +1201,10 @@ function morganItemsRule(block) {
   if (block) {
     return 'In this run the workflow ticks the boxes, you tick none, and you prove every box again at every round: return in `boxes` one entry for EACH box, including a box that already reads [x] in the PR body (ticked by the workflow at an earlier round, or by the Lead), and re-run its verification; LGTM only when EVERY box is proven in this round (returned in `boxes` with proven true and its proof). ' +
       'For each box you did not prove, put in `items` the **verbatim checklist line** it blocks on (copy the box line exactly, its <!-- ac:n --> comment included — do NOT paraphrase — so a persistent blocker reads identically across rounds). ' +
-      'A box whose line contains the tag `[human-gate]` is a **human-only** item: you cannot verify it and MUST NOT ask Nick to fix it — copy its line verbatim into `items` (tag preserved) and treat it as a human gate, not a code defect; it is settled only when the PR body already shows it checked by a person (your proven means nothing for it). ' +
+      'A box whose text STARTS with the tag `[human-gate]` (right after its id comment; a mention of the tag later in the text does not make it a gate) is a **human-only** item: you cannot verify it and MUST NOT ask Nick to fix it — copy its line verbatim into `items` (tag preserved) and treat it as a human gate, not a code defect; it is settled only when the PR body already shows it checked by a person (your proven means nothing for it). ' +
       'Emit `REQUIRED_CHANGES` whenever any box is not proven (human-gate or not). '
   }
-  return 'For each remaining unticked acceptance box, put in `items` the **verbatim checklist line** it blocks on (copy the box text exactly — do NOT paraphrase — so a persistent blocker reads identically across rounds). Any box whose line contains the tag `[human-gate]` is a **human-only** item: you cannot verify it and MUST NOT tick it or ask Nick to fix it — copy its line verbatim into `items` (tag preserved) and treat it as a human gate, not a code defect. Emit `REQUIRED_CHANGES` whenever any box is unticked (human-gate or not). '
+  return 'For each remaining unticked acceptance box, put in `items` the **verbatim checklist line** it blocks on (copy the box text exactly — do NOT paraphrase — so a persistent blocker reads identically across rounds). Any box whose text STARTS with the tag `[human-gate]` (right after its id comment; a mention of the tag later in the text does not make it a gate) is a **human-only** item: you cannot verify it and MUST NOT tick it or ask Nick to fix it — copy its line verbatim into `items` (tag preserved) and treat it as a human gate, not a code defect. Emit `REQUIRED_CHANGES` whenever any box is unticked (human-gate or not). '
 }
 // #257: the argv of the short tick, `--mode tick-ids`: only the PR number and the ids travel, the script reads the body
 // itself. Pure, no checklist text in it.
@@ -3625,6 +3633,18 @@ const ABSENCE_CLAIMS_RULE = 'ABSENCE CLAIMS: any claim that something outside th
 // `command` field (validateAcceptanceItems, structure only); this sentence leaves the text to the model: a command written
 // in a gate item's text, and a gate that restates another item.
 const HUMAN_GATE_CHECK_NOTE = 'A `[human-gate]` item (a judgement no command can decide) is exempt from the executed-command requirement. It is NOT conforming when its text contains a command that could decide it (that command belongs in a proven item), or when it restates the expected output of another item of the checklist, which already proves it; a judgement about wording, layout or taste is conforming, even when it quotes UI copy or a heading.'
+// --- planCheckPrompt:start --- (pure & self-contained — keep extractable by the flow suite)
+// The plan-check judge's input (#727): the plan text, then the criteria. The verdict is the judge's (haiku); a test pins what reaches it.
+function planCheckPrompt(issueNumber, plan, readOnlyRule, humanGateNote) {
+  return `You are a cheap, binary conformance gate on Sam's plan for issue #${issueNumber} — verify it against the plan text below (authoritative; do NOT re-read the issue from GitHub).\n\n` +
+    `PLAN:\n${plan}\n\n` +
+    `Verify: (1) a corpus/asset spec is cited when one exists, for human-facing/asset lanes; (2) any external interface is cited from a REAL observed payload, never reconstructed; (3) human-facing/asset lanes have a written output example + named content contracts. Lanes with no human-facing/asset deliverable (pure backend/mechanical) auto-pass item (3) as N/A.\n` +
+    `(4) CONFORMANCE COMPLETENESS: the plan MUST contain an acceptance-checklist section. A criterion is an ORPHAN only when it names a concrete deliverable or behavior that no plan step addresses => NOT_CONFORMING (list each orphan in issues). Standard boilerplate verification criteria — full regression/test suite green, lint clean, format-check clean, scope-guard/diff-stat checks — are gate-level (satisfied by the project's own build/test/format commands, never authored as a dedicated plan step) and are EXEMPT from this check; never flag them as orphans. No acceptance-checklist section at all => NOT_CONFORMING.\n` +
+    `(5) ACCEPTANCE PROOF CHECK: NOT_CONFORMING (list each offending item in issues) when an acceptance item has no executed command with its verbatim quoted output in the plan (Proof log), or is phrased as an external-world state or a "no known X" / "absence of Y" claim about anything outside the diff. EXEMPTION: a read-only confirmation of an action that was already authorized and executed (a run-status query, a policy read, a log read) is conforming although it reads the outside world, when its Proof-log entry is its command (with the verbatim output when the action happened before planning and the command can run in the worktree, otherwise the command alone with the words "not runnable at planning") and the item text cites the earlier human decision inline; every other external-world state and every "no known X" claim stays NOT_CONFORMING. When you refuse a read-only confirmation item for a missing inline citation or command, put the REWRITTEN item (text with the inline citation, plus the command) in \`issues\`, so Sam can paste it in the amendment round. ${readOnlyRule} ${humanGateNote}\n` +
+    `(6) MINIMALITY: for each mechanism the plan adds (guard, flag, module, config key, test class), name the stated need in the issue or the captured real defect it answers. A mechanism with no traceable need is listed in \`issues\` (name the mechanism) and the verdict is NOT_CONFORMING. EXEMPT: the issue's own acceptance items and standard boilerplate (suite green, scope guard); a speculative "might happen later" need does not count as a stated need.\n` +
+    `Return { verdict: 'CONFORMING'|'NOT_CONFORMING', issues: string[] } — issues empty when CONFORMING.`
+}
+// --- planCheckPrompt:end ---
 // #182: Sam's instruction for the checklist as data; ends the scout prompt (see validateAcceptanceItems for the refusals).
 const ACCEPTANCE_ITEMS_RULE = 'ACCEPTANCE ITEMS RULE: return the acceptance checklist as data in `acceptanceItems`, one entry per item in checklist order: `{ text, humanGate, command? }`. `text` is ONE line: no `- [ ]` prefix, no `<!-- ac:N -->` id, no `[human-gate]` tag (the workflow adds them). `humanGate` is true only for a decision, an authorization or an action to perform, or a judgement no read-only command can confirm; that is the one kind of item that needs no Proof log entry. A human-gate item carries no `command` (the plan is refused and sent back to you); a command written in its text is judged by the plan check. `command` is the command that proves the item, when there is one. Write the same items in the artifact and in the index comment as `- [ ] <!-- ac:N --> <text>` lines (N = the 1-based position; a `humanGate` item as `- [ ] <!-- ac:N --> [human-gate] <text>`); the plan gate refuses a plan whose text lacks an item\'s line. When any item has a `command`, also write at column 0 of the artifact and of the returned plan the line `proof-command ac:N: <the command exactly as in the item>`, one per item with a command in item order and no other line starting with `proof-command ` (the workflow binds the commands only when the plan carries these lines); Morgan runs it as `cd \'<worktree>\' && <command>`, one Bash call. Do not return `acceptanceChecklist`.'
 // #153: checklist lines (`- [ ]`) Sam returned in acceptanceChecklist that are absent from the
@@ -3796,13 +3816,7 @@ if (after('plan', entryStage)) {
           }
         : await callAgentSafe(
         'planCheck',
-        `You are a cheap, binary conformance gate on Sam's plan for issue #${issue} — verify it against the plan text below (authoritative; do NOT re-read the issue from GitHub).\n\n` +
-          `PLAN:\n${samPlan}\n\n` +
-          `Verify: (1) a corpus/asset spec is cited when one exists, for human-facing/asset lanes; (2) any external interface is cited from a REAL observed payload, never reconstructed; (3) human-facing/asset lanes have a written output example + named content contracts. Lanes with no human-facing/asset deliverable (pure backend/mechanical) auto-pass item (3) as N/A.\n` +
-          `(4) CONFORMANCE COMPLETENESS: the plan MUST contain an acceptance-checklist section. A criterion is an ORPHAN only when it names a concrete deliverable or behavior that no plan step addresses => NOT_CONFORMING (list each orphan in issues). Standard boilerplate verification criteria — full regression/test suite green, lint clean, format-check clean, scope-guard/diff-stat checks — are gate-level (satisfied by the project's own build/test/format commands, never authored as a dedicated plan step) and are EXEMPT from this check; never flag them as orphans. No acceptance-checklist section at all => NOT_CONFORMING.\n` +
-          `(5) ACCEPTANCE PROOF CHECK: NOT_CONFORMING (list each offending item in issues) when an acceptance item has no executed command with its verbatim quoted output in the plan (Proof log), or is phrased as an external-world state or a "no known X" / "absence of Y" claim about anything outside the diff. EXEMPTION: a read-only confirmation of an action that was already authorized and executed (a run-status query, a policy read, a log read) is conforming although it reads the outside world, when its Proof-log entry is its command (with the verbatim output when the action happened before planning and the command can run in the worktree, otherwise the command alone with the words "not runnable at planning") and the item text cites the earlier human decision inline; every other external-world state and every "no known X" claim stays NOT_CONFORMING. When you refuse a read-only confirmation item for a missing inline citation or command, put the REWRITTEN item (text with the inline citation, plus the command) in \`issues\`, so Sam can paste it in the amendment round. ${READ_ONLY_CONFIRMATION_RULE} ${HUMAN_GATE_CHECK_NOTE}\n` +
-          `(6) MINIMALITY: for each mechanism the plan adds (guard, flag, module, config key, test class), name the stated need in the issue or the captured real defect it answers. A mechanism with no traceable need is listed in \`issues\` (name the mechanism) and the verdict is NOT_CONFORMING. EXEMPT: the issue's own acceptance items and standard boilerplate (suite green, scope guard); a speculative "might happen later" need does not count as a stated need.\n` +
-          `Return { verdict: 'CONFORMING'|'NOT_CONFORMING', issues: string[] } — issues empty when CONFORMING.`,
+        planCheckPrompt(issue, samPlan, READ_ONLY_CONFIRMATION_RULE, HUMAN_GATE_CHECK_NOTE),
         { schema: PLAN_CHECK, label: `plan-check-${issue}-${planPass}`, model: 'haiku' },
         planPass,
       )
@@ -4190,6 +4204,23 @@ const assertBranchConformance = async (pullRequestNumber, nickBranchFallback) =>
   return null
 }
 
+// R2 (#76): deterministic — the fixture acceptance item is decided here, never by Nick's judgment, and for EVERY entry stage (#727):
+// a review or dev resume rebuilds the same items as the original run, and an amendment keeps the item through `r2ItemText`.
+// Engine-repo only (#163): the fixtures dir and replay script it names exist only in this plugin's repo.
+// Scope = `r2Scope` of the config (r2ScopeOf; same data the merge gate reads, #200). Engine repo with a broken scope: logged, R2 off.
+// Targets: Sam's in the same run, else the resume's own (planRef targets or the plan's `targetFiles:` line).
+const r2Scope = r2ScopeOf(config)
+if (isEngineRepository(config) && r2Scope === null) log('R2 not applied: engineRepo is true but r2Scope is missing or invalid in the pipeline config (see README, r2Scope)')
+const r2Targets = samTargetFiles !== null ? safePlanTargets(samTargetFiles) : planReferenceArgument ? safePlanTargets(planReferenceArgument.targets) : doorFactsFromPlanText(planText).targets
+r2ItemText = r2ItemTextFor(r2Scope, issueType, issue, r2Targets)
+const r2Applies = r2ItemText !== null
+// #661: with engine items, the R2 item is one of them (rendered with an id, proven and ticked like the others).
+const r2InEngine = r2Applies && samAcceptanceItems !== null
+if (r2InEngine) {
+  samAcceptanceItems = withR2Item(samAcceptanceItems, r2ItemText)
+  acceptanceBlock = renderChecklist(samAcceptanceItems)
+}
+
 if (after('dev', entryStage)) {
   phase(PHASE_TITLES.dev)
   await phaseTransition('Dev', 'dev')
@@ -4280,19 +4311,6 @@ if (after('dev', entryStage)) {
 
   const epicReference = subGate.blocked ? `(see #${issue})` : 'Closes #' + issue
   const closesLine = [epicReference, ...samAbsorbedIssues.map(n => 'Closes #' + n)].join(', ')
-  // R2 (#76): deterministic — the fixture acceptance item is decided here, never by Nick's judgment.
-  // Engine-repo only (#163): the fixtures dir and replay script it names exist only in this plugin's repo.
-  // Scope = `r2Scope` of the config (r2ScopeOf; same data the merge gate reads, #200). Engine repo with a broken scope: logged, R2 off.
-  const r2Scope = r2ScopeOf(config)
-  if (isEngineRepository(config) && r2Scope === null) log('R2 not applied: engineRepo is true but r2Scope is missing or invalid in the pipeline config (see README, r2Scope)')
-  const r2Applies = r2Scope !== null && issueType === r2Scope.issueType && safePlanTargets(samTargetFiles).some(p => r2Scope.paths.some(q => p.startsWith(q)))
-  r2ItemText = r2Applies ? `fixture \`${r2Scope.fixtureDir}/${issue}-*.json\` present, replayed red on base and green on the branch by \`scripts/run-offline.cjs\`` : null
-  // #661: with engine items, the R2 item is one of them (rendered with an id, proven and ticked like the others).
-  const r2InEngine = r2Applies && samAcceptanceItems !== null
-  if (r2InEngine) {
-    samAcceptanceItems = withR2Item(samAcceptanceItems, r2ItemText)
-    acceptanceBlock = renderChecklist(samAcceptanceItems)
-  }
   const r2Note = r2Applies
     ? `R2 fixture rule (issue #${issue}): ${r2InEngine ? `the acceptance checklist below already carries this item as its last line (fixture \`${r2Scope.fixtureDir}/${issue}-*.json\`, with its ac id) — do not add it again.` : `add this acceptance item to the checklist verbatim — "${r2ItemText}".`} If no such fixture exists in the branch, run \`gh issue edit ${issue} -R ${repository || '<repo>'} --add-label no-fixture\` and use \`Refs #${issue}\` instead of \`Closes #${issue}\` on the first line of the PR body (the issue then stays open). `
     : ''
