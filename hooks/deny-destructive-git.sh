@@ -34,19 +34,10 @@ deny() {
 # session once the plugin is enabled at user scope. It is a no-op unless the working tree (git
 # toplevel, else $PWD) or the main tree of its worktree list holds a pipeline config file (same
 # files and tree pair as lib-worktree-root.sh:resolve_config_value). Gate sits before the jq check.
-in_pipeline_session() {
-  local top main d
-  top="$(git rev-parse --show-toplevel 2>/dev/null)" || top=""
-  [ -n "$top" ] || top="$(pwd)"
-  main="$(git worktree list 2>/dev/null | head -n 1 | sed -E 's/[[:space:]]+[0-9a-f]{7,}[[:space:]].*$//')"
-  for d in "$top" "$main"; do
-    [ -n "$d" ] || continue
-    if [ -f "$d/.claude/pipeline.config.json" ] || [ -f "$d/.claude/pipeline.config.local.json" ]; then
-      return 0
-    fi
-  done
-  return 1
-}
+# The function lives in hooks/lib-worktree-root.sh (shared with hooks/worktree-create.sh).
+# shellcheck source=hooks/lib-worktree-root.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib-worktree-root.sh" 2>/dev/null \
+  || deny "hooks/lib-worktree-root.sh is missing or unreadable — fail-closed (the pipeline-session gate cannot run)."
 in_pipeline_session || exit 0
 
 command -v jq >/dev/null 2>&1 || deny "jq is required to inspect tool_input but is not on PATH — fail-closed (a command that could not be checked is never silently allowed). Install jq: https://jqlang.github.io/jq/."
