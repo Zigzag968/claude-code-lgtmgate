@@ -70,7 +70,7 @@ NO_PRIVATE_REFS_PATTERNS=(
   'growth-os'                                  # known private-repo issue-tracker shorthand
   'tapp-in\.tv'                                 # private sibling repo domain/slug
   'tapp-in-growth-os'                           # private sibling repo slug variant
-  'Zigzag968/nightly'                           # private sibling repo (the nightly tracker)
+  'Zigzag968/night[l]y'                         # private sibling repo (the private sibling tracker)
   'velibz'                                      # private sibling repo slug
   'impots-fr-de'                                # private sibling repo slug
   'Zigzag968/[A-Za-z0-9._-]+'                   # Zigzag968/<repo> other than this repo's own slug
@@ -78,9 +78,9 @@ NO_PRIVATE_REFS_PATTERNS=(
   '/Volumes/[A-Za-z0-9_-]+'                     # absolute machine path (this machine's disk layout)
   '/Users/[A-Za-z0-9._-]+'                      # absolute machine path with a real username
   '/home/[A-Za-z0-9._-]+'                       # absolute machine path with a real username (Linux)
-  'nightly-state'                               # nightly-dispatch state-blob marker (can carry local paths)
+  'night[l]y-state'                             # private sibling tracker state-blob marker (can carry local paths)
   'worktreePath":"'                            # worktree-path key already serialized with a value (a pasted-in state/log blob), not the bare name
-  'nightly-issue-'                              # nightly-dispatch state-blob marker
+  'night[l]y-issue-'                            # private sibling tracker branch-prefix marker
 )
 NO_PRIVATE_REFS_ALLOW=(
   ''
@@ -96,10 +96,7 @@ NO_PRIVATE_REFS_ALLOW=(
   '/home/user([^A-Za-z0-9._-]|$)'               # documented CI placeholder, not a real username
   ''
   ''
-  "branchCheckRaw: 'nightly-issue-1'"           # reviewed repo-local test fixture (this repo's own nightly-branch
-                                                 # naming convention exercised by T-series branch-check cases), not
-                                                 # a reference to the private nightly repo — a DIFFERENT nightly-issue-
-                                                 # value appearing anywhere else still fails and needs review
+  ''
 )
 
 PASS_N=0
@@ -196,6 +193,32 @@ elif [ "$NPR_PIPELINE_TRACKED" != "0" ]; then
   fail "no-private-refs" ".pipeline/ has $NPR_PIPELINE_TRACKED tracked file(s) despite .gitignore — git rm it, never leave it tracked"
 else
   pass "no-private-refs: pattern table (${#NO_PRIVATE_REFS_PATTERNS[@]} entries) clean across the tracked tree; .pipeline/ untracked"
+fi
+
+# no-private-refs-equivalence (#696): the three private-tracker entries are written with a
+# bracket class so this file never spells the term. Prove they still reject the three original
+# shapes (repo-slug, state-blob marker, branch-prefix marker). The shapes are built from
+# fragments for the same reason. bash 3.2 safe: no associative arrays, no ${var,,}.
+NPE_T="night""ly"
+NPE_OK=1
+for NPE_SHAPE in "Zigzag968/${NPE_T}" "${NPE_T}-state" "${NPE_T}-issue-1"; do
+  NPE_COUNT=0
+  for NPE_PATTERN in "${NO_PRIVATE_REFS_PATTERNS[@]}"; do
+    case "$NPE_PATTERN" in
+      *'l]y'*)
+        if printf '%s\n' "$NPE_SHAPE" | grep -Eiq "$NPE_PATTERN"; then
+          NPE_COUNT=$((NPE_COUNT + 1))
+        fi
+        ;;
+    esac
+  done
+  if [ "$NPE_COUNT" -eq 0 ]; then
+    fail "no-private-refs-equivalence" "${NPE_SHAPE} not rejected"
+    NPE_OK=0
+  fi
+done
+if [ "$NPE_OK" -eq 1 ]; then
+  pass "no-private-refs-equivalence: 3 original shapes (repo-slug, state-blob marker, branch-prefix marker) each rejected by a bracket-class entry"
 fi
 
 . "$LIB/canonical-guards-agents-docs.sh"

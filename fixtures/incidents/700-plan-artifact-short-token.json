@@ -1,0 +1,27 @@
+{
+  "name": "700-plan-artifact-short-token",
+  "blocks": [
+    "base64Utf8",
+    "planDigest"
+  ],
+  "cases": [
+    {
+      "fn": "planDigestCommand",
+      "args": [
+        700
+      ],
+      "expect": {
+        "returns": "node \"$LGTMGATE_TEMPLATES/plan-digest.cjs\" 700"
+      }
+    },
+    {
+      "fn": "base64Utf8",
+      "args": [
+        "node \"$LGTMGATE_TEMPLATES/plan-digest.cjs\" 700"
+      ],
+      "expect": {
+        "returns": "bm9kZSAiJExHVE1HQVRFX1RFTVBMQVRFUy9wbGFuLWRpZ2VzdC5janMiIDcwMA=="
+      }
+    }
+  ]
+}
