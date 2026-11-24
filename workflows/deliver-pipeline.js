@@ -3473,7 +3473,7 @@ if (entryStage === 'plan') {
     ? { state: 'legacy', behind: simulate.probes?.provisionBehindCount, own: null }
     : await (async () => {
         const result = await probe('provision-freshness',
-          `cd "${worktreePath}" && git fetch origin ${baseBranch} -q 2>/dev/null; B=$(git rev-list --count HEAD..origin/${baseBranch}); O=$(git rev-list --count origin/${baseBranch}..HEAD); if [ "$B" -gt 0 ] && [ "$O" -eq 0 ] && git merge --ff-only origin/${baseBranch} -q >/dev/null 2>&1; then echo "PROVISION-FRESHNESS:ffwd:$B"; elif [ "$B" -eq 0 ]; then echo "PROVISION-FRESHNESS:fresh:0:$O"; else echo "PROVISION-FRESHNESS:stale:$B:$O"; fi`,
+          `git fetch origin ${baseBranch} -q 2>/dev/null; B=$(git rev-list --count HEAD..origin/${baseBranch}); O=$(git rev-list --count origin/${baseBranch}..HEAD); if [ "$B" -gt 0 ] && [ "$O" -eq 0 ] && git merge --ff-only origin/${baseBranch} -q >/dev/null 2>&1; then echo "PROVISION-FRESHNESS:ffwd:$B"; elif [ "$B" -eq 0 ]; then echo "PROVISION-FRESHNESS:fresh:0:$O"; else echo "PROVISION-FRESHNESS:stale:$B:$O"; fi`,
           // live state: a stored record from an earlier launch must never answer (#83)
           { label: 'provision-freshness', noReuse: true, onFail: (reason) => { log(`provisionBehindCount: probe failed (${reason}), skipping staleness preflight`); return null } })
         return result && result.json && !result.json.error ? result.json : null
@@ -4892,8 +4892,10 @@ if (after('review', entryStage)) {
   const worktreeBehindCount = async () => {
     if (simulate) return simulate.probes?.behindCount
     try {
+      // runs from the worktree as cwd (outer `cd '<wt>'` of probeCommands); a cd-then-vcs form is
+      // refused by a worktree-isolated session (#702)
       const result = await probe('git-rev-list-count',
-        `cd "${worktreePath}" && git fetch origin ${baseBranch} -q 2>/dev/null; git rev-list --count HEAD..origin/${baseBranch}`,
+        `git fetch origin ${baseBranch} -q 2>/dev/null; git rev-list --count HEAD..origin/${baseBranch}`,
         // live state: a stored record from an earlier launch must never answer (#83)
         { label: `worktree-behind-${pr}`, noReuse: true, onFail: () => null })
       return result && result.json && Number.isFinite(result.json.count) ? result.json.count : null
