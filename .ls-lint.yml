@@ -24,8 +24,9 @@ ls:
   <<: *names
   # Root folders allowed (dot folders included). A new root folder is a decision: add it here and in docs/layout.md.
   .dir: regex:(\.claude|\.claude-plugin|\.devcontainer|\.githooks|\.github|agents|docs|evals|fixtures|hooks|plugins|scripts|skills|templates|tests|workflows)
-  # Declared folder-name exceptions (8): .claude, .claude-plugin, .devcontainer, .githooks, .github (root allowlist or own
-  # block), .github/ISSUE_TEMPLATE, hooks/SessionStart, plugins/backlog/.claude-plugin (named in their parent block).
+  # Declared folder-name exceptions (9): .claude, .claude-plugin, .devcontainer, .githooks, .github (root allowlist or own
+  # block), .github/ISSUE_TEMPLATE, hooks/SessionStart, plugins/backlog/.claude-plugin, plugins/run-view-mod/.claude-plugin
+  # (named in their parent block).
   .claude:
     <<: *names
     .dir: kebab-case | regex:\.claude
@@ -78,6 +79,9 @@ ls:
     <<: *names
     .dir: kebab-case
     backlog:
+      <<: *names
+      .dir: kebab-case | regex:\.claude-plugin
+    run-view-mod:
       <<: *names
       .dir: kebab-case | regex:\.claude-plugin
   scripts:
