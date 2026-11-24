@@ -132,7 +132,7 @@ export const meta = {
 // `version`, checked against plugin.json by tests/templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '1.6.0-beta.36', cutFrom: '05d1101' }
+const BUILD = { plugin: 'lgtmgate', version: '1.6.0-beta.37', cutFrom: 'e0f3b1a' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -3511,7 +3511,7 @@ if (after('plan', entryStage)) {
   phase(PHASE_TITLES.diagnose)
   diag = await callAgentSafe(
     'theo',
-    `Qualify issue #${issue} before Sam plans anything — this gate runs for EVERY nightly-dispatched issue, no exceptions. Brief: ${brief}\n\n` +
+    `Qualify issue #${issue} before Sam plans anything — this gate runs for EVERY dispatched issue, no exceptions. Brief: ${brief}\n\n` +
       `${ISSUE_BODY_FIRST}\n${RUN_STATE_LINES}` +
       `If this issue claims a root cause or a specific bug behavior: reproduce it for real in worktree "${worktreePath}" (frozen base; never checkout/commit) — ` +
       `a real run/test, never a code-reading guess — and confirm or refute the stated cause.\n` +
