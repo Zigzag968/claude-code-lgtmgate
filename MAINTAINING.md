@@ -6,7 +6,7 @@ the trust model of the delivery channel it ships through. Linked from `README.md
 ## 1. Dev loop (`--plugin-dir`)
 
 Edit `workflows/deliver-pipeline.js` (or any component) in a worktree, never on `main` directly.
-Create that worktree with `claude -w issue-<N>` from the main checkout (WorktreeCreate hook, `hooks/worktree-create.sh`; never from a linked worktree); without the hook installed, use the `git worktree add` fallback of `skills/deliver/SKILL.md` section 3 (see there, not repeated here).
+Create that worktree with `claude -w issue-<N>` from the main checkout (WorktreeCreate hook, `hooks/worktree-create.sh`; never from a linked worktree); for the case without the hook, see `docs/consumer-reference.md, Run reasons, worktree-git-dir-not-writable`.
 Local pre-check: `git config core.hooksPath .githooks` runs `tests/templates/test-canonical-guards.sh`
 on every commit (a local pre-check only — see §5 Enforcement below for why it is not the real
 gate).
@@ -47,10 +47,8 @@ loop. §4 (Release) governs what IS committed.
 
 From Claude Code 2.1.323 the sandbox refuses `git worktree add`, `move` and `remove`, and writes
 under `.git/worktrees/`, when the session's starting directory is the repository or one of its linked
-worktrees. Create the worktree from a session whose starting directory is outside the repository, or
-with one Bash call that runs only that command outside the sandbox, then drive the run from the
-worktree. Never create a worktree from a linked worktree. The engine reports the case as
-`worktree-git-dir-not-writable` (see `docs/consumer-reference.md`, Run reasons).
+worktrees. The remedy is the one in `docs/consumer-reference.md, Run reasons, worktree-git-dir-not-writable`.
+The engine reports the case as `worktree-git-dir-not-writable`.
 
 ## 2. Names, S2→S4 window
 
@@ -413,9 +411,9 @@ then `claude plugin install lgtmgate@zigzag-plugins`.
 
 ### Canary re-initialised from scratch before every release candidate
 
-- Before every release candidate, the canary repository is re-initialised from scratch (Scenario B below): a fresh clone at the scenario B folder, no copy of the previous config, `/lgtmgate:init` run in it (commands: `docs/canary-kit.md`).
+- Before every release candidate, the canary repository is re-initialised from scratch (Scenario B below): in place at the scenario B folder, no copy of the previous config, `/lgtmgate:init` run in it (commands: `docs/canary-kit.md`).
 - Scenario A (update): runs in the canary checkout the maintainer opened once, never a fresh clone; an existing committed configuration and a newly installed plugin version. After the plugin update, check the loaded version with `scripts/plugin-versions.sh` and start a new session; on a `LOADED-CACHE` line, run `claude plugin update lgtmgate@zigzag-plugins-beta --scope local` in the root checkout.
-- Scenario B (fresh install): runs in a dedicated folder already trusted, emptied and cloned again at the same path for each release; no configuration; the committed configuration is deleted before `/lgtmgate:init`. A then B are run in that order, without asking which one a consumer is in.
+- Scenario B (fresh install): runs in place in a dedicated folder already trusted (decision of 2026-11-18, quoted in `docs/canary-kit.md`), nothing emptied or deleted; no configuration; the committed configuration is deleted before `/lgtmgate:init`. A then B are run in that order, without asking which one a consumer is in.
 - Trust gesture: a human accepts the `Workspace not trusted` prompt once for a never-opened folder; a fresh clone anywhere else than the two fixed locations needs it (see `docs/canary-kit.md`).
 - Findings of the 1.6.0-beta.9 canary: scenario B ran on a branch with the base overridden; the stable plugin is disabled at the local scope before `/lgtmgate:init`; the friction `1 userConfig option not yet set` appears during init. Init answers: `docs/canary-kit.md`.
 - It is then given one path-scoped rule file through a lane (`sam.<lane>.md` with `lane:` and `paths:`) and one listed context file.

@@ -3042,7 +3042,7 @@ function sessionRootVerdict({ probeFailed, exit, lines }) {
 function gitDirectoryNotWritableDetail({ gitDir: gitDirectory, sessionRoot: startRoot, writeError }) {
   const message = writeError ? `the write probe said: ${writeError}` : 'the write probe gave no message'
   const start = startRoot ? `the session starting directory is ${startRoot}` : 'the session starting directory was not passed (sessionRoot)'
-  return `The git directory of the worktree (${gitDirectory || 'unknown'}) cannot be written; ${message}; ${start}. Cause: from Claude Code 2.1.323 the tooling sandbox refuses git worktree add and writes under .git/worktrees/ when the session starting directory is the repository or one of its linked worktrees. Remedy: create the worktree from a session started outside the repository, or run only that command outside the sandbox, then drive the run from the worktree; never create a worktree from a linked worktree; see docs/consumer-reference.md, Run reasons, worktree-git-dir-not-writable`
+  return `The git directory of the worktree (${gitDirectory || 'unknown'}) cannot be written; ${message}; ${start}. Cause: from Claude Code 2.1.323 the tooling sandbox refuses git worktree add and writes under .git/worktrees/ when the session starting directory is the repository or one of its linked worktrees. Remedy: create the worktree with claude -w issue-<N> from the main checkout, never from a linked worktree, and drive the run from it; the full remedy is in docs/consumer-reference.md, Run reasons, worktree-git-dir-not-writable`
 }
 // --- gitDirNotWritable:end ---
 

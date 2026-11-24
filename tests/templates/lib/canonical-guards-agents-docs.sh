@@ -477,3 +477,43 @@ elif [ "${SR_PLANTED:-0}" != "1" ]; then
 else
   pass "standing-rules: each rule defined once and interpolated once in the engine, once in agents/sam.md; a planted removal is reported"
 fi
+
+
+# =============================================================================
+# Invariant 39 — worktree-remedy
+# =============================================================================
+# #728: one remedy for worktree-git-dir-not-writable. It lives in the `Fix` column of the consumer-reference row; the engine
+# message, MAINTAINING.md and skills/deliver/SKILL.md point at it with a literal. The canary kit runs scenario B in place.
+# FAIL naming the problems: a stale remedy or canary literal in the tracked tree (this lib excluded, it spells them), a place
+# that lost the pointer, or a row without the single remedy. Self-proof: a planted file with one stale literal must be
+# reported by the same function.
+worktree_remedy_stale() {
+  local lit f
+  for f in "$@"; do
+    for lit in 'run only that command outside the sandbox' 'runs only that command outside the sandbox' \
+               'give agent sessions write access' 'from a session started outside the repository, or run' \
+               'emptied and cloned again' 'empty it, then clone again' '1. Empty '; do
+      grep -qF -- "$lit" "$f" 2>/dev/null && echo "stale literal [$lit] in $f"
+    done
+  done
+}
+worktree_remedy_missing() {
+  local ptr='docs/consumer-reference.md, Run reasons, worktree-git-dir-not-writable' f
+  for f in workflows/deliver-pipeline.js MAINTAINING.md skills/deliver/SKILL.md; do
+    grep -qF -- "$ptr" "$f" 2>/dev/null || echo "pointer missing in $f"
+  done
+  grep -F 'worktree-git-dir-not-writable' docs/consumer-reference.md | grep -qF 'from the main checkout, never from a linked worktree' \
+    || echo "consumer-reference row lacks the single remedy"
+}
+WR_BAD="$(git ls-files | grep -v -F -e 'tests/templates/lib/canonical-guards-agents-docs.sh' -e 'fixtures/' | while IFS= read -r wr_file; do worktree_remedy_stale "$wr_file"; done; worktree_remedy_missing)"
+WR_PLANT="$(mktemp "${TMPDIR:-/tmp}/worktree-remedy-plant.XXXXXX")"
+printf 'give agent sessions write access to gitDir\n' > "$WR_PLANT"
+WR_PLANTED=$(worktree_remedy_stale "$WR_PLANT" | grep -c 'give agent sessions write access' || true)
+rm -f "$WR_PLANT"
+if [ -n "$WR_BAD" ]; then
+  fail "worktree-remedy" "$WR_BAD"
+elif [ "${WR_PLANTED:-0}" != "1" ]; then
+  fail "worktree-remedy" "a planted stale literal was not reported"
+else
+  pass "worktree-remedy: one remedy in the consumer-reference row, pointers in the engine, MAINTAINING.md and the deliver skill, no stale literal; a planted stale literal is reported"
+fi
