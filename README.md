@@ -23,6 +23,15 @@
 - **The merge stays yours.** The pipeline's agents never merge. The Lead, the session you launched the run from, merges only on your explicit go-ahead.
 
 <picture>
+  <source media="(prefers-reduced-motion: reduce)" srcset=".github/assets/run-workflow-static.png">
+  <source media="(prefers-color-scheme: dark)" srcset=".github/assets/run-workflow-dark.svg">
+  <source srcset=".github/assets/run-workflow.svg">
+  <img src=".github/assets/run-workflow-static.png" width="100%" alt="One lgtmgate run, in five lanes. You launch /lgtmgate:deliver with an issue and a brief, and the Lead creates one worktree for the run. Theo diagnoses, Sam plans, Nick writes the code and opens the pull request, Morgan reviews it. Here Morgan asks for changes once, the work goes back to Nick and returns to Morgan, who passes it. Mia (product framing) and a plan audit are optional. A refuted diagnosis, a dead dev run or a review that stops making progress ends the run. After the LGTM, the Lead merges only once you give your go-ahead.">
+</picture>
+
+<sub>One run, from issue to merged pull request. Dashed boxes are optional steps and the ways a run stops. Times are shortened for the animation.</sub>
+
+<picture>
   <source media="(prefers-reduced-motion: reduce)" srcset=".github/assets/workflow-widget-static.png">
   <source media="(prefers-color-scheme: dark)" srcset=".github/assets/workflow-widget-dark.svg">
   <source srcset=".github/assets/workflow-widget.svg">
