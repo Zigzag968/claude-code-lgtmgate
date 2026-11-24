@@ -153,6 +153,10 @@ jobs:
         run: bash tests/scripts/test-tick-equivalence.sh
       - name: plugin-versions script regression test
         run: bash tests/scripts/test-plugin-versions.sh
+      - name: plugin-versions --check regression test
+        run: bash tests/scripts/test-plugin-versions-check.sh
+      - name: lead-merge install update regression test
+        run: bash tests/scripts/test-lead-merge-install.sh
       - name: doctor script regression test
         run: bash tests/scripts/test-doctor.sh
       - name: ca-bundle-check script regression test

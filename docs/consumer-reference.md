@@ -206,11 +206,12 @@ Printed by `scripts/template-drift.cjs` (run by `/lgtmgate:deliver` step 1 and a
 
 ## Plugin versions lines
 
-Printed by `scripts/plugin-versions.sh` (run by `/lgtmgate:deliver` step 0). The script reads and never writes; a failed plugin load surfaces later as `no-attestation` (see that row), these lines name the cause before the run. The guard does not check this section.
+Printed by `scripts/plugin-versions.sh` (run with `--check` by `/lgtmgate:deliver` step 0). The script reads and never writes; a failed plugin load surfaces later as `no-attestation` (see that row), these lines name the cause before the run. The guard does not check this section.
 
 | name | raised at | what the user sees | remedy |
 |---|---|---|---|
 | `MARKETPLACE-CONFLICT` | declaration check of `scripts/plugin-versions.sh` | `MARKETPLACE-CONFLICT: <name> is declared with different sources: <file> (<kind> <value>), ...` and exit 1: one marketplace name carries different `source` objects in the user, project or local settings, and the plugin may fail to load | Keep one declaration, or give every declaration the same source, in the files named on the line; then restart the session. |
+| `WORKTREE-INSTALL` | `--check` of `scripts/plugin-versions.sh` | `<scope> project=<worktree> channel=<m> enabled=true version=<v> WORKTREE-INSTALL MISMATCH: found <v>, target <t>` and exit 1: an enabled local or project install scoped to a worktree of this repository is not the target version; without `--check` it is listed `OTHER-PROJECT` and not counted | Run the printed `claude plugin update lgtmgate@<channel> --scope <scope>` from the worktree named on the line, then restart the session that runs there. `scripts/lead-merge.sh` already runs this update after a version bump for the user-scope and main-checkout installs and prints the sessions to restart; it never touches a worktree install. |
 | `CONFLICT` | `scripts/plugin-versions.sh` | `CONFLICT: both channels enabled in scope=<scope> project=<p>: <m1>, <m2>; keep one and disable the other: <one disable command per channel>; then restart the session` and exit 1: both channels of the plugin are enabled for one scope and project, so the hooks fire twice; the deliver runbook stops on it | Run the printed `claude plugin disable lgtmgate@<other channel> --scope <scope>` of the channel you do not want, then restart the session. |
 
 ## Config check lines
