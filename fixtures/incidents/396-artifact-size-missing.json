@@ -78,8 +78,8 @@
       "verify": "VERIFY ok line=PROBE name=provision exit=0 sha=4d92447c1231bc682cf29d4d5f85736a8470e7370052ea69f089d2969ad9da16 cmd=b682d374969f61b09bdf7f8b1763aeecbd0b0ef69e20c82a7ba0a3feda832f34 json={\"version\":2,\"linked\":[\"node_modules\",\".venv\"],\"missing\":[],\"skipped\":false}"
     },
     "probe-10-provision-freshness-provision-freshness-r0": {
-      "line": "PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b cmd=5430d2285cdf1982f619b08cf794226d4a3e082cac2ffdb9d7944e1ef1cbccc9 json={\"state\":\"fresh\",\"behind\":0,\"own\":0}",
-      "verify": "VERIFY ok line=PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b cmd=5430d2285cdf1982f619b08cf794226d4a3e082cac2ffdb9d7944e1ef1cbccc9 json={\"state\":\"fresh\",\"behind\":0,\"own\":0}"
+      "line": "PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b cmd=f1db17be7a8211bd104f01abd7bd27aebba93be5fb2a85adfe7754b5a7a9b1da json={\"state\":\"fresh\",\"behind\":0,\"own\":0}",
+      "verify": "VERIFY ok line=PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b cmd=f1db17be7a8211bd104f01abd7bd27aebba93be5fb2a85adfe7754b5a7a9b1da json={\"state\":\"fresh\",\"behind\":0,\"own\":0}"
     },
     "diagnose-issue-10": {
       "confirmed": true,
