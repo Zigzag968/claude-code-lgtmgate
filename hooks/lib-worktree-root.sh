@@ -10,6 +10,9 @@
 # resolver); trailing slashes are stripped. Fallback: parent dir of the current tree,
 # used only when the current tree is a linked worktree (not the main tree).
 # jq missing -> config layers are skipped (env + fallback still work).
+#
+# Also: resolve_config_value <key> (string value from the config layers) and in_pipeline_session
+# (true when a pipeline config file exists in the tree or its main tree).
 
 _lwr_strip() {
   local p="$1"
@@ -47,6 +50,23 @@ resolve_config_value() {
     done
   done
   return 0
+}
+
+# in_pipeline_session (#692, shared with hooks/worktree-create.sh): true when the working tree (git
+# toplevel, else $PWD) or the main tree of its worktree list holds a pipeline config file
+# (.claude/pipeline.config.json or .claude/pipeline.config.local.json), false otherwise.
+in_pipeline_session() {
+  local top main d
+  top="$(git rev-parse --show-toplevel 2>/dev/null)" || top=""
+  [ -n "$top" ] || top="$(pwd)"
+  main="$(git worktree list 2>/dev/null | head -n 1 | sed -E 's/[[:space:]]+[0-9a-f]{7,}[[:space:]].*$//')"
+  for d in "$top" "$main"; do
+    [ -n "$d" ] || continue
+    if [ -f "$d/.claude/pipeline.config.json" ] || [ -f "$d/.claude/pipeline.config.local.json" ]; then
+      return 0
+    fi
+  done
+  return 1
 }
 
 resolve_worktree_root() {
