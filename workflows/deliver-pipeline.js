@@ -132,7 +132,7 @@ export const meta = {
 // `version`, checked against plugin.json by tests/templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '1.6.0-beta.42', cutFrom: '9cd63ee' }
+const BUILD = { plugin: 'lgtmgate', version: '1.6.0-beta.43', cutFrom: '5249f09' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -3050,7 +3050,7 @@ function sessionRootVerdict({ probeFailed, exit, lines }) {
 function gitDirectoryNotWritableDetail({ gitDir: gitDirectory, sessionRoot: startRoot, writeError }) {
   const message = writeError ? `the write probe said: ${writeError}` : 'the write probe gave no message'
   const start = startRoot ? `the session starting directory is ${startRoot}` : 'the session starting directory was not passed (sessionRoot)'
-  return `The git directory of the worktree (${gitDirectory || 'unknown'}) cannot be written; ${message}; ${start}. Cause: from Claude Code 2.1.323 the tooling sandbox refuses git worktree add and writes under .git/worktrees/ when the session starting directory is the repository or one of its linked worktrees. Remedy: create the worktree from a session started outside the repository, or run only that command outside the sandbox, then drive the run from the worktree; never create a worktree from a linked worktree; see docs/consumer-reference.md, Run reasons, worktree-git-dir-not-writable`
+  return `The git directory of the worktree (${gitDirectory || 'unknown'}) cannot be written; ${message}; ${start}. Cause: from Claude Code 2.1.323 the tooling sandbox refuses git worktree add and writes under .git/worktrees/ when the session starting directory is the repository or one of its linked worktrees. Remedy: create the worktree with claude -w issue-<N> from the main checkout, never from a linked worktree, and drive the run from it; the full remedy is in docs/consumer-reference.md, Run reasons, worktree-git-dir-not-writable`
 }
 // --- gitDirNotWritable:end ---
 

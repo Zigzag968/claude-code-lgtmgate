@@ -6,7 +6,7 @@ the trust model of the delivery channel it ships through. Linked from `README.md
 ## 1. Dev loop (`--plugin-dir`)
 
 Edit `workflows/deliver-pipeline.js` (or any component) in a worktree, never on `main` directly.
-Create that worktree with `claude -w issue-<N>` from the main checkout (WorktreeCreate hook, `hooks/worktree-create.sh`; never from a linked worktree); without the hook installed, use the `git worktree add` fallback of `skills/deliver/SKILL.md` section 3 (see there, not repeated here).
+Create that worktree with `claude -w issue-<N>` from the main checkout (WorktreeCreate hook, `hooks/worktree-create.sh`; never from a linked worktree); for the case without the hook, see `docs/consumer-reference.md, Run reasons, worktree-git-dir-not-writable`.
 Local pre-check: `git config core.hooksPath .githooks` runs `tests/templates/test-canonical-guards.sh`
 on every commit (a local pre-check only — see §5 Enforcement below for why it is not the real
 gate).
@@ -47,10 +47,8 @@ loop. §4 (Release) governs what IS committed.
 
 From Claude Code 2.1.323 the sandbox refuses `git worktree add`, `move` and `remove`, and writes
 under `.git/worktrees/`, when the session's starting directory is the repository or one of its linked
-worktrees. Create the worktree from a session whose starting directory is outside the repository, or
-with one Bash call that runs only that command outside the sandbox, then drive the run from the
-worktree. Never create a worktree from a linked worktree. The engine reports the case as
-`worktree-git-dir-not-writable` (see `docs/consumer-reference.md`, Run reasons).
+worktrees. The remedy is the one in `docs/consumer-reference.md, Run reasons, worktree-git-dir-not-writable`.
+The engine reports the case as `worktree-git-dir-not-writable`.
 
 ## 2. Names, S2→S4 window
 

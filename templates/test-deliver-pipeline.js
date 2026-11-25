@@ -5791,7 +5791,7 @@ await testCase('T643a (#643) worktree git-dir not writable → detail names the 
   const detail = String(r.detail || '')
   const error1 = eq('status', r.status, 'escalate')
   const error2 = eq('reason', r.reason, 'worktree-git-dir-not-writable')
-  const missing = ['session starting directory', '/path/to/repo', '2.1.323', writeError].find(part => !detail.includes(part))
+  const missing = ['session starting directory', '/path/to/repo', '2.1.323', 'claude -w issue-<N>', writeError].find(part => !detail.includes(part))
   const error3 = missing ? { ok: false, msg: `detail: expected it to include ${JSON.stringify(missing)}, got ${JSON.stringify(detail)}` } : null
   const error4 = detail.endsWith('docs/consumer-reference.md, Run reasons, worktree-git-dir-not-writable')
     ? null

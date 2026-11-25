@@ -34,7 +34,8 @@
 # 20 reviewer-window-scan-bounded, 21 gitdir-probe-no-rm, 22 no-destructive-checkout,
 # 23 guards-cjs (scripts/guards.cjs: R1 ratchet, 25 all-tests-wired, 1-relaxed version floor,
 # sam-parity, doc-budgets, instructions-wired), 24 critical-paths-proven, 26 stories-covered,
-# 27 agent-neutrality, 28 project-specifics-slot, 29 no-plugin-copy-in-specifics.
+# 27 agent-neutrality, 28 project-specifics-slot, 29 no-plugin-copy-in-specifics,
+# 39 worktree-remedy.
 #
 # Enforcement note: this repo is public (since 2026-09-29) and the `main-protection` ruleset
 # requires the `guards` check (job in `.github/workflows/guards.yml`, which runs this script
