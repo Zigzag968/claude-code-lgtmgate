@@ -56,8 +56,8 @@
       "verify": "VERIFY ok line=PROBE name=provision exit=0 sha=6a53faffc682ff23ac09011e330cfd4d706b6cd81cf5a2ad7ab5728d74c7cba7 cmd=0c2303f2db9f509834673de12dfa7a0e68c9d2ad2540285111cabebf6b165c96 json={\"version\":1,\"linked\":[],\"missing\":[],\"skipped\":true}"
     },
     "probe-187-provision-freshness-provision-freshness-r0": {
-      "line": "PROBE name=provision-freshness exit=0 sha=47980a108d8c5e479fdd724133b7c1caa0a1dae18048d1e11a26769aa3b5a6d1 cmd=ecdcb971bf44ae2bd4a1f12cec16781d56a2637dfd061b630f4eae5ab7383e44 json={\"state\":\"fresh\",\"behind\":0,\"own\":0}",
-      "verify": "VERIFY ok line=PROBE name=provision-freshness exit=0 sha=47980a108d8c5e479fdd724133b7c1caa0a1dae18048d1e11a26769aa3b5a6d1 cmd=ecdcb971bf44ae2bd4a1f12cec16781d56a2637dfd061b630f4eae5ab7383e44 json={\"state\":\"fresh\",\"behind\":0,\"own\":0}"
+      "line": "PROBE name=provision-freshness exit=0 sha=47980a108d8c5e479fdd724133b7c1caa0a1dae18048d1e11a26769aa3b5a6d1 cmd=dcac5514ab4159934c58638fb79f28afd7ceb4a1a05a26f43d5b5ab6b0f3abb5 json={\"state\":\"fresh\",\"behind\":0,\"own\":0}",
+      "verify": "VERIFY ok line=PROBE name=provision-freshness exit=0 sha=47980a108d8c5e479fdd724133b7c1caa0a1dae18048d1e11a26769aa3b5a6d1 cmd=dcac5514ab4159934c58638fb79f28afd7ceb4a1a05a26f43d5b5ab6b0f3abb5 json={\"state\":\"fresh\",\"behind\":0,\"own\":0}"
     },
     "probe-187-preflight-dev-r0": {
       "line": "PROBE name=preflight exit=0 sha=fba9cf99f4fe9617de364c0ded430e3bc6bf531be3796b9962e073d0e8065132 cmd=346ba53953571541f6caa8f06fcbbbbfea77fffd04a399a68c0365fd5a6106c8 json={\"mode\":\"dev\",\"planStale\":[],\"openSubIssues\":[],\"gitDir\":\"/wt/root/.git/worktrees/issue-187\",\"writable\":true}",
