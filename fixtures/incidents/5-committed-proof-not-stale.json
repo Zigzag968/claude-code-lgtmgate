@@ -38,8 +38,8 @@
       "verify": "VERIFY ok line=PROBE name=preflight exit=0 sha=4c8e6011d37fc7edec386bff6b0a1952879b6fdda948581d5b81468c9d38a25c cmd=6091f888e87a76b21bdd6acdffb84bf864cccff37a37cdd5ee4eb2cce47f0315 json={\"mode\":\"branch\",\"headRef\":\"feat/issue-123\",\"branchPrefix\":\"feat/\"}"
     },
     "probe-123-git-rev-list-count-worktree-behind-42-r0": {
-      "line": "PROBE name=git-rev-list-count exit=0 sha=b2a3f297f6c0e5cffebeb9ce3c42f49e905d537abd4f7225609db8864c78ce1b cmd=d1ca345e79cacf118e64a5df40a87ec31be05bea90c48c93931f5e6436b558e0 json={\"count\":0}",
-      "verify": "VERIFY ok line=PROBE name=git-rev-list-count exit=0 sha=b2a3f297f6c0e5cffebeb9ce3c42f49e905d537abd4f7225609db8864c78ce1b cmd=d1ca345e79cacf118e64a5df40a87ec31be05bea90c48c93931f5e6436b558e0 json={\"count\":0}"
+      "line": "PROBE name=git-rev-list-count exit=0 sha=b2a3f297f6c0e5cffebeb9ce3c42f49e905d537abd4f7225609db8864c78ce1b cmd=6a1ec231a9fc4bb3d7dd4ef67a449c5af51966fa067edc298ac42690a797d25c json={\"count\":0}",
+      "verify": "VERIFY ok line=PROBE name=git-rev-list-count exit=0 sha=b2a3f297f6c0e5cffebeb9ce3c42f49e905d537abd4f7225609db8864c78ce1b cmd=6a1ec231a9fc4bb3d7dd4ef67a449c5af51966fa067edc298ac42690a797d25c json={\"count\":0}"
     },
     "preflight-123-42-0": {
       "pass": true,

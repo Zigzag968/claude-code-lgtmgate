@@ -64,8 +64,8 @@
       "verify": "VERIFY ok line=PROBE name=provision exit=0 sha=0a0001500e6f649a575d2515664fed6807d2e283f35ade49abafa5cfd5ddcda7 cmd=842f3b30f502549f380ce9fc58f634fe78c61c037ba41ec2d17f53af61298904 json={\"version\":2,\"linked\":[],\"missing\":[],\"skipped\":false}"
     },
     "probe-257-provision-freshness-provision-freshness-r0": {
-      "line": "PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b cmd=5430d2285cdf1982f619b08cf794226d4a3e082cac2ffdb9d7944e1ef1cbccc9 json={\"state\":\"fresh\",\"behind\":0,\"own\":0}",
-      "verify": "VERIFY ok line=PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b cmd=5430d2285cdf1982f619b08cf794226d4a3e082cac2ffdb9d7944e1ef1cbccc9 json={\"state\":\"fresh\",\"behind\":0,\"own\":0}"
+      "line": "PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b cmd=f1db17be7a8211bd104f01abd7bd27aebba93be5fb2a85adfe7754b5a7a9b1da json={\"state\":\"fresh\",\"behind\":0,\"own\":0}",
+      "verify": "VERIFY ok line=PROBE name=provision-freshness exit=0 sha=9881b69aaf2e7f974dda4381bb7a986222b926e28d0348e6b20ff535a6bd736b cmd=f1db17be7a8211bd104f01abd7bd27aebba93be5fb2a85adfe7754b5a7a9b1da json={\"state\":\"fresh\",\"behind\":0,\"own\":0}"
     },
     "diagnose-issue-257": {
       "confirmed": true,
