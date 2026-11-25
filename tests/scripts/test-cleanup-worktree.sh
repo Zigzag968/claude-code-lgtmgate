@@ -188,6 +188,36 @@ FAKE_PULLS="$(pulls_json none)" run_script "$MAIN" "$ROOT/wt-empty"
 check "class no-pr-empty: no PR and no commit ahead is removed, the empty branch deleted" \
   "$([ "$RC" -eq 0 ] && [ ! -d "$ROOT/wt-empty" ] && printf '%s' "$OUT" | grep -q '^BRANCH-DELETED feat/wt-empty' && ! branch_exists feat/wt-empty && echo 1 || echo 0)"
 
+# sub-agent worktree under <main>/.claude/worktrees (outside the root): exactly agent-<alnum> is accepted
+AGENT_DIR="$MAIN/.claude/worktrees"
+mkdir -p "$AGENT_DIR"
+git -C "$MAIN" worktree add -q -b feat/agent-xyz "$AGENT_DIR/agent-xyz" main
+FAKE_PULLS="$(pulls_json none)" run_script "$MAIN" "$AGENT_DIR/agent-xyz"
+check "agent exemption: agent-<id> under <main>/.claude/worktrees is removed and its empty branch deleted" \
+  "$([ "$RC" -eq 0 ] && [ ! -d "$AGENT_DIR/agent-xyz" ] && printf '%s' "$OUT" | grep -q '^BRANCH-DELETED feat/agent-xyz' && ! branch_exists feat/agent-xyz && echo 1 || echo 0)"
+
+git -C "$MAIN" worktree add -q -b feat/agent-ahead "$AGENT_DIR/agent-ahead" main
+commit_in "$AGENT_DIR/agent-ahead"
+FAKE_PULLS="$(pulls_json none)" run_script "$MAIN" "$AGENT_DIR/agent-ahead"
+check "agent exemption keeps the class guard: an agent worktree with a commit ahead and no PR stays" \
+  "$([ "$RC" -eq 1 ] && [ -d "$AGENT_DIR/agent-ahead" ] && branch_exists feat/agent-ahead && printf '%s' "$OUT" | grep -q 'class ahead' && echo 1 || echo 0)"
+
+git -C "$MAIN" worktree add -q -b feat/other "$AGENT_DIR/other" main
+FAKE_PULLS="$(pulls_json none)" run_script "$MAIN" "$AGENT_DIR/other"
+check "agent exemption is narrow: a non-agent name under .claude/worktrees is refused and stays" \
+  "$([ "$RC" -eq 1 ] && [ -d "$AGENT_DIR/other" ] && printf '%s' "$OUT" | grep -q 'not under the worktree root' && echo 1 || echo 0)"
+
+mkdir -p "$AGENT_DIR/agent-x"
+git -C "$MAIN" worktree add -q -b feat/agent-nested "$AGENT_DIR/agent-x/y" main
+FAKE_PULLS="$(pulls_json none)" run_script "$MAIN" "$AGENT_DIR/agent-x/y"
+check "agent exemption is narrow: a nested agent-x/y path is refused and stays" \
+  "$([ "$RC" -eq 1 ] && [ -d "$AGENT_DIR/agent-x/y" ] && printf '%s' "$OUT" | grep -q 'not under the worktree root' && echo 1 || echo 0)"
+
+git -C "$MAIN" worktree add -q -b feat/agent-a-b "$AGENT_DIR/agent-a-b" main
+FAKE_PULLS="$(pulls_json none)" run_script "$MAIN" "$AGENT_DIR/agent-a-b"
+check "agent exemption is narrow: agent-a-b (non-alphanumeric id) is refused and stays" \
+  "$([ "$RC" -eq 1 ] && [ -d "$AGENT_DIR/agent-a-b" ] && printf '%s' "$OUT" | grep -q 'not under the worktree root' && echo 1 || echo 0)"
+
 # --- --class mode (own repo and root: only the worktrees built here) ------------------
 
 MAIN2="$WORK/main2"

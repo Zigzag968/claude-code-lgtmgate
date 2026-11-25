@@ -131,6 +131,12 @@ if setup; then
   EOL=$'\r\n'
   { printf 'intro%s' "$EOL"; block "$EOL" "${BOXES[@]}"; printf 'tail%s' "$EOL"; } > "$T/body.txt"
   run_case crlf 1,2 3
+  # #727: a box that only mentions the tag mid-line is not a gate (#626): it ticks like a plain box in all three readers.
+  EOL=$'\n'
+  BOXES=( '- [ ] <!-- ac:1 --> alpha' '- [ ] <!-- ac:2 --> beta' '- [ ] <!-- ac:3 --> [human-gate] gamma' '- [ ] <!-- ac:4 --> **ac:4** delta mentions the [human-gate] tag mid-line' )
+  printf '%s\n' "${BOXES[@]}" > "$T/rendered.txt"
+  { printf 'intro%s' "$EOL"; block "$EOL" "${BOXES[@]}"; printf 'tail%s' "$EOL"; } > "$T/body.txt"
+  run_case midline-tag 1,4 3
 fi
 
 echo "[test-tick-equivalence] passed=$PASS failed=$FAIL"
