@@ -50,29 +50,29 @@ const NODES = {
   morgan: { x: 830, lane: 'agents', label: 'Morgan', sub: 'review' },
   mia: { x: 420, lane: 'optional', label: 'Mia', sub: 'PM framing', dashed: true },
   audit: { x: 600, lane: 'optional', label: 'Plan audit', sub: 'soundness', dashed: true, w: 100 },
-  stop_theo: { x: 285, lane: 'stops', w: 130, label: 'Diagnosis stop', sub: 'refuted / design step', dashed: true },
-  stop_dev: { x: 690, lane: 'stops', w: 130, label: 'Dev stop', sub: 'dev-died / stuck', dashed: true },
-  stop_review: { x: 830, lane: 'stops', w: 130, label: 'Review stop', sub: 'escalate / human-gate', dashed: true },
+  stopTheo: { x: 285, lane: 'stops', w: 130, label: 'Diagnosis stop', sub: 'refuted / design step', dashed: true },
+  stopDev: { x: 690, lane: 'stops', w: 130, label: 'Dev stop', sub: 'dev-died / stuck', dashed: true },
+  stopReview: { x: 830, lane: 'stops', w: 130, label: 'Review stop', sub: 'escalate / human-gate', dashed: true },
 };
 const Y = (id) => cy(NODES[id].lane);
 
 // static edges: [id, path points, dashed, label?]
 const EDGES = [
-  ['e_issue', [[150, 92], [150, 178], [230, 178]]],
-  ['e_wt', [[285, 198], [285, 264]]],
-  ['e_theo_sam', [[340, 284], [500, 284]]],
-  ['e_sam_nick', [[610, 284], [635, 284]]],
-  ['e_nick_morgan', [[745, 284], [775, 284]]],
-  ['e_ret', [[800, 304], [800, 318], [710, 318], [710, 304]]],
-  ['e_merge', [[830, 264], [830, 198]]],
-  ['e_go', [[830, 92], [830, 158]]],
-  ['d_mia', [[310, 304], [310, 390], [365, 390]], true],
-  ['d_mia_sam', [[475, 390], [520, 390], [520, 304]], true],
-  ['d_audit', [[565, 304], [565, 370]], true],
-  ['d_audit_back', [[600, 370], [600, 304]], true],
-  ['d_stop_theo', [[270, 304], [270, 476]], true],
-  ['d_stop_dev', [[680, 304], [680, 476]], true],
-  ['d_stop_review', [[860, 304], [860, 476]], true],
+  ['edgeIssue', [[150, 92], [150, 178], [230, 178]]],
+  ['edgeWorktree', [[285, 198], [285, 264]]],
+  ['edgeTheoSam', [[340, 284], [500, 284]]],
+  ['edgeSamNick', [[610, 284], [635, 284]]],
+  ['edgeNickMorgan', [[745, 284], [775, 284]]],
+  ['edgeReturn', [[800, 304], [800, 318], [710, 318], [710, 304]]],
+  ['edgeMerge', [[830, 264], [830, 198]]],
+  ['edgeGo', [[830, 92], [830, 158]]],
+  ['detourMia', [[310, 304], [310, 390], [365, 390]], true],
+  ['detourMiaSam', [[475, 390], [520, 390], [520, 304]], true],
+  ['detourAudit', [[565, 304], [565, 370]], true],
+  ['detourAuditBack', [[600, 370], [600, 304]], true],
+  ['detourStopTheo', [[270, 304], [270, 476]], true],
+  ['detourStopDev', [[680, 304], [680, 476]], true],
+  ['detourStopReview', [[860, 304], [860, 476]], true],
 ];
 const PILLS = [
   { x: 420, y: 284, t: 'reproduced' }, { x: 755, y: 318, t: 'REQUIRED_CHANGES', color: 'bad' },
@@ -97,7 +97,7 @@ const MOVES = [
   [15.0, 16.0, [[690, 284], [830, 284]]],
   [17.2, 18.2, [[830, 284], [830, 178]]],
 ];
-const EDGE_ON = { e_issue: 1.1, e_wt: 2.8, e_theo_sam: 5.0, e_sam_nick: 7.8, e_nick_morgan: 10.0, e_ret: 12.0, e_merge: 17.2, e_go: 19.2 };
+const EDGE_ON = { edgeIssue: 1.1, edgeWorktree: 2.8, edgeTheoSam: 5.0, edgeSamNick: 7.8, edgeNickMorgan: 10.0, edgeReturn: 12.0, edgeMerge: 17.2, edgeGo: 19.2 };
 const TOKEN_FIRST = 0.3, TOKEN_LAST = 20.6;
 
 // ---------------------------------------------------------------- keyframes
@@ -105,10 +105,10 @@ const pct = (t) => +((t / LOOP) * 100).toFixed(3);
 const kfs = [];
 let kn = 0;
 // track: list of [t, value]; the value holds until the next stop unless `ramp` is set (then it interpolates)
-function track(prop, stops) {
+function track(property, stops) {
   const name = `k${kn++}`;
   if (stops[stops.length - 1][0] < LOOP) stops = [...stops, [LOOP, stops[stops.length - 1][1]]];   // hold the last value to the end (an omitted 100% would interpolate back to the attribute)
-  const body = stops.map(([t, v]) => `${pct(t)}%{${prop}:${v}}`).join('');
+  const body = stops.map(([t, v]) => `${pct(t)}%{${property}:${v}}`).join('');
   kfs.push(`@keyframes ${name}{${body}}`);
   return name;
 }
@@ -121,10 +121,10 @@ function stepOpacity(intervals, tail = null) {
   return s;
 }
 const classes = [];
-function animated(prop, stops) { const n = track(prop, stops); classes.push(`.${n}{animation-name:${n}}`); return n; }
+function animated(property, stops) { const n = track(property, stops); classes.push(`.${n}{animation-name:${n}}`); return n; }
 
 // ---------------------------------------------------------------- drawing
-const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const pathOf = (pts) => 'M' + pts.map(([x, y]) => `${x} ${y}`).join(' L');
 function nodeRect(id, extra) {
   const n = NODES[id], w = n.w ?? NW;
@@ -165,7 +165,7 @@ for (const id of Object.keys(NODES)) {
 const dyn = [], tok = [];
 for (const [id, pts, dashed] of EDGES) {
   if (dashed || !(id in EDGE_ON)) continue;
-  const color = id === 'e_ret' ? COLOR.bad : COLOR.acc;
+  const color = id === 'edgeReturn' ? COLOR.bad : COLOR.acc;
   const k = animated('opacity', stepOpacity([], EDGE_ON[id]));
   dyn.push(`<path class="a ${k}" d="${pathOf(pts)}" fill="none" stroke="${color}" stroke-width="2.6" opacity="0"/>`);
 }
@@ -180,7 +180,7 @@ for (const id of Object.keys(DWELL)) {
 }
 // the token
 {
-  const lenOf = (pts) => pts.slice(1).reduce((s, [x, y], i) => s + Math.hypot(x - pts[i][0], y - pts[i][1]), 0);
+  const lengthOf = (pts) => pts.slice(1).reduce((s, [x, y], index) => s + Math.hypot(x - pts[index][0], y - pts[index][1]), 0);
   const pos = [], fill = [];
   const P = (x, y) => `translate(${x}px,${y}px)`;
   pos.push([0, P(150, 72)]);
@@ -188,9 +188,9 @@ for (const id of Object.keys(DWELL)) {
   fill.push([0, COLOR.acc]);
   for (const [t0, t1, pts, col = 'acc'] of MOVES) {
     pos.push([t0, P(...pts[0])]);
-    const total = lenOf(pts);
+    const total = lengthOf(pts);
     let run = 0;
-    for (let i = 1; i < pts.length; i++) { run += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]); pos.push([t0 + (t1 - t0) * (run / total), P(...pts[i])]); }
+    for (let index = 1; index < pts.length; index++) { run += Math.hypot(pts[index][0] - pts[index - 1][0], pts[index][1] - pts[index - 1][1]); pos.push([t0 + (t1 - t0) * (run / total), P(...pts[index])]); }
     if (col !== lastColor) { fill.push([t0 - EPS, COLOR[lastColor]], [t0, COLOR[col]]); lastColor = col; }
     if (col === 'bad') { fill.push([t1, COLOR.bad], [t1 + EPS, COLOR.acc]); lastColor = 'acc'; }
   }
