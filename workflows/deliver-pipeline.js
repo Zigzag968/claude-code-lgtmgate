@@ -132,7 +132,7 @@ export const meta = {
 // `version`, checked against plugin.json by tests/templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '1.6.0-beta.35', cutFrom: '2881a1d' }
+const BUILD = { plugin: 'lgtmgate', version: '1.6.0-beta.38', cutFrom: 'b6d1979' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -3172,7 +3172,8 @@ async function planReferenceFor(textInHand) {
 
 // preflightProbe (#83): the pre-Dev / branch-guard reads as ONE probe (scripts/runtime/preflight.sh, parser
 // `preflight`). mode 'dev' | 'branch'; returns the parsed object, or null on any failure (fail-open,
-// like the reads it replaces). The script sits next to probe-run.cjs.
+// like the reads it replaces); a failure after the probe's one retry leaves a `probe-failed:preflight:<mode>:<reason>`
+// trace entry (#701), the fail-open itself is unchanged. The script sits next to probe-run.cjs.
 const probeScriptPath = (file) => {
   const runPath = config.probeRunPath ?? (pluginRoot ? pluginRoot + '/scripts/runtime/probe-run.cjs' : worktreePath + '/scripts/runtime/probe-run.cjs')
   return runPath.slice(0, runPath.lastIndexOf('/') + 1) + file
@@ -3185,10 +3186,11 @@ async function preflightProbe(modeName, label, argv) {
     const r = await probe('preflight', command, {
       label,
       noReuse: true,   // live state: a stored record from an earlier launch must never answer (#83)
-      onFail: (reason) => { log(`preflight probe (${modeName}): ${reason} — fail-open`); return null },
+      onFail: (reason) => { trace.push(`probe-failed:preflight:${modeName}:${reason}`); log(`preflight probe (${modeName}): ${reason} — fail-open`); return null },
     })
     return r && r.json && !r.json.error && r.json.mode === modeName ? r.json : null
   } catch (error) {
+    trace.push(`probe-failed:preflight:${modeName}:threw`)
     log(`preflight probe (${modeName}) failed (${error.message}) — fail-open`)
     return null
   }
@@ -3247,6 +3249,29 @@ async function runState(state) {
   const savedFailure = prWriteFailure
   try {
     await prWrite('run-state', 'run-state-' + sanitizeProbeToken(state), 0, ['--issue', issue, '--status', state])
+  } finally {
+    prWriteFailure = savedFailure
+  }
+}
+
+// phaseTransition (#614): the adjacent status + run-state writes of one phase in ONE pr-write `phase` call. Any disabled side
+// (simulate, unknown option, incomplete ghProject, dryRun, probeOnly, repeated run-state) falls back to the two single calls.
+async function phaseTransition(statusName, runStateName) {
+  const optionId = PROJECT_STATUS_OPTIONS[statusName]
+  if (simulate || dryRun || probeOnly || !optionId || runStateName === lastRunState
+    || !ghProject.projectId || !ghProject.fieldId || !ghProject.owner || !ghProject.projectNumber) {
+    await updateStatus(statusName)
+    await runState(runStateName)
+    return
+  }
+  trace.push(statusName)
+  lastRunState = runStateName
+  runStateStarted = true
+  const savedFailure = prWriteFailure
+  try {
+    await prWrite('phase', 'phase-' + sanitizeProbeToken(statusName), 0,
+      ['--issue', issue, '--project-number', ghProject.projectNumber, '--project-id', ghProject.projectId,
+        '--field-id', ghProject.fieldId, '--option-id', optionId, '--status', runStateName])
   } finally {
     prWriteFailure = savedFailure
   }
@@ -3488,7 +3513,7 @@ if (after('plan', entryStage)) {
   phase(PHASE_TITLES.diagnose)
   diag = await callAgentSafe(
     'theo',
-    `Qualify issue #${issue} before Sam plans anything — this gate runs for EVERY nightly-dispatched issue, no exceptions. Brief: ${brief}\n\n` +
+    `Qualify issue #${issue} before Sam plans anything — this gate runs for EVERY dispatched issue, no exceptions. Brief: ${brief}\n\n` +
       `${ISSUE_BODY_FIRST}\n${RUN_STATE_LINES}` +
       `If this issue claims a root cause or a specific bug behavior: reproduce it for real in worktree "${worktreePath}" (frozen base; never checkout/commit) — ` +
       `a real run/test, never a code-reading guess — and confirm or refute the stated cause.\n` +
@@ -4169,8 +4194,7 @@ const assertBranchConformance = async (pullRequestNumber, nickBranchFallback) =>
 
 if (after('dev', entryStage)) {
   phase(PHASE_TITLES.dev)
-  await updateStatus('Dev')
-  await runState('dev')
+  await phaseTransition('Dev', 'dev')
 
   // Plan-freshness probe (#103) — best-effort, read-only (fetch + diff only, never checkout/
   // reset/rebase/pull/merge). Diffs Sam's declared target files against origin/<baseBranch> so a
@@ -4316,8 +4340,7 @@ if (after('dev', entryStage)) {
 
 if (after('review', entryStage)) {
   phase(PHASE_TITLES.review)
-  await updateStatus('Review')
-  await runState('review')
+  await phaseTransition('Review', 'review')
 
   const pr = nick?.prNumber ?? prNumber
   if (!pr) {
