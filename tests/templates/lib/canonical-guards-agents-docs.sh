@@ -483,8 +483,8 @@ fi
 # Invariant 39 — worktree-remedy
 # =============================================================================
 # #728: one remedy for worktree-git-dir-not-writable. It lives in the `Fix` column of the consumer-reference row; the engine
-# message, MAINTAINING.md and skills/deliver/SKILL.md point at it with a literal. The canary kit runs scenario B in place.
-# FAIL naming the problems: a stale remedy or canary literal in the tracked tree (this lib excluded, it spells them), a place
+# message, MAINTAINING.md and skills/deliver/SKILL.md point at it with a literal.
+# FAIL naming the problems: a stale remedy literal in the tracked tree (this lib excluded, it spells them), a place
 # that lost the pointer, or a row without the single remedy. Self-proof: a planted file with one stale literal must be
 # reported by the same function.
 worktree_remedy_stale() {
@@ -492,7 +492,7 @@ worktree_remedy_stale() {
   for f in "$@"; do
     for lit in 'run only that command outside the sandbox' 'runs only that command outside the sandbox' \
                'give agent sessions write access' 'from a session started outside the repository, or run' \
-               'emptied and cloned again' 'empty it, then clone again' '1. Empty '; do
+               'alone outside the sandbox'; do
       grep -qF -- "$lit" "$f" 2>/dev/null && echo "stale literal [$lit] in $f"
     done
   done
@@ -502,7 +502,7 @@ worktree_remedy_missing() {
   for f in workflows/deliver-pipeline.js MAINTAINING.md skills/deliver/SKILL.md; do
     grep -qF -- "$ptr" "$f" 2>/dev/null || echo "pointer missing in $f"
   done
-  grep -F 'worktree-git-dir-not-writable' docs/consumer-reference.md | grep -qF 'from the main checkout, never from a linked worktree' \
+  grep -F 'worktree-git-dir-not-writable' docs/consumer-reference.md | grep -F 'from the main checkout, never from a linked worktree' | grep -qF 'running only that command outside the sandbox' \
     || echo "consumer-reference row lacks the single remedy"
 }
 WR_BAD="$(git ls-files | grep -v -F -e 'tests/templates/lib/canonical-guards-agents-docs.sh' -e 'fixtures/' | while IFS= read -r wr_file; do worktree_remedy_stale "$wr_file"; done; worktree_remedy_missing)"
