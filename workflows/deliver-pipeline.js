@@ -132,7 +132,7 @@ export const meta = {
 // `version`, checked against plugin.json by tests/templates/test-canonical-guards.sh, which reports
 // on every PR (.github/workflows/guards.yml) — enforcement is the standing acceptance-checklist
 // line + block-merge-unchecked.sh (rulesets/branch protection unavailable on this repo).
-const BUILD = { plugin: 'lgtmgate', version: '1.6.0-beta.37', cutFrom: 'e0f3b1a' }
+const BUILD = { plugin: 'lgtmgate', version: '1.6.0-beta.38', cutFrom: 'b6d1979' }
 const BUILD_STAMP = `[pipeline] lgtmgate@${BUILD.version} cutFrom=${BUILD.cutFrom} workflow=deliver-pipeline`
 log(BUILD_STAMP)
 
@@ -3172,7 +3172,8 @@ async function planReferenceFor(textInHand) {
 
 // preflightProbe (#83): the pre-Dev / branch-guard reads as ONE probe (scripts/runtime/preflight.sh, parser
 // `preflight`). mode 'dev' | 'branch'; returns the parsed object, or null on any failure (fail-open,
-// like the reads it replaces). The script sits next to probe-run.cjs.
+// like the reads it replaces); a failure after the probe's one retry leaves a `probe-failed:preflight:<mode>:<reason>`
+// trace entry (#701), the fail-open itself is unchanged. The script sits next to probe-run.cjs.
 const probeScriptPath = (file) => {
   const runPath = config.probeRunPath ?? (pluginRoot ? pluginRoot + '/scripts/runtime/probe-run.cjs' : worktreePath + '/scripts/runtime/probe-run.cjs')
   return runPath.slice(0, runPath.lastIndexOf('/') + 1) + file
@@ -3185,10 +3186,11 @@ async function preflightProbe(modeName, label, argv) {
     const r = await probe('preflight', command, {
       label,
       noReuse: true,   // live state: a stored record from an earlier launch must never answer (#83)
-      onFail: (reason) => { log(`preflight probe (${modeName}): ${reason} — fail-open`); return null },
+      onFail: (reason) => { trace.push(`probe-failed:preflight:${modeName}:${reason}`); log(`preflight probe (${modeName}): ${reason} — fail-open`); return null },
     })
     return r && r.json && !r.json.error && r.json.mode === modeName ? r.json : null
   } catch (error) {
+    trace.push(`probe-failed:preflight:${modeName}:threw`)
     log(`preflight probe (${modeName}) failed (${error.message}) — fail-open`)
     return null
   }
