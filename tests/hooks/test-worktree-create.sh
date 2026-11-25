@@ -48,7 +48,7 @@ check() {
 # run_hook <name> -> RC, STDOUT, STDERR (the captured payload, .name and .cwd overridden)
 run_hook() {
   local payload
-  payload="$(jq -c --arg n "$1" --arg c "$REPO" '.name = $n | .cwd = $c' "$FIXTURE")"
+  payload="$(jq -c --arg n "$1" --arg c "${RUN_CWD:-$REPO}" '.name = $n | .cwd = $c' "$FIXTURE")"
   STDOUT="$(printf '%s' "$payload" | bash "$HOOK" 2>"$WORK/stderr")"
   RC=$?
   STDERR="$(cat "$WORK/stderr")"
@@ -130,6 +130,37 @@ write_config "{\"baseBranch\":\"$BASE\",\"branchPrefix\":\"$PREFIX\"}"
 run_hook issue-14
 check "no worktree root resolvable for issue-14: refused" \
   "$([ "$RC" -ne 0 ] && printf '%s' "$STDERR" | grep -q 'worktree root' && echo 1 || echo 0)"
+
+# 9. no config (a repository without lgtmgate): the default layout instead of a refusal (#726)
+REPO2="$WORK/plain-repo"
+git init -q -b main "$REPO2"
+git -C "$REPO2" commit -q --allow-empty -m init
+RUN_CWD="$REPO2"
+run_hook foo
+NC_PATH="$REPO2/.claude/worktrees/foo"
+check "no config: foo exits 0 and prints exactly <repo>/.claude/worktrees/foo" \
+  "$([ "$RC" -eq 0 ] && [ "$STDOUT" = "$NC_PATH" ] && echo 1 || echo 0)"
+check "no config: foo is a registered worktree on branch worktree-foo at HEAD, no upstream" \
+  "$(git -C "$REPO2" worktree list --porcelain | grep -Fxq "worktree $(cd "$NC_PATH" && pwd -P)" \
+     && [ "$(git -C "$NC_PATH" rev-parse --abbrev-ref HEAD 2>/dev/null)" = "worktree-foo" ] \
+     && [ "$(git -C "$NC_PATH" rev-parse HEAD)" = "$(git -C "$REPO2" rev-parse HEAD)" ] \
+     && ! git -C "$NC_PATH" rev-parse --abbrev-ref '@{upstream}' >/dev/null 2>&1 && echo 1 || echo 0)"
+run_hook foo
+check "no config: foo again is idempotent (exit 0, same path)" \
+  "$([ "$RC" -eq 0 ] && [ "$STDOUT" = "$NC_PATH" ] && echo 1 || echo 0)"
+run_hook agent-abc
+check "no config: agent-abc gets the same layout and branch worktree-agent-abc" \
+  "$([ "$RC" -eq 0 ] && [ "$STDOUT" = "$REPO2/.claude/worktrees/agent-abc" ] && [ "$(git -C "$STDOUT" rev-parse --abbrev-ref HEAD 2>/dev/null)" = "worktree-agent-abc" ] && echo 1 || echo 0)"
+run_hook 'a/../b'
+check "no config: name a/../b is refused with the docs pointer and nothing is created" \
+  "$([ "$RC" -ne 0 ] && printf '%s' "$STDERR" | grep -q 'docs/consumer-reference.md' && [ -z "$STDOUT" ] && [ ! -e "$REPO2/.claude/worktrees/b" ] && [ ! -e "$REPO2/.claude/worktrees/a" ] && echo 1 || echo 0)"
+run_hook 'x..y'
+check "no config: a name holding '..' (x..y) is refused" "$([ "$RC" -ne 0 ] && [ ! -e "$REPO2/.claude/worktrees/x..y" ] && echo 1 || echo 0)"
+git -C "$REPO2" branch worktree-keep
+run_hook keep
+check "no config: an existing branch worktree-keep is reused" \
+  "$([ "$RC" -eq 0 ] && [ "$(git -C "$REPO2/.claude/worktrees/keep" rev-parse --abbrev-ref HEAD 2>/dev/null)" = "worktree-keep" ] && echo 1 || echo 0)"
+unset RUN_CWD
 
 echo "passed=$pass failed=$fail"
 [ "$fail" -eq 0 ] || exit 1
