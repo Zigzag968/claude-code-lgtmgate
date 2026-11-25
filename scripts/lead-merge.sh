@@ -254,7 +254,8 @@ for i, raw in enumerate(rows):
     m = re.match(r"^(\s*-\s*)\[ \](\s*)(.*)$", line) if start < i < end and not fenced[i] else None
     if m:
         text = m.group(3)
-        if re.search(r"\[human-gate\]", text, re.I):
+        # The engine's rule (parseChecklist): the tag counts only at the start, after the id comment and visible id; a mention later in the text is not a gate (#626).
+        if re.match(r"(?:<!-- ac:\s*0*[1-9]\d*\s*-->\s*)?(?:\*\*ac:\d+\*\*\s*)?\[human-gate\]", text, re.I):
             print("left open (human-gate): " + norm(text), file=sys.stderr)
         else:
             bn, hit = norm(text), False
