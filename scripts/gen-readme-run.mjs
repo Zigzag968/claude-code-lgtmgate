@@ -4,10 +4,12 @@
 //        node scripts/gen-readme-run.mjs <dir>/frame.svg '{"at":21}'   (one frozen frame, second 21 of the loop)
 // Node stdlib only. Output: one SVG, CSS keyframes, no JS, no web font, no external resource.
 // After regenerating the SVGs, refresh .github/assets/run-workflow-static.png (the still under prefers-reduced-motion,
-// one light PNG for both themes): the light frame frozen at second STILL ('{"at":21}'), rasterised at 2x.
+// one light PNG for both themes): the light frame frozen at second STILL ('{"at":21}'), rasterised at 2x:
+//   <chrome> --headless --hide-scrollbars --force-device-scale-factor=2 --window-size=960,580 --screenshot=<png> file://<dir>/frame.svg
+// Then open the PNG and read it up to the last word of the footer: nothing checks it against the generator.
 //
 // What the scene says (durations are illustrative):
-// - five lanes: You, Lead, the agents (one worktree), the optional steps, the ways a run stops
+// - five lanes: You, Lead, the agents (one worktree), the optional steps, where a run can stop
 // - a token walks the main path: the issue, the worktree, Theo, Sam, Nick, Morgan; each node lights up while the token is on it
 //   and keeps a green outline once it is done
 // - Morgan asks for changes once: the token turns red, goes back to Nick, then to Morgan, who passes it
@@ -51,7 +53,8 @@ const NODES = {
   mia: { x: 420, lane: 'optional', label: 'Mia', sub: 'PM framing', dashed: true },
   audit: { x: 600, lane: 'optional', label: 'Plan audit', sub: 'soundness', dashed: true, w: 100 },
   stopTheo: { x: 285, lane: 'stops', w: 130, label: 'Diagnosis stop', sub: 'refuted / design step', dashed: true },
-  stopDev: { x: 690, lane: 'stops', w: 130, label: 'Dev stop', sub: 'dev-died / stuck', dashed: true },
+  stopPlan: { x: 550, lane: 'stops', w: 130, label: 'Plan stop', sub: 'no-go / not sound', dashed: true },
+  stopDev: { x: 690, lane: 'stops', w: 130, label: 'Dev stop', sub: 'dev-died / no PR', dashed: true },
   stopReview: { x: 830, lane: 'stops', w: 130, label: 'Review stop', sub: 'escalate / human-gate', dashed: true },
 };
 const Y = (id) => cy(NODES[id].lane);
@@ -71,20 +74,22 @@ const EDGES = [
   ['detourAudit', [[565, 304], [565, 370]], true],
   ['detourAuditBack', [[600, 370], [600, 304]], true],
   ['detourStopTheo', [[270, 304], [270, 476]], true],
+  ['detourStopPlan', [[535, 304], [535, 476]], true],
   ['detourStopDev', [[680, 304], [680, 476]], true],
   ['detourStopReview', [[860, 304], [860, 476]], true],
 ];
 const PILLS = [
-  { x: 420, y: 284, t: 'reproduced' }, { x: 755, y: 318, t: 'REQUIRED_CHANGES', color: 'bad' },
+  { x: 420, y: 284, t: 'confirmed' }, { x: 755, y: 318, t: 'REQUIRED_CHANGES', color: 'bad' },
+  { x: 755, y: 337, t: '3 rounds max' },
   { x: 848, y: 230, t: 'LGTM' }, { x: 632, y: 337, t: 'not sound' }, { x: 860, y: 420, t: 'no progress' },
 ];
 
 // ---------------------------------------------------------------- timeline (seconds of the loop)
-// dwell: [from, to] the token is on the node; done: from `to` on, the node keeps its green outline
+// dwell: [from, to] the node is lit (the token is on it; the merge lights only once the go-ahead has); done: from `to` on, the node keeps its green outline
 const DWELL = {
   issue: [[0.3, 1.1]], worktree: [[2.0, 2.8]], theo: [[3.8, 5.0]], sam: [[6.6, 7.8]],
   nick: [[8.8, 10.0], [14.0, 15.0]], morgan: [[11.0, 12.0], [16.0, 17.2]],
-  merge: [[18.2, 20.6]], goahead: [[19.2, 20.2]],
+  merge: [[19.8, 20.6]], goahead: [[19.2, 20.2]],
 };
 // the token's moves: [t0, t1, points, color]
 const MOVES = [
@@ -202,16 +207,16 @@ for (const id of Object.keys(DWELL)) {
 const fadeName = track('opacity', [[0, 1], [FADE_AT, 1], [FADE_AT + FADE_LEN, 0], [LOOP - 0.3, 0], [LOOP, 1]]);
 classes.push(`.fade{animation-name:${fadeName}}`);
 out.push(`<g class="a fade">${dyn.join('')}</g>`);
-for (const p of PILLS) out.push(pill(p));
-out.push(`<g class="a fade">${tok.join('')}</g>`);   // the token rides above the labels   // above the highlights, so a lit edge never strikes a label through
-out.push(`<text x="${LANE_X}" y="${HEIGHT - 12}" class="mono" font-size="10.5" fill="${COLOR.mute}">Dashed: optional steps and the ways a run stops. Times shortened for the animation.</text>`);
+for (const p of PILLS) out.push(pill(p));   // above the highlights, so a lit edge never strikes a label through
+out.push(`<g class="a fade">${tok.join('')}</g>`);   // the token rides above the labels
+out.push(`<text x="${LANE_X}" y="${HEIGHT - 12}" class="mono" font-size="10.5" fill="${COLOR.mute}">Dashed: optional steps and where a run can stop. Times shortened for the animation.</text>`);
 
 const frozen = NOW != null ? `animation-delay:-${NOW}s;animation-play-state:paused;` : '';
 const css = `.a{animation-duration:${LOOP}s;animation-iteration-count:infinite;animation-fill-mode:both;animation-timing-function:linear;${frozen}}` +
   `.sans{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Helvetica,Arial,sans-serif}` +
   `.mono{font-family:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace}` +
   classes.join('') + kfs.join('');
-const ARIA = 'One lgtmgate run. You launch /lgtmgate:deliver with an issue and a brief; the Lead creates one worktree for the run. Theo diagnoses, Sam plans, Nick writes the code and opens the pull request, Morgan reviews it. Here Morgan asks for changes once, the work goes back to Nick and comes back to Morgan, who passes it. Mia (product framing) and a plan audit are optional. A refuted diagnosis, a dead dev run or a review that stops making progress ends the run. After the LGTM, the Lead merges only once you give your go-ahead.';
+const ARIA = 'One lgtmgate run, in five lanes. You launch /lgtmgate:deliver with an issue and a brief, and the Lead creates one worktree for the run. Theo diagnoses, Sam plans, Nick writes the code and opens the pull request, Morgan reviews it. Here Morgan asks for changes once, the work goes back to Nick and returns to Morgan, who passes it; a review allows at most 3 such rounds. Mia (product framing) and a plan audit are optional. A run can stop at diagnosis (issue refuted, or design step needed), at planning (no-go, plan not sound, or design step needed), at development (the dev agent dies, or ends without a pull request) or at review (escalation, for example when it stops making progress or reaches 3 rounds without approval, or an item only a human can check). After the LGTM, the Lead merges only once you give your go-ahead.';
 const svg = `<?xml version="1.0" encoding="UTF-8"?>\n<!-- Generated by scripts/gen-readme-run.mjs (${THEME} theme). CSS keyframes only, no JS, no web font. -->\n` +
   `<svg viewBox="0 0 ${WIDTH} ${HEIGHT}" width="${WIDTH}" height="${HEIGHT}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${esc(ARIA)}">\n<style>${css}</style>\n${out.join('\n')}\n</svg>\n`;
 if (!OUT_PATH) throw new Error('usage: node scripts/gen-readme-run.mjs <out.svg> [json options]');

@@ -26,10 +26,10 @@
   <source media="(prefers-reduced-motion: reduce)" srcset=".github/assets/run-workflow-static.png">
   <source media="(prefers-color-scheme: dark)" srcset=".github/assets/run-workflow-dark.svg">
   <source srcset=".github/assets/run-workflow.svg">
-  <img src=".github/assets/run-workflow-static.png" width="100%" alt="One lgtmgate run, in five lanes. You launch /lgtmgate:deliver with an issue and a brief, and the Lead creates one worktree for the run. Theo diagnoses, Sam plans, Nick writes the code and opens the pull request, Morgan reviews it. Here Morgan asks for changes once, the work goes back to Nick and returns to Morgan, who passes it. Mia (product framing) and a plan audit are optional. A refuted diagnosis, a dead dev run or a review that stops making progress ends the run. After the LGTM, the Lead merges only once you give your go-ahead.">
+  <img src=".github/assets/run-workflow-static.png" width="100%" alt="One lgtmgate run, in five lanes. You launch /lgtmgate:deliver with an issue and a brief, and the Lead creates one worktree for the run. Theo diagnoses, Sam plans, Nick writes the code and opens the pull request, Morgan reviews it. Here Morgan asks for changes once, the work goes back to Nick and returns to Morgan, who passes it; a review allows at most 3 such rounds. Mia (product framing) and a plan audit are optional. A run can stop at diagnosis (issue refuted, or design step needed), at planning (no-go, plan not sound, or design step needed), at development (the dev agent dies, or ends without a pull request) or at review (escalation, for example when it stops making progress or reaches 3 rounds without approval, or an item only a human can check). After the LGTM, the Lead merges only once you give your go-ahead.">
 </picture>
 
-<sub>One run, from issue to merged pull request. Dashed boxes are optional steps and the ways a run stops. Times are shortened for the animation.</sub>
+<sub>One run, from issue to merged pull request. Dashed boxes are optional steps and where a run can stop. Times are shortened for the animation.</sub>
 
 <picture>
   <source media="(prefers-reduced-motion: reduce)" srcset=".github/assets/workflow-widget-static.png">
