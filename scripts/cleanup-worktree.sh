@@ -8,8 +8,9 @@
 # `git worktree remove|prune` and a bare recursive rm of a worktree (issue #129 — a concurrent run can be using it).
 # For one path the script refuses (exit 1, named reason on stderr) unless ALL of these hold, checked cheapest first:
 #   1. the path argument is present and is an existing directory
-#   2. the worktree root is resolvable (hooks/lib-worktree-root.sh) and the path is under it
-#   3. the path is a registered worktree and is not the main tree
+#   2. the path is a registered worktree and is not the main tree
+#   3. the path is under the worktree root (hooks/lib-worktree-root.sh), or is exactly a sub-agent worktree
+#      <main tree>/.claude/worktrees/agent-<alnum> (the shape hooks/worktree-create.sh makes; no other name)
 #   4. the caller's cwd is neither the path nor inside it
 #   5. its class (scripts/lib/worktree-state.sh, #168) is merged, closed-unmerged or no-pr-empty. Never removed: detached,
 #      in-flight (a run in flight), dirty (uncommitted or untracked files), open-pr, unknown (PR lookup failed), ahead
@@ -80,21 +81,32 @@ fi
 [ -d "$target_arg" ] || refuse "not an existing directory: $target_arg"
 target="$(cd "$target_arg" && pwd -P)" || refuse "cannot resolve path: $target_arg"
 
-# Root resolved from the target's own repo context (its config, or the parent fallback).
-root="$(cd "$target" && resolve_worktree_root)"
-[ -n "$root" ] || refuse "worktree root cannot be resolved (set LGTMGATE_WORKTREE_ROOT or worktreeRoot in pipeline.config.json)"
-root_phys="$(cd "$root" 2>/dev/null && pwd -P || printf '%s' "$root")"
-case "$target" in
-  "$root_phys"/*) ;;
-  *) refuse "$target is not under the worktree root $root_phys" ;;
-esac
-
 # Registered + not main. Always query from the target itself (any tree of the repo works).
 porcelain="$(git -C "$target" worktree list --porcelain 2>/dev/null)" || refuse "not inside a git repository: $target"
 main_tree="$(printf '%s\n' "$porcelain" | awk '/^worktree /{sub(/^worktree /,""); print; exit}')"
 [ -n "$main_tree" ] || refuse "cannot determine the main tree"
 main_phys="$(cd "$main_tree" 2>/dev/null && pwd -P || printf '%s' "$main_tree")"
 [ "$target" != "$main_phys" ] || refuse "$target is the main tree"
+
+# Ownership: under the worktree root (resolved from the target's own repo context: its config, or the parent
+# fallback), OR exactly the sub-agent shape hooks/worktree-create.sh makes: <main tree>/.claude/worktrees/agent-<id>.
+# Nothing else under .claude/worktrees is accepted.
+agent_shape=0
+if [ "$(dirname "$target")" = "$main_phys/.claude/worktrees" ]; then
+  case "$(basename "$target")" in
+    agent-|agent-*[!A-Za-z0-9]*) ;;
+    agent-*) agent_shape=1 ;;
+  esac
+fi
+if [ "$agent_shape" -eq 0 ]; then
+  root="$(cd "$target" && resolve_worktree_root)"
+  [ -n "$root" ] || refuse "worktree root cannot be resolved (set LGTMGATE_WORKTREE_ROOT or worktreeRoot in pipeline.config.json)"
+  root_phys="$(cd "$root" 2>/dev/null && pwd -P || printf '%s' "$root")"
+  case "$target" in
+    "$root_phys"/*) ;;
+    *) refuse "$target is not under the worktree root $root_phys" ;;
+  esac
+fi
 
 branch=""
 found=0

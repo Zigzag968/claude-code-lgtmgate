@@ -1,0 +1,21 @@
+{
+  "name": "728-worktree-remedy-message",
+  "blocks": [
+    "gitDirNotWritable"
+  ],
+  "cases": [
+    {
+      "fn": "gitDirectoryNotWritableDetail",
+      "args": [
+        {
+          "gitDir": "/path/to/repo/.git/worktrees/issue-728",
+          "sessionRoot": "/path/to/repo",
+          "writeError": "Operation not permitted"
+        }
+      ],
+      "expect": {
+        "returns": "The git directory of the worktree (/path/to/repo/.git/worktrees/issue-728) cannot be written; the write probe said: Operation not permitted; the session starting directory is /path/to/repo. Cause: from Claude Code 2.1.323 the tooling sandbox refuses git worktree add and writes under .git/worktrees/ when the session starting directory is the repository or one of its linked worktrees. Remedy: create the worktree with claude -w issue-<N> from the main checkout, never from a linked worktree, and drive the run from it; the full remedy is in docs/consumer-reference.md, Run reasons, worktree-git-dir-not-writable"
+      }
+    }
+  ]
+}

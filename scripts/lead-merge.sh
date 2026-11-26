@@ -83,7 +83,10 @@
 #     (REST `pulls/<N>` head sha -> `commits/<sha>` committer date) is later than the verdict's `created_at`.
 # --cleanup (#168): once the read-back verified the merge, remove the merged worktree via scripts/cleanup-worktree.sh (scripts/lib/post-merge-cleanup.sh);
 #   without the flag one offer line is printed. A cleanup refusal never changes the exit code. Afterwards prints the manual main-sync step and, in a
-#   plugin repo, ONE line naming the merged version and the update command (#233; scripts/plugin-versions.sh lists the installs). This script bumps, never the PR.
+#   plugin repo, updates the local install (#731, scripts/lib/post-merge-install.sh: `claude plugin update <plugin>@<channel> --scope <scope>` for each
+#   stale user-scope or main-checkout install found by `scripts/plugin-versions.sh --check`, never `--yes`) and prints the sessions to restart, with the
+#   manual command of every install it did not update (worktree or other project); a failure prints the old hint (#233) and never changes the exit code.
+#   This script bumps, never the PR.
 # Env: LEAD_MERGE_POLL_MAX (default 30), LEAD_MERGE_POLL_SLEEP seconds (default 10).
 set -euo pipefail
 
@@ -98,6 +101,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/lib/tick-gates.sh"
 # shellcheck source=lib/post-merge-cleanup.sh
 . "$SCRIPT_DIR/lib/post-merge-cleanup.sh"
+# shellcheck source=lib/post-merge-install.sh
+. "$SCRIPT_DIR/lib/post-merge-install.sh"
 
 MANIFEST=".claude-plugin/plugin.json"
 WORKFLOW="workflows/deliver-pipeline.js"
@@ -254,7 +259,8 @@ for i, raw in enumerate(rows):
     m = re.match(r"^(\s*-\s*)\[ \](\s*)(.*)$", line) if start < i < end and not fenced[i] else None
     if m:
         text = m.group(3)
-        if re.search(r"\[human-gate\]", text, re.I):
+        # The engine's rule (parseChecklist): the tag counts only at the start, after the id comment and visible id; a mention later in the text is not a gate (#626).
+        if re.match(r"(?:<!-- ac:\s*0*[1-9]\d*\s*-->\s*)?(?:\*\*ac:\d+\*\*\s*)?\[human-gate\]", text, re.I):
             print("left open (human-gate): " + norm(text), file=sys.stderr)
         else:
             bn, hit = norm(text), False
@@ -568,11 +574,15 @@ for issue in $closing_issues; do
     echo "lead-merge: failed to close issue #$issue" >&2; close_failed=1
   fi
 done
+# the main checkout, read before a --cleanup removes the worktree this script runs from (used by lm_post_merge_install, #731)
+LM_MAIN_CHECKOUT="$(git worktree list --porcelain 2>/dev/null | awk '/^worktree /{sub(/^worktree /,""); print; exit}')" || LM_MAIN_CHECKOUT=""
+export LM_MAIN_CHECKOUT
 lm_post_merge_cleanup "$CLEANUP" # #168: only here, after the verified read-back; never changes the exit code
 
 echo "lead-merge: PR #$PR merged. Next manual step: in the main checkout run 'git fetch origin && git merge --ff-only origin/main'."
-# #233: the merged engine only runs once the installed plugin is updated and the session restarted (a plugin repo only)
+# #233, #731: the merged engine only runs once the installed plugin is updated and the session restarted (a plugin repo only); the update
+# itself runs here for the user and main-checkout installs, the rest is printed with its command (scripts/lib/post-merge-install.sh)
 if [ -n "$merged_ver" ] && [ -n "$plugin_name" ]; then
-  echo "lead-merge: plugin $plugin_name $merged_ver merged; update the install: claude plugin update $plugin_name@<marketplace> --scope <scope>, then restart the session (scripts/plugin-versions.sh lists the installs)"
+  lm_post_merge_install "$plugin_name" "$merged_ver"
 fi
 [ "$close_failed" -eq 0 ] || die "PR #$PR merged, but some referenced issues could not be closed; close them by hand"

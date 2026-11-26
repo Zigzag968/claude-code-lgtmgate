@@ -1,0 +1,39 @@
+{
+  "name": "731-stale-install-refused-before-provision",
+  "note": "#731: a launch from a plugin root one bump behind the engine (lgtmgate 1.6.0-beta.35 after a lead-merge bump to beta.36, the stale local install incident): the run stops at the version probe, before provisioning, any session, any worktree and any label write; callLabels holds the version probe only. The provision entry models the stale root's provision probe, which the engine never reaches. #731 turns the same refusal into a pre-launch `plugin-versions.sh --check` (deliver step 0) and makes lead-merge update the local install.",
+  "args": {
+    "pluginRoot": "/old/cache/lgtmgate/1.6.0-beta.35",
+    "issue": 731,
+    "brief": "a launch on a stale install must be refused before any session or worktree exists",
+    "worktreePath": "/wt/root/issue-731",
+    "config": {},
+    "mode": "auto"
+  },
+  "calls": {
+    "probe-731-lines-plugin-version-r0": {
+      "line": "PROBE name=lines exit=0 sha=a5111a57a379e4b8c918ca1ae94003c99e4900fe9b421ff22228e898cae1abf2 cmd=f3fcd55dcaf0ff484a285e04f33d6e018bad3e36601a3907b79c0a79ead4935d json={\"lines\":[\"PLUGIN-VERSION:1.6.0-beta.35\"]}",
+      "verify": "VERIFY ok line=PROBE name=lines exit=0 sha=a5111a57a379e4b8c918ca1ae94003c99e4900fe9b421ff22228e898cae1abf2 cmd=f3fcd55dcaf0ff484a285e04f33d6e018bad3e36601a3907b79c0a79ead4935d json={\"lines\":[\"PLUGIN-VERSION:1.6.0-beta.35\"]}"
+    },
+    "probe-731-provision-provision-r0": {
+      "line": "",
+      "verify": ""
+    }
+  },
+  "expect": {
+    "status": "escalate",
+    "reason": "plugin-version-skew: the plugin root holds lgtmgate 1.6.0-beta.35 (beta channel) but this engine is @@ENGINE_VERSION@@ (@@ENGINE_CHANNEL@@ channel); pass the current plugin root and relaunch; see docs/consumer-reference.md, Run reasons, plugin-version-skew",
+    "trace": [
+      "branch-prefix-fallback-default",
+      "probe:lines:haiku"
+    ],
+    "traceExact": true,
+    "callLabels": [
+      "probe-731-lines-plugin-version-r0"
+    ],
+    "logsInclude": [
+      "1.6.0-beta.35",
+      "@@ENGINE_VERSION@@",
+      "pass the current plugin root and relaunch"
+    ]
+  }
+}

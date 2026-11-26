@@ -216,6 +216,26 @@ stop_in lgtmgate:probe false | bash "$STOP" >/dev/null 2>&1; RC=$?
 [ "$RC" -eq 2 ] && ok=1 || ok=0
 check "stop: VERIFY ok line that differs from the PROBE line -> exit 2" "$ok"
 
+if command -v sha256sum >/dev/null 2>&1; then
+  PSHA="$(printf '%s' "$PLINE" | sha256sum | cut -d' ' -f1)"
+else
+  PSHA="$(printf '%s' "$PLINE" | shasum -a 256 | cut -d' ' -f1)"
+fi
+
+fresh
+mkdir -p "$CWD/.pipeline"
+{ entry agent-1 probe L 0 "$PLINE"; entry agent-1 verify L 0 "VERIFY ok linesha=$(printf 'a%.0s' $(seq 1 64))"; } > "$CWD/.pipeline/probe-attest.jsonl"
+stop_in lgtmgate:probe false | bash "$STOP" >/dev/null 2>&1; RC=$?
+[ "$RC" -eq 2 ] && ok=1 || ok=0
+check "stop: VERIFY ok linesha that differs from the sha256 of the PROBE line -> exit 2" "$ok"
+
+fresh
+mkdir -p "$CWD/.pipeline"
+{ entry agent-1 probe L 0 "$PLINE"; entry agent-1 verify L 0 "VERIFY ok linesha=$PSHA"; } > "$CWD/.pipeline/probe-attest.jsonl"
+stop_in lgtmgate:probe false | bash "$STOP" >/dev/null 2>&1; RC=$?
+[ "$RC" -eq 0 ] && ok=1 || ok=0
+check "stop: VERIFY ok linesha equal to the sha256 of the PROBE line -> exit 0" "$ok"
+
 fresh
 mkdir -p "$CWD/.pipeline"
 { entry agent-1 probe L 0 "$PLINE"; entry agent-1 verify L 0 "$VLINE"; } > "$CWD/.pipeline/probe-attest.jsonl"

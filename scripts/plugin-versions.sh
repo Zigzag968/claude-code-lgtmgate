@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Installed plugin versions (#233): scripts/plugin-versions.sh [--plugin <name>] [--target <version>] [--project <dir>] [--loaded-root <path>]
+# Installed plugin versions (#233): scripts/plugin-versions.sh [--check] [--plugin <name>] [--target <version>] [--project <dir>] [--loaded-root <path>]
 # The Workflow that runs a delivery is the one of the plugin version INSTALLED for the project's scope, so a Lead who merges
 # engine fixes keeps running the old engine until the plugin is updated and the session restarted. This script lists every
 # install of the plugin (default: lgtmgate) that `claude plugin list --json` reports and compares each ENABLED one with the
@@ -23,9 +23,12 @@
 #   is declared in two or more of the user, project and local settings files (`extraKnownMarketplaces`) with different `source`
 #   objects (whole-object comparison); one problem per name, whatever the plugin;
 #   `LOADED-CACHE: ... remove the loaded one: claude plugin uninstall <plugin>@<channel> --scope <scope>` (printed, never run).
+# --check (#731, the pre-launch and post-merge gate): also counts the installs scoped (local or project) to a WORKTREE of the repository of the
+#   current directory (`git worktree list --porcelain`), which the default mode hides as OTHER-PROJECT: such a line carries ` WORKTREE-INSTALL`
+#   and, when its version is not the target, ` MISMATCH: found <v>, target <t>` (one problem). Without --check the output is unchanged.
 # Last line: `plugin-versions: <n> install(s) of <plugin>, target <t>, <k> problem(s)`, or `plugin-versions: no install of
 # <plugin> found`. Read-only: the only external call is `claude plugin list --json`; the three settings files are read.
-# Exit: 0 clean (or no install), 1 any MISMATCH, CONFLICT, MARKETPLACE-CONFLICT or LOADED-CACHE, 2 cannot decide (no target, claude failed, the payload
+# Exit: 0 clean (or no install), 1 any MISMATCH (a WORKTREE-INSTALL one included), CONFLICT, MARKETPLACE-CONFLICT or LOADED-CACHE, 2 cannot decide (no target, claude failed, the payload
 # is not the expected list, the loaded root matches no listed install, the CLI reports a local or project install of this project disabled while that project's
 # .claude/settings.local.json or settings.json enables it: the sandbox hides that file from the CLI, #480): it never reports "all fine" on something it could not read.
 # Updating an install is a user-level action: the command is printed by the runbook (skills/deliver/SKILL.md step 0), never run here.
@@ -33,14 +36,15 @@ set -uo pipefail
 
 die2() { echo "plugin-versions: $*" >&2; exit 2; }
 
-PLUGIN="lgtmgate"; TARGET=""; PROJECT="$PWD"; LOADED=""
+PLUGIN="lgtmgate"; TARGET=""; PROJECT="$PWD"; LOADED=""; CHECK=0
 while [ $# -gt 0 ]; do
   case "$1" in
+    --check) CHECK=1; shift ;;
     --plugin) [ $# -ge 2 ] || die2 "--plugin needs a value"; PLUGIN="$2"; shift 2 ;;
     --target) [ $# -ge 2 ] || die2 "--target needs a value"; TARGET="$2"; shift 2 ;;
     --project) [ $# -ge 2 ] && [ -n "$2" ] || die2 "--project needs a value"; PROJECT="$2"; shift 2 ;;
     --loaded-root) [ $# -ge 2 ] && [ -n "$2" ] || die2 "--loaded-root needs a value"; LOADED="$2"; shift 2 ;;
-    *) die2 "usage: scripts/plugin-versions.sh [--plugin <name>] [--target <version>] [--project <dir>] [--loaded-root <path>] (unknown argument: $1)" ;;
+    *) die2 "usage: scripts/plugin-versions.sh [--check] [--plugin <name>] [--target <version>] [--project <dir>] [--loaded-root <path>] (unknown argument: $1)" ;;
   esac
 done
 [ -n "$PLUGIN" ] || die2 "--plugin needs a non-empty name"
@@ -61,13 +65,21 @@ fi
 # 2. the installs, captured before any parsing (a failed claude is a failure, never an empty list)
 listing="$(claude plugin list --json </dev/null)" || die2 "claude plugin list --json failed"
 
+# --check: the worktrees of the repository of the current directory (empty outside a git repository)
+worktrees=""
+if [ "$CHECK" -eq 1 ]; then
+  worktrees="$(git worktree list --porcelain 2>/dev/null | sed -n 's/^worktree //p')" || worktrees=""
+fi
+
 # 3-6. judge the payload; the JSON travels in the environment (python reads it, no unchecked pipe)
-LISTING="$listing" python3 - "$PLUGIN" "$TARGET" "$PROJECT" "$LOADED" <<'PY'
+LISTING="$listing" WORKTREES="$worktrees" CHECK="$CHECK" python3 - "$PLUGIN" "$TARGET" "$PROJECT" "$LOADED" <<'PY'
 import json, os, sys
 
 plugin, target, project, loaded = sys.argv[1:5]
 RANK = {"user": 1, "project": 2, "local": 3}
 rp = os.path.realpath(project)
+check = os.environ.get("CHECK") == "1"
+wts = {os.path.realpath(w) for w in os.environ.get("WORKTREES", "").split("\n") if w}
 
 def fail(msg):
     print("plugin-versions: " + msg, file=sys.stderr)
@@ -172,6 +184,11 @@ for r in rows:
     line = "%s project=%s channel=%s enabled=%s version=%s" % (r["scope"], r["proj"], r["market"], "true" if r["enabled"] else "false", r["version"])
     if r["enabled"] and r["shadow"]:
         line += " SHADOWED by %s install version %s" % (r["shadow"]["scope"], r["shadow"]["version"])
+    elif check and r["enabled"] and r["scope"] in ("local", "project") and not r["applies"] and r["proj"] != "-" and os.path.realpath(r["proj"]) in wts:
+        line += " WORKTREE-INSTALL"
+        if r["version"] != target:
+            line += " MISMATCH: found %s, target %s" % (r["version"], target)
+            problems += 1
     elif r["enabled"] and r["scope"] in RANK and not r["applies"]:
         line += " OTHER-PROJECT: not loaded for this project, not counted"
     elif r["enabled"]:

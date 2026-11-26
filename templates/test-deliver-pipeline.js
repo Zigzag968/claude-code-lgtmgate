@@ -5791,7 +5791,7 @@ await testCase('T643a (#643) worktree git-dir not writable → detail names the 
   const detail = String(r.detail || '')
   const error1 = eq('status', r.status, 'escalate')
   const error2 = eq('reason', r.reason, 'worktree-git-dir-not-writable')
-  const missing = ['session starting directory', '/path/to/repo', '2.1.323', writeError].find(part => !detail.includes(part))
+  const missing = ['session starting directory', '/path/to/repo', '2.1.323', 'claude -w issue-<N>', writeError].find(part => !detail.includes(part))
   const error3 = missing ? { ok: false, msg: `detail: expected it to include ${JSON.stringify(missing)}, got ${JSON.stringify(detail)}` } : null
   const error4 = detail.endsWith('docs/consumer-reference.md, Run reasons, worktree-git-dir-not-writable')
     ? null
@@ -6093,7 +6093,9 @@ await testCase('T479b READ_ONLY_CONFIRMATION_RULE is shared by Sam and the plan 
   const checks = [
     eq('occurrences (definition + 2 interpolations)', source.split('READ_ONLY_CONFIRMATION_RULE').length - 1, 3),
     includes('interpolated inside samScoutPrompt', scout, '${READ_ONLY_CONFIRMATION_RULE}'),
-    includes('interpolated on the (5) line', planCheck, '${READ_ONLY_CONFIRMATION_RULE}'),
+    // #727: the plan-check prompt is a function now; the (5) line interpolates its parameter, the call site passes the constant.
+    includes('interpolated on the (5) line', planCheck, '${readOnlyRule}'),
+    includes('the call site passes the constant', source, 'planCheckPrompt(issue, samPlan, READ_ONLY_CONFIRMATION_RULE, HUMAN_GATE_CHECK_NOTE)'),
     includes('plan check returns the rewritten item', planCheck, 'put the REWRITTEN item'),
     eq('old remedy "Write this line in the artifact" occurrences', source.split('Write this line in the artifact').length - 1, 0),
     includes('pointer refusal names the plan field', source, 'is a summary/pointer, not the full plan'),
@@ -6567,7 +6569,8 @@ await testCase('T182h source: ACCEPTANCE_ITEMS_RULE once, the Nick note once, th
   const error1 = eq('ACCEPTANCE_ITEMS_RULE interpolations (Sam prompt)', count('${ACCEPTANCE_ITEMS_RULE}'), 1)
   const error2 = eq('nickBlockNote interpolations (Nick prompt)', count('${nickBlockNote(acceptanceBlock)}'), 1)
   const error3 = eq('morganBoxesNote interpolations (initial + re-review)', count('${morganBoxesNote(acceptanceBlock)}'), 2)
-  const error4 = eq('HUMAN_GATE_CHECK_NOTE interpolations (plan-check + plan-audit)', count('${HUMAN_GATE_CHECK_NOTE}'), 2)
+  // #727: the plan-check prompt is a function (planCheckPrompt): its site interpolates the `humanGateNote` parameter, the call site passes the constant.
+  const error4 = eq('HUMAN_GATE_CHECK_NOTE interpolations (plan-audit) + plan-check parameter and call site', [count('${HUMAN_GATE_CHECK_NOTE}'), count('${humanGateNote}'), count('planCheckPrompt(issue, samPlan, READ_ONLY_CONFIRMATION_RULE, HUMAN_GATE_CHECK_NOTE)')], [1, 1, 1])
   const rule = source.split('\n').find((l) => l.startsWith('const ACCEPTANCE_ITEMS_RULE = ')) || ''
   const missing = ['acceptanceItems', '<!-- ac:N -->', '[human-gate]', 'a command written in its text is judged by the plan check'].filter((w) => !rule.includes(w))
   const error5 = missing.length ? { ok: false, msg: `ACCEPTANCE_ITEMS_RULE lacks ${JSON.stringify(missing)}` } : null
@@ -7553,6 +7556,68 @@ await testCase('T661b r2Applies false: no R2 engine item, 3 boxes ticked', async
   const error2 = includes('ticked trace', r.trace || [], 'acceptance-ticked:round=0,n=3')
   const error3 = p.includes('fixtures/incidents/') || p.includes('ac:4') ? { ok: false, msg: 'nickPromptPreview: unexpected R2 item or ac:4' } : null
   return error1 || error2 || error3 || { ok: true }
+})
+
+// #727: a resume (entryStage review) never ran the Dev stage, yet its items must be the original run's: the R2 item the PR
+// body carries stays an engine item (read back from the plan's `targetFiles:` line), also through a plan amendment.
+const T727_PLAN = t182Sam(T183_PLAIN).plan.replace('targetFiles: none', 'targetFiles: workflows/deliver-pipeline.js')
+const T727_BODY = t183Body([...T183_L3, T661_R2_LINE])
+await testCase('T727a a review resume of an engine bug run keeps the R2 item: 4 boxes proven and ticked, ready (#727)', async () => {
+  const r = await t183Review({ prBody: T727_BODY, morgan: [{ verdict: 'LGTM', boxes: t183Boxes(true, true, true, true) }] }, { mode: 'auto', config: R2_ENGINE_CONFIG, issueType: 'bug', planText: T727_PLAN })
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = includes('ticked trace', r.trace || [], 'acceptance-ticked:round=0,n=4')
+  const error3 = includes('the R2 line is ticked in the body', String(r.prBodyPreview || ''), '- [x] <!-- ac:4 --> **ac:4** fixture')
+  return error1 || error2 || error3 || { ok: true }
+})
+
+await testCase('T727b a plan amendment on a review resume keeps the R2 item: the amended checklist has 4 items and the next round ticks 4 (#727)', async () => {
+  const amendedText = '`node scripts/guards.cjs > /dev/null; echo "exit=$?"` prints `exit=0`'
+  const amended = T183_PLAIN.map((item, index) => (index === 0 ? { ...item, text: amendedText } : item))
+  const wording = T183_L3[0]
+  const r = await t183Review({
+    sam: { 2: t182Sam(amended) },
+    samAcceptanceChecklist: '',
+    prBody: T727_BODY,
+    morgan: [
+      { verdict: 'REQUIRED_CHANGES', items: ['fix the null guard'] },
+      { verdict: 'REQUIRED_CHANGES', items: [wording], itemOwners: [{ item: wording, itemOwner: 'checklist-wording-defect', proof: 'the command prints 1, the item says 0' }] },
+      { verdict: 'LGTM', boxes: t183Boxes(true, true, true, true) },
+    ],
+  }, { mode: 'auto', maxPlanAmendRounds: 1, config: R2_ENGINE_CONFIG, issueType: 'bug', planText: T727_PLAN })
+  const preview = String(r.prBodyPreview ?? '')
+  const error1 = eq('status', r.status, 'ready')
+  const error2 = includes('amendment ran', r.trace || [], 'plan-amend-round:2')
+  const error3 = includes('R2 item ticked after the amendment', r.trace || [], 'acceptance-ticked:round=2,n=4')
+  const error4 = preview.includes(amendedText) ? null : { ok: false, msg: `prBodyPreview lacks the amended item 1: ${JSON.stringify(preview)}` }
+  return error1 || error2 || error3 || error4 || { ok: true }
+})
+
+// T727c — the MINIMALITY input: a plan that adds a mechanism with no stated need reaches the judge with the criterion after
+// it. Only the judge's input is pinned here; the verdict is the judge's (a haiku model), its live evaluation is #738. The gate's
+// reaction to a verdict is T624b.
+const T727_UNJUSTIFIED_PLAN = [
+  '## Plan',
+  '| Zone | Detail |',
+  '|------|--------|',
+  '| Tests needed | one case for the changed reader |',
+  '1. change the reader in `scripts/lead-merge.sh`',
+  '2. add a lexicon guard that scans every prompt for forbidden words',
+  'targetFiles: scripts/lead-merge.sh',
+].join('\n')
+await testCase('T727c plan-check prompt for a plan with an unjustified mechanism: plan text, then the MINIMALITY criterion naming the stated need (#727)', async () => {
+  const source = SUITE_ARGS.fpSource
+  if (!source) return t182Skip('T727c')
+  const block = extractBetween(source, '// --- planCheckPrompt:start ---', '// --- planCheckPrompt:end ---')
+  if (!block) throw new Error('planCheckPrompt:start/:end markers not found in the pipeline source')
+  const prompt = new Function(block + '\nreturn planCheckPrompt')()(727, T727_UNJUSTIFIED_PLAN, 'READ-ONLY-RULE', 'GATE-NOTE')
+  const at = prompt.indexOf(T727_UNJUSTIFIED_PLAN)
+  const criterion = prompt.indexOf('(6) MINIMALITY')
+  const error1 = at >= 0 ? null : { ok: false, msg: 'the plan text does not reach the prompt' }
+  const error2 = criterion > at ? null : { ok: false, msg: `MINIMALITY criterion at ${criterion}, plan at ${at}: not after the plan` }
+  const error3 = includes('names the consequence', prompt.slice(criterion), 'NOT_CONFORMING')
+  const error4 = includes('names the stated need', prompt.slice(criterion), 'stated need')
+  const error5 = includes('rule and note interpolated', prompt, 'READ-ONLY-RULE GATE-NOTE')
+  return error1 || error2 || error3 || error4 || error5 || { ok: true }
 })
 
 await testCase('T444 the tick entry of the trace names the round and the number of boxes ticked: two boxes ticked in round 1 record acceptance-ticked:round=1,n=2', async () => {
